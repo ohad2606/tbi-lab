@@ -1,6 +1,6 @@
 # TBI-017 — AI assistant in the UI (design note)
 
-Status: DESIGN ONLY, 2026-11-19. Branch `co/20261119-aiui`. No code changed. Inactive everywhere until the owner decides.
+Status: DESIGN 2026-11-19 (branch `co/20261119-aiui`); slice 1 built 2026-11-22 (see §12). Inactive everywhere until the owner decides.
 
 ## 0. What already exists (do not rebuild)
 - `packages/assist`: Engineering Context (format `tbi-lab.engineering-context` v1, bounded), deterministic `diagnose()` findings
@@ -128,6 +128,42 @@ no animation. Needs manual SR test (NVDA+Firefox, VoiceOver) in HE: reading orde
 ## 12. Slices
 1. **Smallest vertical slice**: `client.ts` (typed, vitest) + Playwright mock service + flag from `status` + consent dialog (version-keyed) +
    action A only + states idle/sending/success/error + AI label + live regions. DEV build, flag off by default. (~1 night, frontend)
+   **Status 2026-11-22: built on `co/20261122-aiui-s1` (local commit, not pushed; QA/a11y-reviewer pending).**
+   - Files: `app/src/assist/client.ts` (typed status/preview/explain, AbortSignal, error mapping, strict shapes),
+     `app/src/assist/consent.ts` (consent store), `app/src/assist/pilot.tsx` (rewritten: state machine
+     `useAiController`, `AiControls`, `AiResult`, `AiNotAvailable`, `AiFooter`, `ConsentDialog`), `AssistPanel.tsx`
+     (status on open, one polite live region, AI flow wiring), `assist.ai.*` keys EN+HE, `assist.findings.notAi`.
+   - Tests: `app/tests/assist-client.test.ts`, `app/tests/assist-consent.test.ts`, `app/e2e/a11y-ai-assistant.spec.ts`
+     (mock service by route interception, own browser contexts). `s27-assist.spec.ts` unchanged except a
+     `TBI_E2E_DEV_URL` port override.
+   - Decisions taken in this slice:
+     a. Flag = `status.state==='active' && status.pilot` (no plan check yet); any other answer (none, HTML, 404,
+        wrong protocol/shape) = OFF. Build-time `VITE_TBI_ENV==='dev'` gate unchanged (chunk still DEV-only).
+     b. Visible names unchanged (owner Q7): top bar "Analyze circuit", panel "Circuit Debugger". The new action is
+        a button "Explain this circuit" (`assist.ai.action.explain`); the "AI assistant" rename is NOT applied.
+        All new text is in renamable `assist.ai.*` keys (not `assist.action.*`/`assist.limit.*`, which already hold the
+        findings' advice and limitations).
+     c. Account for the consent key: the browser does not know the account. The client uses the service's
+        optional opaque `status.account` (additive field, NOT sent by the service today; only `[A-Za-z0-9._-]{1,64}`
+        accepted, so never an email) and otherwise `browser`. Today the remembered consent is therefore per browser
+        (+ deployment namespace) and per version; the service stays the authority (consent sent on every request,
+        `consent_required` drops the remembered copy). Server-side memory remains owner/legal Q2.
+     d. Opening the panel does one `GET /status` (no project data). "Explain this circuit" runs the local analysis
+        first when there is none / it is stale, then the dialog (if no consent), then one `POST /explain`.
+        "Show exactly what would be sent" POSTs the context to the TBI service `/preview` (not to a provider),
+        only on that explicit click.
+     e. With the AI on, the template "Explanation" section is hidden (one explanation section: the AI one). With the
+        AI off the deterministic panel is exactly as before plus one sentence why.
+     f. Ask stays in place while sending (`aria-disabled`, no focus loss); Cancel next to it; when Cancel/Withdraw/
+        the dialog goes away focus goes to Ask. Retry = the same button ("Try again"); for `retryAfterMs` it stays
+        `aria-disabled` until the wait is over. No client retries.
+     g. Cancel is a polite status ("The request was cancelled…"), not an alert; errors are `role=alert`, re-mounted
+        per occurrence so a repeated error is announced again. The status region is cleared then set (120 ms) so a
+        repeated message is re-announced.
+     h. TBI-018 `limit`/`message` are parsed by the client but not shown yet (slice 2); unknown codes show
+        `assist.ai.error.other`.
+   - Not done here: action chooser (only A exists), limits/credits UI, feedback, "Jump to answer" link, bottom
+     sheet, manual SR test.
 2. Limit/credits states from the TBI-018 shapes (mock first; works on s2 branch with `metering.enabled`), HE/EN limit text, credits line.
 3. Actions B/C: contract/2 `focus` + code excerpts gating (runtime-dev), context entry points.
 4. Feedback buttons, withdraw consent, a11y-reviewer pass, SR session.

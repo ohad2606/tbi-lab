@@ -28,7 +28,16 @@ import {
   simFailureMessage,
 } from '../sim/format.js';
 import { analyze, assistGateway, type Analysis } from './analyze.js';
-import { PilotSection } from './pilot.js';
+import { aiEnabled, getStatus, type StatusResult } from './client.js';
+import {
+  AiControls,
+  AiFooter,
+  AiNotAvailable,
+  AiResult,
+  ConsentDialog,
+  notAvailableKey,
+  useAiController,
+} from './pilot.js';
 
 type Phase =
   | { kind: 'idle' }
@@ -221,7 +230,11 @@ function Explanation({ a, r }: { a: Analysis; r: GatewayResult }) {
     ));
   return (
     <>
-      {r.response.summary && <p data-testid="assist-summary">{r.response.summary.text}</p>}
+      {r.response.summary && (
+        <p data-testid="assist-summary" dir="auto">
+          {r.response.summary.text}
+        </p>
+      )}
       <ol class="assist-explanations">
         {r.response.explanations.map((e) => {
           const f = byKey.get(e.finding);
@@ -234,7 +247,7 @@ function Explanation({ a, r }: { a: Analysis; r: GatewayResult }) {
               >
                 {f ? t(`assist.family.${f.family}` as MessageKey) : e.finding}
               </a>
-              <p>{e.text}</p>
+              <p dir="auto">{e.text}</p>
               <p class="small muted">
                 {t('assist.explain.basedOn', { refs: '' })}
                 {refsOf(e.cites)}
@@ -279,7 +292,44 @@ export function AssistPanel({
   const store = useStore();
   const t = useT();
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
   const heading = useRef<HTMLHeadingElement>(null);
+  // TBI-017: the AI service's status is asked once on open (a GET: nothing about the project is
+  // sent). Until it answers, and whenever it is not active + allowed, the AI is off.
+  const [service, setService] = useState<StatusResult | null>(null);
+  const [live, setLive] = useState('');
+  const liveTimer = useRef<ReturnType<typeof setTimeout>>();
+  /** The panel's one polite live region: cleared first, so a repeated message is heard again. */
+  const announce = (text: string) => {
+    clearTimeout(liveTimer.current);
+    setLive('');
+    liveTimer.current = setTimeout(() => setLive(text), 120);
+  };
+  useEffect(() => () => clearTimeout(liveTimer.current), []);
+  useEffect(() => {
+    const ctl = new AbortController();
+    void getStatus(ctl.signal).then((s) => {
+      if (ctl.signal.aborted) return;
+      setService(s);
+      if (!aiEnabled(s)) announce(translate(state.locale, notAvailableKey(s)));
+    });
+    return () => ctl.abort();
+    // Once per opening (a language change does not ask again).
+  }, []);
+  const aiOn = !!service && aiEnabled(service);
+  const ai = useAiController({
+    status: service && aiEnabled(service) ? service.status : null,
+    locale: state.locale.code,
+    announce,
+    ensureContext: async () => {
+      const p = phaseRef.current;
+      if (p.kind === 'running') return 'busy';
+      const current = p.kind === 'done' && p.analysis.doc === state.doc ? p.analysis : null;
+      const a = current ?? (await start());
+      return a && !a.tooLarge ? a.context : a ? null : 'busy';
+    },
+  });
   useEffect(() => {
     heading.current?.focus();
     return () => trigger?.focus();
@@ -298,8 +348,8 @@ export function AssistPanel({
   const doc = state.doc;
   if (!doc) return null;
 
-  const start = async () => {
-    if (phase.kind === 'running') return;
+  const start = async (): Promise<Analysis | null> => {
+    if (phaseRef.current.kind === 'running') return null;
     const ctl = new AbortController();
     setPhase({ kind: 'running', ctl });
     const boardId = programBoardOf(doc);
@@ -308,6 +358,8 @@ export function AssistPanel({
       boardId && builds ? builds.view(doc.projectId, boardId, doc.programs[boardId]!) : null;
     const analysis = await analyze({ doc, sim: state.sim, build }, state.locale.code, ctl.signal);
     setPhase({ kind: 'done', analysis });
+    // Cancelled by the user: the AI flow that asked for it stops too.
+    return ctl.signal.aborted ? null : analysis;
   };
   const a = phase.kind === 'done' ? phase.analysis : null;
   const stale = !!a && a.doc !== doc;
@@ -358,12 +410,21 @@ export function AssistPanel({
             type="button"
             class="button button-primary"
             data-testid="assist-analyze"
-            onClick={() => void start()}
+            onClick={() => {
+              // A new analysis: an AI answer or request in flight was for the previous one.
+              ai.reset();
+              void start();
+            }}
           >
             {t(a ? 'assist.panel.again' : 'assist.panel.analyze')}
           </button>
         )}
+        {aiOn && <AiControls ai={ai} blocked={phase.kind === 'running'} />}
       </div>
+      <p role="status" class="visually-hidden" data-testid="assist-live">
+        {live}
+      </p>
+      {service && !aiOn && <AiNotAvailable status={service} />}
       {stale && (
         <p class="banner banner-info small" role="status" data-testid="assist-stale">
           {t('assist.panel.stale')}
@@ -382,7 +443,9 @@ export function AssistPanel({
             data-testid="assist-findings"
           >
             <h3 id="assist-findings-h">{t('assist.findings.heading')}</h3>
-            <p class="small muted">{t('assist.findings.note')}</p>
+            <p class="small muted" data-testid="assist-findings-note">
+              {t('assist.findings.notAi')} {t('assist.findings.note')}
+            </p>
             {a.findings.length === 0 ? (
               <p>{t('assist.findings.none')}</p>
             ) : (
@@ -393,30 +456,36 @@ export function AssistPanel({
               </ul>
             )}
           </section>
-          <section
-            class="assist-section assist-ai"
-            aria-labelledby="assist-explain-h"
-            data-testid="assist-explanation-section"
-            data-provider={info?.id ?? ''}
-            data-live={String(!!info?.live)}
-          >
-            <h3 id="assist-explain-h">{t('assist.explain.heading')}</h3>
-            {!info?.live && (
-              <p class="assist-mock-label small" data-testid="assist-mock-label">
-                {t('assist.explain.mock')}
-              </p>
-            )}
-            {a.explanation && <Explanation a={a} r={a.explanation} />}
-          </section>
-          {a.context && (
-            <PilotSection
-              context={a.context}
-              locale={state.locale.code}
-              findings={a.findings}
-              has={isMessageKey}
-              renderReply={(r, findings) => <Explanation a={{ ...a, findings }} r={r} />}
-            />
+          {!aiOn && (
+            <section
+              class="assist-section assist-ai"
+              aria-labelledby="assist-explain-h"
+              data-testid="assist-explanation-section"
+              data-provider={info?.id ?? ''}
+              data-live={String(!!info?.live)}
+            >
+              <h3 id="assist-explain-h">{t('assist.explain.heading')}</h3>
+              {!info?.live && (
+                <p class="assist-mock-label small" data-testid="assist-mock-label">
+                  {t('assist.explain.mock')}
+                </p>
+              )}
+              {a.explanation && <Explanation a={a} r={a.explanation} />}
+            </section>
           )}
+        </>
+      )}
+      {aiOn && (a || ai.phase.kind !== 'idle') && (
+        <AiResult
+          ai={ai}
+          findings={a?.findings ?? null}
+          renderReply={(r, findings) => (a ? <Explanation a={{ ...a, findings }} r={r} /> : null)}
+        />
+      )}
+      {aiOn && service.kind === 'ok' && (
+        <>
+          <AiFooter ai={ai} version={service.status.consentVersion} />
+          <ConsentDialog ai={ai} status={service.status} locale={state.locale.code} />
         </>
       )}
     </aside>
