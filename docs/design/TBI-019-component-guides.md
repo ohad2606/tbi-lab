@@ -81,7 +81,7 @@ type FactSource =
   | { kind: 'formula'; fn: 'speedOfSound'|'hcsr04Echo'|...; args: ... }; // an exported engine function
 ```
 
-- `constant` and `formula` import the same exported values the engine uses (for example `HC_SR04`, `speedOfSound`, `hcsr04Echo` from `packages/engine/src/peripherals/hcsr04.ts`; `V_IH_V`, `V_IL_V` from `esp32Gpio.ts`; `MODEL_RATINGS` from `ratings.ts`; `PTV09A` from `parts/potentiometer.ts`; `LCD1602_DC` from `parts/lcd.ts`). The engine entry point must export each one; if one is not exported, that is a small engine change that needs the runtime developer, not a copy of the number.
+- `constant` and `formula` import the same exported values the engine uses (for example `HC_SR04`, `speedOfSound`, `hcsr04Echo` from `packages/engine/src/peripherals/hcsr04.ts`; `V_IH_V`, `V_IL_V` from `packages/engine/src/esp32Gpio.ts`; `MODEL_RATINGS` from `ratings.ts`; `PTV09A` from `parts/potentiometer.ts`; `LCD1602_DC` from `parts/lcd.ts`). The engine entry point must export each one; if one is not exported, that is a small engine change that needs the runtime developer, not a copy of the number.
 - `solve` runs the engine on the example document at build or test time (as `examples.test.ts` does) and the result is formatted with the existing unit formatter.
 - Formatting happens in `LtrMessage`-style rendering: every value is a `<bdi dir="ltr">` isolate (units, `GPIO34`, `0x27`, `HC-SR04`, `kΩ`). Hebrew sentences stay Hebrew; only the token is LTR.
 - A guide's displayed numbers are therefore computed, so they cannot drift from the models. (Today's example summaries contain typed numbers, such as "1.982 V, 13.72 mA", guarded only by `examples.test.ts`; guides should do better.)
@@ -161,7 +161,7 @@ HC-SR04 and LCD need a program (a trigger pulse; I2C writes). Their examples (`e
 ## 6. HE and EN
 
 - Every key exists in both `messages.en.ts` and `messages.he.ts` (parity test already in `i18n.test.ts`; a new test lists required keys per guide from the schema).
-- Hebrew is written as natural modern Hebrew by the docs writer, not literally translated; terms follow the shared glossary (`marketing/glossary-he-en.md` and `app/src/i18n/glossary.ts`). Parts keep their English names where the catalog does (`HC-SR04`, `LCD`, `GPIO`).
+- Hebrew is written as natural modern Hebrew by the docs writer, not literally translated; terms follow the shared glossary (`app/src/i18n/glossary.ts` (plus the company glossary kept outside this repo)). Parts keep their English names where the catalog does (`HC-SR04`, `LCD`, `GPIO`).
 - Company voice in the lesson text: "we" (אנחנו), second person for the learner's action, short sentences.
 
 Sample (draft wording, for owner review):
@@ -202,7 +202,7 @@ Numbers below were read from the files cited; in the shipped guides they come fr
   - Example circuit `app/src/examples/data/led-current.json`: 5 V supply, 220 Ω, red LED. Solved operating point 1.9816 V and 13.72 mA, with the resistor drop plus the LED voltage equal to 5 V (asserted in `app/tests/examples.test.ts`, "LED current limiting").
   - Absolute maximum ratings: 30 mA forward current, 6 V reverse voltage, 100 mW (`MODEL_RATINGS` in `packages/engine/src/ratings.ts`). The product reports an over-stress warning; the solver never changes a number because of a rating.
   - Derived: resistor 220 Ω at 13.72 mA drops about 3.02 V (5 V minus 1.9816 V).
-- Try it: change R1 from 220 Ω to 100 Ω (set-param), run, read the LED current; the fact is computed by solve and it is expected to pass 30 mA, so the over-stress warning appears (to verify by solver; the guide text appears only if that is true).
+- Try it: change R1 from 220 Ω to 47 Ω (set-param), run, read the LED current; by estimate this is about 60 mA, above the 30 mA rating, so the over-stress warning appears (to verify by solver; the guide text appears only if that is true). Note: at 100 Ω the estimate is about 29.8 mA, just under the rating, so 100 Ω must not be used for this step.
 - Limits: a nominal part, no temperature drift (model header, `models.ts`).
 
 ### 9.2 Push button (`button`; examples `push-button`, then `esp32-button` as a "go further" link)
