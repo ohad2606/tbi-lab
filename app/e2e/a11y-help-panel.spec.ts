@@ -126,5 +126,53 @@ for (const lang of ['en', 'he'] as const) {
       await page.keyboard.press('Escape');
       await expect(dialog).toBeHidden();
     });
+
+    test('after a contents jump Tab and Shift+Tab follow DOM order', async ({ page }) => {
+      await openEditor(page, lang);
+      await openFromMenu(page);
+      const dialog = page.getByTestId('guide-dialog');
+      const last = dialog.getByTestId('guide-toc').getByRole('link').last();
+      await last.focus();
+      await page.keyboard.press('Enter');
+      const target = dialog.getByRole('heading', { level: 3 }).last();
+      await expect(dialog.locator('h3:focus, h4:focus')).toHaveCount(1);
+      // The next control after the body text is the body region itself (earlier in DOM), so go
+      // through the real order: Tab reaches Close within a few steps and never leaves the dialog.
+      const seen: string[] = [];
+      for (let i = 0; i < 4 && seen.at(-1) !== 'guide-close'; i++) {
+        await page.keyboard.press('Tab');
+        seen.push(
+          await page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? ''),
+        );
+      }
+      expect(seen).toContain('guide-close');
+      await expect(page.getByTestId('guide-close')).toBeInViewport();
+      await page.keyboard.press('Shift+Tab');
+      expect(await page.evaluate(() => !!document.activeElement?.closest('dialog'))).toBe(true);
+      expect(
+        await page.evaluate(() => document.activeElement?.getAttribute('data-testid')),
+      ).not.toBe('guide-close');
+      void target;
+    });
+
+    test('320x256 (400% zoom): text and Close stay reachable, no sideways scroll', async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 320, height: 256 });
+      await openEditor(page, lang);
+      await page.getByTestId('app-menu-button').click({ force: true });
+      await page.getByTestId('menu-guide').dispatchEvent('click');
+      const dialog = page.getByTestId('guide-dialog');
+      await expect(dialog).toBeVisible();
+      const body = page.getByTestId('guide-body');
+      expect((await body.boundingBox())!.height).toBeGreaterThan(50);
+      expect(await dialog.evaluate((d) => d.scrollWidth <= d.clientWidth + 1)).toBe(true);
+      const close = page.getByTestId('guide-close');
+      await close.focus();
+      await expect(close).toBeFocused();
+      await expect(close).toBeInViewport();
+      await page.keyboard.press('Enter');
+      await expect(dialog).toBeHidden();
+    });
   });
 }

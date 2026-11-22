@@ -55,4 +55,32 @@ describe('guide markdown subset', () => {
       expect(text).not.toContain('**');
     }
   });
+
+  describe('pathological input stays fast (200 KB)', () => {
+    const timed = (md: string) => {
+      const t0 = performance.now();
+      const out = parseGuide(md);
+      return { ms: performance.now() - t0, out };
+    };
+    it('unclosed comment openers', () => {
+      const { ms } = timed('<!--'.repeat(50_000));
+      expect(ms).toBeLessThan(500);
+    });
+    it('heading followed by many spaces then text', () => {
+      const { ms, out } = timed(`# a${' '.repeat(200_000)}x`);
+      expect(ms).toBeLessThan(500);
+      expect(out[0]).toMatchObject({ type: 'heading', level: 1 });
+    });
+    it('many trailing hashes and blanks', () => {
+      const { ms, out } = timed(`## Title ${'# '.repeat(100_000)}`);
+      expect(ms).toBeLessThan(500);
+      expect(out[0]).toMatchObject({ type: 'heading', level: 2 });
+    });
+    it('strips closing hashes and unclosed comments correctly', () => {
+      expect(parseGuide('## Two ##\n')[0]).toMatchObject({ text: 'Two' });
+      expect(parseGuide('a <!-- x --> b <!-- y')[0]).toMatchObject({
+        inline: [{ kind: 'text', text: 'a  b' }],
+      });
+    });
+  });
 });

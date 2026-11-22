@@ -4886,6 +4886,11 @@ select {
 .guide-body h4:focus {
   outline: none;
 }
+.guide-body h3:focus-visible,
+.guide-body h4:focus-visible {
+  outline: 2px dotted var(--focus, currentColor);
+  outline-offset: 2px;
+}
 .guide-tools {
   display: flex;
   flex-wrap: wrap;
@@ -4928,4 +4933,17 @@ select {
 }
 .guide-dialog .dialog-actions {
   flex: none;
+}
+
+/* Short or narrow screens (400% zoom): the whole dialog scrolls, nothing collapses. */
+@media (max-height: 40rem) {
+  .guide-dialog {
+    max-block-size: 100dvh;
+    overflow-y: auto;
+  }
+  .guide-body {
+    flex: none;
+    min-block-size: auto;
+    overflow: visible;
+  }
 }

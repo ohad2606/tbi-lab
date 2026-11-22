@@ -12,7 +12,7 @@ import guideEn from '../../../docs/product/USER-GUIDE.en.md?raw';
 import guideHe from '../../../docs/product/USER-GUIDE.he.md?raw';
 import { parseGuide, type Block, type Inline } from './guideMarkdown.js';
 import { useAppState, useT } from './context.js';
-import { openShortcuts, trapTab } from './ShortcutsDialog.js';
+import { isolateKeyNames, openShortcuts } from './ShortcutsDialog.js';
 
 const GUIDES: Record<string, string> = { en: guideEn, he: guideHe };
 
@@ -121,7 +121,6 @@ function GuideDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
       aria-modal="true"
       aria-labelledby="guide-title"
       aria-describedby="guide-intro"
-      onKeyDown={trapTab}
       onCancel={(e) => {
         e.preventDefault();
         onClose();
@@ -130,7 +129,7 @@ function GuideDialog({ trigger, onClose }: { trigger: HTMLElement | null; onClos
       <h2 id="guide-title" ref={heading} tabIndex={-1}>
         {t('guide.title')}
       </h2>
-      <p id="guide-intro">{t('guide.intro')}</p>
+      <p id="guide-intro">{isolateKeyNames(t('guide.intro'))}</p>
       <div class="guide-tools">
         <button
           type="button"
