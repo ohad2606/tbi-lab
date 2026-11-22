@@ -21,6 +21,8 @@ export default defineConfig({
       'runtime/assist/tests/**/*.test.ts',
       // Sprint 23C: the dedicated admin service (account administration, the spool's only writer).
       'runtime/admin/tests/**/*.test.ts',
+      // ARC-MAILER (D-ARC-2): the separate mailer service's queue and sender (fake fetch only).
+      'runtime/mailer/tests/**/*.test.ts',
       // Sprint 8 Phase 4 policy, quotas, rate limits and admission.
       'runtime/policy/tests/**/*.test.ts',
       // TBI-018 slice 1: plans, credit metering and the spend guard (pure module, not wired anywhere).
