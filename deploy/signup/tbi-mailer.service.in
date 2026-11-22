@@ -9,7 +9,9 @@
 # Directories (created by the installer, never by this unit):
 #   /var/lib/tbi-mail/queue   3730 tbi-mailer:tbi-mailq  admin writes (group wx), only the mailer lists/removes
 #   /var/lib/tbi-mail/status  2750 tbi-mailer:tbi-mailq  mailer writes ledgers 0640, admin reads
-# The admin service joins group tbi-mailq (a later, separately reviewed change to its unit).
+# Queue files are 0640 <admin uid>:tbi-mailq (setgid directory): the mailer reads them through its
+# supplementary group tbi-mailq (below). The admin service also joins tbi-mailq (a later,
+# separately reviewed change to its unit).
 [Unit]
 Description=TBI Lab mailer (@N@)
 After=network-online.target
@@ -20,6 +22,8 @@ StartLimitBurst=5
 [Service]
 User=tbi-mailer
 Group=tbi-mailer
+# Read access to the admin-owned 0640 queue files (group tbi-mailq); the only extra group.
+SupplementaryGroups=tbi-mailq
 UMask=0027
 # Off unless the deploy step sets TBI_MAILER=1 (an unset flag exits 0 with one log line).
 Environment=TBI_MAILER=0
@@ -43,10 +47,13 @@ ProtectSystem=strict
 ReadWritePaths=/var/lib/tbi-mail/queue /var/lib/tbi-mail/status
 InaccessiblePaths=-/var/lib/tbi-admin -/var/lib/tbi-signup -/etc/tbi-signup -/etc/@N@
 InaccessiblePaths=-@STORE@ -/var/lib/@N@-runtime -/var/lib/@N@-build -/var/lib/private
+InaccessiblePaths=-/run/@N@-admin -/run/@N@-runtime -/var/log/tbi-admin
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
 PrivateIPC=yes
+RemoveIPC=yes
+KeyringMode=private
 ProtectProc=invisible
 ProcSubset=pid
 ProtectKernelTunables=yes
@@ -77,6 +84,8 @@ TasksMax=16
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 IPAddressDeny=any
 IPAddressAllow=127.0.0.53/32 @MAIL_EGRESS_ALLOW@
+# Client only: it never listens or binds a socket (systemd >= 249).
+SocketBindDeny=any
 
 [Install]
 WantedBy=multi-user.target

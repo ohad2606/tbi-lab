@@ -21,7 +21,12 @@ Content, schema v1, **exactly** these fields (anything extra is refused):
 - **No secrets, no text, no sender, no URL** in the queue: the mailer renders the owner-approved template
   (`approvalEmail` in `runtime/admin/signup/email.ts`, HE + EN both owner-approved) with its own configured lab
   URL and sender. A compromised writer can at most cause an approved mail to an address of its choice, bounded
-  by the abuse limits (section 6); it cannot choose words or links.
+  by the abuse limits (section 6). The one writer value that reaches the body is the greeting name: only the
+  first token of `to.name`, and only when it is a plain first name (`greetingName`: Unicode letters and marks,
+  joined by single hyphens/maqaf or apostrophes/geresh, at most 40 characters, not starting with `www`); anything
+  with `:` `/` `@` `.`, digits or other symbols (a URL, a domain, an address) gets the generic greeting
+  ("שלום," / "Hi,"). So the writer cannot put a link or an address into the text; it can choose one
+  letters-only word in the greeting, nothing else. The same rule applies to the admin's direct sender.
 - Values must already be canonical (address = `normalizeAddEmail`, name = `cleanText`); a value a sanitiser
   would change is refused, never repaired. Max 4096 bytes, UTF-8 (fatal decoding).
 - **Atomic, never overwritten:** the writer creates `.tmp-<random>` exclusively (0640, fchmod), fsyncs, then
@@ -38,20 +43,27 @@ Content, schema v1, **exactly** these fields (anything extra is refused):
 | `/var/lib/tbi-mail/status` | 2750 `tbi-mailer:tbi-mailq` | read ledgers (later slice: show sent / failed) | writes ledgers 0640 (tmp + fsync + rename) |
 | provider key | root 0400, via `LoadCredential` | none | `%d/resend.key` (its private credential copy) |
 
+Queue files are 0640 `<admin uid>:tbi-mailq` (group inherited from the setgid directory); the mailer reads
+them through its supplementary group `tbi-mailq` (`SupplementaryGroups=tbi-mailq` in its unit).
+
 The mailer refuses to start when either directory is missing, a symlink, or accessible by others. It refuses
 queue files that are not regular files (`O_NOFOLLOW`, fstat), are group-writable or other-accessible, larger
-than the cap, or (with `TBI_MAILER_QUEUE_UID`) not owned by the admin user. `readSecretFile` keeps its rule
+than the cap, or (with `TBI_MAILER_QUEUE_UID`) not owned by the admin user. An entry it cannot open or read
+(EACCES, EMFILE, EIO ...) is an operator/host problem, not a content fault: it is kept, gets no ledger, and is
+tried again next run (one log line per run with the errno classes). A directory with a key name is removed
+when empty, otherwise left alone (no ledger; one log line per run). `readSecretFile` keeps its rule
 (no other-access; the credential copy is 0400).
 
 ## 4. systemd sandbox (`deploy/signup/tbi-mailer.service.in`, DRAFT)
 
-Own user `tbi-mailer`, no supplementary groups; `ProtectSystem=strict` with `ReadWritePaths` = the two
+Own user `tbi-mailer`, one supplementary group `tbi-mailq` (read the queue files); `ProtectSystem=strict` with `ReadWritePaths` = the two
 directories only; `InaccessiblePaths` for the admin tree, the sign-up store, `/etc/tbi-signup`, the artifact
-store, runtime and build state; `ProtectHome`, `PrivateTmp`, `PrivateDevices`, `PrivateIPC`,
+store, runtime and build state, `/run/@N@-admin`, `/run/@N@-runtime`, `/var/log/tbi-admin`; `ProtectHome`,
+`PrivateTmp`, `PrivateDevices`, `PrivateIPC`, `RemoveIPC`, `KeyringMode=private`,
 `ProtectProc=invisible`, `ProcSubset=pid`, kernel/cgroup/clock/hostname protection; `NoNewPrivileges`, empty
 capability sets, `RestrictNamespaces`, `RestrictSUIDSGID`, `LockPersonality`, `SystemCallFilter=@system-service
 ~@privileged @resources`, `MemoryMax=128M`, `TasksMax=16`, start-rate limit. Network: `IPAddressDeny=any`,
-`IPAddressAllow=` the local DNS stub plus `@MAIL_EGRESS_ALLOW@`. `TBI_MAILER=0` in the unit: inert until
+`IPAddressAllow=` the local DNS stub plus `@MAIL_EGRESS_ALLOW@`, `SocketBindDeny=any` (client only). `TBI_MAILER=0` in the unit: inert until
 the deploy step sets it.
 
 **Limitation (open question):** `IPAddressAllow` takes addresses, not host names, and the provider's API sits
@@ -84,8 +96,10 @@ attempt, next attempt, error class; **no personal data**).
 Nothing is sent during quiet hours (`quietHours.ts`, Asia/Jerusalem, default 23:00-08:00, DST-correct): entries
 wait untouched and go out from 08:00. Limits on provider attempts: 10 per run (one run a minute), 20 per hour,
 100 per day (`TBI_MAILER_MAX_PER_HOUR`, `_PER_DAY`); excess waits. The queue listing is capped at 500 (oldest
-first). Only the `signup-approval` template exists. The counters are per process (a restart resets them; the
-systemd start-rate limit bounds restarts); a persisted counter is a follow-up if the review wants it.
+first). Only the `signup-approval` template exists. At start (`init`) the hour/day counters are rebuilt from
+the ledgers (each ledger's first and last attempt inside the last 24 h), so a restart does not reset the caps.
+This is a lower bound: middle attempts of an entry retried three or more times are not recorded; an exact
+count would need an attempt log (follow-up if the review wants it).
 
 ## 7. Logging
 
@@ -115,4 +129,4 @@ Stage B window, owner-approved; rollback = `TBI_MAILER=0` / stop the unit (entri
 
 Provider account or key creation, sending real mail, any Alpha or staging change, changes to
 `tbi-admin.service.in`, Stage A, HTML mail, attachments, other templates (Reject mail, owner alerts), bounce or
-complaint webhooks, persisted rate counters, a dead-letter UI.
+complaint webhooks, an exact persisted attempt counter, a dead-letter UI.

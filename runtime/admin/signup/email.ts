@@ -19,9 +19,31 @@ export interface Mail {
   text: string;
 }
 
-/** The first whitespace-separated token of the (already sanitised) name; the greeting uses only it. */
+/** The first whitespace-separated token of the (already sanitised) name. */
 export function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] ?? '';
+}
+
+/** Longest first-name token used in a greeting; a longer one gets the generic greeting. */
+export const GREETING_NAME_MAX = 40;
+/**
+ * A first name: Unicode letters (with their combining marks), optionally joined by single
+ * hyphens (incl. the Hebrew maqaf) or apostrophes (incl. U+2019 and the Hebrew geresh). No digits,
+ * dots, colons, slashes, `@` or anything else: nothing a mail client can turn into a link.
+ */
+const GREETING_NAME_RE = /^[\p{L}\p{M}]+(?:[-\u2010\u2011\u05BE'\u2019\u05F3][\p{L}\p{M}]+)*$/u;
+
+/**
+ * The name the greeting may show, or null for the generic greeting. The name is sign-up input
+ * (untrusted): only a plain first-name token is put into a company-branded mail, so a "name" like
+ * `https://evil.example/login`, `evil.example` or an address never becomes a clickable link.
+ */
+export function greetingName(name: string): string | null {
+  const first = firstName(name);
+  if ([...first].length > GREETING_NAME_MAX || !GREETING_NAME_RE.test(first)) return null;
+  // `www` + letters is not a link by itself, but some clients linkify it loosely: refuse it.
+  if (/^www/i.test(first)) return null;
+  return first;
 }
 
 /** Consumer Google mail domains: these addresses need no hint about signing in with a Google account. */
@@ -43,13 +65,14 @@ export function approvalEmail(
   to: { name: string; email: string },
   c: Pick<EmailConfig, 'labUrl'>,
 ): Mail {
-  const first = firstName(to.name);
+  // Only a plain first-name token, else the generic greeting ("שלום," / "Hi,").
+  const first = greetingName(to.name);
   const extra = !isGoogleMail(to.email);
   if (lang === 'he') {
     return {
       subject: 'ההרשמה שלך ל-TBI Lab אושרה',
       text: [
-        `שלום ${first},`,
+        first ? `שלום ${first},` : 'שלום,',
         '',
         'תודה שנרשמת לבדיקות של TBI Lab. ההרשמה שלך אושרה ואפשר להיכנס כבר עכשיו:',
         c.labUrl,
@@ -76,7 +99,7 @@ export function approvalEmail(
   return {
     subject: "You're approved for TBI Lab",
     text: [
-      `Hi ${first},`,
+      first ? `Hi ${first},` : 'Hi,',
       '',
       'Thanks for signing up to test TBI Lab. Your registration is approved and you can sign in now:',
       c.labUrl,

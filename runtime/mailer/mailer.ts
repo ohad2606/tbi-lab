@@ -12,12 +12,18 @@
  *   entries wait in the queue untouched.
  * - Malformed entries (name, size, mode, owner, link, encoding, schema) are refused: removed from
  *   the queue and, when the name is a valid key, recorded as dead with the reason. Never repaired.
- * - Abuse limits: per run, per hour and per day attempt caps; the queue listing is capped.
+ *   An entry the mailer cannot read (EACCES, EMFILE, EIO ...: an operator or host problem, not a
+ *   content fault) is kept and retried next run; a directory with a key name is removed when
+ *   empty, else left alone; neither gets a ledger.
+ * - The only queue value that reaches the mail body is the recipient's first name, and only as a
+ *   plain letters-only token (`greetingName`); anything else gets the generic greeting.
+ * - Abuse limits: per run, per hour and per day attempt caps (rebuilt from the ledgers at start);
+ *   the queue listing is capped.
  * - Logs carry keys (a random request id) and class codes only: never an address, a name, the
  *   mail text, the key or a path.
  */
 import { constants } from 'node:fs';
-import { lstat, open, readdir, readFile, rename, unlink } from 'node:fs/promises';
+import { lstat, open, readdir, readFile, rename, rmdir, unlink } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { approvalEmail } from '../admin/signup/email.js';
@@ -109,7 +115,19 @@ export class MailerError extends Error {
   }
 }
 
-type Read = { ok: true; item: QueueItem } | { ok: false; reason: string } | { ok: 'skip' };
+type Read =
+  | { ok: true; item: QueueItem }
+  | { ok: false; reason: string }
+  | { ok: 'skip' }
+  /** Could not be opened or read (errno class): kept for the next run. */
+  | { ok: 'unreadable'; code: string }
+  | { ok: 'dir' };
+
+/** An errno code (`EACCES`), else `fs_error`: never a message or a path. */
+function errnoClass(e: unknown): string {
+  const code = (e as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && /^E[A-Z0-9]{1,15}$/.test(code) ? code : 'fs_error';
+}
 
 export class Mailer {
   private readonly now: () => number;
@@ -132,6 +150,28 @@ export class Mailer {
       const st = await lstat(dir).catch(() => null);
       if (!st || !st.isDirectory() || (st.mode & 0o007) !== 0) throw new MailerError(code);
     }
+    await this.restoreRateCounters();
+  }
+
+  /**
+   * A restart must not reset the hour/day caps: every ledger's first and last attempt inside the
+   * last 24 h counts. A lower bound (middle attempts of a retried entry are not recorded); invalid
+   * names and unreadable ledgers are ignored.
+   */
+  private async restoreRateCounters(): Promise<void> {
+    const now = this.now();
+    const keys = (await readdir(this.c.statusDir))
+      .filter((n) => n.endsWith('.json'))
+      .map((n) => n.slice(0, -'.json'.length))
+      .filter((k) => QUEUE_KEY_RE.test(k));
+    for (const k of keys) {
+      const l = await this.readLedger(k);
+      if (!l || l === 'corrupt') continue;
+      for (const t of new Set([l.firstAttemptAt, l.lastAttemptAt]))
+        if (typeof t === 'number' && t > now - 24 * HOUR && t <= now) this.attemptsAt.push(t);
+    }
+    // mayAttempt() expires from the front: keep it oldest first.
+    this.attemptsAt.sort((a, b) => a - b);
   }
 
   async runOnce(): Promise<RunSummary> {
@@ -161,6 +201,8 @@ export class Mailer {
       return s;
     }
     let attemptsThisRun = 0;
+    const unreadable = new Map<string, number>();
+    let dirs = 0;
     for (let i = 0; i < names.length; i++) {
       const name = names[i]!;
       const m = QUEUE_NAME_RE.exec(name);
@@ -189,6 +231,18 @@ export class Mailer {
       }
       const r = await this.readEntry(name);
       if (r.ok === 'skip') {
+        s.skipped++;
+        continue;
+      }
+      if (r.ok === 'unreadable') {
+        // Not a content fault: keep it (no ledger) and try again next run.
+        unreadable.set(r.code, (unreadable.get(r.code) ?? 0) + 1);
+        s.skipped++;
+        continue;
+      }
+      if (r.ok === 'dir') {
+        await rmdir(join(this.c.queueDir, name)).catch(() => undefined);
+        dirs++;
         s.skipped++;
         continue;
       }
@@ -301,6 +355,12 @@ export class Mailer {
       this.log(`sent ${key} (attempt ${attempts})`);
       s.sent++;
     }
+    // One line per class per run (counts, no names).
+    if (unreadable.size)
+      this.log(
+        `queue entries unreadable (${[...unreadable.keys()].sort().join(', ')}); kept, not sent`,
+      );
+    if (dirs) this.log(`directory entries in the queue (${dirs}); empty ones removed`);
     return s;
   }
 
@@ -346,10 +406,18 @@ export class Mailer {
     } catch (e) {
       const code = (e as { code?: unknown }).code;
       if (code === 'ENOENT') return { ok: 'skip' };
-      return { ok: false, reason: code === 'ELOOP' ? 'not_file' : 'fs_error' };
+      // O_NOFOLLOW on a symlink: a content/shape fault, refused.
+      if (code === 'ELOOP') return { ok: false, reason: 'not_file' };
+      return { ok: 'unreadable', code: errnoClass(e) };
     }
     try {
-      const st = await fh.stat();
+      let st;
+      try {
+        st = await fh.stat();
+      } catch (e) {
+        return { ok: 'unreadable', code: errnoClass(e) };
+      }
+      if (st.isDirectory()) return { ok: 'dir' };
       if (!st.isFile()) return { ok: false, reason: 'not_file' };
       // The writer links the final name before removing its temporary one: not ready yet.
       if (st.nlink !== 1) return { ok: 'skip' };
@@ -358,7 +426,12 @@ export class Mailer {
         return { ok: false, reason: 'bad_owner' };
       if (st.size > QUEUE_MAX_BYTES) return { ok: false, reason: 'too_large' };
       const buf = Buffer.alloc(QUEUE_MAX_BYTES + 1);
-      const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+      let bytesRead: number;
+      try {
+        ({ bytesRead } = await fh.read(buf, 0, buf.length, 0));
+      } catch (e) {
+        return { ok: 'unreadable', code: errnoClass(e) };
+      }
       if (bytesRead > QUEUE_MAX_BYTES) return { ok: false, reason: 'too_large' };
       let text: string;
       try {

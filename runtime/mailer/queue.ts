@@ -5,7 +5,11 @@
  * One queue entry = one file `<key>.json` with `key = <template>-<request id>-g<generation>`.
  * The entry names an approved template and its recipient only: no subject, no body, no sender,
  * no URL, no secret. The mailer renders the approved text itself, so a compromised writer cannot
- * make us send arbitrary text. Strictly schema-validated on BOTH sides, size-capped.
+ * make us send arbitrary text: the only writer value that reaches the body is the first token of
+ * `to.name`, and only when it is a plain letters-only first name (`greetingName` in
+ * admin/signup/email.ts: letters, marks, hyphen, apostrophe; no `:` `/` `@` `.` digits, no `www`),
+ * otherwise the generic greeting is used. So a writer cannot put a link or an address into the
+ * text. Strictly schema-validated on BOTH sides, size-capped.
  *
  * The writer is write-only on the directory (mode 3730 in deployment: setgid, sticky, group
  * `wx`): it creates `.tmp-<random>` exclusively (0640), fsyncs it, then hard-links it to the
