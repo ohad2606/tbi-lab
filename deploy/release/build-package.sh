@@ -67,6 +67,10 @@ if [ "$admin_bundle" = 1 ]; then
     --define:__TBI_RUNTIME_VERSION__="\"$version\"" --define:__TBI_RUNTIME_COMMIT__="\"$R\"" \
     --outfile=runtime/admin/dist/admin-service.mjs --log-level=warning
   grep -q "$R" runtime/admin/dist/admin-service.mjs
+  # TBI-022: the public sign-up intake ships with the admin service (tbi-signup.service runs
+  # @BUNDLES@/signup-intake.mjs; inert unless TBI_SIGNUP_INTAKE=1).
+  env -i "${base_env[@]}" npx esbuild runtime/admin/signup/intake-main.ts --bundle --platform=node --format=esm --target=node22 \
+    --outfile=runtime/admin/dist/signup-intake.mjs --log-level=warning
 fi
 
 # Admin app design §3: the same profiles also ship the TBI Admin app (admin-app/: static files for the
@@ -85,7 +89,7 @@ cp -a app/dist "$out/frontend"
 mkdir -p "$out/services"
 cp runtime/host/dist/session-host.mjs runtime/builder/dist/build-service.mjs runtime/builder/dist/build-job.mjs \
   runtime/assist/dist/assist-service.mjs runtime/builder/dist/records-cli.mjs "$out/services/"
-[ "$admin_bundle" = 0 ] || cp runtime/admin/dist/admin-service.mjs "$out/services/"
+[ "$admin_bundle" = 0 ] || cp runtime/admin/dist/admin-service.mjs runtime/admin/dist/signup-intake.mjs "$out/services/"
 (cd "$out" && find "${pkg_dirs[@]}" -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > MANIFEST.sha256)
 sha256sum package-lock.json runtime/firmware/artifacts.lock.json deploy/dev-lab/s8/policy.json \
   deploy/dev-lab/s8/policy.alpha.json "deploy/release/$(basename "$profile")" > "$out/inputs.sha256"
