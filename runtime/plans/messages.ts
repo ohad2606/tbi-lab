@@ -25,6 +25,17 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
       'מצב העומק זמין במסלול מתקדם ומעלה. אפשר לשאול שאלה רגילה, או לשדרג מסלול.',
     'limit.pack.needs_plan':
       'אפשר לרכוש חבילת קרדיטים רק עם מסלול מתקדם או Pro פעיל. אפשר לשדרג מסלול קודם.',
+    'limit.sim.minutes_out':
+      'נגמרו דקות הסימולציה שלך לחודש הזה. הן יתחדשו ב-{date}. עדיין אפשר לערוך, לחבר רכיבים ולהריץ את הפותר המקומי בדפדפן. אפשר לרכוש שעות נוספות או לשדרג מסלול.',
+    'limit.sim.minutes_out_free':
+      'נגמרו דקות הסימולציה החינמיות שלך לחודש הזה. הן יתחדשו ב-{date}. עדיין אפשר לערוך ולחבר רכיבים. רוצה יותר זמן הרצה? אפשר לשדרג למסלול מתקדם.',
+    'limit.sim.daily':
+      'הגעת למגבלה היומית של דקות הסימולציה. היא תתאפס מחר. עדיין אפשר לערוך ולחבר רכיבים.',
+    'limit.sim.queue':
+      'כל מקומות ההרצה תפוסים כרגע. אתם במקום {n} בתור. ההרצה תתחיל אוטומטית כשיתפנה מקום. אפשר להמשיך לערוך בינתיים.',
+    'limit.sim.queue_timeout':
+      'לא התפנה מקום הרצה בזמן סביר. נסו שוב בעוד כמה דקות. משתמשי מתקדם ו-Pro מקבלים עדיפות בתור.',
+    'limit.sim.cooldown': 'אפשר להתחיל הרצה חינמית חדשה בעוד {n} שניות. אפשר להמשיך לערוך בינתיים.',
   },
   en: {
     'limit.ai.credits_out':
@@ -44,6 +55,18 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
       'Deep mode is available on the Advanced plan and above. You can ask a standard question, or upgrade your plan.',
     'limit.pack.needs_plan':
       'Credit packs can only be bought with an active Advanced or Pro plan. You can upgrade your plan first.',
+    'limit.sim.minutes_out':
+      'You have used all your ESP32 simulation minutes for this month. They renew on {date}. You can still edit, wire parts and use the in-browser solver. You can buy extra hours or upgrade your plan.',
+    'limit.sim.minutes_out_free':
+      'You have used your free ESP32 simulation minutes for this month. They renew on {date}. You can still edit and wire parts. Want more run time? You can upgrade to Advanced.',
+    'limit.sim.daily':
+      "You have reached today's simulation minutes limit. It resets tomorrow. You can still edit and wire parts.",
+    'limit.sim.queue':
+      'All run slots are busy right now. You are number {n} in the queue. Your run starts automatically when a slot is free. You can keep editing meanwhile.',
+    'limit.sim.queue_timeout':
+      'No run slot became free in a reasonable time. Please try again in a few minutes. Advanced and Pro users get queue priority.',
+    'limit.sim.cooldown':
+      'You can start a new free run in {n} seconds. You can keep editing meanwhile.',
   },
 };
 

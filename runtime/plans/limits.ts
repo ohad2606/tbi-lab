@@ -10,6 +10,14 @@ export type LimitCode =
   | 'system_unavailable'
   | 'deep_not_in_plan'
   | 'pack_needs_plan'
+  | 'minutes_out'
+  | 'minutes_out_free'
+  | 'sim_daily'
+  | 'queue'
+  | 'queue_timeout'
+  | 'sim_cooldown'
+  | 'queue_vanished'
+  | 'lease_lost'
   | 'invalid_principal'
   | 'invalid_state'
   | 'invalid_request';
@@ -24,6 +32,15 @@ export const MESSAGE_KEY: Record<LimitCode, string | null> = {
   system_unavailable: 'limit.system.unavailable',
   deep_not_in_plan: 'limit.ai.deep_not_in_plan',
   pack_needs_plan: 'limit.pack.needs_plan',
+  minutes_out: 'limit.sim.minutes_out',
+  minutes_out_free: 'limit.sim.minutes_out_free',
+  sim_daily: 'limit.sim.daily',
+  queue: 'limit.sim.queue',
+  queue_timeout: 'limit.sim.queue_timeout',
+  sim_cooldown: 'limit.sim.cooldown',
+  // The client is gone (vanished / lease lost): nobody to show a message to.
+  queue_vanished: null,
+  lease_lost: null,
   // Programming/contract errors, not user-facing limits.
   invalid_principal: null,
   invalid_state: null,

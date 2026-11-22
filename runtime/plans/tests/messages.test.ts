@@ -12,10 +12,13 @@ describe('messages', () => {
         placeholders(MESSAGES.en[k] as string),
       );
   });
-  it('no digit except through placeholders', () => {
+  it('no digit except through placeholders (the product name ESP32 is a technical term)', () => {
     for (const lang of ['he', 'en'] as const)
       for (const [k, t] of Object.entries(MESSAGES[lang]))
-        expect(t.replace(/\{[A-Za-z_]+\}/g, ''), `${lang} ${k}`).not.toMatch(/[0-9]/);
+        expect(
+          t.replace(/\{[A-Za-z_]+\}/g, '').replace(/\bESP32\b/g, ''),
+          `${lang} ${k}`,
+        ).not.toMatch(/[0-9]/);
   });
   it('every user-facing code resolves in both languages', () => {
     for (const [code, key] of Object.entries(MESSAGE_KEY)) {
