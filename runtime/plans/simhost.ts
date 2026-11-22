@@ -1,7 +1,7 @@
 /**
  * TBI-018 slice 3c: SimHostAdapter, the thin layer between the Session Host and SimMeter + FairQueue.
  * NOT WIRED: the Session Host refuses to start with an enabled adapter until the host slice lands
- * (runtime/host/host.ts, see docs/plans/TBI-018-host-integration.md). metering.enabled=false (the
+ * (runtime/host/host.ts, see docs/runtime/TBI-018-sim-host-integration.md). metering.enabled=false (the
  * default) makes every call answer { metered: false } and do nothing, so the host behaves as today.
  *
  * The host calls, in order:
