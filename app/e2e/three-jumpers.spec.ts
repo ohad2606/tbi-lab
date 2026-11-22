@@ -33,6 +33,28 @@ const shapesBuilt = (page: Page) =>
     })
     .toBe(true);
 
+/**
+ * The drawn shapes once the scene has stopped rebuilding: `ready` and the first build can be
+ * followed by further rebuilds (late layout/size passes on a slow host), so a single read may
+ * catch an intermediate scene. Resolves when two reads 250 ms apart are identical and complete.
+ */
+const settledShapes = async (page: Page) => {
+  await shapesBuilt(page);
+  let last = '';
+  await expect
+    .poll(
+      async () => {
+        const now = await shapes(page);
+        const same = now === last;
+        last = now;
+        return same;
+      },
+      { intervals: [250], timeout: 30_000 },
+    )
+    .toBe(true);
+  return last;
+};
+
 /** The exported package's project, without the export's own timestamp. */
 const exported = async (page: Page) => {
   const pkg = JSON.parse(readFileSync((await (await exportFromMenu(page)).path())!, 'utf8'));
@@ -57,8 +79,7 @@ test('ESP32 blink: jumpers leave through a neck, mode-independent, project uncha
   const view = page.getByTestId('view3d');
   await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 120_000 });
   await expect(view).toHaveAttribute('data-preset', 'realistic');
-  await shapesBuilt(page);
-  const realistic = await shapes(page);
+  const realistic = await settledShapes(page);
   const parsed = new Map(
     JSON.parse(realistic) as [
       string,
@@ -84,9 +105,10 @@ test('ESP32 blink: jumpers leave through a neck, mode-independent, project uncha
   });
   await page.getByTestId('view3d-preset-engineering').check();
   await expect(view).toHaveAttribute('data-preset', 'engineering');
-  expect(await shapes(page)).toBe(realistic);
+  await expect.poll(() => shapes(page)).toBe(realistic);
   await page.getByTestId('view3d-preset-realistic').check();
-  expect(await shapes(page)).toBe(realistic);
+  await expect(view).toHaveAttribute('data-preset', 'realistic');
+  await expect.poll(() => shapes(page)).toBe(realistic);
 
   // Nothing of it reached the project: stored and exported bytes unchanged, and after a reload.
   await page.getByTestId('view-circuit').click();
@@ -100,6 +122,5 @@ test('ESP32 blink: jumpers leave through a neck, mode-independent, project uncha
   // Viewed again after the reload: the very same cables.
   await page.getByTestId('view-3d').click();
   await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 120_000 });
-  await shapesBuilt(page);
-  expect(await shapes(page)).toBe(realistic);
+  await expect.poll(() => shapes(page)).toBe(realistic);
 });
