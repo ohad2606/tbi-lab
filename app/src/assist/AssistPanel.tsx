@@ -324,22 +324,29 @@ export function AssistPanel({
     // Once per opening (a language change does not ask again).
   }, []);
   const aiOn = !!service && aiEnabled(service);
+  const needsFocus = useRef(false);
+  // Runs after every commit: when the AI went off and the focused control was removed with it.
+  useEffect(() => {
+    if (!needsFocus.current || aiOn) return;
+    needsFocus.current = false;
+    const a = document.activeElement;
+    if (!a || a === document.body || !a.isConnected) heading.current?.focus();
+  });
   const ai = useAiController({
     status: service && aiEnabled(service) ? service.status : null,
     locale: state.locale.code,
     announce,
     refreshStatus: async (signal) => {
       const s = await getStatus(signal);
+      // A cancelled refetch tells nothing (it never answered): the pilot marks its status stale.
       if (signal.aborted) return s;
-      setService(s);
       if (!aiEnabled(s)) {
         announce(translate(state.locale, notAvailableKey(s)));
-        // The Ask button goes away with the AI: focus is not left on nothing.
-        requestAnimationFrame(() => {
-          const a = document.activeElement;
-          if (!a || a === document.body) heading.current?.focus();
-        });
+        // The Ask/Cancel buttons go away with the AI: once the panel has re-rendered, focus
+        // goes to the heading if it is on nothing (effect below, not a timer).
+        needsFocus.current = true;
       }
+      setService(s);
       return s;
     },
     ensureContext: async () => {

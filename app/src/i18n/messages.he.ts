@@ -1101,7 +1101,7 @@ export const he: Record<MessageKey, string> = {
   'build.phase.queued': 'ממתין לבנייה ({position} לפניך)',
   'build.phase.current': 'נבנה',
   'build.phase.failed': 'הבנייה נכשלה',
-  'build.elapsed': '{seconds} שנ׳',
+  'build.elapsed': '{seconds} שניות',
   'build.stale': 'הקוד השתנה מאז הבנייה האחרונה.',
   // Sprint 13 OS-08: Run is not available during a build or without a current build.
   'run.blocked.building': 'אי אפשר להריץ בזמן שבנייה מתבצעת.',
@@ -1273,7 +1273,7 @@ export const he: Record<MessageKey, string> = {
   'assist.ai.consent.remembered':
     'הסכמתם לשלוח מעגלים לשירות ה-AI (גרסת הסכמה {version}). ההסכמה נשלחת עם כל בקשה.',
   'assist.ai.consent.withdraw': 'משיכת ההסכמה',
-  'assist.ai.consent.withdrawn': 'ההסכמה בוטלה. תישאלו שוב לפני שמשהו יישלח.',
+  'assist.ai.consent.withdrawn': 'ההסכמה נמשכה. תישאלו שוב לפני שמשהו יישלח.',
   'assist.ai.preview.label': 'מה בדיוק היה נשלח',
   'assist.ai.preview.loading': 'טוען את התצוגה המקדימה…',
   'assist.ai.preview.ready':
@@ -1286,8 +1286,8 @@ export const he: Record<MessageKey, string> = {
     'תנאי ההסכמה השתנו. נסו שוב כדי לעיין בגרסה הנוכחית ולאשר אותה.',
   'assist.ai.error.bad_request': 'שירות ה-AI לא קיבל את הבקשה.',
   'assist.ai.error.context_too_large': 'הפרויקט גדול מכדי להסביר אותו בבקשה אחת. שום דבר לא נשלח.',
-  'assist.ai.error.rate_limited': 'יותר מדי בקשות. אפשר לנסות שוב בעוד {seconds} שנ׳.',
-  'assist.ai.error.busy': 'שירות ה-AI עסוק. אפשר לנסות שוב בעוד {seconds} שנ׳.',
+  'assist.ai.error.rate_limited': 'יותר מדי בקשות. אפשר לנסות שוב בעוד {seconds} שניות.',
+  'assist.ai.error.busy': 'שירות ה-AI עסוק. אפשר לנסות שוב בעוד {seconds} שניות.',
   'assist.ai.error.daily_limit': 'הגעתם למגבלה היומית של הסברי AI.',
   'assist.ai.error.spend_cap': 'התקציב החודשי של שירות ה-AI נוצל. שום דבר לא נשלח.',
   'assist.ai.error.token_ceiling': 'המגבלה החודשית של שירות ה-AI נוצלה. שום דבר לא נשלח.',

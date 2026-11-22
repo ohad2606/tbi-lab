@@ -36,6 +36,8 @@ interface MockOptions {
   explain?: 'ok' | 'hang' | { status: number; body: Record<string, unknown> };
   delayMs?: number;
   previewDelayMs?: number;
+  /** The Nth /status call (1-based) is never answered (until the browser aborts). */
+  statusHangOn?: number;
 }
 
 const STATUS = (over: Record<string, unknown> = {}) => ({
@@ -71,6 +73,7 @@ class MockService {
         .fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) })
         .catch(() => undefined);
     if (path === '/status') {
+      if (this.calls.filter((c) => c.path === '/status').length === this.opts.statusHangOn) return;
       if (this.opts.status === 'none') return json(404, { error: 'not_found' });
       return json(200, this.opts.status ?? STATUS());
     }
@@ -450,6 +453,34 @@ test('consent_required: the status is asked again; the dialog reopens only with 
   await expect(page.getByTestId('ai-ask')).toHaveCount(0);
   await expect(page.getByTestId('ai-consent')).toBeHidden();
   await expect(live(page)).toContainText('the AI service does not answer');
+  await close(context);
+});
+
+test('a cancelled status re-fetch: Ask asks the status again before the dialog shows the version', async ({
+  browser,
+}) => {
+  const { context, page, svc } = await setup(browser, {
+    explain: { status: 428, body: { error: 'consent_required' } },
+    delayMs: 50,
+    statusHangOn: 2,
+  });
+  await seedSessionConsent(page);
+  await openPanelByKeyboard(page);
+  svc.opts.status = STATUS({ consentVersion: '2026-12-01' });
+  await tabTo(page, 'ai-ask');
+  await page.keyboard.press('Enter');
+  // The re-fetch (2nd status call) hangs; Cancel it by keyboard.
+  await expect.poll(() => svc.calls.filter((c) => c.path === '/status').length).toBe(2);
+  await tabTo(page, 'ai-cancel');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('ai-cancel')).toHaveCount(0);
+  await expect(page.getByTestId('ai-ask')).toBeFocused();
+  expect(svc.posts('/explain')).toHaveLength(1);
+  // Ask again: the status is fetched again first, and the dialog shows the fresh version.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#ai-consent-h')).toBeFocused();
+  await expect(page.getByTestId('ai-consent-version')).toContainText('2026-12-01');
+  expect(svc.calls.filter((c) => c.path === '/status')).toHaveLength(3);
   await close(context);
 });
 

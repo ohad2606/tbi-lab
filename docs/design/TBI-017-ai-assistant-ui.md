@@ -158,6 +158,10 @@ no animation. Needs manual SR test (NVDA+Firefox, VoiceOver) in HE: reading orde
         shows the error (no dialog loop). A status with an empty `sent` or `neverSent` list is "not available"
         (nothing to agree to). Owner/legal Q2 (per browser, per account on the server, or each session) is STILL
         OPEN; this is the conservative interim choice.
+        Sign-out: the top bar's sign-out link forgets the session-only copies (`app/src/ui/signOut.ts`, outside
+        `src/assist` so routine builds stay free of assist modules; a vitest pins its key prefix to `CONSENT_PREFIX`).
+        Open item: a duplicated tab copies sessionStorage, and signing out elsewhere (another tab, or the
+        service's session expiring) does not clear this tab's copy; the service still refuses without the current version.
      d. Opening the panel does one `GET /status` (no project data). "Explain this circuit" runs the local analysis
         first when there is none / it is stale, then the dialog (if no consent), then one `POST /explain`.
         "Show exactly what would be sent" POSTs the context to the TBI service `/preview` (not to a provider;

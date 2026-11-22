@@ -111,6 +111,8 @@ export function useAiController({
   const errors = useRef(0);
   const askRef = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
+  /** A re-fetch of the status was cancelled: ask again before the next dialog. */
+  const statusStale = useRef(false);
   const [consented, setConsented] = useState(false);
   const account = status?.account;
   const version = status?.consentVersion ?? '';
@@ -166,13 +168,21 @@ export function useAiController({
         const s = await refreshStatus(ctl.signal);
         const now = phaseRef.current;
         if (now.kind !== 'sending' || now.ctl !== ctl) return; // superseded
+        // Focus may have moved onto Cancel while the status was asked: it goes with the phase.
+        if (focusLost()) refocus.current = true;
         if (ctl.signal.aborted) {
+          // The re-fetch never answered: the version the dialog would show is unknown.
+          statusStale.current = true;
           setPhase({ kind: 'idle' });
           announce(t('assist.ai.cancelled'));
         } else if (!aiEnabled(s))
           setPhase({ kind: 'idle' }); // the panel shows "not available"
         else if (s.status.consentVersion !== version) setPhase({ kind: 'consent', context });
-        else fail(r); // same version refused again: no dialog loop, the error and retry
+        else {
+          // Same version refused again: no dialog loop, the error and retry. Cancel goes away
+          // with the 'sending' phase: the effect above moves focus to Ask/Retry after the commit.
+          fail(r);
+        }
         return;
       }
       fail(r);
@@ -188,6 +198,15 @@ export function useAiController({
       if (context === 'busy') return;
       if (!context) {
         fail({ ok: false, status: 0, error: 'context_too_large' });
+        return;
+      }
+      if (statusStale.current) {
+        // The last status re-fetch was cancelled: the dialog must show the service's current
+        // version and lists, so ask again first (the panel stores the answer).
+        const s = await refreshStatus(new AbortController().signal);
+        if (!aiEnabled(s)) return; // the panel shows "not available"
+        statusStale.current = false;
+        setPhase({ kind: 'consent', context });
         return;
       }
       if (consent.has(account, version)) void send(context);
