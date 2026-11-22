@@ -9,6 +9,7 @@
  * (D-S7-9). Nothing builds automatically (D-S7-4).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { MicropythonSupport } from './MicropythonSupport.js';
 import {
   BUILD_PROFILES,
   PROGRAM_LIMITS,
@@ -293,6 +294,7 @@ export function CodeView({ boardId, focusBuild }: { boardId: string; focusBuild:
         >
           {t('build.button')}
         </button>
+        {profile?.language === 'micropython' && <MicropythonSupport />}
         {profile && (
           <span class="code-toolchain muted small technical" dir="ltr">
             {profile.toolchain}

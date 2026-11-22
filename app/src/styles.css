@@ -4755,3 +4755,35 @@ select {
   outline: 3px solid currentColor;
   outline-offset: 2px;
 }
+
+/* TBI-005: MicroPython support dialog. Status is a word plus a mark, never colour alone. */
+.mpy-support-dialog {
+  max-inline-size: min(52rem, 92vw);
+  max-block-size: 85vh;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+.mpy-support-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.mpy-support-head h2 {
+  margin: 0;
+}
+.mpy-status {
+  font-size: 0.8em;
+  padding: 0 0.4em;
+  border-radius: 0.6em;
+  border: 1px solid var(--text);
+  white-space: nowrap;
+}
+.mpy-api code {
+  font-family: var(--mono, ui-monospace, monospace);
+  unicode-bidi: isolate;
+}
+.mpy-support-button {
+  min-block-size: 24px;
+}

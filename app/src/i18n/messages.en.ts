@@ -2265,6 +2265,70 @@ export const en = {
   'kbwire.list.item': 'W{n}: {from} to {to}',
   'kbwire.list.selected': 'Wire W{n} selected',
 
+  // TBI-005: what MicroPython code the Lab supports, generated from runtime/builder/pyContract.ts.
+  // Each `mpy.contract.<id>.note` is that entry's note (EN equals the contract text exactly; a
+  // test fails when the contract changes, so the translation is reviewed).
+  'mpy.support.button': 'MicroPython support',
+  'mpy.support.title': 'MicroPython support in TBI Lab',
+  'mpy.support.intro':
+    'What MicroPython code can run on the simulated ESP32, and what is refused by name. The list is generated from the support contract, so it matches what Build and Run actually do.',
+  'mpy.support.close': 'Close',
+  'mpy.support.section.supported': 'Supported',
+  'mpy.support.section.refused': 'Refused',
+  'mpy.support.section.unknown': 'Not verified',
+  'mpy.support.status.supported': 'Supported',
+  'mpy.support.status.refused': 'Refused',
+  'mpy.support.status.unknown': 'Not verified',
+  'mpy.support.at.build': 'Checked at Build',
+  'mpy.support.at.session': 'Checked when the session starts',
+  'mpy.support.at.run': 'Checked while it runs',
+  'mpy.support.refusal': 'Reported as',
+  'mpy.contract.gpio_output.note':
+    'the pad drives the circuit (ESP32 V_OH/V_OL guarantees); a pad carrying a real load is checked against its ratings',
+  'mpy.contract.gpio_input.note':
+    'the level the circuit gives the pad (V_IH/V_IL); a read of an undefined or unconnected pad ends the run by name (register-wide, Sprint 25)',
+  'mpy.contract.gpio_internal_pull.note':
+    'the internal pull resistance is not characterized for the simulation: use a real resistor in the circuit',
+  'mpy.contract.gpio_drive_strength.note': 'the drive strengths are not characterized',
+  'mpy.contract.signal_drive.note':
+    'drives the pad like Pin (inverted when asked); reading back through Signal.value() is not resolved to a pin by the Build analysis, so the run watches every pad and is refused at the read while any pad is unconnected (fail closed)',
+  'mpy.contract.pwm.note':
+    'high-speed LEDC: the load sees the average (duty × the HIGH operating point); low-speed mode, other resolutions or a too-fast reconfiguration end the run by name (pwm_unsupported_mode, pwm_rate_exceeded); a duty of 0 into a load is refused',
+  'mpy.contract.irq_edge.note':
+    'edge interrupts delivered by Runtime v5 in order; latency up to one emulator slice (the cores run in turn)',
+  'mpy.contract.irq_level.note':
+    'level, NMI and wake-up interrupts are not modelled; refused at the register write, before the handler is armed (MicroPython 1.29 has no IRQ_*_LEVEL constants; a numeric level type reaches it)',
+  'mpy.contract.timing.note':
+    'simulation time; deterministic (two runs give the same transcript and electrical sequence)',
+  'mpy.contract.pulse_timing.note':
+    'times a pulse on an input from the edges the circuit gives it (e.g. the HC-SR04 echo): within ±2 µs measured, up to ≈ 13 µs late inside the other core’s interval (the timing contract, as pulseIn); −2 when no pulse starts within the timeout, −1 when it does not end; it measures from the call if the pin is already at the level',
+  'mpy.contract.dht22.note':
+    'the firmware’s own driver against the DHT22 model: every frame exact from −40 to 80 °C and 0 to 100 %RH; a read with no answer (no sensor, or within the sensor’s 2 s collecting period) raises OSError(ETIMEDOUT) after the driver’s 268 ms; without the pull-up the run is refused by name (gpio_input_undefined); the DHT11 class is not validated (no DHT11 part)',
+  'mpy.contract.i2c.note':
+    'literal arguments on bus 0 (GPIO22/21) up to 100 kHz, writes to the simulated LCD backpack; the programmed clock is also checked at every START',
+  'mpy.contract.i2c_frequency.note': 'faster than the PCF8574 backpack is rated for (100 kHz)',
+  'mpy.contract.i2c_read.note': 'no simulated part answers these',
+  'mpy.contract.soft_i2c.note': 'bit-banged I2C is not verified on the runtime',
+  'mpy.contract.adc.note':
+    'the emulator’s SAR ADC crashes the guest and no transfer function is characterized; refused at the access, before any value reaches the program (no Guru Meditation)',
+  'mpy.contract.dac.note': 'not modelled',
+  'mpy.contract.spi.note': 'not modelled',
+  'mpy.contract.touch.note': 'capacitive sensing is not modelled',
+  'mpy.contract.timer.note':
+    'hardware timer interrupts are not modelled (use time.sleep_ms / ticks)',
+  'mpy.contract.uart.note': 'UART0 is the serial monitor; other UARTs are not modelled',
+  'mpy.contract.rtc.note': 'not modelled',
+  'mpy.contract.cpu_frequency.note':
+    'a lowered clock stalls the emulator, a raised one is not detectable at run time; reading machine.freq() is allowed',
+  'mpy.contract.sleep_modes.note': 'not modelled',
+  'mpy.contract.restart.note': 'a full-chip restart is not supported in V1',
+  'mpy.contract.dynamic_access.note':
+    'the Build analysis reads written names only (Sprint 28 L7, fail closed)',
+  'mpy.contract.serial_input.note':
+    'a session has no serial input path (the serial monitor shows output only): the program would wait forever',
+  'mpy.contract.network.note':
+    'no network or radio in the simulator (and none from a compilation or run sandbox)',
+
   // Admin app design §3: the administration's texts (and the report kinds and areas it shows)
   // are shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesEn,
