@@ -47,3 +47,8 @@ ESP32 Build onboarding (the existing card covers it), and any change to simulati
 1. Help entry on the Projects screen (reuse the existing "Show getting started" link to reopen both).
 2. Next-step card in the editor after the first Run (change a value, add a probe), once Run is observed.
 3. Screen-reader pass (NVDA/VoiceOver/TalkBack) and a real axe check if the helper is added.
+
+## Coexistence with the "Fastest start" block (PR #18, merged together)
+- One example, one constant: both the welcome dialog and the Projects-screen "Fastest start" block open `led-current` (`FIRST_RUN_EXAMPLE` in `firstRun.ts`).
+- Roles: the dialog is the automatic, modal first-run (new device, no projects, once); the inline Getting-started card stays the dismissible, reopenable pointer (quick LED button plus the ESP32 build steps).
+- Decision for the owner if wanted: hide the card's quick block while the dialog is open or after "seen" (not done; they never compete, since the dialog is modal and shown only on a device with no projects).

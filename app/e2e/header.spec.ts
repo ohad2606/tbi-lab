@@ -303,6 +303,7 @@ test('the application menu: keyboard, Escape, click outside, Tab; contents; clos
     'New project…',
     'Import project…',
     'What runs on the ESP32',
+    'Welcome and first steps',
     'Export project',
   ]);
   await expect(page.getByTestId('sign-out')).toHaveCount(0); // not configured in this build
@@ -349,6 +350,7 @@ test('the application menu: keyboard, Escape, click outside, Tab; contents; clos
         'פרויקט חדש…',
         'ייבוא פרויקט…',
         'מה רץ על ה־ESP32',
+        'ברוכים הבאים וצעדים ראשונים',
         'ייצוא פרויקט',
       ]);
     await page.keyboard.press('Escape');
