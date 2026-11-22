@@ -126,6 +126,19 @@ describe('search', () => {
     ]); // mixed scripts
   });
 
+  it('a Hebrew prefix strip never matches across a word boundary', () => {
+    // Texts "חן" + "ורה" are indexed whole as "חנורה": the stripped "נורה" (from "הנורה") would
+    // span the two words. Hand-built index entry: only whole-text and per-word fields.
+    const base = index[0]!;
+    const entry = (fields: string[], words: string[]) => [{ ...base, fields, words }];
+    const q = (idx: typeof index, query: string) => matchExamples(idx, query, new Set()).length;
+    const spanning = entry(['חנורה', 'חנ', 'ורה'], ['חנ', 'ורה']);
+    expect(q(spanning, 'הנורה')).toBe(0);
+    expect(q(spanning, 'נורה')).toBe(1); // unprefixed substring behaviour is unchanged
+    const real = entry(['נורה'], ['נורה']);
+    expect(q(real, 'הנורה')).toBe(1); // a legit prefixed word still matches
+  });
+
   it('category words are searchable too, in every locale', () => {
     expect(ids('sensors')).toEqual(ids('', ['sensors']));
     expect(ids('חיישנים')).toEqual(ids('', ['sensors']));

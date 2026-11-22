@@ -97,6 +97,8 @@ export interface IndexedExample {
   categories: ExampleCategory[];
   /** Normalized searchable texts, all locales. */
   fields: string[];
+  /** The single-word subset of `fields`: a prefix-stripped query word may only match inside one word. */
+  words: string[];
 }
 
 export function buildExampleIndex(
@@ -115,21 +117,25 @@ export function buildExampleIndex(
     for (const p of example.parts) texts.push(...CATALOG[p].aliases);
     // Words separately as well as whole texts: a query word then matches inside one text only.
     const fields = new Set<string>();
+    const words = new Set<string>();
     for (const t of texts) {
       fields.add(normalize(t));
-      for (const w of t.split(/\s+/)) if (w) fields.add(normalize(w));
+      for (const w of t.split(/\s+/)) if (w) words.add(normalize(w));
     }
     fields.delete('');
-    return { example, categories, fields: [...fields] };
+    words.delete('');
+    for (const w of words) fields.add(w);
+    return { example, categories, fields: [...fields], words: [...words] };
   });
 }
 
 const HEBREW_PREFIX = /^[והבלמשכ](\p{Script=Hebrew}{3,})$/u;
 
-function wordMatches(fields: readonly string[], word: string): boolean {
-  if (fields.some((f) => f.includes(word))) return true;
+function wordMatches(e: IndexedExample, word: string): boolean {
+  if (e.fields.some((f) => f.includes(word))) return true;
+  // The stripped form is a guess: it must not span the join of two words in a whole-text field.
   const bare = HEBREW_PREFIX.exec(word)?.[1];
-  return bare !== undefined && fields.some((f) => f.includes(bare));
+  return bare !== undefined && e.words.some((f) => f.includes(bare));
 }
 
 /** The query's words, normalized (empty words dropped). */
@@ -150,7 +156,7 @@ export function matchExamples(
     .filter(
       (e) =>
         (categories.size === 0 || e.categories.some((c) => categories.has(c))) &&
-        words.every((w) => wordMatches(e.fields, w)),
+        words.every((w) => wordMatches(e, w)),
     )
     .map((e) => e.example);
 }
