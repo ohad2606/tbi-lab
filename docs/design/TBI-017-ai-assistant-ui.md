@@ -36,9 +36,11 @@ So TBI-017 is mostly: (a) three actions instead of one, (b) consent persisted pr
   types/values/connections, checks and results, build status <= 20 messages, <= 8 code excerpts of +-2 lines with comments/strings masked
   and secrets redacted) and `DATA_NEVER_SENT` (identity/email, project name, net names, comments and strings, serial output, screenshots,
   whole files), plus provider/model and retention (`auditRetentionDays`; provider retention from data terms).
-- "Show exactly what would be sent" calls `POST /preview` (no consent needed, nothing sent) and shows the payload in an LTR `<pre>` with
-  a text size. Buttons: "Agree and send" / "Cancel" (default focus = Cancel-safe heading, not the agree button).
-- Consent is stored client-side per account+version (localStorage key with version) AND sent on every request (service is the authority).
+- "Show exactly what would be sent" calls `POST /preview` (no consent needed: nothing is sent to a provider; the context does reach
+  the TBI service, which audits the request) and shows the payload in a focusable, named LTR region (`<pre role=region>`) with a text
+  size; while it loads the dialog's status line says "Loading the preview…", then that the payload is shown below. Buttons: "Agree and send" / "Cancel" (default focus = Cancel-safe heading, not the agree button).
+- Consent is stored client-side per account+version AND sent on every request (service is the authority). It is kept across browser
+  sessions (localStorage, key `acct:<ref>`) only when the service names the account; otherwise for this browser session only (§12c).
   "Withdraw consent" in the panel footer clears it. Nothing is sent on open, on action switch, or on language change.
 - Open: whether consent must be remembered server-side (owner/legal Q2).
 
@@ -145,13 +147,22 @@ no animation. Needs manual SR test (NVDA+Firefox, VoiceOver) in HE: reading orde
         findings' advice and limitations).
      c. Account for the consent key: the browser does not know the account. The client uses the service's
         optional opaque `status.account` (additive field, NOT sent by the service today; only `[A-Za-z0-9._-]{1,64}`
-        accepted, so never an email) and otherwise `browser`. Today the remembered consent is therefore per browser
-        (+ deployment namespace) and per version; the service stays the authority (consent sent on every request,
-        `consent_required` drops the remembered copy). Server-side memory remains owner/legal Q2.
+        accepted, so never an email). With it, the consent is remembered in localStorage under
+        `tbi-lab.assist.consent/acct:<ref>/<version>` (+ deployment namespace). Without it (today), a localStorage copy
+        would be shared by every account that signs in on that browser, so it is kept in sessionStorage
+        (`.../session/<version>`; in memory when sessionStorage is unavailable) for this browser session only: a new
+        browser session (or tab) asks again. The `acct:` prefix keeps an account named `session` apart from the
+        fallback. The service stays the authority (consent sent on every request). On `consent_required` the
+        remembered copy is dropped and `GET /status` is asked again: the dialog reopens only with the fresh
+        `consentVersion` and data lists; a status that is now off shows "not available"; the same version again
+        shows the error (no dialog loop). A status with an empty `sent` or `neverSent` list is "not available"
+        (nothing to agree to). Owner/legal Q2 (per browser, per account on the server, or each session) is STILL
+        OPEN; this is the conservative interim choice.
      d. Opening the panel does one `GET /status` (no project data). "Explain this circuit" runs the local analysis
         first when there is none / it is stale, then the dialog (if no consent), then one `POST /explain`.
-        "Show exactly what would be sent" POSTs the context to the TBI service `/preview` (not to a provider),
-        only on that explicit click.
+        "Show exactly what would be sent" POSTs the context to the TBI service `/preview` (not to a provider;
+        audited by the service), only on that explicit click; one AbortController per dialog opening, aborted on
+        close/unmount, and a late answer for another context is ignored.
      e. With the AI on, the template "Explanation" section is hidden (one explanation section: the AI one). With the
         AI off the deterministic panel is exactly as before plus one sentence why.
      f. Ask stays in place while sending (`aria-disabled`, no focus loss); Cancel next to it; when Cancel/Withdraw/

@@ -86,6 +86,12 @@ export function findingText(locale: LocaleInfo, a: Analysis, f: Finding): string
     : isolateLtr(f.code);
 }
 
+/** A finding's family as text; an unknown family (from the service) falls back to its key. */
+function familyText(t: ReturnType<typeof useT>, f: Finding): string {
+  const k = `assist.family.${String(f.family)}`;
+  return isMessageKey(k) ? t(k) : isolateLtr(f.key);
+}
+
 /** One evidence item: its kind and the value it holds, from the context (LTR technical text). */
 function EvidenceItem({
   a,
@@ -170,7 +176,7 @@ function FindingItem({ a, f, locale }: { a: Analysis; f: Finding; locale: Locale
         <span class={`assist-severity assist-severity-${f.severity}`}>
           {t(`assist.severity.${f.severity}` as MessageKey)}
         </span>{' '}
-        <strong>{t(`assist.family.${f.family}` as MessageKey)}</strong>{' '}
+        <strong>{familyText(t, f)}</strong>{' '}
         <span class="muted small technical" dir="ltr">
           {f.id}
         </span>
@@ -245,7 +251,7 @@ function Explanation({ a, r }: { a: Analysis; r: GatewayResult }) {
                 class="small"
                 data-testid="assist-explanation-link"
               >
-                {f ? t(`assist.family.${f.family}` as MessageKey) : e.finding}
+                {f ? familyText(t, f) : e.finding}
               </a>
               <p dir="auto">{e.text}</p>
               <p class="small muted">
@@ -322,6 +328,20 @@ export function AssistPanel({
     status: service && aiEnabled(service) ? service.status : null,
     locale: state.locale.code,
     announce,
+    refreshStatus: async (signal) => {
+      const s = await getStatus(signal);
+      if (signal.aborted) return s;
+      setService(s);
+      if (!aiEnabled(s)) {
+        announce(translate(state.locale, notAvailableKey(s)));
+        // The Ask button goes away with the AI: focus is not left on nothing.
+        requestAnimationFrame(() => {
+          const a = document.activeElement;
+          if (!a || a === document.body) heading.current?.focus();
+        });
+      }
+      return s;
+    },
     ensureContext: async () => {
       const p = phaseRef.current;
       if (p.kind === 'running') return 'busy';

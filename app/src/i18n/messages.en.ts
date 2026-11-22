@@ -1329,6 +1329,9 @@ export const en = {
   'assist.ai.consent.withdrawn':
     'Consent withdrawn. You will be asked again before anything is sent.',
   'assist.ai.preview.label': 'Exactly what would be sent',
+  'assist.ai.preview.loading': 'Loading the preview…',
+  'assist.ai.preview.ready':
+    'What would be sent is shown below: {bytes} bytes, about {tokens} tokens (estimate). Nothing has been sent to the AI provider.',
   'assist.ai.preview.error': 'The preview could not be loaded. Nothing has been sent.',
   'assist.ai.error.unauthenticated': 'You are signed out. Sign in again, then try again.',
   'assist.ai.error.not_pilot': 'AI explanation is not available for your account yet.',

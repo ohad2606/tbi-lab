@@ -131,6 +131,7 @@ const isStrArr = (v: unknown): v is string[] =>
   Array.isArray(v) && v.every((x) => typeof x === 'string');
 const isAbort = (e: unknown) => (e as { name?: string } | null)?.name === 'AbortError';
 const OPAQUE = /^[A-Za-z0-9._-]{1,64}$/;
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 /** The body as JSON, or null when the answer is not JSON (a gate page, an HTML fallback). */
 async function jsonOf(r: Response): Promise<unknown> {
@@ -155,6 +156,9 @@ export function parseStatus(b: unknown): StatusResult {
     !isObj(d) ||
     !isStrArr(d.sent) ||
     !isStrArr(d.neverSent) ||
+    // Consent needs both lists: an empty one cannot be agreed to (AI not available).
+    d.sent.length === 0 ||
+    d.neverSent.length === 0 ||
     typeof d.auditRetentionDays !== 'number' ||
     !Number.isFinite(d.auditRetentionDays) ||
     d.auditRetentionDays < 0
@@ -200,10 +204,12 @@ export function parseError(httpStatus: number, b: unknown): ClientError {
       out.retryAfterMs = Math.min(ra, 24 * 3_600_000);
     const l = b.limit;
     if (isObj(l) && typeof l.code === 'string' && typeof l.messageKey === 'string') {
-      const params: Record<string, string | number> = {};
+      // No prototype, and the prototype-polluting names are skipped: the params come from outside.
+      const params = Object.create(null) as Record<string, string | number>;
       if (isObj(l.params))
         for (const [k, v] of Object.entries(l.params))
-          if (typeof v === 'string' || typeof v === 'number') params[k] = v;
+          if ((typeof v === 'string' || typeof v === 'number') && !UNSAFE_KEYS.has(k))
+            params[k] = v;
       out.limit = { code: l.code, messageKey: l.messageKey, params };
     }
     const m = b.message;
@@ -309,7 +315,10 @@ export async function getStatus(signal?: AbortSignal, fetchFn?: FetchFn): Promis
   }
 }
 
-/** What the service would send to the provider (nothing goes to a provider; no consent needed). */
+/**
+ * What the service would send to the provider. The context reaches the TBI service (audited) but
+ * nothing is sent to a provider, so no consent is needed.
+ */
 export async function postPreview(
   context: EngineeringContext,
   locale: string,

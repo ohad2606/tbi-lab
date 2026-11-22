@@ -24,7 +24,7 @@ import {
 import { createPackage, serializePackage, type ProjectDocument } from '@tbi-lab/domain';
 import { EXPLAIN_CONTRACT, diagnose, type EngineeringContext } from '@tbi-lab/assist';
 import { ledLoop } from '../../packages/assist/eval/bench.js';
-import { goToProjects, waitSaved } from './helpers.js';
+import { goToProjects, reopenFromLibrary, waitSaved } from './helpers.js';
 
 // The DEV-Lab preview (playwright.app.config.ts); overridable when that port is taken.
 const DEV = process.env.TBI_E2E_DEV_URL ?? 'http://127.0.0.1:4175';
@@ -35,6 +35,7 @@ interface MockOptions {
   /** Explain answer: 'ok', an error body + HTTP status, or 'hang' (until the browser aborts). */
   explain?: 'ok' | 'hang' | { status: number; body: Record<string, unknown> };
   delayMs?: number;
+  previewDelayMs?: number;
 }
 
 const STATUS = (over: Record<string, unknown> = {}) => ({
@@ -74,12 +75,14 @@ class MockService {
       return json(200, this.opts.status ?? STATUS());
     }
     const ctx = (body as { context: EngineeringContext }).context;
-    if (path === '/preview')
+    if (path === '/preview') {
+      await new Promise((r) => setTimeout(r, this.opts.previewDelayMs ?? 0));
       return json(200, {
         payload: { system: 'SYSTEM TEXT', user: JSON.stringify({ circuit: ctx.circuit }) },
         bytes: 1234,
         estimatedInputTokens: 309,
       });
+    }
     if (path === '/explain') {
       const e = this.opts.explain ?? 'ok';
       if (e === 'hang') return; // never answered: the browser's abort ends it
@@ -140,6 +143,16 @@ async function openDev(page: Page, doc: ProjectDocument) {
   await waitSaved(page);
 }
 
+/** The same project in a new tab of the same browser context (shared localStorage only). */
+async function openInNewTab(context: BrowserContext) {
+  const tab = await context.newPage();
+  await tab.goto(DEV);
+  const library = tab.getByTestId('example-list');
+  await expect(library.or(tab.getByTestId('canvas'))).toBeVisible();
+  if (await library.isVisible()) await reopenFromLibrary(tab);
+  return tab;
+}
+
 /** Tab (forward) until the element with this test id has focus: proves it is reachable. */
 async function tabTo(page: Page, testId: string, max = 25) {
   for (let i = 0; i < max; i++) {
@@ -162,9 +175,21 @@ async function openPanelByKeyboard(page: Page) {
 }
 
 const live = (page: Page) => page.getByTestId('assist-live');
+/** Remembered consent keys in both storages (without an account: session only). */
 const consentKeys = (page: Page) =>
-  page.evaluate(() =>
-    Object.keys(localStorage).filter((k) => k.includes('tbi-lab.assist.consent')),
+  page.evaluate(() => {
+    const of = (s: Storage) => Object.keys(s).filter((k) => k.includes('tbi-lab.assist.consent'));
+    return [
+      ...of(localStorage).map((k) => `local:${k}`),
+      ...of(sessionStorage).map((k) => `session:${k}`),
+    ];
+  });
+const SESSION_KEY = 'tbi-lab.assist.consent/session/2026-11-22';
+const seedSessionConsent = (page: Page) =>
+  page.evaluate(
+    (k) =>
+      sessionStorage.setItem(k, JSON.stringify({ accepted: true, at: '2026-11-22T00:00:00.000Z' })),
+    SESSION_KEY,
   );
 
 async function close(context: BrowserContext) {
@@ -176,7 +201,7 @@ test.describe.configure({ mode: 'serial' });
 test('EN keyboard-only: consent dialog, preview, Esc sends nothing, Agree sends once, withdraw', async ({
   browser,
 }) => {
-  const { context, page, svc } = await setup(browser, {});
+  const { context, page, svc } = await setup(browser, { previewDelayMs: 700 });
   await openPanelByKeyboard(page);
   // Opening asks only for the status (a GET): nothing about the project is sent.
   await expect(page.getByTestId('ai-ask')).toHaveText('Explain this circuit');
@@ -197,12 +222,22 @@ test('EN keyboard-only: consent dialog, preview, Esc sends nothing, Agree sends 
   // The local analysis ran (findings are shown behind the dialog); still nothing was POSTed.
   expect(svc.posts()).toHaveLength(0);
 
-  // Preview by keyboard: the exact payload, LTR, focusable; still no explain request.
+  // Preview by keyboard: "Loading" in the status while it loads, then the exact payload in a
+  // named, focusable LTR region; still no explain request.
   await tabTo(page, 'ai-preview');
   await page.keyboard.press('Enter');
+  const previewStatus = page.getByTestId('ai-preview-status');
+  await expect(previewStatus).toHaveAttribute('role', 'status');
+  await expect(previewStatus).toHaveText('Loading the preview…');
+  await expect(page.getByTestId('ai-preview')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.getByTestId('ai-payload')).toContainText('SYSTEM TEXT');
   await expect(page.getByTestId('ai-payload')).toHaveAttribute('dir', 'ltr');
-  await expect(page.getByTestId('ai-preview-status')).toContainText('Nothing has been sent');
+  const region = page.getByRole('region', { name: 'Exactly what would be sent' });
+  await expect(region).toHaveAttribute('data-testid', 'ai-payload');
+  await region.focus();
+  await expect(region).toBeFocused();
+  await expect(previewStatus).toContainText('What would be sent is shown below');
+  await expect(previewStatus).toContainText('Nothing has been sent to the AI provider.');
   expect(svc.posts('/explain')).toHaveLength(0);
 
   // Esc = Cancel: nothing sent, the panel stays open, focus back on Ask, announced.
@@ -265,8 +300,9 @@ test('EN keyboard-only: consent dialog, preview, Esc sends nothing, Agree sends 
   await expect(page.getByTestId('assist-explanation').first()).toContainText('Mock AI text');
   await expect(page.getByTestId('assist-accounting')).toContainText('mock-model-1');
 
-  // Remembered per account + version: the next Ask sends without the dialog.
-  expect(await consentKeys(page)).toEqual(['tbi-lab.assist.consent/browser/2026-11-22']);
+  // No account from the service: remembered for this browser session only (never localStorage);
+  // the next Ask sends without the dialog.
+  expect(await consentKeys(page)).toEqual([`session:${SESSION_KEY}`]);
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('ai-result')).toHaveAttribute('data-state', 'success');
   await expect(dialog).toBeHidden();
@@ -304,12 +340,7 @@ test('sending: Cancel aborts, is announced politely, focus stays usable, no aler
   browser,
 }) => {
   const { context, page, svc } = await setup(browser, { explain: 'hang' });
-  await page.evaluate(() =>
-    localStorage.setItem(
-      'tbi-lab.assist.consent/browser/2026-11-22',
-      JSON.stringify({ accepted: true, at: '2026-11-22T00:00:00.000Z' }),
-    ),
-  );
+  await seedSessionConsent(page);
   await openPanelByKeyboard(page);
   await tabTo(page, 'ai-ask');
   await page.keyboard.press('Enter');
@@ -337,12 +368,7 @@ test('errors: role=alert with text and retry; limits that do not clear get no re
     explain: { status: 502, body: { error: 'provider_error' } },
     delayMs: 50,
   });
-  await page.evaluate(() =>
-    localStorage.setItem(
-      'tbi-lab.assist.consent/browser/2026-11-22',
-      JSON.stringify({ accepted: true, at: '2026-11-22T00:00:00.000Z' }),
-    ),
-  );
+  await seedSessionConsent(page);
   await page.getByTestId('assist-open').click();
   await page.getByTestId('ai-ask').click();
   const alert = page.getByRole('alert');
@@ -374,12 +400,91 @@ test('errors: role=alert with text and retry; limits that do not clear get no re
   await expect(page.getByTestId('ai-ask')).not.toHaveAttribute('aria-disabled', 'true', {
     timeout: 4000,
   });
-  // consent_required (the service moved to a new version): the remembered consent is dropped.
+  // consent_required with the same version: the remembered consent is dropped, the status is
+  // asked again, and (no new version) the error is shown, not a dialog loop.
   svc.opts.explain = { status: 428, body: { error: 'consent_required' } };
+  const gets = () => svc.calls.filter((c) => c.path === '/status').length;
+  expect(gets()).toBe(1);
   await page.getByTestId('ai-ask').click();
   await expect(page.getByTestId('ai-error')).toHaveAttribute('data-error', 'consent_required');
+  expect(gets()).toBe(2);
   expect(await consentKeys(page)).toEqual([]);
   await close(context);
+});
+
+test('consent_required: the status is asked again; the dialog reopens only with the fresh version and lists', async ({
+  browser,
+}) => {
+  const { context, page, svc } = await setup(browser, {
+    explain: { status: 428, body: { error: 'consent_required' } },
+    delayMs: 50,
+  });
+  await seedSessionConsent(page);
+  await openPanelByKeyboard(page);
+  // The service moved to a new version with another data list.
+  svc.opts.status = STATUS({
+    consentVersion: '2026-12-01',
+    data: { sent: ['instructions', 'circuit'], neverSent: ['identity'], auditRetentionDays: 14 },
+  });
+  await tabTo(page, 'ai-ask');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#ai-consent-h')).toBeFocused();
+  await expect(page.getByTestId('ai-consent-version')).toContainText('2026-12-01');
+  await expect(page.getByTestId('ai-consent-sent').locator('li')).toHaveCount(2);
+  await expect(page.getByTestId('ai-consent-never').locator('li')).toHaveCount(1);
+  expect(svc.calls.filter((c) => c.path === '/status')).toHaveLength(2);
+  expect(await consentKeys(page)).toEqual([]);
+  // Agreeing now sends the fresh version. That one is refused too and the service is now off:
+  // "not available" (no dialog), announced, focus on the panel heading (never lost).
+  svc.opts.status = 'none';
+  await tabTo(page, 'ai-consent-agree');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => svc.posts('/explain').length).toBe(2);
+  expect((svc.posts('/explain')[1]!.body as { consent: unknown }).consent).toEqual({
+    version: '2026-12-01',
+    accepted: true,
+  });
+  await expect(page.getByTestId('ai-not-available')).toHaveAttribute('data-reason', 'unavailable');
+  await expect(page.locator('#assist-title')).toBeFocused();
+  expect(svc.calls.filter((c) => c.path === '/status')).toHaveLength(3);
+  await expect(page.getByTestId('ai-ask')).toHaveCount(0);
+  await expect(page.getByTestId('ai-consent')).toBeHidden();
+  await expect(live(page)).toContainText('the AI service does not answer');
+  await close(context);
+});
+
+test('without an account the consent is not kept beyond the browser session; with one it is', async ({
+  browser,
+}) => {
+  const { context, page } = await setup(browser, { delayMs: 50 });
+  await page.getByTestId('assist-open').click();
+  await page.getByTestId('ai-ask').click();
+  await page.getByTestId('ai-consent-agree').click();
+  await expect(page.getByTestId('ai-result')).toHaveAttribute('data-state', 'success');
+  expect(await consentKeys(page)).toEqual([`session:${SESSION_KEY}`]);
+  // Another tab = another browser session for sessionStorage: asked again.
+  const other = await openInNewTab(context);
+  expect(await consentKeys(other)).toEqual([]);
+  await other.getByTestId('assist-open').click();
+  await other.getByTestId('ai-ask').click();
+  await expect(other.getByTestId('ai-consent')).toBeVisible();
+  await close(context);
+
+  // With an opaque account reference: remembered in localStorage under acct:<ref>.
+  const b = await setup(browser, { status: STATUS({ account: 'acc_7f3a' }), delayMs: 50 });
+  await b.page.getByTestId('assist-open').click();
+  await b.page.getByTestId('ai-ask').click();
+  await b.page.getByTestId('ai-consent-agree').click();
+  await expect(b.page.getByTestId('ai-result')).toHaveAttribute('data-state', 'success');
+  expect(await consentKeys(b.page)).toEqual([
+    'local:tbi-lab.assist.consent/acct:acc_7f3a/2026-11-22',
+  ]);
+  const tab = await openInNewTab(b.context);
+  await tab.getByTestId('assist-open').click();
+  await tab.getByTestId('ai-ask').click();
+  await expect(tab.getByTestId('ai-result')).toHaveAttribute('data-state', 'success');
+  await expect(tab.getByTestId('ai-consent')).toBeHidden();
+  await close(b.context);
 });
 
 test('flag off: no service or a disabled one = findings-only, one sentence why, nothing POSTed', async ({
@@ -417,12 +522,7 @@ test('a new consent version asks again', async ({ browser }) => {
   const { context, page } = await setup(browser, {
     status: STATUS({ consentVersion: '2026-12-01' }),
   });
-  await page.evaluate(() =>
-    localStorage.setItem(
-      'tbi-lab.assist.consent/browser/2026-11-22',
-      JSON.stringify({ accepted: true, at: '2026-11-22T00:00:00.000Z' }),
-    ),
-  );
+  await seedSessionConsent(page);
   await page.getByTestId('assist-open').click();
   await page.getByTestId('ai-ask').click();
   await expect(page.getByTestId('ai-consent')).toBeVisible();

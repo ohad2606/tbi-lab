@@ -97,6 +97,11 @@ describe('status and the runtime flag', () => {
     expect(parseStatus({ ...STATUS, protocol: 'other/9' }).kind).toBe('unavailable');
     expect(parseStatus({ ...STATUS, data: { sent: 'all' } }).kind).toBe('unavailable');
     expect(parseStatus({ ...STATUS, consentVersion: 'v 1/../x' }).kind).toBe('unavailable');
+    // Nothing to agree to: an empty "sent" or "never sent" list is not available.
+    for (const k of ['sent', 'neverSent'])
+      expect(parseStatus({ ...STATUS, data: { ...STATUS.data, [k]: [] } }).kind).toBe(
+        'unavailable',
+      );
     expect(parseStatus(null).kind).toBe('unavailable');
     const html = new Response('<!doctype html>', {
       status: 200,
@@ -171,6 +176,15 @@ describe('explain', () => {
     });
     expect(e.message).toEqual({ he: 'מגבלה', en: 'Limit' });
     expect(parseError(429, { error: 'busy', retryAfterMs: -5 }).retryAfterMs).toBeUndefined();
+  });
+  it('limit params never touch a prototype', () => {
+    const raw = JSON.parse(
+      '{"error":"daily_limit","limit":{"code":"d","messageKey":"k","params":{"__proto__":{"x":1},"constructor":"c","prototype":"p","n":2}}}',
+    ) as unknown;
+    const e = parseError(429, raw);
+    expect(Object.keys(e.limit!.params)).toEqual(['n']);
+    expect(Object.getPrototypeOf(e.limit!.params)).toBeNull();
+    expect(({} as Record<string, unknown>).x).toBeUndefined();
   });
   it('a 200 with a wrong shape is never rendered', async () => {
     for (const bad of [

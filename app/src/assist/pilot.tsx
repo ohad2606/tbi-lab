@@ -10,6 +10,9 @@
  *   Sending needs the consent of the service's current version: asked in a modal dialog (focus on
  *   its heading, the safe place; "Show exactly what would be sent" previews the payload), then
  *   remembered per account + version (consent.ts) and sent with every request.
+ * - `consent_required` (the service moved on): the remembered copy is dropped, the status is asked
+ *   again and the dialog reopens only with the fresh version and data lists (not available when
+ *   the fresh status is off; the error when the version did not change).
  * - States: idle, not available, consent needed, sending (+ Cancel), success, error. Status
  *   changes go to the panel's one polite live region; errors are role=alert.
  * - The answer never changes the project; the simulator findings above it stay the truth.
@@ -21,6 +24,7 @@ import { isMessageKey, isolateLtr } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { useT } from '../ui/context.js';
 import {
+  aiEnabled,
   explainBody,
   postExplain,
   postPreview,
@@ -88,12 +92,15 @@ export function useAiController({
   locale,
   ensureContext,
   announce,
+  refreshStatus,
   store,
 }: {
   status: ServiceStatus | null;
   locale: string;
   ensureContext: () => Promise<EngineeringContext | null | 'busy'>;
   announce: (text: string) => void;
+  /** Ask the service's status again (the panel stores it); used after `consent_required`. */
+  refreshStatus: (signal: AbortSignal) => Promise<StatusResult>;
   store?: ConsentStore;
 }): AiController {
   const t = useT();
@@ -151,10 +158,22 @@ export function useAiController({
       setPhase({ kind: 'idle' });
       announce(t('assist.ai.cancelled'));
     } else {
-      // The service no longer accepts the remembered version: forget it, ask again next time.
       if (r.error === 'consent_required') {
+        // The service no longer accepts the remembered version: forget it and ask the status
+        // again; the dialog reopens only with the fresh version and data lists.
         consent.withdraw(account);
         setConsented(false);
+        const s = await refreshStatus(ctl.signal);
+        const now = phaseRef.current;
+        if (now.kind !== 'sending' || now.ctl !== ctl) return; // superseded
+        if (ctl.signal.aborted) {
+          setPhase({ kind: 'idle' });
+          announce(t('assist.ai.cancelled'));
+        } else if (!aiEnabled(s))
+          setPhase({ kind: 'idle' }); // the panel shows "not available"
+        else if (s.status.consentVersion !== version) setPhase({ kind: 'consent', context });
+        else fail(r); // same version refused again: no dialog loop, the error and retry
+        return;
       }
       fail(r);
     }
@@ -389,6 +408,8 @@ export function ConsentDialog({
   const t = useT();
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  /** The preview request of this dialog opening (aborted when it closes or goes away). */
+  const previewCtl = useRef<AbortController | null>(null);
   const [preview, setPreview] = useState<
     | { kind: 'none' }
     | { kind: 'loading' }
@@ -405,14 +426,32 @@ export function ConsentDialog({
       setPreview({ kind: 'none' });
       d.showModal();
       heading.current?.focus();
-    } else if (!open && d.open) d.close();
+    } else if (!open) {
+      previewCtl.current?.abort();
+      previewCtl.current = null;
+      if (d.open) d.close();
+    }
   }, [open]);
-  useEffect(() => () => dialog.current?.close(), []);
+  useEffect(
+    () => () => {
+      previewCtl.current?.abort();
+      dialog.current?.close();
+    },
+    [],
+  );
+  const contextRef = useRef(context);
+  contextRef.current = context;
 
   const showPreview = async () => {
     if (!context) return;
+    previewCtl.current?.abort();
+    const ctl = new AbortController();
+    previewCtl.current = ctl;
     setPreview({ kind: 'loading' });
-    const r = await postPreview(context, locale);
+    const r = await postPreview(context, locale, ctl.signal);
+    // Closed, superseded or another context meanwhile: this answer is not for what is shown.
+    if (ctl.signal.aborted || previewCtl.current !== ctl || contextRef.current !== context) return;
+    previewCtl.current = null;
     if (r.ok)
       setPreview({
         kind: 'ok',
@@ -482,13 +521,15 @@ export function ConsentDialog({
           >
             {t('assist.pilot.preview')}
           </button>
-          <p role="status" class="small" data-testid="ai-preview-status">
-            {preview.kind === 'ok'
-              ? t('assist.pilot.preview.size', {
-                  bytes: isolateLtr(String(preview.bytes)),
-                  tokens: isolateLtr(String(preview.tokens)),
-                })
-              : ''}
+          <p role="status" class="small" data-testid="ai-preview-status" data-state={preview.kind}>
+            {preview.kind === 'loading'
+              ? t('assist.ai.preview.loading')
+              : preview.kind === 'ok'
+                ? t('assist.ai.preview.ready', {
+                    bytes: isolateLtr(String(preview.bytes)),
+                    tokens: isolateLtr(String(preview.tokens)),
+                  })
+                : ''}
           </p>
           {preview.kind === 'error' && (
             <p class="field-error" role="alert" data-testid="ai-preview-error">
@@ -500,6 +541,7 @@ export function ConsentDialog({
               class="assist-payload technical"
               dir="ltr"
               tabIndex={0}
+              role="region"
               aria-label={t('assist.ai.preview.label')}
               data-testid="ai-payload"
             >
