@@ -8,6 +8,8 @@ export default defineConfig({
       'experiments/**/tests/**/*.test.ts',
       'packages/*/tests/**/*.test.ts',
       'app/tests/**/*.test.ts',
+      // TBI-019 G1: component guides (data, fact evaluators and their tests live together).
+      'app/src/guides/**/*.test.ts',
       // Admin app design §3: the TBI Admin app's view logic.
       'admin-app/tests/**/*.test.ts',
       // Runtime R2 Session Host: protocol, state machine and lifecycle against a fake runtime

@@ -2339,6 +2339,31 @@ export const he: Record<MessageKey, string> = {
   'shortcut.editorMode.action': 'החלפת Tab בין הזחה להעברת מיקוד; נשמר בדפדפן הזה',
   'shortcut.editorMode.when': 'עורך הקוד (Ctrl בלבד; Cmd לא פועל כאן)',
 
+  // TBI-019 component guides (G1). First-draft Hebrew: the owner reviews it before any tester sees it.
+  'compguide.led-resistor.title': 'נורית LED ונגד',
+  'compguide.led-resistor.what.heading': 'מה הרכיב עושה',
+  'compguide.led-resistor.what.body':
+    'נורית LED מעבירה זרם בכיוון אחד בלבד, והמתח עליה כמעט לא משתנה כשהזרם משתנה. בגלל זה צריך נגד בטור כדי לקבוע את הזרם.',
+  'compguide.led-resistor.behaviour.heading': 'איך הוא מתנהג',
+  'compguide.led-resistor.behaviour.items.1':
+    'אנחנו מחברים נגד של {r} בטור לנורית, על ספק של {supply}. הסימולטור מייצב את הנורית על {v} ועל {i}.',
+  'compguide.led-resistor.behaviour.items.2':
+    'על הנגד נופל {rv}. המתח שנופל עליו ועוד המתח על הנורית שווים למתח הספק.',
+  'compguide.led-resistor.behaviour.items.3':
+    'מודל הנורית מעוגן לערך מגיליון הנתונים: {anchorV} ב-{anchorI}.',
+  'compguide.led-resistor.behaviour.items.4':
+    'במודל מוגדרים הערכים המרביים המוחלטים האלה: זרם קדמי {maxI}, מתח הפוך {maxRev}, הספק {maxP}. מעל ערך כזה האפליקציה מציגה אזהרה, והיא אף פעם לא משנה את התוצאה.',
+  'compguide.led-resistor.circuit.heading': 'המעגל',
+  'compguide.led-resistor.circuit.body':
+    'ספק מתח למעבדה, נגד, נורית LED אדומה ואדמה (GND), מחוברים בלולאה אחת. פותחים אותו במעבדה ורואים את המעגל האמיתי.',
+  'compguide.led-resistor.tryit.heading': 'נסו בעצמכם',
+  'compguide.led-resistor.tryit.action': 'שנו את ערך הנגד ל-{rTry} והפעילו את המעגל.',
+  'compguide.led-resistor.tryit.expect':
+    'זרם הנורית עולה ל-{iAfter}, מעל הערך המרבי של {maxI}, ולכן האפליקציה מציגה אזהרת עומס יתר.',
+  'compguide.led-resistor.limits.heading': 'מה המודל לא כולל',
+  'compguide.led-resistor.limits.body':
+    'הנורית היא רכיב נומינלי: אין סחיפה עם הטמפרטורה, והמודל שלה מתועד לתחום זרם מוגבל.',
+
   // Admin app design §3: shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesHe,
 };

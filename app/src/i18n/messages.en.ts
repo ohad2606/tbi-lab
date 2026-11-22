@@ -2462,6 +2462,32 @@ export const en = {
     'Switch Tab between indent and move focus; remembered in this browser',
   'shortcut.editorMode.when': 'Code editor (Ctrl only; Cmd does not work here)',
 
+  // TBI-019 component guides (G1). Numbers are placeholders filled from the engine (never typed).
+  'compguide.led-resistor.title': 'LED and resistor',
+  'compguide.led-resistor.what.heading': 'What the part does',
+  'compguide.led-resistor.what.body':
+    'An LED passes current in one direction only, and its voltage changes very little as the current changes. Because of that, it needs a series resistor to set the current.',
+  'compguide.led-resistor.behaviour.heading': 'How it behaves',
+  'compguide.led-resistor.behaviour.items.1':
+    'We put a {r} resistor in series with the LED on a {supply} supply. The simulator settles the LED at {v} and {i}.',
+  'compguide.led-resistor.behaviour.items.2':
+    'The resistor drops {rv}. Its drop plus the LED voltage equals the supply voltage.',
+  'compguide.led-resistor.behaviour.items.3':
+    'The LED model is anchored to the datasheet value of {anchorV} at {anchorI}.',
+  'compguide.led-resistor.behaviour.items.4':
+    'The model carries these absolute maximum ratings: forward current {maxI}, reverse voltage {maxRev}, power {maxP}. Above a rating the app shows a warning; it never changes the result.',
+  'compguide.led-resistor.circuit.heading': 'The circuit',
+  'compguide.led-resistor.circuit.body':
+    'A lab power supply, a resistor, a red LED and ground, wired in one loop. Open it in the Lab to see the real circuit.',
+  'compguide.led-resistor.tryit.heading': 'Try it',
+  'compguide.led-resistor.tryit.action':
+    'Change the resistor value to {rTry}, then run the circuit.',
+  'compguide.led-resistor.tryit.expect':
+    'The LED current rises to {iAfter}, which is above the {maxI} rating, so the app shows an over-stress warning.',
+  'compguide.led-resistor.limits.heading': 'What is not modelled',
+  'compguide.led-resistor.limits.body':
+    'The LED is a nominal part: there is no temperature drift, and its model is documented for a limited current range.',
+
   // Admin app design §3: the administration's texts (and the report kinds and areas it shows)
   // are shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesEn,
