@@ -45,7 +45,14 @@ ESP32 Build onboarding (the existing card covers it), and any change to simulati
 
 ## Remaining slices
 1. Help entry on the Projects screen (reuse the existing "Show getting started" link to reopen both).
-2. Next-step card in the editor after the first Run (change a value, add a probe), once Run is observed.
+2. DONE (slice 2): next-step card in the editor after the first Run (`app/src/ui/nextStep.ts`, `NextStepCard.tsx`).
+   Shown only when the open project was created from `FIRST_RUN_EXAMPLE`, the local simulation is `running`
+   with solved values, no MCU/build flow, and `tbi-lab.nextStep.v1` is not `seen`. Latched (stays through Stop,
+   which step 2 asks for). Compact non-modal `<section>` above the canvas, in DOM order after the palette;
+   never takes focus; announced once via a persistent `role=status`; Esc (focus inside) or "Got it" closes and,
+   if focus was inside, returns it to Stop/Run; `seen` is stored however it goes away. No timers, no motion.
+   Steps (all existing features): change the lab PSU voltage while running (live-capable), Stop + change the
+   resistor's Resistance + Run, the Probe button.
 3. Screen-reader pass (NVDA/VoiceOver/TalkBack) and a real axe check if the helper is added.
 
 ## Coexistence with the "Fastest start" block (PR #18, merged together)

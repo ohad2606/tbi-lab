@@ -1553,6 +1553,15 @@ export const he: Record<MessageKey, string> = {
   'firstRun.opened': 'הדוגמה נפתחה. לחצו על הרצה כדי להתחיל את הסימולציה.',
   'firstRun.listLabel': 'צעדים',
   'menu.firstRun': 'ברוכים הבאים וצעדים ראשונים',
+  // TBI-014 slice 2: next-step card after the first Run.
+  'nextStep.title': 'זה רץ. מה לנסות עכשיו',
+  'nextStep.step1': 'שנו את מתח ספק הכוח של המעבדה בזמן הריצה וראו איך {probe} עוקב.',
+  'nextStep.step2':
+    'לחצו על עצירה, בחרו את הנגד, שנו את ההתנגדות שלו בתכונות ולחצו על הרצה: זרם הנורית ישתנה.',
+  'nextStep.step3': 'השתמשו בכפתור [[probe]] שעל משטח השרטוט כדי לנעוץ מתח או זרם נוספים.',
+  'nextStep.dismiss': 'הבנתי',
+  'nextStep.listLabel': 'דברים לנסות',
+  'nextStep.announce': 'הסימולציה רצה. מעל משטח השרטוט יש כרטיס עם הצעדים הבאים.',
   'menu.capabilities': 'מה רץ על ה־ESP32',
   'capabilities.title': 'מה רץ על ה־ESP32 ב־TBI Lab',
   'capabilities.intro':
