@@ -991,16 +991,72 @@ describe('admin service: sign-up admin wiring (TBI-022) with a fake helper', () 
     expect(f.status).toBe(502);
     expect(f.body.error).toBe('email_failed');
     expect((await call(o, `/signups/${c.id}/approve`, mutation(o, 'POST', {}))).status).toBe(409);
+    // The failed request is no longer pending, but it stays in the admin UI's list (Resend).
+    expect((await call(o, '/signups/pending')).body.signups).toEqual([]);
+    const open = (await call(o, '/signups/open')).body.signups as { id: string; status: string }[];
+    expect(open.map((r) => [r.id, r.status])).toEqual([[c.id, 'email_failed']]);
     mailFails = false;
     expect((await call(o, `/signups/${c.id}/resend`, mutation(o, 'POST', {}))).status).toBe(200);
     expect(mails).toHaveLength(3);
     expect((await call(o, '/signups/pending')).body.signups).toEqual([]);
-    // Tester: forbidden. Retention: rejected 30 d, done 90 d.
+    expect((await call(o, '/signups/open')).body.signups).toEqual([]);
+    expect((await call(await s.gate(TESTER), '/signups/open')).status).toBe(403);
+    // Tester: forbidden. Retention: not approved 90 d, everything else 365 d (by creation).
     expect((await call(await s.gate(TESTER), '/signups/pending')).status).toBe(403);
-    t += 31 * 86_400_000;
+    t += 90 * 86_400_000;
     expect(await wiring.store.purge()).toEqual([b.id]);
-    t += 60 * 86_400_000;
+    t += 275 * 86_400_000;
     expect((await wiring.store.purge()).sort()).toEqual([a.id, c.id].sort());
+  });
+
+  it('GET /signups/open lists every request that still needs the owner, oldest first', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tbi-signup-wire-'));
+    cleanup.push(() => rmSync(root, { recursive: true, force: true }));
+    let t = Date.UTC(2026, 10, 20);
+    const wiring = await wireSignupAdmin(
+      { dir: join(root, 'p'), keyFile: '/unused', from: 'x', labUrl: 'https://l.example.invalid/' },
+      {} as never,
+      {
+        fetch: async () => ({ ok: true, status: 200 }),
+        log: () => undefined,
+        now: () => t,
+        email: { sendApproval: async () => undefined },
+      },
+    );
+    const ids: Record<string, string> = {};
+    for (const status of [
+      'pending',
+      'approved',
+      'email_queued',
+      'email_failed',
+      'email_sent',
+      'rejected',
+    ] as const) {
+      t += 1000;
+      const r = await wiring.store.create({
+        name: `N ${status}`,
+        email: `${status}@example.com`,
+        role: 'T',
+        lang: 'en',
+        consent: true,
+      });
+      ids[status] = r.id;
+      if (status !== 'pending')
+        await wiring.store.update(r.id, { status, accountAdded: status !== 'rejected' });
+    }
+    const s = await serve({ roomyLimits: true, signups: wiring.signups });
+    const o = await s.gate(OWNER);
+    const open = await call(o, '/signups/open');
+    expect(open.status).toBe(200);
+    expect(open.headers.get('cache-control')).toContain('no-store');
+    expect((open.body.signups as { id: string }[]).map((r) => r.id)).toEqual([
+      ids.pending,
+      ids.approved,
+      ids.email_queued,
+      ids.email_failed,
+    ]);
+    // Only GET; nothing else under that name.
+    expect((await call(o, '/signups/open', mutation(o, 'POST', {}))).status).toBe(404);
   });
 
   it('purge runs at start and is scheduled daily; stop cancels it', async () => {

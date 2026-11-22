@@ -1,6 +1,6 @@
 /** TBI-022 slice D: the sign-up requests calls (design §6.1). Synthetic data only. */
 import { describe, expect, it } from 'vitest';
-import { interpretSignup, loadPendingSignups, signupAction } from '../src/index.js';
+import { interpretSignup, loadOpenSignups, signupAction } from '../src/index.js';
 
 type Call = { url: string; init: RequestInit | undefined };
 function fake(status: number, body: unknown) {
@@ -25,7 +25,7 @@ const rec = (id: string, createdAt: string, extra: object = {}) => ({
   ...extra,
 });
 
-describe('loadPendingSignups', () => {
+describe('loadOpenSignups', () => {
   it('reads the admin service, oldest first, dropping malformed rows', async () => {
     const f = fake(200, {
       signups: [
@@ -34,13 +34,34 @@ describe('loadPendingSignups', () => {
         rec('a1', '2026-11-01T10:00:00Z'),
       ],
     });
-    const r = await loadPendingSignups(f.fn);
-    expect(f.calls[0]!.url).toBe('/admin-api/signups/pending');
+    const r = await loadOpenSignups(f.fn);
+    expect(f.calls[0]!.url).toBe('/admin-api/signups/open');
     expect(r.ok && r.value.map((x) => x.id)).toEqual(['a1', 'b1']);
+  });
+  it('keeps queued and failed rows with their send time', async () => {
+    const f = fake(200, {
+      signups: [
+        rec('q1', '2026-11-01T10:00:00Z', {
+          status: 'email_queued',
+          accountAdded: true,
+          emailSendAfter: '2026-11-02T06:00:00.000Z',
+        }),
+        rec('f1', '2026-11-02T10:00:00Z', {
+          status: 'email_failed',
+          accountAdded: true,
+          emailSendAfter: 7,
+        }),
+      ],
+    });
+    const r = await loadOpenSignups(f.fn);
+    expect(r.ok && r.value.map((x) => [x.id, x.status, x.emailSendAfter])).toEqual([
+      ['q1', 'email_queued', '2026-11-02T06:00:00.000Z'],
+      ['f1', 'email_failed', null],
+    ]);
   });
   it('maps statuses to load errors; 404 (feature off) is unavailable', async () => {
     const err = async (s: number) => {
-      const r = await loadPendingSignups(fake(s, { error: 'x' }).fn);
+      const r = await loadOpenSignups(fake(s, { error: 'x' }).fn);
       return r.ok ? null : r.error;
     };
     expect(await err(401)).toBe('signed_out');
@@ -48,7 +69,7 @@ describe('loadPendingSignups', () => {
     expect(await err(404)).toBe('unavailable');
     expect(await err(429)).toBe('rate_limited');
     expect(await err(500)).toBe('network');
-    const bad = await loadPendingSignups(fake(200, { nope: 1 }).fn);
+    const bad = await loadOpenSignups(fake(200, { nope: 1 }).fn);
     expect(bad).toEqual({ ok: false, error: 'network' });
   });
 });

@@ -15,16 +15,17 @@
  *   TBI_SIGNUP_LISTEN             `127.0.0.1:<port>` or `[::1]:<port>` (default 127.0.0.1:7411)
  *   TBI_SIGNUP_QUIET              quiet hours `HH:MM-HH:MM` Israel time (default 23:00-08:00) or `off`; alerts
  *                                 triggered inside it are stored and sent when it ends
- *   TBI_SIGNUP_SOURCE_HEADER      header the trusted proxy sets to the client address (an IP); when unset
- *                                 the default is used and a `source_header_default` warning is logged
- *                                 at start; requests without a valid IP in it are logged (throttled)
- *                                 as `source_header_missing` (they share the proxy's rate bucket)
+ *   TBI_SIGNUP_SOURCE_HEADER      REQUIRED: header the trusted proxy sets to the client address (an
+ *                                 IP), e.g. `x-forwarded-for`; unset or malformed = refusal to start
+ *                                 (design §3: no silent fallback that puts every client in one bucket).
+ *                                 Requests without a valid IP in it are logged (throttled) as
+ *                                 `source_header_missing` (they share the proxy's rate bucket)
  */
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { errorClass } from './errors.js';
 import { NonceCache } from './hmac.js';
-import { handleSignupRequest, readSecret } from './http.js';
+import { handleSignupRequest, parseSourceHeader, readSecret } from './http.js';
 import { SlidingWindowLimiter } from './limits.js';
 import { TELEGRAM_TOKEN_RE, TelegramNotifier, type FetchLike } from './notify.js';
 import { parseQuiet, type QuietWindow } from './quietHours.js';
@@ -41,13 +42,24 @@ export interface IntakeConfig {
   host: string;
   port: number;
   sourceHeader: string;
-  /** True when TBI_SIGNUP_SOURCE_HEADER was not set (the default header is assumed). */
-  sourceHeaderDefaulted?: boolean;
   /** Quiet hours (null / unset = off). */
   quiet?: QuietWindow | null;
 }
 
 export const INTAKE_DRAIN_MS = 60_000;
+
+/**
+ * Rate limits (design §3, values chosen in FABLE-REVIEW 3). The form forwarder runs on Google's
+ * servers, so the per-source key is an address of Google's SHARED UrlFetch pool, not of the
+ * person: it bounds how much unsigned work one source can cause (it is checked before the HMAC)
+ * but is not a per-person limit, and other Apps Script users on the same address share it. The
+ * global budget is spent only by requests that verify (secret holders), so it bounds the damage
+ * of a leaked secret; it is set well above any realistic burst of real sign-ups. A 429 is not a
+ * loss: the forwarder retries with backoff (Code.gs). The store cap is the final bound.
+ */
+export const INTAKE_SOURCE_LIMIT = { count: 30, windowMs: 60_000 } as const;
+export const INTAKE_GLOBAL_LIMIT = { count: 200, windowMs: 3_600_000 } as const;
+export const INTAKE_MAX_RECORDS = 5_000;
 
 /** At most one `source_header_missing` line per this interval. */
 export const SOURCE_FALLBACK_LOG_MS = 10 * 60_000;
@@ -92,6 +104,8 @@ export function intakeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Intak
   const port = Number(m[2]);
   if (!LOOPBACK.has(host)) return bad('TBI_SIGNUP_LISTEN must be a loopback address');
   if (port > 65535) return bad('TBI_SIGNUP_LISTEN port out of range');
+  const sourceHeader = parseSourceHeader(env.TBI_SIGNUP_SOURCE_HEADER);
+  if (!sourceHeader) return bad('TBI_SIGNUP_SOURCE_HEADER is required (a header name)');
   let quiet: QuietWindow | null;
   try {
     quiet = parseQuiet(env.TBI_SIGNUP_QUIET);
@@ -109,8 +123,7 @@ export function intakeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Intak
       adminLink: adminLink!,
       host,
       port,
-      sourceHeader: (env.TBI_SIGNUP_SOURCE_HEADER || 'x-forwarded-for').toLowerCase(),
-      sourceHeaderDefaulted: !env.TBI_SIGNUP_SOURCE_HEADER,
+      sourceHeader,
     },
   };
 }
@@ -139,11 +152,7 @@ export async function startIntake(
   );
   if (token.length === 0) throw new Error('token_empty');
   if (!TELEGRAM_TOKEN_RE.test(token)) throw new Error('token_malformed');
-  if (c.sourceHeaderDefaulted)
-    io.log(
-      'signup: warning source_header_default (set TBI_SIGNUP_SOURCE_HEADER to the proxy header)',
-    );
-  const store = new PendingStore(c.dir, { now: io.now });
+  const store = new PendingStore(c.dir, { now: io.now, maxRecords: INTAKE_MAX_RECORDS });
   await store.init();
   const now = io.now ?? Date.now;
   const intake = new SignupIntake({
@@ -157,9 +166,8 @@ export async function startIntake(
     }),
     now,
     quiet: c.quiet ?? null,
-    // A form sends one request per sign-up: generous for humans, tight for floods.
-    sourceRate: new SlidingWindowLimiter({ count: 10, windowMs: 60_000 }, now),
-    globalRate: new SlidingWindowLimiter({ count: 60, windowMs: 3_600_000 }, now),
+    sourceRate: new SlidingWindowLimiter(INTAKE_SOURCE_LIMIT, now),
+    globalRate: new SlidingWindowLimiter(INTAKE_GLOBAL_LIMIT, now),
     nonces: new NonceCache(),
     log: io.log,
   });

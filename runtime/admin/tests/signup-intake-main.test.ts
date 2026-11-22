@@ -4,7 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { sign } from '../signup/hmac.js';
-import { intakeConfigFromEnv, startIntake, type RunningIntake } from '../signup/intake-server.js';
+import {
+  INTAKE_GLOBAL_LIMIT,
+  INTAKE_MAX_RECORDS,
+  INTAKE_SOURCE_LIMIT,
+  intakeConfigFromEnv,
+  startIntake,
+  type RunningIntake,
+} from '../signup/intake-server.js';
 import type { FetchLike } from '../signup/notify.js';
 
 const SECRET = 'test-secret-not-real-0123456789abcdef';
@@ -34,6 +41,7 @@ function files() {
     TBI_SIGNUP_TELEGRAM_CHAT_ID: '42',
     TBI_SIGNUP_ADMIN_LINK: 'https://admin.example.invalid/signups',
     TBI_SIGNUP_LISTEN: '127.0.0.1:0',
+    TBI_SIGNUP_SOURCE_HEADER: 'x-forwarded-for',
     TBI_SIGNUP_QUIET: 'off', // real clock here; quiet hours are tested with an injected clock
   };
   return { root, env };
@@ -47,6 +55,21 @@ describe('intake config', () => {
     expect(intakeConfigFromEnv({ ...env, TBI_SIGNUP_INTAKE: 'yes' }).error).toBeFalsy();
     expect(intakeConfigFromEnv({ ...env, TBI_SIGNUP_INTAKE: 'yes' }).enabled).toBe(false);
     expect(intakeConfigFromEnv(env)).toMatchObject({ enabled: true });
+  });
+  it('refuses to serve without an explicit, well-formed proxy source header (design §3)', () => {
+    const { env } = files();
+    const e: Record<string, string> = { ...env };
+    delete e.TBI_SIGNUP_SOURCE_HEADER;
+    const c = intakeConfigFromEnv(e);
+    expect(c).toMatchObject({ enabled: false, error: true });
+    expect(c.reason).toMatch(/TBI_SIGNUP_SOURCE_HEADER is required/);
+    for (const v of ['', 'x real ip', 'x-real-ip:', 'x\r\ny', 'a'.repeat(65)])
+      expect(intakeConfigFromEnv({ ...env, TBI_SIGNUP_SOURCE_HEADER: v })).toMatchObject({
+        enabled: false,
+        error: true,
+      });
+    const ok = intakeConfigFromEnv({ ...env, TBI_SIGNUP_SOURCE_HEADER: 'X-Real-IP' });
+    expect(ok.enabled && ok.config.sourceHeader).toBe('x-real-ip');
   });
   it('fails closed on missing settings, relative paths, non-https link, non-loopback listen', () => {
     const { env } = files();
@@ -127,13 +150,17 @@ describe('intake server', () => {
     expect((await post(r.port, 'x'.repeat(5000))).status).toBe(413);
   });
 
-  it('rate limits one source (429 with retry-after)', async () => {
+  it('rate limits one source (429 with retry-after) at the documented values', async () => {
+    expect(INTAKE_SOURCE_LIMIT).toEqual({ count: 30, windowMs: 60_000 });
+    expect(INTAKE_GLOBAL_LIMIT).toEqual({ count: 200, windowMs: 3_600_000 });
+    expect(INTAKE_MAX_RECORDS).toBe(5_000);
     const { env } = files();
     const { r } = await up(env);
     const codes: number[] = [];
-    for (let i = 0; i < 12; i++) codes.push((await post(r.port, GOOD)).status);
-    expect(codes.slice(0, 10).every((c) => c === 202)).toBe(true);
-    expect(codes.slice(10)).toEqual([429, 429]);
+    const n = INTAKE_SOURCE_LIMIT.count;
+    for (let i = 0; i < n + 2; i++) codes.push((await post(r.port, GOOD)).status);
+    expect(codes.slice(0, n).every((c) => c === 202)).toBe(true);
+    expect(codes.slice(n)).toEqual([429, 429]);
   });
 
   it('fails closed before listening: missing, short secret; missing token; shared store dir', async () => {

@@ -294,6 +294,95 @@ describe('owner alert in quiet hours', () => {
   });
 });
 
+describe('a failed deferral never loses the owner alert (FABLE-REVIEW 7)', () => {
+  const SECRET = Buffer.from('test-secret-not-real-0123456789abcdef');
+  async function setup(c: { t: number; now: () => number }) {
+    const store = await newStore(c);
+    const texts: string[] = [];
+    const logs: string[] = [];
+    const intake = new SignupIntake({
+      secret: SECRET,
+      store,
+      quiet: Q,
+      notifier: {
+        notify: async (m: { name: string; role: string }) => void texts.push(m.name),
+      },
+      now: c.now,
+      sourceRate: new SlidingWindowLimiter({ count: 9, windowMs: 60_000 }, c.now),
+      globalRate: new SlidingWindowLimiter({ count: 99, windowMs: 60_000 }, c.now),
+      nonces: new NonceCache(),
+      log: (l) => logs.push(l),
+    });
+    const raw = Buffer.from(JSON.stringify(PERSON));
+    const ts = Math.floor(c.t / 1000);
+    const post = () =>
+      intake.submit(
+        'x',
+        {
+          'x-tbi-timestamp': String(ts),
+          'x-tbi-nonce': 'n'.repeat(20),
+          'x-tbi-signature': sign(SECRET, ts, 'n'.repeat(20), raw),
+        },
+        raw,
+      );
+    return { store, texts, logs, intake, post };
+  }
+
+  it('the marker write fails once: it is written again by the next drain, alert at 08:00', async () => {
+    const c = clock(NIGHT);
+    const s = await setup(c);
+    const real = s.store.markNotifyPending.bind(s.store);
+    let fail = 1;
+    s.store.markNotifyPending = async (id: string) => {
+      if (fail-- > 0) throw Object.assign(new Error('disk'), { code: 'EIO' });
+      return real(id);
+    };
+    expect(await s.post()).toEqual({ status: 202 });
+    expect(s.logs.join('\n')).toMatch(/notify defer failed \(\w+\); kept in memory/);
+    expect((await s.store.list())[0]!.notifyPending).toBe(false);
+    // Still night: the drain sends nothing but persists the deferral.
+    expect(await s.intake.drainNotifications()).toBe(0);
+    expect((await s.store.list())[0]!.notifyPending).toBe(true);
+    expect(s.texts).toEqual([]);
+    c.t = MORNING;
+    expect(await s.intake.drainNotifications()).toBe(1);
+    expect(s.texts).toEqual([PERSON.name]);
+    expect(await s.intake.drainNotifications()).toBe(0);
+    expect(s.texts).toHaveLength(1);
+  });
+
+  it('the marker can never be written: the alert still goes out once at 08:00 (memory)', async () => {
+    const c = clock(NIGHT);
+    const s = await setup(c);
+    s.store.markNotifyPending = async () => {
+      throw Object.assign(new Error('disk'), { code: 'EIO' });
+    };
+    await s.post();
+    expect(await s.intake.drainNotifications()).toBe(0);
+    expect(s.texts).toEqual([]);
+    c.t = MORNING;
+    expect(await s.intake.drainNotifications()).toBe(1);
+    expect(s.texts).toEqual([PERSON.name]);
+    expect((await s.store.list())[0]!.notified).toBe(true);
+    expect(await s.intake.drainNotifications()).toBe(0);
+    expect(s.texts).toHaveLength(1);
+  });
+
+  it('a request decided before 08:00 is not alerted from memory either', async () => {
+    const c = clock(NIGHT);
+    const s = await setup(c);
+    s.store.markNotifyPending = async () => {
+      throw new Error('disk');
+    };
+    await s.post();
+    const [r] = await s.store.list();
+    await s.store.update(r!.id, { status: 'rejected' });
+    c.t = MORNING;
+    expect(await s.intake.drainNotifications()).toBe(0);
+    expect(s.texts).toEqual([]);
+  });
+});
+
 describe('TBI_SIGNUP_QUIET in the process configs', () => {
   const admin = {
     TBI_SIGNUP_ADMIN: '1',
@@ -309,6 +398,7 @@ describe('TBI_SIGNUP_QUIET in the process configs', () => {
     TBI_SIGNUP_TELEGRAM_TOKEN_FILE: '/t',
     TBI_SIGNUP_TELEGRAM_CHAT_ID: '1',
     TBI_SIGNUP_ADMIN_LINK: 'https://admin.example.invalid',
+    TBI_SIGNUP_SOURCE_HEADER: 'x-forwarded-for',
   };
   it('default window, off, and a malformed value is a config error', () => {
     for (const [fn, base] of [

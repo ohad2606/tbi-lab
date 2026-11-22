@@ -48,6 +48,7 @@ import {
   type SpoolIo,
 } from './common.js';
 import type { SignupApprover } from './signup/service.js';
+import { OPEN_STATUSES } from './signup/store.js';
 import { auditLimit, usageAnswer, usageRange, type AdminViews } from './views.js';
 
 // ---------------------------------------------------------------- views and results
@@ -527,7 +528,8 @@ async function routeAccounts(
 }
 
 /**
- * TBI-022 (owner only, checked by the caller): `GET /signups` (all), `GET /signups/pending`, `POST /signups/<id>/approve|reject|resend`.
+ * TBI-022 (owner only, checked by the caller): `GET /signups` (all), `GET /signups/pending`,
+ * `GET /signups/open` (pending + approved + email_queued + email_failed), `POST /signups/<id>/approve|reject|resend`.
  * Mutations already passed CSRF and the write rate limit. The records hold personal data: the
  * list is for the owner only and is never cached (`send` sets no-store).
  */
@@ -547,6 +549,12 @@ async function routeSignups(
   if (method === 'GET' && parts.length === 2 && id === 'pending')
     return send(res, 200, {
       signups: (await approver.list()).filter((r) => r.status === 'pending'),
+    });
+  // The admin UI list: everything that still needs the owner, so an approved request whose
+  // email is queued or failed stays visible (with Resend) after a reload.
+  if (method === 'GET' && parts.length === 2 && id === 'open')
+    return send(res, 200, {
+      signups: (await approver.list()).filter((r) => OPEN_STATUSES.includes(r.status)),
     });
   if (method !== 'POST' || parts.length !== 3 || !id || !REQUEST_ID_RE.test(id))
     throw new AdminError(404, 'not_found');

@@ -1,8 +1,10 @@
 /**
- * TBI-022 slice D, the "Pending sign-up requests" screen (#/signups): keyboard-only decisions, the
+ * TBI-022 slice D, the "Open sign-up requests" screen (#/signups): keyboard-only decisions, the
  * focus after each outcome, the polite live region, reflow at 320 px, language/direction and the
- * LTR isolation of emails. The sign-up endpoints are mocked in the browser (synthetic data,
- * example.com only); everything else is the usual test gate. No axe: @axe-core/playwright is not a
+ * LTR isolation of emails. Most tests mock the sign-up endpoints in the browser (synthetic data,
+ * example.com only); the "real list" tests use the REAL admin service routes and store (fake
+ * helper and mail sender, app/e2e/fixtures/fake-admin.ts) so a reload shows what the server keeps.
+ * Everything else is the usual test gate. No axe: @axe-core/playwright is not a
  * dependency of this repository, so structure (headings, names, landmarks) is asserted directly.
  */
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
@@ -36,7 +38,7 @@ async function mock(page: Page, mode: Mode, actions: Record<string, unknown> = {
   const calls: string[] = [];
   await page.route('**/admin-api/signups/**', async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith('/pending')) {
+    if (url.pathname.endsWith('/open')) {
       if (mode === 'error') return route.fulfill({ status: 503, json: { error: 'unavailable' } });
       return route.fulfill({ json: { signups: rows } });
     }
@@ -232,3 +234,85 @@ for (const lang of ['he', 'en'] as const)
     expect(m.wide).toEqual([]);
     expect(m.scroll).toBeLessThanOrEqual(m.inner);
   });
+
+// ---------------------------------------------------------------- the real admin service
+
+const FAKE = 'http://127.0.0.1:7499';
+const rowOf = (page: Page, kind: string) =>
+  page.locator(`[data-testid="signup-row"][data-kind="${kind}"]`);
+const kinds = (page: Page) =>
+  page
+    .getByTestId('signup-row')
+    .evaluateAll((rows) => rows.map((r) => r.getAttribute('data-kind')));
+
+test.describe('signups: the real list', () => {
+  test.beforeEach(async ({ request }) => {
+    await request.post(`${FAKE}/__test/reset-admin`);
+    await request.post(`${FAKE}/__test/admin-signups?seed=1&mailFail=1`);
+  });
+  test.afterEach(async ({ request }) => {
+    await request.post(`${FAKE}/__test/admin-signups?seed=0&mailFail=0`);
+  });
+
+  for (const lang of ['he', 'en'] as const)
+    test(`(${lang}) failed and queued emails stay listed after a reload, sent and rejected do not`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      await open(page, context, baseURL!, lang);
+      await expect(page.getByTestId('signup-row')).toHaveCount(4);
+      expect(await kinds(page)).toEqual(['decide', 'resend', 'queued', 'resend']);
+      await page.reload();
+      await expect(page.getByTestId('signup-row')).toHaveCount(4);
+      expect(await kinds(page)).toEqual(['decide', 'resend', 'queued', 'resend']);
+      // Resend on each failed / unknown-outcome row, named with the person; the queued row shows
+      // its send time and offers nothing to press.
+      for (const b of await page.getByTestId('signup-resend').all()) {
+        const [name, text] = await b.evaluate((e) => [
+          e.getAttribute('aria-label') ?? '',
+          e.textContent ?? '',
+        ]);
+        expect(name).toContain(text);
+        expect(name).toMatch(/Sample/);
+      }
+      const queued = rowOf(page, 'queued');
+      await expect(queued.getByTestId('signup-send-after')).toBeVisible();
+      await expect(queued.locator('button')).toHaveCount(0);
+      await expect(page.getByTestId('signups-live')).toContainText(lang === 'he' ? '4' : '4 open');
+    });
+
+  test('Resend: a failure keeps the row and focus; a success removes it and focus moves on', async ({
+    page,
+    context,
+    baseURL,
+    request,
+  }) => {
+    await open(page, context, baseURL!, 'en');
+    await expect(page.getByTestId('signup-row')).toHaveCount(4);
+    const failedId = await page.getByTestId('signup-row').nth(3).getAttribute('data-signup-id');
+    const queuedId = await rowOf(page, 'queued').getAttribute('data-signup-id');
+    await tabTo(page, 'signup-resend', failedId!);
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('signups-live')).toContainText(/could not be sent/);
+    await expect.poll(() => focusedId(page)).toBe(`signup-resend@${failedId}`);
+    await expect(page.getByTestId('signup-row')).toHaveCount(4);
+
+    await request.post(`${FAKE}/__test/admin-signups?seed=1&mailFail=0`).catch(() => undefined);
+    // Re-seeding replaced the store; reload and press Resend on the failed row again.
+    await page.reload();
+    await expect(page.getByTestId('signup-row')).toHaveCount(4);
+    const again = await page.getByTestId('signup-row').nth(3).getAttribute('data-signup-id');
+    const queuedAgain = await rowOf(page, 'queued').getAttribute('data-signup-id');
+    expect(queuedAgain).not.toBe(queuedId);
+    await tabTo(page, 'signup-resend', again!);
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('signup-row')).toHaveCount(3);
+    await expect(page.getByTestId('signups-live')).toContainText(/was sent/);
+    // The last row left: focus goes to the previous one, the queued row (no button: the row).
+    await expect.poll(() => focusedId(page)).toBe(`signup-row@${queuedAgain}`);
+    await page.reload();
+    await expect(page.getByTestId('signup-row')).toHaveCount(3);
+    expect(await kinds(page)).toEqual(['decide', 'resend', 'queued']);
+  });
+});

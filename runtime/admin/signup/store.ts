@@ -32,6 +32,18 @@ export const STATUSES = [
 ] as const;
 export type SignupStatus = (typeof STATUSES)[number];
 
+/**
+ * Requests that still need the owner or are still in flight: undecided, approved with the
+ * account step or the email not finished, the email scheduled by quiet hours, or the email
+ * failed (Resend). The admin UI lists exactly these (`GET /signups/open`).
+ */
+export const OPEN_STATUSES: readonly SignupStatus[] = [
+  'pending',
+  'approved',
+  'email_queued',
+  'email_failed',
+];
+
 export interface SignupRecord extends SignupInput {
   v: 1;
   id: string;
@@ -53,19 +65,49 @@ export interface SignupRecord extends SignupInput {
   notifyPending: boolean;
 }
 
+/**
+ * Retention (owner directive 2026-11-21, matching the notice published in the sign-up form):
+ * a request that was not approved (`pending`, `rejected`) is deleted within `notApprovedMs` of
+ * its creation; every other request (approved, email queued / failed / sent) is deleted at the
+ * latest `maxMs` after its creation. Both are absolute, counted from `createdAt`: an update
+ * (a retry, a cap refusal) never extends them.
+ */
 export interface Retention {
-  /** Rejected requests are deleted after this long. */
-  rejectedMs: number;
-  /** Requests never decided are deleted after this long. */
-  pendingMs: number;
-  /** Finished requests (email sent) are deleted after this long: the account is in the registry. */
-  doneMs: number;
+  notApprovedMs: number;
+  maxMs: number;
 }
+const DAY_MS = 86_400_000;
 export const DEFAULT_RETENTION: Retention = {
-  rejectedMs: 30 * 86_400_000,
-  pendingMs: 60 * 86_400_000,
-  doneMs: 90 * 86_400_000,
+  notApprovedMs: 90 * DAY_MS,
+  maxMs: 365 * DAY_MS,
 };
+/** Upper bound of both settings: the published notice says "up to 12 months". */
+export const RETENTION_MAX_DAYS = 365;
+
+/**
+ * `TBI_SIGNUP_RETENTION_PENDING_DAYS` (not approved, default 90) and
+ * `TBI_SIGNUP_RETENTION_MAX_DAYS` (everything, default 365): whole days 1..365, the first not
+ * larger than the second. A set but invalid value throws (the caller refuses the feature).
+ */
+export function retentionFromEnv(env: NodeJS.ProcessEnv): Retention {
+  const days = (name: string, dflt: number): number => {
+    const v = env[name];
+    if (v === undefined || v === '') return dflt * DAY_MS;
+    if (!/^\d+$/.test(v) || Number(v) < 1 || Number(v) > RETENTION_MAX_DAYS)
+      throw new Error(`${name} must be a whole number of days from 1 to ${RETENTION_MAX_DAYS}`);
+    return Number(v) * DAY_MS;
+  };
+  const notApprovedMs = days(
+    'TBI_SIGNUP_RETENTION_PENDING_DAYS',
+    DEFAULT_RETENTION.notApprovedMs / DAY_MS,
+  );
+  const maxMs = days('TBI_SIGNUP_RETENTION_MAX_DAYS', DEFAULT_RETENTION.maxMs / DAY_MS);
+  if (notApprovedMs > maxMs)
+    throw new Error(
+      'TBI_SIGNUP_RETENTION_PENDING_DAYS must not exceed TBI_SIGNUP_RETENTION_MAX_DAYS',
+    );
+  return { notApprovedMs, maxMs };
+}
 
 export class StoreError extends Error {
   constructor(readonly code: 'unsafe_dir' | 'not_found' | 'corrupt' | 'full') {
@@ -284,22 +326,23 @@ export class PendingStore {
   }
 
   /**
-   * Deletes records past their retention (by last update); returns the ids removed. Each
-   * candidate is re-read and re-judged under the per-id lock shared with the approver
-   * (locks.ts), so a record approved, rejected or resent meanwhile is never unlinked.
+   * Deletes records past their retention (see `Retention`, counted from `createdAt`); returns the
+   * ids removed. `horizonMs` is the time until the next purge run: a record whose deadline falls
+   * before that run is deleted now, so "within N days" holds although the purge is periodic.
+   * Each candidate is re-read and re-judged under the per-id lock shared with the approver
+   * (locks.ts), so a record approved, rejected or resent meanwhile is judged by its new status.
+   * A record whose creation time cannot be read is deleted (it can never be shown to meet a limit).
    */
-  async purge(retention: Retention = DEFAULT_RETENTION): Promise<string[]> {
+  async purge(retention: Retention = DEFAULT_RETENTION, horizonMs = 0): Promise<string[]> {
     const t = this.now();
     const expired = (r: SignupRecord): boolean => {
       const limit =
-        r.status === 'rejected'
-          ? retention.rejectedMs
-          : r.status === 'pending'
-            ? retention.pendingMs
-            : r.status === 'email_sent'
-              ? retention.doneMs
-              : Infinity; // approved / email_queued / email_failed need the owner's attention, never auto-deleted
-      return t - Date.parse(r.updatedAt) > limit;
+        r.status === 'pending' || r.status === 'rejected'
+          ? Math.min(retention.notApprovedMs, retention.maxMs)
+          : retention.maxMs;
+      const created = Date.parse(r.createdAt);
+      if (!Number.isFinite(created)) return true;
+      return t + horizonMs - created >= limit;
     };
     const removed: string[] = [];
     for (const candidate of await this.list()) {

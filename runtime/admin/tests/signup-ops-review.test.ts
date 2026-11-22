@@ -181,7 +181,7 @@ describe('purge never unlinks a record an approver operation holds (MEDIUM-3)', 
     const store = new PendingStore(join(root, 'p'), { now: () => t });
     await store.init();
     const rec = await store.create({ ...GOOD, lang: 'he', consent: true });
-    t += DEFAULT_RETENTION.pendingMs + 86_400_000; // past the pending retention
+    t += DEFAULT_RETENTION.notApprovedMs + 86_400_000; // past the pending retention
 
     // Purge lists first (sees the old pending record), then stalls before deciding.
     const listed = deferred();
@@ -230,7 +230,7 @@ describe('purge never unlinks a record an approver operation holds (MEDIUM-3)', 
     const store = new PendingStore(join(root, 'p'), { now: () => t });
     await store.init();
     const rec = await store.create({ ...GOOD, lang: 'he', consent: true });
-    t += DEFAULT_RETENTION.pendingMs + 1;
+    t += DEFAULT_RETENTION.notApprovedMs + 1;
     expect(await store.purge()).toEqual([rec.id]);
   });
 });
@@ -277,6 +277,7 @@ function intakeFiles() {
       TBI_SIGNUP_TELEGRAM_CHAT_ID: '42',
       TBI_SIGNUP_ADMIN_LINK: 'https://admin.example.invalid/signups',
       TBI_SIGNUP_LISTEN: '127.0.0.1:0',
+      TBI_SIGNUP_SOURCE_HEADER: 'x-forwarded-for',
       TBI_SIGNUP_QUIET: 'off', // real clock here; quiet hours are tested with an injected clock
     } as Record<string, string>,
   };
@@ -308,16 +309,16 @@ function post(port: number, body: unknown, over: Record<string, string> = {}) {
 }
 
 describe('intake start: header report, token format, secret modes (LOW-4, LOW-7, LOW-8)', () => {
-  it('warns at start when the source header is not configured explicitly; silent when it is', async () => {
+  it('an unset source header is a config error (nothing starts); a set one starts quietly', async () => {
     const f = intakeFiles();
-    const a: string[] = [];
-    running.push(await startIntake(cfgOf(f.env), io(a)));
-    expect(a.join('\n')).toContain('source_header_default');
+    const e = { ...f.env };
+    delete e.TBI_SIGNUP_SOURCE_HEADER;
+    expect(intakeConfigFromEnv(e)).toMatchObject({ enabled: false, error: true });
     const b: string[] = [];
     running.push(
       await startIntake(cfgOf({ ...f.env, TBI_SIGNUP_SOURCE_HEADER: 'X-Real-IP' }), io(b)),
     );
-    expect(b.join('\n')).not.toContain('source_header_default');
+    expect(b.join('\n')).not.toContain('source_header');
   });
 
   it('reports (throttled) when requests arrive without a valid source header', async () => {

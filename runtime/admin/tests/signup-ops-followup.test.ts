@@ -146,6 +146,7 @@ describe('N2: intake drains stale deferred alerts at start', () => {
       TBI_SIGNUP_TELEGRAM_CHAT_ID: '42',
       TBI_SIGNUP_ADMIN_LINK: 'https://admin.example.invalid/signups',
       TBI_SIGNUP_LISTEN: '127.0.0.1:0',
+      TBI_SIGNUP_SOURCE_HEADER: 'x-forwarded-for',
       TBI_SIGNUP_QUIET: 'off',
     });
     if (!cfg.enabled) throw new Error('config');

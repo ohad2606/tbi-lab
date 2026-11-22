@@ -4,7 +4,8 @@
  *
  *   TBI_SIGNUP_DIR          the pending store (absolute; created 0700)
  *   TBI_SIGNUP_HMAC_FILE    file with the shared secret (>= 32 bytes); read by the intake process only
- *   TBI_SIGNUP_SOURCE_HEADER  header the trusted proxy sets to the client address (default x-forwarded-for, last hop)
+ *   TBI_SIGNUP_SOURCE_HEADER  header the trusted proxy sets to the client address (last hop); REQUIRED
+ *                           once the feature is on (no default: fail closed, design §3)
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { isIP } from 'node:net';
@@ -29,11 +30,14 @@ export function signupConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Signu
   if (!dir || !hmacFile) return null; // feature off
   if (!dir.startsWith('/') || !hmacFile.startsWith('/'))
     throw new Error('TBI_SIGNUP_DIR and TBI_SIGNUP_HMAC_FILE must be absolute paths');
-  return {
-    dir,
-    hmacFile,
-    sourceHeader: (env.TBI_SIGNUP_SOURCE_HEADER ?? 'x-forwarded-for').toLowerCase(),
-  };
+  const sourceHeader = parseSourceHeader(env.TBI_SIGNUP_SOURCE_HEADER);
+  if (!sourceHeader) throw new Error('TBI_SIGNUP_SOURCE_HEADER is required (a header name)');
+  return { dir, hmacFile, sourceHeader };
+}
+
+/** A configured header name (token characters, at most 64), lower-cased; null when unset or malformed. */
+export function parseSourceHeader(v: string | undefined): string | null {
+  return v && /^[A-Za-z0-9-]{1,64}$/.test(v) ? v.toLowerCase() : null;
 }
 
 /**

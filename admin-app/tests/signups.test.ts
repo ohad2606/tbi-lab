@@ -5,6 +5,8 @@ import { LOCALES, isMessageKey } from '../src/i18n.js';
 import {
   canResend,
   focusAfterRemoval,
+  isOpenSignup,
+  signupRowKind,
   signupCountKey,
   parseRoute,
   section,
@@ -22,6 +24,7 @@ const rec = (status: string, accountAdded = false): SignupRecord => ({
   accountAdded,
   emailAttempts: 0,
   lastError: null,
+  emailSendAfter: null,
   createdAt: '2026-11-01T10:00:00Z',
 });
 
@@ -36,6 +39,50 @@ describe('sign-up requests view logic', () => {
     expect(canResend(rec('email_failed', true))).toBe(true);
     expect(canResend(rec('approved', true))).toBe(true);
     expect(canResend(rec('approved', false))).toBe(false);
+  });
+  it('row kinds: decide, retry the account step, resend, queued (no action)', () => {
+    expect(signupRowKind(rec('pending'))).toBe('decide');
+    expect(signupRowKind(rec('approved', false))).toBe('retry');
+    expect(signupRowKind(rec('approved', true))).toBe('resend');
+    expect(signupRowKind(rec('email_failed', true))).toBe('resend');
+    expect(signupRowKind(rec('email_queued', true))).toBe('queued');
+    for (const st of ['pending', 'approved', 'email_queued', 'email_failed'])
+      expect(isOpenSignup(rec(st, true)), st).toBe(true);
+    for (const st of ['email_sent', 'rejected', ''])
+      expect(isOpenSignup(rec(st, true)), st).toBe(false);
+    for (const l of LOCALES)
+      for (const k of [
+        'console.signups.status.pending',
+        'console.signups.status.accountPending',
+        'console.signups.status.emailFailed',
+        'console.signups.status.emailQueued',
+        'console.signups.sendAfter',
+      ])
+        expect(l.messages[k as keyof typeof l.messages], `${l.code} ${k}`).toBeTruthy();
+  });
+  it('the unused status label key is gone', () => {
+    expect(isMessageKey('console.signups.status.label')).toBe(false);
+  });
+  it('a done outcome whose request is still open keeps the row, updated', () => {
+    const queued = interpretSignup(200, {
+      record: rec('email_queued', true),
+      note: 'email_queued',
+    });
+    expect(signupOutcomeView(queued, 'approve')).toMatchObject({
+      key: 'console.signups.done.approve.email_queued',
+      removed: false,
+      ok: true,
+      record: { status: 'email_queued' },
+    });
+    const unknown = interpretSignup(200, {
+      record: rec('approved', true),
+      note: 'email_not_resent',
+    });
+    const u = signupOutcomeView(unknown, 'approve');
+    expect(u.removed).toBe(false);
+    expect(u.record && signupRowKind(u.record)).toBe('resend');
+    const sent = interpretSignup(200, { record: rec('email_sent', true) });
+    expect(signupOutcomeView(sent, 'resend')).toMatchObject({ removed: true, record: null });
   });
   it('count message: singular for one, plural otherwise, in both locales', () => {
     expect(signupCountKey(1)).toBe('console.signups.count.one');

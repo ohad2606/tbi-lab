@@ -229,33 +229,36 @@ describe('pending store', () => {
     await store.create(input);
     await expect(store.create(input)).rejects.toMatchObject({ code: 'full' });
   });
-  it('purge: rejected 30 d, pending 60 d, done 90 d; approved/failed kept; stale temp files removed', async () => {
+  it('purge: not approved (pending, rejected) 90 d, all others 365 d by creation; stale temp files removed', async () => {
     let t = Date.UTC(2026, 0, 1);
     const { dir, store } = mk({ now: () => t });
     await store.init();
     const mkRec = async (
-      status: 'pending' | 'rejected' | 'email_sent' | 'approved' | 'email_failed',
+      status: 'pending' | 'rejected' | 'email_sent' | 'approved' | 'email_failed' | 'email_queued',
     ) => {
       const r = await store.create({ ...input, email: `${status}@example.com` });
       return store.update(r.id, { status });
     };
     const rej = await mkRec('rejected');
     const pen = await mkRec('pending');
-    const done = await mkRec('email_sent');
-    const app = await mkRec('approved');
-    const fail = await mkRec('email_failed');
+    const kept = [
+      await mkRec('email_sent'),
+      await mkRec('approved'),
+      await mkRec('email_failed'),
+      await mkRec('email_queued'),
+    ].map((r) => r.id);
     const tmp = join(dir, 'x.abc.tmp');
     writeFileSync(tmp, '');
     utimesSync(tmp, new Date(t - 7200_000), new Date(t - 7200_000));
-    t += 31 * 86_400_000;
-    expect(await store.purge()).toEqual([rej.id]);
-    t += 30 * 86_400_000; // 61 d
-    expect(await store.purge()).toEqual([pen.id]);
-    t += 30 * 86_400_000; // 91 d
-    expect(await store.purge()).toEqual([done.id]);
-    t += 1000 * 86_400_000;
+    t += 89 * 86_400_000;
     expect(await store.purge()).toEqual([]);
-    expect((await store.list()).map((r) => r.id).sort()).toEqual([app.id, fail.id].sort());
     expect(readdirSync(dir).some((f) => f.endsWith('.tmp'))).toBe(false);
+    t += 86_400_000; // 90 d
+    expect((await store.purge()).sort()).toEqual([rej.id, pen.id].sort());
+    t += 274 * 86_400_000; // 364 d
+    expect(await store.purge()).toEqual([]);
+    t += 86_400_000; // 365 d
+    expect((await store.purge()).sort()).toEqual([...kept].sort());
+    expect(await store.list()).toEqual([]);
   });
 });

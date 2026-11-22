@@ -13,7 +13,8 @@ admin page and writes the email by hand. The owner keeps the decision (no auto-a
    `POST <ALPHA_HOST>/signup`.
 2. The intake stores a PENDING request and sends the owner a Telegram message: name, role, link to the admin page
    (never the email address).
-3. The admin app lists pending requests (separate slice) with Approve / Reject / Resend.
+3. The admin app lists the open requests (pending, and approved ones whose account step or email has not
+   finished, incl. a queued or failed email) with Approve / Reject / Resend.
 4. Approve = the **existing account-add path** (admin service -> spool -> root helper), then the approval email
    through the Resend HTTP API from `<SUPPORT_ADDRESS>`, Hebrew or English by the sign-up language.
    Reject sends nothing.
@@ -60,7 +61,7 @@ reputation, the secrets above.
 |---|---|
 | Anyone on the internet can POST | HMAC-SHA256 over `v1\n<timestamp>\n<nonce>\n<raw body>`; hex signature compared with `timingSafeEqual`; one generic 401 for every authentication failure (reason only in the log) |
 | Replay of a captured request | timestamp must be within 5 minutes either side; nonce (16-64 chars) is remembered for a TTL derived inside `NonceCache` as 2 x the replay window (not configurable; verification refuses a window longer than the cache's), bounded cache (full = refuse, never evict); a bad signature never consumes a nonce |
-| Resource exhaustion | body cap 4 KiB (header and stream); per-source sliding-window limit (checked BEFORE verification) and a global limit taken only AFTER the HMAC verifies, so unsigned junk from many sources cannot spend it (accepted DoS: a holder of the secret, or a flood from many sources that each stays under the source limit, still costs one HMAC per request; the proxy rate limit and request timeouts bound that; a global 429 consumes the nonce, so the sender retries with a fresh nonce); bounded key tables; store capped (`maxRecords`) |
+| Resource exhaustion | body cap 4 KiB (header and stream); per-source sliding-window limit (30 / min, checked BEFORE verification) and a global limit (200 / h) taken only AFTER the HMAC verifies, so unsigned junk from many sources cannot spend it (accepted DoS: a holder of the secret, or a flood from many sources that each stays under the source limit, still costs one HMAC per request; the proxy rate limit and request timeouts bound that; a global 429 consumes the nonce, so the sender retries with a fresh nonce); bounded key tables; store capped (`maxRecords` 5 000 in the intake). The form forwarder runs on Google's servers, so the per-source key is an address of Google's **shared** UrlFetch pool: it bounds unsigned work per source but is not a per-person limit, and other Apps Script users on that address share the bucket (worst case: our forwarder gets 429 and retries later). The global cap was 60 / h; it is now 200 / h, well above a real burst of sign-ups, because a 429 only delays (the forwarder retries) and the store cap is the final bound |
 | Spoofed client address behind the proxy | source key = the LAST hop of the header the trusted proxy appends, never the first (client-controlled) entry |
 | Spam / fake sign-ups with a valid signature (secret leak, or a spammed form) | nothing is approved automatically; strict allow-listed validation; duplicate address (non-rejected) is answered 202 but stored and notified once (atomic: in-process mutex plus an `<sha256(email)>.mark` file created with O_EXCL that holds the record id; no per-request scan of all files); owner decides |
 | Injection (log, mail, shell, path) | text fields NFC-normalised, control/format/bidi characters removed, length-bounded; email via the account path's strict address rule; ids are fixed-format and never from the request; plain-text mail only; Telegram message has no parse mode |
@@ -87,10 +88,26 @@ Operational rules added by the security review:
 - **Audit log:** `audit.log` in the store directory (0600, append-only): `<time> <id> <approve|reject|resend>
   <outcome class>`. No name, address or role. Not purged by the retention job; rotate with the host's log rotation.
 - **Store full:** `create` refuses at `maxRecords`; the intake answers 503 and logs `store failed (full)`. The owner
-  must be told: the monitoring slice alerts on that log line (and on a rising 503 count); the form script retries later.
-- **Proxy header assertion:** at start the intake process must refuse to serve if the source header is not
-  configured explicitly or the proxy cannot be shown to set it (a startup self-check request in the deploy plan);
-  falling back to the socket address behind a proxy would put every client in one rate bucket.
+  must be told: the monitoring slice alerts on that log line (and on a rising 503 count); the form script retries later
+  (see "Form forwarder" below).
+- **Proxy header assertion:** the intake process refuses to start when `TBI_SIGNUP_SOURCE_HEADER` is not set
+  explicitly (or is not a header name); there is no default. That the proxy really sets it is a startup self-check
+  request in the deploy plan; falling back to the socket address behind a proxy would put every client in one rate
+  bucket.
+- **Form forwarder (Apps Script `Code.gs`), send status and retry:** the script is bound to the response
+  spreadsheet and records each response in a tab "TBI send status" (response row, sheet id, submitted time, status,
+  attempts, last result, next attempt, alerted; no answers, no address). Statuses: `new`, `sent` (2xx), `retry`
+  (transport error, 401, 408, 429, 5xx, a configuration error), `failed` (400 / 413 / 415, 8 attempts, or the
+  response row changed), `skipped` (the answers do not map to the question titles). A time-driven trigger
+  (`retryUnsent`, every 5 minutes, installed by `installRetryTrigger`) retries due rows with backoff 5, 10, 20, 40,
+  80, 160, 320 minutes (cap 6 h; a longer `Retry-After` is honoured), at most 8 attempts (about 10.5 h). Each attempt
+  is signed afresh (new timestamp and nonce). The script lock serialises a submit and the trigger; a duplicate post
+  is harmless (the dedupe marker answers 202 and stores nothing). The script owner is emailed (MailApp, to the
+  account the triggers run as) at the 3rd failed attempt, when a row is given up or skipped, on a configuration error
+  and when the script is form-bound (unsupported: no row to record against); the mail names the row, status and
+  result code only. `ENDPOINT_URL` must be `https://` with a host (no user part), else nothing is sent (config
+  error); redirects are not followed. Rows must not be sorted or deleted while one is in `retry` (a changed row is
+  detected by its timestamp and given up, never sent with another person's answers).
 - **Server timeouts:** the intake `main` must set `server.requestTimeout`, `headersTimeout` (<= 10 s),
   `keepAliveTimeout` and a small `maxConnections`, so slow-body clients cannot hold sockets (the body cap bounds
   size, not time).
@@ -100,7 +117,9 @@ Operational rules added by the security review:
 
 Not mitigated here (accepted / owner decision): a leaked HMAC secret lets an attacker create pending requests
 (bounded by the limits, and the owner still must approve); Telegram notification may be dropped (the request is
-still stored and shown in the admin list); the form itself can be spammed independently of us.
+still stored and shown in the admin list; a deferred alert whose marker cannot be written is kept in memory, the
+marker write is retried every minute, and the alert is sent from memory when quiet hours end; only a restart
+before that loses it, with a log line); the form itself can be spammed independently of us.
 
 ## 4. Personal data and retention
 
@@ -108,10 +127,16 @@ Stored per request: name, email, role, language, consent flag, timestamps, statu
 the Telegram message has name and role only; the intake log has no personal data; the approval email is the only
 use of the address besides the allowlist add.
 
-Retention (`purge`, run on start and daily by the admin service when enabled; defaults, owner to confirm):
-rejected 30 days, never-decided 60 days, finished (`email_sent`) 90 days after the last update (the account then
-lives only in the helper's registry). `approved` and `email_failed` are never deleted automatically (they need the
-owner). Orphaned temp files older than 1 hour are removed. Whether the sign-up form itself keeps the data is a
+Retention (owner directive 2026-11-21, matching the notice published in the form; `purge`, run on start and every
+24 h by the admin service when enabled), both counted from the request's creation, never extended by an update:
+requests **not approved** (`pending`, `rejected`) are deleted within **90 days**; **every other** request
+(`approved`, `email_queued`, `email_failed`, `email_sent`) is deleted at the latest after **12 months (365 days)**,
+also one that still needs the owner. Configurable: `TBI_SIGNUP_RETENTION_PENDING_DAYS` (default 90) and
+`TBI_SIGNUP_RETENTION_MAX_DAYS` (default 365), whole days 1..365, the first not above the second; an invalid value
+disables the sign-up routes (one log line). Raising either above the published notice needs the notice changed
+first. Each run also deletes what would pass its deadline before the next run, so nothing outlives its limit
+between two runs (a stopped admin service does not purge). A record with an unreadable creation time is deleted.
+Orphaned temp files older than 1 hour are removed. Whether the sign-up form itself keeps the data is a
 separate point. Legal review of this flow (processors: the form provider, the mail provider, the messaging
 provider; consent wording; retention) is needed and is tracked outside this repository.
 
@@ -134,7 +159,7 @@ owner update. The address marker is written by the intake only.
 Plain text, HE and EN, chosen by the sign-up language. Hebrew is the owner-approved text of 2026-11-20, verbatim;
 English is a translation (pending owner OK). Greeting by the first name; a paragraph about signing in with a
 non-Google address appears only when the address is not a consumer Google mail domain (`GOOGLE_MAIL_DOMAINS` in `email.ts`); sign-off "צוות TBI Lab" / "The TBI Lab
-team" (pending owner confirmation). The lab link (`<LAB_URL>`) and the sender / reply-to (`<SUPPORT_ADDRESS>`)
+team" (approved by the owner 2026-11-22; company voice: "we", e.g. "ונעדכן אותה"). The lab link (`<LAB_URL>`) and the sender / reply-to (`<SUPPORT_ADDRESS>`)
 come from config. Never sent twice: the attempt is persisted before sending, approve never re-sends, and the mail
 provider is given an idempotency key per request.
 
@@ -147,7 +172,8 @@ JSON, `no-store`. Mutations need `content-type: application/json`, a same-origin
 | Route | Answer |
 |---|---|
 | `GET /signups` | 200 `{signups: Record[]}` all statuses |
-| `GET /signups/pending` | 200 `{signups: Record[]}` only `status: "pending"` (the admin UI list) |
+| `GET /signups/pending` | 200 `{signups: Record[]}` only `status: "pending"` |
+| `GET /signups/open` | 200 `{signups: Record[]}` `pending`, `approved`, `email_queued`, `email_failed`: the admin UI list, so a queued or failed email is still shown (with Resend) after a reload |
 | `POST /signups/<id>/approve` | 200 `{record, note?}` (`note`: `already_done` or `email_not_resent`); 202 `account_pending` (helper has not answered yet; retry); 409 `bad_state` / `email_failed_use_resend`; 502 `cap_reached` / `account_error` / `email_failed`; 404 |
 | `POST /signups/<id>/reject` | 200 `{record}`; sends nothing; 409 if already approved |
 | `POST /signups/<id>/resend` | 200 only after a failed or interrupted send for an added account; 409 otherwise |
@@ -159,8 +185,8 @@ time, also across requests. The routes sit under the gate's admin prefix (`/admi
 
 Admin service settings (all required when enabled; missing means the service refuses to start): `TBI_SIGNUP_ADMIN=1`,
 `TBI_SIGNUP_DIR`, `TBI_SIGNUP_RESEND_KEY_FILE`, `TBI_SIGNUP_FROM`, `TBI_SIGNUP_LAB_URL` (https), optional
-`TBI_SIGNUP_REPLY_TO`. When enabled the retention purge runs at start and every 24 h (rejected 30 d, pending 60 d,
-sent 90 d).
+`TBI_SIGNUP_REPLY_TO`, `TBI_SIGNUP_QUIET`, `TBI_SIGNUP_RETENTION_PENDING_DAYS`, `TBI_SIGNUP_RETENTION_MAX_DAYS`. When
+enabled the retention purge runs at start and every 24 h (see 4: not approved 90 d, everything 365 d).
 
 ### 6.2 Intake process (`runtime/admin/signup/intake-main.ts`)
 
@@ -168,7 +194,7 @@ Off unless `TBI_SIGNUP_INTAKE=1` (exit 0, one log line). With the flag set, a mi
 HMAC secret, a missing Telegram token or an unsafe store directory is a refusal to start (exit 1, class code only).
 Settings: `TBI_SIGNUP_DIR`, `TBI_SIGNUP_HMAC_FILE`, `TBI_SIGNUP_TELEGRAM_TOKEN_FILE`, `TBI_SIGNUP_TELEGRAM_CHAT_ID`,
 `TBI_SIGNUP_ADMIN_LINK` (https), `TBI_SIGNUP_LISTEN` (loopback only, default `127.0.0.1:7411`),
-`TBI_SIGNUP_SOURCE_HEADER`. Secrets are read from files, never from the environment, and never logged. Serves
+`TBI_SIGNUP_SOURCE_HEADER` (required, no default). Secrets are read from files, never from the environment, and never logged. Serves
 `POST /signup` only; SIGTERM / SIGINT close the listener.
 
 ## 7. What the owner must change on Alpha (private details later, in the private ops repo)
@@ -194,7 +220,6 @@ Nothing below has been done. All of it is an Alpha change and needs the owner in
 ## 8. Open questions for the owner
 
 - Final approval-mail wording (the draft must match the approved text) and whether Reject should optionally send a mail.
-- Retention periods (defaults above).
 - Whether the form's timezone/ordering matters for "limited places" wording; whether the cap check should refuse
   at submit time or only at approval (currently only at approval: the account helper enforces the cap, the request
   returns to pending with `cap_reached`).
@@ -209,5 +234,8 @@ HE/EN mail, the approve/reject/resend workflow with idempotency, the intake HTTP
 (loopback, fail closed), the owner routes and their wiring plus the purge schedule in the admin service's `main.ts`
 (off by default), an end-to-end test with a fake helper.
 
-Remaining (not in this slice): systemd unit for the intake, the admin UI (HE + EN, WCAG 2.2 AA), the form script, the
-owner runbook, the deploy plan. Open: owner OK of the English text and the sign-off line.
+Also done: the admin UI (HE + EN; the open list with Approve / Reject / Resend), the form script with its send
+status, retry and owner alert (`deploy/signup/apps-script/Code.gs`, its logic unit-tested against Node stand-ins for
+the Apps Script services, not run on Google), the configurable retention.
+Remaining (not in this slice): systemd unit for the intake, the owner runbook, the deploy plan. Open: owner OK of
+the English text.

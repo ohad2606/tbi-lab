@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
-  loadPendingSignups,
+  loadOpenSignups,
   signupAction,
   type Loaded,
   type SignupAction,
@@ -9,7 +9,13 @@ import {
 import { Confirm, Loading, Problem } from '../common.js';
 import { api, useConsole, useT } from '../context.js';
 import type { MessageKey } from '../i18n.js';
-import { canResend, focusAfterRemoval, signupCountKey, signupOutcomeView } from '../views.js';
+import {
+  focusAfterRemoval,
+  signupCountKey,
+  signupOutcomeView,
+  signupRowKind,
+  type SignupRowKind,
+} from '../views.js';
 
 /** A person's name inside a sentence or an accessible name: isolated, so it cannot reorder the text. */
 const isolate = (s: string) => `⁨${s}⁩`;
@@ -19,10 +25,24 @@ interface RowMessage {
   ok: boolean;
 }
 
+const STATUS_KEY: Record<SignupRowKind, MessageKey> = {
+  decide: 'console.signups.status.pending',
+  retry: 'console.signups.status.accountPending',
+  resend: 'console.signups.status.emailFailed',
+  queued: 'console.signups.status.emailQueued',
+};
+
+/** The element that takes focus in a row: its primary button, else (no action) the row itself. */
+const rowFocus = (id: string) =>
+  document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`) ??
+  document.querySelector<HTMLElement>(`[data-signup-id="${id}"][tabindex="-1"]`);
+
 /**
- * Pending sign-up requests (TBI-022 slice D, owner-only). Approve adds the account and sends the
- * email; Reject asks first and sends nothing; Resend appears only when the email failed. Every
- * outcome is a visible sentence on the row and the same sentence in a polite live region.
+ * Open sign-up requests (TBI-022, owner-only): undecided ones, and approved ones whose account or
+ * email has not finished, so a failed or queued email is still here after a reload. Approve adds
+ * the account and sends the email; Reject asks first and sends nothing; Resend appears when the
+ * email failed (or its outcome is unknown); a queued email shows its send time. Every outcome is
+ * a visible sentence on the row and the same sentence in a polite live region.
  */
 export function Signups() {
   const t = useT();
@@ -48,7 +68,7 @@ export function Signups() {
   };
 
   const reload = async () => {
-    const v = await loadPendingSignups(api);
+    const v = await loadOpenSignups(api);
     if (!alive.current) return;
     setList(v);
     setMessages({});
@@ -69,20 +89,24 @@ export function Signups() {
     if (focusId.current === undefined) return;
     const id = focusId.current;
     focusId.current = undefined;
-    const target = id
-      ? document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`)
-      : null;
+    const target = id ? rowFocus(id) : null;
     (target ?? refreshBtn.current)?.focus();
   }, [list]);
 
   // After an outcome that keeps the row (an error, or Approve turning into Resend), focus goes to
-  // that row's primary button, which may be a different element than the one that was pressed.
+  // that row's primary button, which may be a different element than the one that was pressed;
+  // a row left without an action (its email now queued) focuses its outcome sentence.
   useEffect(() => {
     const id = keptId.current;
     if (!id) return;
     keptId.current = null;
     requestAnimationFrame(() =>
-      document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`)?.focus(),
+      (
+        document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`) ??
+        document.querySelector<HTMLElement>(
+          `[data-signup-id="${id}"] [data-testid="signup-message"]`,
+        )
+      )?.focus(),
     );
   }, [keptTick]);
 
@@ -162,23 +186,24 @@ export function Signups() {
             {list.value.map((r) => {
               const working = busy === r.id;
               const msg = messages[r.id];
-              const resend = canResend(r);
+              const kind = signupRowKind(r);
               const name = isolate(r.name);
               const langKey = `console.signups.lang.${r.lang}` as MessageKey;
               return (
-                <li key={r.id} class="item" data-testid="signup-row" data-signup-id={r.id}>
+                <li
+                  key={r.id}
+                  class="item"
+                  data-testid="signup-row"
+                  data-signup-id={r.id}
+                  data-kind={kind}
+                  tabIndex={kind === 'queued' ? -1 : undefined}
+                >
                   <div class="item-head">
                     <strong>
                       <bdi dir="auto">{r.name}</bdi>
                     </strong>
                     <span class="badge" data-testid="signup-status">
-                      {t(
-                        working
-                          ? 'console.signups.status.working'
-                          : resend
-                            ? 'console.signups.status.emailFailed'
-                            : 'console.signups.status.pending',
-                      )}
+                      {t(working ? 'console.signups.status.working' : STATUS_KEY[kind])}
                     </span>
                   </div>
                   <div>
@@ -195,11 +220,17 @@ export function Signups() {
                   <div class="muted small">
                     {t('console.signups.requested', { time: date(r.createdAt) ?? '' })}
                   </div>
+                  {kind === 'queued' && r.emailSendAfter && (
+                    <div class="small" data-testid="signup-send-after">
+                      {t('console.signups.sendAfter', { time: date(r.emailSendAfter) ?? '' })}
+                    </div>
+                  )}
                   {msg && (
                     <p
                       class={`result ${msg.ok ? 'ok' : 'warn'}`}
                       data-testid="signup-message"
                       data-key={msg.key}
+                      tabIndex={-1}
                     >
                       {t(msg.key, { name })}
                     </p>
@@ -224,9 +255,9 @@ export function Signups() {
                     >
                       <p>{t('console.signups.confirm.body')}</p>
                     </Confirm>
-                  ) : (
+                  ) : kind === 'queued' ? null : (
                     <div class="actions">
-                      {resend ? (
+                      {kind === 'resend' ? (
                         <button
                           type="button"
                           class="button button-primary"
@@ -253,17 +284,19 @@ export function Signups() {
                           >
                             {t('console.signups.approve')}
                           </button>
-                          <button
-                            type="button"
-                            class="button button-danger"
-                            data-act="reject"
-                            data-testid="signup-reject"
-                            aria-label={t('console.signups.rejectFor', { name })}
-                            aria-disabled={busy ? 'true' : undefined}
-                            onClick={() => !busy && setConfirming(r.id)}
-                          >
-                            {t('console.signups.reject')}
-                          </button>
+                          {kind === 'decide' && (
+                            <button
+                              type="button"
+                              class="button button-danger"
+                              data-act="reject"
+                              data-testid="signup-reject"
+                              aria-label={t('console.signups.rejectFor', { name })}
+                              aria-disabled={busy ? 'true' : undefined}
+                              onClick={() => !busy && setConfirming(r.id)}
+                            >
+                              {t('console.signups.reject')}
+                            </button>
+                          )}
                         </>
                       )}
                     </div>

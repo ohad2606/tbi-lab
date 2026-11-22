@@ -15,6 +15,10 @@
  *   TBI_SIGNUP_REPLY_TO          optional reply-to (default: the sender)
  *   TBI_SIGNUP_QUIET             quiet hours `HH:MM-HH:MM` Israel time (default 23:00-08:00) or `off`;
  *                                approval emails triggered inside it are queued (see quietHours.ts)
+ *   TBI_SIGNUP_RETENTION_PENDING_DAYS  requests not approved (pending, rejected) are deleted within
+ *                                this many days of creation (default 90, 1..365)
+ *   TBI_SIGNUP_RETENTION_MAX_DAYS      every other request is deleted at the latest this many days
+ *                                after creation (default 365, 1..365; not below the first)
  */
 import { errorClass } from './errors.js';
 import { RESEND_KEY_RE, ResendSender, type EmailSender } from './email.js';
@@ -23,7 +27,13 @@ import { parseQuiet, type QuietWindow } from './quietHours.js';
 import { SignupApprover } from './service.js';
 import { spoolAccountAdder } from './http.js';
 import { readSecretFile } from './secret-file.js';
-import { DEFAULT_RETENTION, PendingStore, StoreError, type Retention } from './store.js';
+import {
+  DEFAULT_RETENTION,
+  PendingStore,
+  retentionFromEnv,
+  StoreError,
+  type Retention,
+} from './store.js';
 import type { AdminSpool } from '../accounts.js';
 import type { Principal } from '../../identity/principal.js';
 
@@ -35,6 +45,8 @@ export interface AdminSignupConfig {
   replyTo?: string;
   /** Quiet hours (null = off). Unset (tests building a config by hand) = off. */
   quiet?: QuietWindow | null;
+  /** Retention of the store (unset: DEFAULT_RETENTION, 90 d not approved / 365 d at most). */
+  retention?: Retention;
 }
 
 export type AdminSignupConfigResult =
@@ -70,10 +82,17 @@ export function adminSignupConfigFromEnv(
   } catch (e) {
     return bad((e as Error).message);
   }
+  let retention: Retention;
+  try {
+    retention = retentionFromEnv(env);
+  } catch (e) {
+    return bad((e as Error).message);
+  }
   return {
     enabled: true,
     config: {
       quiet,
+      retention,
       dir,
       keyFile,
       from,
@@ -89,7 +108,10 @@ export interface SignupAdminWiring {
   /** The `signups` dependency of `createAdminServer`. */
   signups: { approver: (actor: Principal) => SignupApprover };
   store: PendingStore;
-  /** Runs the retention purge now and then daily; returns the stop function. */
+  /**
+   * Runs the retention purge now and then daily; returns the stop function. Each run also deletes
+   * what would pass its deadline before the next run, so no record outlives its retention.
+   */
   startPurge(): () => void;
   /**
    * Sends the queued approval emails whose quiet hours are over, now and every minute; returns
@@ -133,7 +155,10 @@ export async function wireSignupAdmin(
     });
   const runPurge = async () => {
     try {
-      const removed = await store.purge(io.retention ?? DEFAULT_RETENTION);
+      const removed = await store.purge(
+        io.retention ?? c.retention ?? DEFAULT_RETENTION,
+        PURGE_INTERVAL_MS,
+      );
       io.log(`signup: purge removed ${removed.length}`);
     } catch (e) {
       io.log(`signup: purge failed (${errorClass(e)})`);

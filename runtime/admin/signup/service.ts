@@ -97,7 +97,11 @@ export class SignupIntake {
       try {
         await this.d.store.markNotifyPending(rec.id);
       } catch (e) {
-        this.d.log?.(`signup: notify defer failed (${errorClass(e)})`);
+        // Never lost silently: kept in memory, the marker is written again by the next drain, and
+        // when quiet hours end the alert is sent from memory if the marker still could not be.
+        // (Only a restart before either happens loses it; the request stays in the admin list.)
+        this.unpersisted.add(rec.id);
+        this.d.log?.(`signup: notify defer failed (${errorClass(e)}); kept in memory`);
       }
     } else if (this.d.notifier) {
       try {
@@ -112,22 +116,39 @@ export class SignupIntake {
   }
 
   private draining = false;
+  /** Deferred alerts whose marker could not be written (see submit). */
+  private readonly unpersisted = new Set<string>();
 
   /**
    * Sends the alerts deferred by quiet hours, once the window is over. The deferral marker is
    * removed BEFORE the send (a crash or a failure never causes a second alert; a failed alert is
    * not retried, as for an immediate one). Requests already decided by the owner are not alerted.
+   * Deferrals whose marker write failed are retried on every call (also inside quiet hours) and,
+   * once quiet hours are over, sent from memory if the marker still is not there.
    * Returns the number of alerts attempted.
    */
   async drainNotifications(): Promise<number> {
     const now = (this.d.now ?? Date.now)();
-    if (!this.d.notifier || this.draining || isQuiet(now, this.d.quiet ?? null)) return 0;
+    if (!this.d.notifier || this.draining) return 0;
     this.draining = true;
     let n = 0;
     try {
-      for (const r of await this.d.store.list()) {
-        if (!r.notifyPending) continue;
-        await this.d.store.clearNotifyPending(r.id);
+      for (const id of [...this.unpersisted]) {
+        try {
+          await this.d.store.markNotifyPending(id);
+          this.unpersisted.delete(id);
+        } catch {
+          /* still in memory; logged once at submit */
+        }
+      }
+      if (isQuiet(now, this.d.quiet ?? null)) return 0;
+      const records = await this.d.store.list();
+      // Removed from memory only after a successful list: ids whose record is gone are dropped.
+      const fromMemory = new Set(this.unpersisted);
+      this.unpersisted.clear();
+      for (const r of records) {
+        if (!r.notifyPending && !fromMemory.has(r.id)) continue;
+        if (r.notifyPending) await this.d.store.clearNotifyPending(r.id);
         if (r.notified || r.status !== 'pending') continue;
         n++;
         try {

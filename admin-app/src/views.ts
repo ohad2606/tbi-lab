@@ -280,6 +280,24 @@ export function unread(reports: ReportMeta[], seen: ReadonlySet<string>) {
 export const canResend = (r: SignupRecord): boolean =>
   r.status === 'email_failed' || (r.status === 'approved' && r.accountAdded);
 
+/** The statuses the server's open list holds (runtime/admin/signup/store.ts OPEN_STATUSES). */
+const OPEN = ['pending', 'approved', 'email_queued', 'email_failed'];
+/** The request still needs the owner (or is in flight), so its row stays on the screen. */
+export const isOpenSignup = (r: SignupRecord): boolean => OPEN.includes(r.status);
+
+/**
+ * What a row shows and offers: `decide` (Approve + Reject), `retry` (the account step has not
+ * finished: Approve again), `resend` (the email failed or its outcome is unknown), `queued` (the
+ * email waits for quiet hours to end: a status only, the drain sends it, nothing to press).
+ */
+export type SignupRowKind = 'decide' | 'retry' | 'resend' | 'queued';
+export function signupRowKind(r: SignupRecord): SignupRowKind {
+  if (r.status === 'email_queued') return 'queued';
+  if (canResend(r)) return 'resend';
+  if (r.status === 'approved') return 'retry';
+  return 'decide';
+}
+
 /** The text for one outcome: its key (in console.signups.*) and whether the row leaves the list. */
 export function signupOutcomeView(
   o: SignupOutcome,
@@ -290,11 +308,14 @@ export function signupOutcomeView(
       // A queued email must never read as "sent", for approve and for resend alike.
       const note =
         o.note && (action === 'approve' || o.note === 'email_queued') ? `.${o.note}` : '';
+      // A request that is still open (its email queued, or a send whose outcome is unknown)
+      // keeps its row, updated, so it looks the same as after a reload.
+      const keep = o.record !== null && isOpenSignup(o.record);
       return {
         key: `console.signups.done.${action}${note}`,
-        removed: true,
+        removed: !keep,
         ok: true,
-        record: null,
+        record: keep ? o.record : null,
       };
     }
     case 'account_pending':
@@ -330,7 +351,7 @@ export function focusAfterRemoval(ids: readonly string[], removed: string): stri
   return ids[i + 1] ?? ids[i - 1] ?? null;
 }
 
-/** The count message for n pending requests: singular for exactly one, else the plural form. */
+/** The count message for n open requests: singular for exactly one, else the plural form. */
 export function signupCountKey(
   n: number,
 ): 'console.signups.count.one' | 'console.signups.count.other' {

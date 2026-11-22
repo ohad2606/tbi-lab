@@ -263,6 +263,16 @@ describe('approval email', () => {
     expect(en.text).toContain('limited number of simultaneous places');
     expect(en.text.endsWith('Good luck,\nThe TBI Lab team')).toBe(true);
   });
+  it('company voice (owner 2026-11-22): the non-Google paragraph says "we" in both languages', () => {
+    const he = approvalEmail('he', { name: 'D', email: 'd@example.com' }, { labUrl: URL_ });
+    expect(he.text).toContain(
+      'אם הכתובת שאיתה נרשמת אינה חשבון Google והכניסה לא מצליחה, אפשר להשיב למייל הזה עם כתובת Gmail, ונעדכן אותה.',
+    );
+    expect(he.text).not.toContain('אעדכן');
+    const en = approvalEmail('en', { name: 'D', email: 'd@example.com' }, { labUrl: URL_ });
+    expect(en.text).toContain("with a Gmail address and we'll update it.");
+    expect(en.text).not.toMatch(/\bI('ll| will| am|'m)\b/);
+  });
   it('the non-Google paragraph appears only for addresses outside GOOGLE_MAIL_DOMAINS', () => {
     for (const lang of ['he', 'en'] as const) {
       const key = lang === 'he' ? 'אינה חשבון Google' : "isn't a Google account";
@@ -486,18 +496,23 @@ describe('spool adapter and config', () => {
     expect(submitted[0]).toEqual({ action: 'add', email: 'a@example.com', displayName: 'Dana' });
     expect(submitted[1]).toEqual({ action: 'add', email: 'a@example.com' });
   });
-  it('the feature is off unless both variables are set', () => {
+  it('the feature is off unless both variables are set; then the source header is required', () => {
     expect(signupConfigFromEnv({})).toBeNull();
     expect(signupConfigFromEnv({ TBI_SIGNUP_DIR: '/x' })).toBeNull();
     expect(signupConfigFromEnv({ TBI_SIGNUP_HMAC_FILE: '/x' })).toBeNull();
     expect(() =>
       signupConfigFromEnv({ TBI_SIGNUP_DIR: 'rel', TBI_SIGNUP_HMAC_FILE: '/x' }),
     ).toThrow();
-    expect(signupConfigFromEnv({ TBI_SIGNUP_DIR: '/a', TBI_SIGNUP_HMAC_FILE: '/b' })).toEqual({
-      dir: '/a',
-      hmacFile: '/b',
-      sourceHeader: 'x-forwarded-for',
-    });
+    expect(() => signupConfigFromEnv({ TBI_SIGNUP_DIR: '/a', TBI_SIGNUP_HMAC_FILE: '/b' })).toThrow(
+      /TBI_SIGNUP_SOURCE_HEADER/,
+    );
+    expect(
+      signupConfigFromEnv({
+        TBI_SIGNUP_DIR: '/a',
+        TBI_SIGNUP_HMAC_FILE: '/b',
+        TBI_SIGNUP_SOURCE_HEADER: 'X-Forwarded-For',
+      }),
+    ).toEqual({ dir: '/a', hmacFile: '/b', sourceHeader: 'x-forwarded-for' });
   });
 });
 

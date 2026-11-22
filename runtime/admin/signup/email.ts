@@ -34,8 +34,8 @@ function isGoogleMail(email: string): boolean {
 }
 
 /**
- * HE: the owner-approved text (2026-11-20), verbatim. EN: translation pending owner OK.
- * The sign-off line is pending owner confirmation. The extra paragraph about a non-Google address
+ * HE: the owner-approved text (2026-11-20), with the owner's change of 2026-11-22 (company voice:
+ * "ונעדכן", we). EN: translation pending owner OK. Sign-off approved by the owner 2026-11-22. The extra paragraph about a non-Google address
  * appears only when the address is not in GOOGLE_MAIL_DOMAINS.
  */
 export function approvalEmail(
@@ -61,14 +61,14 @@ export function approvalEmail(
         '',
         ...(extra
           ? [
-              'אם הכתובת שאיתה נרשמת אינה חשבון Google והכניסה לא מצליחה, אפשר להשיב למייל הזה עם כתובת Gmail, ואעדכן אותה.',
+              'אם הכתובת שאיתה נרשמת אינה חשבון Google והכניסה לא מצליחה, אפשר להשיב למייל הזה עם כתובת Gmail, ונעדכן אותה.',
               '',
             ]
           : []),
         'כל משוב, תקלה או רעיון יעזרו לנו מאוד. אפשר פשוט להשיב למייל הזה.',
         '',
         'בהצלחה,',
-        'צוות TBI Lab', // sign-off pending owner confirmation
+        'צוות TBI Lab', // sign-off approved by the owner 2026-11-22
       ].join('\n'),
     };
   }
@@ -95,7 +95,7 @@ export function approvalEmail(
       'Any feedback, bug or idea helps us a lot. Just reply to this email.',
       '',
       'Good luck,',
-      'The TBI Lab team', // sign-off pending owner confirmation
+      'The TBI Lab team', // sign-off approved by the owner 2026-11-22
     ].join('\n'),
   };
 }

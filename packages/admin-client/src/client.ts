@@ -511,6 +511,8 @@ export interface SignupRecord {
   accountAdded: boolean;
   emailAttempts: number;
   lastError: string | null;
+  /** While `email_queued`: when the email may go out (quiet hours end); else null. */
+  emailSendAfter: string | null;
   createdAt: string;
 }
 
@@ -553,13 +555,17 @@ function signupRecord(v: unknown): SignupRecord | null {
     accountAdded: v.accountAdded === true,
     emailAttempts: typeof v.emailAttempts === 'number' ? v.emailAttempts : 0,
     lastError: typeof v.lastError === 'string' ? v.lastError : null,
+    emailSendAfter: typeof v.emailSendAfter === 'string' ? v.emailSendAfter : null,
     createdAt: str(v.createdAt),
   };
 }
 
-/** The pending requests, oldest first. 404 (the feature is off on the server) is "unavailable". */
-export async function loadPendingSignups(fetchFn: Fetch): Promise<Loaded<SignupRecord[]>> {
-  const r = await request(fetchFn, '/signups/pending');
+/**
+ * The open requests (pending, approved, email queued or failed: everything that still needs the
+ * owner), oldest first. 404 (the feature is off on the server) is "unavailable".
+ */
+export async function loadOpenSignups(fetchFn: Fetch): Promise<Loaded<SignupRecord[]>> {
+  const r = await request(fetchFn, '/signups/open');
   if (r.status === 404) return { ok: false, error: 'unavailable' };
   if (r.status !== 200) return { ok: false, error: loadError(r.status) };
   if (!isObj(r.body) || !Array.isArray(r.body.signups)) return { ok: false, error: 'network' };
