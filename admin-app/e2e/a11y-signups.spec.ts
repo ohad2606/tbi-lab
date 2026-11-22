@@ -60,7 +60,15 @@ async function open(page: Page, context: BrowserContext, baseURL: string, lang: 
 
 /** Press Tab until the focused element matches, like a keyboard user (bounded). */
 async function tabTo(page: Page, testid: string, within?: string) {
-  for (let i = 0; i < 40; i++) {
+  // Let the list render and settle first: Tabbing during hydration/re-render
+  // loses the focus position and can walk past the target.
+  const target = within
+    ? page.locator(`[data-signup-id="${within}"]`).getByTestId(testid)
+    : page.getByTestId(testid).first();
+  await expect(target).toBeVisible();
+  await expect(target).toBeEnabled();
+  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
+  for (let i = 0; i < 60; i++) {
     await page.keyboard.press('Tab');
     const hit = await page.evaluate(
       ([id, scope]) => {
