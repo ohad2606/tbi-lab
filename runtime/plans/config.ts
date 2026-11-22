@@ -10,6 +10,13 @@ export const PLAN_IDS: readonly PlanId[] = ['free', 'advanced', 'pro', 'legacy']
 export type Mode = 'standard' | 'deep';
 export type PeriodAnchor = 'calendar' | 'billing';
 export type PackType = 'ai300' | 'ai1000';
+export type FreeCapMode = 'fixed' | 'liftUntilFirstPaid';
+
+/** Sim-minute allowance of one plan. null = not metered by this limit (only the global caps apply). */
+export interface SimPlanConfig {
+  monthlyMinutes: number | null;
+  dailyMinutes: number | null;
+}
 
 export interface PlanConfig {
   /** null = unmetered (credits are not deducted; daily and rate limits still apply). */
@@ -43,6 +50,23 @@ export interface PlansConfig {
     monthAlertPercents: number[];
   };
   killSwitch: { autoTrigger: { enabled: boolean; multiple: number; minMicro: number } };
+  /**
+   * Sim minutes (slice 3b). leaseMs must equal the Session Host lease: billing stops at lastBeat + leaseMs.
+   * maxConcurrentPerPrincipal: live sessions one principal may hold at once (>= 1).
+   */
+  sim: { leaseMs: number; maxConcurrentPerPrincipal: number; plans: Record<PlanId, SimPlanConfig> };
+  /** Fair queue (slice 3b). Memory only. rank: lower = served first. The host cap is NOT here (host config). */
+  queue: {
+    freeSlotCap: number;
+    freeCapMode: FreeCapMode;
+    maxWaitMs: number;
+    vanishMs: number;
+    maxLength: number;
+    /** most waiting Free entries; at most maxLength - 1, so a paid user can always join the queue */
+    maxFree: number;
+    freeCooldownMs: number;
+    rank: Record<PlanId, number>;
+  };
 }
 
 export const DEFAULT_CONFIG: PlansConfig = {
@@ -100,6 +124,30 @@ export const DEFAULT_CONFIG: PlansConfig = {
     monthAlertPercents: [50, 80],
   },
   killSwitch: { autoTrigger: { enabled: false, multiple: 3, minMicro: 1000000 } },
+  // PLACEHOLDER defaults from limits-spec 1 (MKT-007): Free 60, Advanced 900, Pro 2400 min/month;
+  // legacy has no monthly meter. No daily sim cap is specified: null.
+  sim: {
+    leaseMs: 30000,
+    maxConcurrentPerPrincipal: 1,
+    plans: {
+      free: { monthlyMinutes: 60, dailyMinutes: null },
+      advanced: { monthlyMinutes: 900, dailyMinutes: null },
+      pro: { monthlyMinutes: 2400, dailyMinutes: null },
+      legacy: { monthlyMinutes: null, dailyMinutes: null },
+    },
+  },
+  // D-3: Free at most 4 slots, max wait 10 min. PROPOSAL: bound 20, Free cooldown 60 s. Lease 30 s (R4.3).
+  queue: {
+    freeSlotCap: 4,
+    freeCapMode: 'fixed',
+    maxWaitMs: 600000,
+    vanishMs: 30000,
+    maxLength: 20,
+    // PROPOSAL: maxLength - 4 (4 places always kept for paid users)
+    maxFree: 16,
+    freeCooldownMs: 60000,
+    rank: { pro: 0, advanced: 1, legacy: 1, free: 2 },
+  },
 };
 
 export class ConfigError extends Error {
@@ -122,6 +170,8 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
 
 /** Keys whose numbers must be integers (credits, micro-USD, ms, days, counts, token counts). */
 const NON_INTEGER_OK = new Set(['maxUsedFraction']);
+/** Number keys that may also be null (= not metered by that limit). */
+const NULLABLE = new Set(['monthlyCredits', 'monthlyMinutes', 'dailyMinutes']);
 
 function merge(base: unknown, over: unknown, path: string): unknown {
   if (over === undefined) return structuredClone(base);
@@ -142,7 +192,7 @@ function merge(base: unknown, over: unknown, path: string): unknown {
     if (over === null) return null;
     return merge(0, over, path);
   }
-  if (over === null && path.endsWith('.monthlyCredits')) return null;
+  if (over === null && NULLABLE.has(path.split('.').pop() ?? '')) return null;
   if (typeof base !== typeof over) throw new ConfigError(`${path}: expected ${typeof base}`);
   if (typeof over === 'number') {
     const key = path.split('.').pop() ?? '';
@@ -171,6 +221,14 @@ export function parseConfig(overrides: unknown = {}): PlansConfig {
     if (p.periodAnchor !== 'calendar' && p.periodAnchor !== 'billing')
       throw new ConfigError(`plans.${id}.periodAnchor: must be calendar or billing`);
   }
+  if (cfg.queue.freeCapMode !== 'fixed' && cfg.queue.freeCapMode !== 'liftUntilFirstPaid')
+    throw new ConfigError('queue.freeCapMode: must be fixed or liftUntilFirstPaid');
+  for (const k of ['leaseMs', 'maxConcurrentPerPrincipal'] as const)
+    if (cfg.sim[k] < 1) throw new ConfigError(`sim.${k}: must be at least 1`);
+  for (const k of ['maxWaitMs', 'vanishMs', 'maxLength'] as const)
+    if (cfg.queue[k] < 1) throw new ConfigError(`queue.${k}: must be at least 1`);
+  if (cfg.queue.maxFree > cfg.queue.maxLength - 1)
+    throw new ConfigError('queue.maxFree: must be at most queue.maxLength - 1');
   try {
     new Intl.DateTimeFormat('en-CA', { timeZone: cfg.meter.timezone });
   } catch {

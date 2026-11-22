@@ -18,44 +18,45 @@ import type { PlanEvent } from './events.js';
 export type StoreProblem =
   { kind: 'torn_tail'; detail: string; validBytes: number } | { kind: 'corrupt'; detail: string };
 
-export interface LoadResult {
-  events: PlanEvent[];
+export interface LoadResult<E = PlanEvent> {
+  events: E[];
   problem?: StoreProblem;
 }
 
-export interface Store {
-  append(events: PlanEvent[]): Promise<void>;
-  load(): Promise<LoadResult>;
+/** Generic over the event type so each service journal (credits/spend, sim minutes) has its own log. */
+export interface Store<E = PlanEvent> {
+  append(events: E[]): Promise<void>;
+  load(): Promise<LoadResult<E>>;
   /** Explicit recovery: drop a torn tail. Corruption in the middle is never repaired. */
   recoverTornTail?(): Promise<void>;
 }
 
-export class MemoryStore implements Store {
-  events: PlanEvent[] = [];
+export class MemoryStore<E = PlanEvent> implements Store<E> {
+  events: E[] = [];
   appendCalls = 0;
   /** test hook: throw on append call number n (1-based), or on every call when `always` */
   failOnCall: number | 'always' | null = null;
-  async append(events: PlanEvent[]): Promise<void> {
+  async append(events: E[]): Promise<void> {
     this.appendCalls += 1;
     if (this.failOnCall === 'always' || this.failOnCall === this.appendCalls)
       throw new Error('store append failed (test hook)');
     this.events.push(...structuredClone(events));
   }
-  async load(): Promise<LoadResult> {
+  async load(): Promise<LoadResult<E>> {
     return { events: structuredClone(this.events) };
   }
 }
 
 const sha = (s: string): string => createHash('sha256').update(s).digest('hex').slice(0, 16);
-export const encodeLine = (e: PlanEvent): string => {
+export const encodeLine = (e: unknown): string => {
   const json = JSON.stringify(e);
   return `${sha(json)}\t${json}\n`;
 };
 
-export class JournalStore implements Store {
+export class JournalStore<E = PlanEvent> implements Store<E> {
   constructor(private readonly path: string) {}
 
-  async append(events: PlanEvent[]): Promise<void> {
+  async append(events: E[]): Promise<void> {
     if (events.length === 0) return;
     const data = Buffer.from(events.map(encodeLine).join(''), 'utf8');
     const fd = openSync(this.path, 'a');
@@ -68,10 +69,10 @@ export class JournalStore implements Store {
     }
   }
 
-  async load(): Promise<LoadResult> {
+  async load(): Promise<LoadResult<E>> {
     if (!existsSync(this.path)) return { events: [] };
     const buf = readFileSync(this.path);
-    const events: PlanEvent[] = [];
+    const events: E[] = [];
     let pos = 0;
     while (pos < buf.length) {
       const nl = buf.indexOf(0x0a, pos);
@@ -93,7 +94,7 @@ export class JournalStore implements Store {
         };
       }
       try {
-        events.push(JSON.parse(json) as PlanEvent);
+        events.push(JSON.parse(json) as E);
       } catch {
         return {
           events,

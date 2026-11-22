@@ -54,4 +54,20 @@ describe('config strict parse', () => {
     ).toBe(0.5);
     expect(() => parseConfig({ packs: { refund: { maxUsedFraction: 1.5 } } })).toThrow(ConfigError);
   });
+  it('sim and queue sections: nullable minutes, enum mode, positive bounds', () => {
+    const c = parseConfig({
+      sim: { plans: { free: { monthlyMinutes: null, dailyMinutes: 10 } } },
+      queue: { freeCapMode: 'liftUntilFirstPaid' },
+    });
+    expect(c.sim.plans.free).toEqual({ monthlyMinutes: null, dailyMinutes: 10 });
+    expect(c.queue.freeCapMode).toBe('liftUntilFirstPaid');
+    expect(() => parseConfig({ queue: { freeCapMode: 'open' } })).toThrow(/freeCapMode/);
+    expect(() => parseConfig({ queue: { maxLength: 0 } })).toThrow(/maxLength/);
+    expect(() => parseConfig({ sim: { leaseMs: 0 } })).toThrow(/leaseMs/);
+    expect(() => parseConfig({ queue: { rank: { gold: 0 } } })).toThrow(/unknown config key/);
+    expect(() => parseConfig({ sim: { plans: { pro: { monthlyMinutes: 1.5 } } } })).toThrow(
+      /integer/,
+    );
+    expect(() => parseConfig({ queue: { freeSlotCap: null } })).toThrow(ConfigError);
+  });
 });
