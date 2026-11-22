@@ -24,6 +24,7 @@ export const en = {
   'topbar.projects': 'Projects',
   'topbar.projectName': 'Project name',
   'topbar.language': 'Language',
+  'topbar.language.beta': 'beta',
   'topbar.signOut': 'Sign out',
   'deployment.devBadge': 'DEV',
   'deployment.devBadgeTitle': 'Development environment',

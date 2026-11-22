@@ -26,6 +26,7 @@ export const he: Record<MessageKey, string> = {
   'topbar.projects': 'פרויקטים',
   'topbar.projectName': 'שם הפרויקט',
   'topbar.language': 'שפה',
+  'topbar.language.beta': 'בטא',
   'topbar.signOut': 'יציאה',
   'deployment.devBadge': 'DEV',
   'deployment.devBadgeTitle': 'סביבת פיתוח',
