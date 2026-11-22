@@ -12,7 +12,7 @@ says why; it never fakes a result.
 
 ## Getting in
 
-1. Open the alpha address you received, with a desktop browser (Chrome, Edge or Firefox), on a
+1. Open the alpha address you received, with a desktop browser (Chrome or Edge), on a
    screen at least 1024 pixels wide.
 2. Sign in with the Google account whose address you gave us. Other accounts are refused.
 3. The Projects screen shows a short **Getting started** guide: three steps from an example to a
