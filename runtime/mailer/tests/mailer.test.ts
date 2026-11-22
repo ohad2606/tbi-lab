@@ -18,7 +18,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { approvalEmail } from '../../admin/signup/email.js';
+import { approvalEmail, greetingName } from '../../admin/signup/email.js';
 import type { FetchLike } from '../../admin/signup/notify.js';
 import { parseQuiet } from '../../admin/signup/quietHours.js';
 import { mailerConfigFromEnv } from '../config.js';
@@ -238,6 +238,75 @@ describe('mailer: send', () => {
     await t.mailer.runOnce();
     expect(t.calls).toHaveLength(2);
     expect(t.calls[1]!.headers['idempotency-key']).toBe(`signup-approval-${ID}-g2`);
+  });
+});
+
+describe('greeting: the only writer-controlled text in the body', () => {
+  // The one thing a queue writer chooses that reaches the mail body is the first name token.
+  // Anything shaped like a link or an address falls back to a generic greeting.
+  const unsafe = [
+    'https://evil.example/login',
+    'http://x',
+    'evil.example',
+    'evil.example/login now',
+    'www.evil',
+    'wwwevil',
+    'dana@example.com',
+    'dana@evil',
+    'mailto:dana',
+    'javascript:alert',
+    'a/b',
+    'Dana.Levi',
+    'Dana2',
+    '<Dana>',
+    'x'.repeat(41),
+    '-Dana',
+    "Dana'",
+  ];
+  const safe: Array<[string, string]> = [
+    ['Dana Levi', 'Dana'],
+    ['דנה לוי', 'דנה'],
+    ['Jean-Luc Picard', 'Jean-Luc'],
+    ["O'Brien", "O'Brien"],
+    ['D\u2019Angelo', 'D\u2019Angelo'],
+    ['ז\u05F3ניה כהן', 'ז\u05F3ניה'],
+    ['José García', 'José'],
+    ['D', 'D'],
+  ];
+
+  it('keeps HE and EN first names (letters, marks, hyphen, apostrophe)', () => {
+    for (const [name, first] of safe) expect(greetingName(name), name).toBe(first);
+  });
+
+  it('refuses URL, domain, address and other non-name shapes', () => {
+    for (const name of unsafe) expect(greetingName(name), name).toBeNull();
+  });
+
+  it('the mail falls back to a generic greeting and never carries the token', () => {
+    for (const name of unsafe) {
+      const en = approvalEmail('en', { name, email: EMAIL }, { labUrl: LAB });
+      const he = approvalEmail('he', { name, email: EMAIL }, { labUrl: LAB });
+      expect(en.text.split('\n')[0], name).toBe('Hi,');
+      expect(he.text.split('\n')[0], name).toBe('שלום,');
+      expect(en.text, name).not.toContain(name.split(' ')[0]);
+      expect(he.text, name).not.toContain(name.split(' ')[0]);
+    }
+    expect(approvalEmail('en', { name: NAME, email: EMAIL }, { labUrl: LAB }).text).toMatch(
+      /^Hi Dana,\n/,
+    );
+    expect(approvalEmail('he', { name: 'דנה לוי', email: EMAIL }, { labUrl: LAB }).text).toMatch(
+      /^שלום דנה,\n/,
+    );
+  });
+
+  it('a queued URL-shaped name is sent with the generic greeting, the URL never in the body', async () => {
+    const t = setup();
+    await enqueueMail(t.queueDir, item({}, { name: 'https://evil.example/login' }));
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 1 });
+    const text = t.calls[0]!.body.text as string;
+    expect(text.startsWith('Hi,\n')).toBe(true);
+    expect(text).not.toContain('evil');
+    expectCleanLogs(t.logs);
   });
 });
 
@@ -518,6 +587,37 @@ describe('mailer: malformed queue entries are refused, never sent', () => {
     expect(t.queued()).toHaveLength(1);
   });
 
+  it('an unreadable entry (EACCES) is a skip: kept, no ledger, the class logged once per run', async () => {
+    const t = setup();
+    for (const id of [ID, ID2]) {
+      const n = `${itemKey(item({ id }))}.json`;
+      writeFileSync(join(t.queueDir, n), JSON.stringify(item({ id })), { mode: 0o640 });
+      chmodSync(join(t.queueDir, n), 0o000);
+    }
+    expect(await t.mailer.runOnce()).toMatchObject({ skipped: 2, rejected: 0, dead: 0, sent: 0 });
+    expect(t.queued()).toHaveLength(2);
+    expect(readdirSync(t.statusDir)).toEqual([]);
+    expect(t.logs).toEqual(['mailer: queue entries unreadable (EACCES); kept, not sent']);
+    expect(t.calls).toHaveLength(0);
+    // Once readable (operator fixed permissions), they are sent normally.
+    for (const n of t.queued()) chmodSync(join(t.queueDir, n), 0o640);
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 2 });
+    expectCleanLogs(t.logs);
+  });
+
+  it('a directory with a valid key name: removed when empty, else kept; no ledger, logged once', async () => {
+    const t = setup();
+    mkdirSync(join(t.queueDir, `${key}.json`));
+    const k2 = `${itemKey(item({ id: ID2 }))}.json`;
+    mkdirSync(join(t.queueDir, k2));
+    writeFileSync(join(t.queueDir, k2, 'x'), 'x');
+    expect(await t.mailer.runOnce()).toMatchObject({ skipped: 2, rejected: 0, sent: 0 });
+    expect(t.queued()).toEqual([k2]);
+    expect(readdirSync(t.statusDir)).toEqual([]);
+    expect(t.logs).toEqual(['mailer: directory entries in the queue (2); empty ones removed']);
+    expectCleanLogs(t.logs);
+  });
+
   it('stale writer temp files are removed, fresh ones kept and never read', async () => {
     const t = setup();
     writeFileSync(join(t.queueDir, '.tmp-old'), good(), { mode: 0o640 });
@@ -542,6 +642,39 @@ describe('mailer: abuse limits', () => {
     t.clock.now = DAY + 3_600_001;
     expect(await t.mailer.runOnce()).toMatchObject({ sent: 1, deferred: 0 });
     expect(t.calls).toHaveLength(4);
+  });
+});
+
+describe('mailer: rate counters survive a restart', () => {
+  it('init() rebuilds the hour/day counters from the ledgers', async () => {
+    const t = setup({ cfg: { maxPerHour: 2, maxPerDay: 3 } });
+    const led = (id: string, at: number, attempts = 1, first = at): Ledger => ({
+      v: 1,
+      key: itemKey(item({ id })),
+      status: 'sent',
+      attempts,
+      firstAttemptAt: first,
+      lastAttemptAt: at,
+      nextAt: null,
+      lastError: null,
+      updatedAt: at,
+    });
+    const w = (l: Ledger) =>
+      writeFileSync(join(t.statusDir, `${l.key}.json`), JSON.stringify(l), { mode: 0o640 });
+    // Two attempts in the last hour (one entry retried: first and last attempt both count).
+    w(led('01JD0000000000000000000010', DAY - 10 * 60_000, 2, DAY - 20 * 60_000));
+    // Older than 24 h: ignored. A junk file: ignored.
+    w(led('01JD0000000000000000000011', DAY - 25 * 3_600_000));
+    writeFileSync(join(t.statusDir, 'junk.json'), '{', { mode: 0o640 });
+    await t.mailer.init();
+    await enqueueMail(t.queueDir, item());
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 0, deferred: 1 });
+    t.clock.now = DAY + 3_600_000;
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 1 });
+    await enqueueMail(t.queueDir, item({ id: ID2 }));
+    // Day cap 3 reached (2 rebuilt + 1 sent).
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 0, deferred: 1 });
+    expectCleanLogs(t.logs);
   });
 });
 
