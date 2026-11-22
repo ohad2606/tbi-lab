@@ -4,6 +4,7 @@ import { IS_DEV_ENV, SIGN_OUT_URL } from '../deployment.js';
 import { forgetSessionConsents } from './signOut.js';
 import { openAssist } from '../assist/open.js';
 import { LOCALES } from '../i18n/i18n.js';
+import { languageOptions } from '../i18n/picker.js';
 import { AppMenu } from './AppMenu.js';
 import { useAppState, useStore, useT } from './context.js';
 import { useImportPicker } from './importFile.js';
@@ -185,9 +186,15 @@ function LanguageSelect() {
         value={state.locale.code}
         onChange={(e) => store.setLocale((e.target as HTMLSelectElement).value)}
       >
-        {LOCALES.map((l) => (
-          <option key={l.code} value={l.code} lang={l.code} dir={l.dir}>
-            {l.autonym}
+        {languageOptions(LOCALES, t('topbar.language.beta')).map((l) => (
+          <option
+            key={l.code}
+            value={l.code}
+            lang={l.lang}
+            dir={l.dir}
+            data-beta={l.beta || undefined}
+          >
+            {l.label}
           </option>
         ))}
       </select>
