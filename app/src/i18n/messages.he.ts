@@ -1302,6 +1302,33 @@ export const he: Record<MessageKey, string> = {
   'assist.ai.error.other': 'הבקשה לא הושלמה.',
   'assist.ai.error.hint.retry': 'ממצאי הסימולטור שלמעלה לא הושפעו. השתמשו ב„ניסיון חוזר”.',
   'assist.ai.error.hint.findings': 'ממצאי הסימולטור שלמעלה לא הושפעו.',
+  // TBI-017 slice 2: TBI-018 limit refusals (fallback when the service sends no text) and credits.
+  'assist.limit.ai.credits_out':
+    'השתמשתם בכל קרדיטי ה-AI שלכם לתקופה הזו. הם יתחדשו ב-{date}. ממצאי הסימולטור ממשיכים לעבוד.',
+  'assist.limit.ai.credits_out.nodate':
+    'השתמשתם בכל קרדיטי ה-AI שלכם לתקופה הזו. ממצאי הסימולטור ממשיכים לעבוד.',
+  'assist.limit.ai.credits_out_free':
+    'נגמרו קרדיטי ה-AI החינמיים שלכם לחודש הזה. הם יתחדשו ב-{date}. ממצאי הסימולטור ממשיכים לעבוד.',
+  'assist.limit.ai.credits_out_free.nodate':
+    'נגמרו קרדיטי ה-AI החינמיים שלכם לחודש הזה. ממצאי הסימולטור ממשיכים לעבוד.',
+  'assist.limit.ai.daily':
+    'הגעתם למגבלה היומית של הסברי AI. היא תתאפס מחר. ממצאי הסימולטור ממשיכים לעבוד.',
+  'assist.limit.ai.global_off':
+    'הסברי ה-AI מושהים כרגע ויחזרו בהמשך. ממצאי הסימולטור ממשיכים לעבוד. הקרדיטים שלכם לא נוצלו.',
+  'assist.limit.ai.rate': 'יותר מדי בקשות בזמן קצר. אפשר לנסות שוב בעוד {n} שניות.',
+  'assist.limit.ai.rate.nowait': 'יותר מדי בקשות בזמן קצר. המתינו רגע ונסו שוב.',
+  'assist.limit.ai.too_long':
+    'הפרויקט גדול מדי להסבר AI אחד. שום דבר לא נשלח. ממצאי הסימולטור ממשיכים לעבוד.',
+  'assist.limit.system.unavailable': 'שירות ה-AI לא זמין לרגע. לא חויבתם. נסו שוב בעוד רגע.',
+  'assist.limit.ai.deep_not_in_plan': 'סוג ההסבר הזה לא כלול במסלול שלכם. אפשר לבקש הסבר רגיל.',
+  'assist.limit.wait': 'אפשר לנסות שוב בעוד {seconds} שניות.',
+  'assist.ai.credits.left': 'קרדיטי AI שנותרו: {remaining} מתוך {total}.',
+  'assist.ai.credits.leftNoTotal': 'קרדיטי AI שנותרו: {remaining}.',
+  'assist.ai.credits.plan': 'מסלול: {plan}.',
+  'assist.ai.credits.plan.free': 'חינמי',
+  'assist.ai.credits.plan.advanced': 'מתקדם',
+  'assist.ai.credits.plan.pro': 'Pro',
+  'assist.ai.credits.plan.legacy': 'גישה מוקדמת',
   'assist.findings.notAi': 'הם מגיעים מהסימולציה, לא מ-AI.',
   'build.feature.spi': 'אפיק SPI',
   'build.feature.library': 'ספרייה {name}',

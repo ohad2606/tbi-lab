@@ -29,6 +29,7 @@ import {
 } from '../sim/format.js';
 import { analyze, assistGateway, type Analysis } from './analyze.js';
 import { aiEnabled, getStatus, type StatusResult } from './client.js';
+import { creditsText } from './limits.js';
 import {
   AiControls,
   AiFooter,
@@ -306,11 +307,18 @@ export function AssistPanel({
   const [service, setService] = useState<StatusResult | null>(null);
   const [live, setLive] = useState('');
   const liveTimer = useRef<ReturnType<typeof setTimeout>>();
+  /** A message not yet in the region: one that follows it at once is joined, not lost. */
+  const livePending = useRef('');
   /** The panel's one polite live region: cleared first, so a repeated message is heard again. */
   const announce = (text: string) => {
     clearTimeout(liveTimer.current);
+    const message = livePending.current ? `${livePending.current} ${text}` : text;
+    livePending.current = message;
     setLive('');
-    liveTimer.current = setTimeout(() => setLive(text), 120);
+    liveTimer.current = setTimeout(() => {
+      livePending.current = '';
+      setLive(message);
+    }, 120);
   };
   useEffect(() => () => clearTimeout(liveTimer.current), []);
   useEffect(() => {
@@ -349,6 +357,18 @@ export function AssistPanel({
       setService(s);
       return s;
     },
+    // Only the credits are taken from this answer (the rest of the status stays as it was); an
+    // answer without them hides the line rather than keep a number that may be old.
+    refreshCredits: async (signal) => {
+      const s = await getStatus(signal);
+      if (signal.aborted) return;
+      setService((old) => {
+        if (!old || old.kind !== 'ok') return old;
+        const { credits: _old, ...rest } = old.status;
+        const credits = s.kind === 'ok' ? s.status.credits : undefined;
+        return { kind: 'ok', status: credits ? { ...rest, credits } : rest };
+      });
+    },
     ensureContext: async () => {
       const p = phaseRef.current;
       if (p.kind === 'running') return 'busy';
@@ -357,6 +377,17 @@ export function AssistPanel({
       return a && !a.tooLarge ? a.context : a ? null : 'busy';
     },
   });
+  // The credits line is announced (politely) when the numbers change, not on open or re-render,
+  // and not on a language change (keyed on the numbers, not the text).
+  const credits = aiOn && service.kind === 'ok' ? service.status.credits : undefined;
+  const creditsKey = credits ? JSON.stringify(credits) : '';
+  // (Numbers that first arrive with the status on open are not a change: only shown ones are.)
+  const creditsSeen = useRef('');
+  useEffect(() => {
+    const before = creditsSeen.current;
+    creditsSeen.current = creditsKey;
+    if (before && credits && before !== creditsKey) announce(creditsText(state.locale, credits));
+  }, [creditsKey]);
   useEffect(() => {
     heading.current?.focus();
     return () => trigger?.focus();
@@ -448,6 +479,11 @@ export function AssistPanel({
         )}
         {aiOn && <AiControls ai={ai} blocked={phase.kind === 'running'} />}
       </div>
+      {credits && (
+        <p class="small" data-testid="ai-credits">
+          {creditsText(state.locale, credits)}
+        </p>
+      )}
       <p role="status" class="visually-hidden" data-testid="assist-live">
         {live}
       </p>

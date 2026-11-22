@@ -175,11 +175,35 @@ no animation. Needs manual SR test (NVDA+Firefox, VoiceOver) in HE: reading orde
      g. Cancel is a polite status ("The request was cancelled…"), not an alert; errors are `role=alert`, re-mounted
         per occurrence so a repeated error is announced again. The status region is cleared then set (120 ms) so a
         repeated message is re-announced.
-     h. TBI-018 `limit`/`message` are parsed by the client but not shown yet (slice 2); unknown codes show
+     h. TBI-018 `limit`/`message` are parsed by the client but not shown yet (slice 2, now built); unknown codes show
         `assist.ai.error.other`.
    - Not done here: action chooser (only A exists), limits/credits UI, feedback, "Jump to answer" link, bottom
      sheet, manual SR test.
 2. Limit/credits states from the TBI-018 shapes (mock first; works on s2 branch with `metering.enabled`), HE/EN limit text, credits line.
+   **Status 2026-11-22: built on `co/20261122-aiui-s2` (stacked on s1; mock service only, nothing enabled anywhere).**
+   - Files: `app/src/assist/limits.ts` (pure: limit code, text selection, wait, retry, credits line), `client.ts`
+     (`credits` in the status, `limit.messageKey` may be `null`), `pilot.tsx` (limit alert, wait, credits re-fetch),
+     `AssistPanel.tsx` (credits line, announcements joined), `assist.limit.ai.*`/`assist.limit.system.*`/`assist.limit.wait`,
+     `assist.ai.credits.*` keys EN+HE. Tests: `app/tests/assist-limits.test.ts`, `app/e2e/a11y-ai-limits.spec.ts`.
+   - Decisions:
+     a. Limit codes shown as "limit reached" (`data-testid=ai-limit`, `role=alert`, re-mounted per occurrence): `credits_out`,
+        `credits_out_free`, `daily`, `global_off` (kill switch / spend cap), `rate`, `too_long`, `system_unavailable`,
+        `deep_not_in_plan`. Contract errors (`invalid_state`, `messageKey:null`) and the pre-metering codes (`daily_limit`,
+        `spend_cap`, `rate_limited`, `busy`) stay plain errors (`ai-error`) as in slice 1.
+     b. Text = service `message[<UI locale>]` (locale-keyed lookup, no language branch); bidi controls dropped, numbers
+        isolated LTR, >600 chars or empty = not trusted. Fallback = client key `assist.` + the service `messageKey`
+        (`assist.limit.ai.<code>`, `assist.limit.system.unavailable`), with a variant without `{date}`/`{n}` when the param is
+        missing or malformed (never blank, never `{date}`). The fallbacks offer no purchase/upgrade (no such feature);
+        the service texts still do (TBI-018 copy, owner/commerce decision).
+     c. "Try again" only for `rate` and `system_unavailable`; Ask stays `aria-disabled` for `retryAfterMs` or, for `rate`,
+        the service's `params.n` seconds. No client retries. Focus stays on Ask.
+     d. Credits: an ADDITIVE status field the service does not send yet (proposal for runtime-dev):
+        `credits: {remaining: int>=0, total?: int>0, plan?: 'free'|'advanced'|'pro'|'legacy'}`. Shown as given
+        ("AI credits left: 12 of 30. Plan: Free."), hidden when absent/invalid; an unknown plan id is not shown. After
+        an answer or a limit refusal the status is asked again ONLY when it carried credits; only `credits` is taken from
+        that answer (missing = the line goes, never an old number). Announced in the polite region on change, not on open.
+     e. The live region joins two messages that arrive within its 120 ms swap ("Answer ready… AI credits left: …").
+   - Not done: `mode: deep` (no client control), reset/upgrade links, credits in the explain answer, manual SR test.
 3. Actions B/C: contract/2 `focus` + code excerpts gating (runtime-dev), context entry points.
 4. Feedback buttons, withdraw consent, a11y-reviewer pass, SR session.
 5. Quality eval (<= 5 USD, owner-approved) then model choice; ops activation on DEV only; Alpha = separate owner decision.
