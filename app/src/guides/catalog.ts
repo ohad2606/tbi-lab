@@ -53,6 +53,66 @@ export const GUIDES: readonly ComponentGuide[] = [
       expect: { fact: 'iAfter', exceedsFact: 'maxI' },
     },
   },
+  {
+    id: 'button',
+    part: 'component.push_button',
+    titleKey: key('button', 'title'),
+    minutes: 2,
+    exampleId: 'push-button',
+    runtime: 'none',
+    sections: [
+      section('button', 'what', ['heading', 'body']),
+      section('button', 'behaviour', ['heading', 'items.1', 'items.2', 'items.3']),
+      section('button', 'circuit', ['heading', 'body']),
+      section('button', 'tryit', ['heading', 'action', 'expect']),
+      section('button', 'limits', ['heading', 'body']),
+    ],
+    facts: {
+      supply: { kind: 'param', component: 'PSU1', param: 'setpointVoltage' },
+      r: { kind: 'param', component: 'R1', param: 'resistance' },
+      iOff: { kind: 'solve', component: 'D1', field: 'current' },
+      swOpenV: { kind: 'solve', component: 'SW1', field: 'voltage' },
+      swClosedV: { kind: 'solve', component: 'SW1', field: 'voltage', state: 'after' },
+      iOn: { kind: 'solve', component: 'D1', field: 'current', state: 'after' },
+      vOn: { kind: 'solve', component: 'D1', field: 'voltage', state: 'after' },
+    },
+    tryIt: {
+      action: { kind: 'press', component: 'SW1' },
+      expect: { fact: 'iOn' },
+    },
+  },
+  {
+    id: 'potentiometer',
+    part: 'component.potentiometer',
+    titleKey: key('potentiometer', 'title'),
+    minutes: 3,
+    exampleId: 'pot-divider',
+    runtime: 'none',
+    sections: [
+      section('potentiometer', 'what', ['heading', 'body']),
+      section('potentiometer', 'behaviour', ['heading', 'items.1', 'items.2', 'items.3']),
+      section('potentiometer', 'circuit', ['heading', 'body']),
+      section('potentiometer', 'tryit', ['heading', 'action', 'expect']),
+      section('potentiometer', 'limits', ['heading', 'body']),
+    ],
+    facts: {
+      supply: { kind: 'param', component: 'PSU1', param: 'setpointVoltage' },
+      rTotal: { kind: 'param', component: 'RV1', param: 'resistance' },
+      pos: { kind: 'param', component: 'RV1', param: 'position' },
+      vWiper: { kind: 'terminal', component: 'RV1', terminal: 'wiper' },
+      posTry: { kind: 'param', component: 'RV1', param: 'position', state: 'after' },
+      vWiperAfter: { kind: 'terminal', component: 'RV1', terminal: 'wiper', state: 'after' },
+    },
+    tryIt: {
+      action: {
+        kind: 'set-param',
+        component: 'RV1',
+        param: 'position',
+        to: { value: 25, unit: 'percent' },
+      },
+      expect: { fact: 'vWiperAfter' },
+    },
+  },
 ];
 
 export function guideById(id: string): ComponentGuide | undefined {

@@ -17,12 +17,16 @@ const T = {
     card: 'Component guides',
     open: 'Open the example',
     close: 'Close guide',
+    button: 'Push button',
+    pot: 'Potentiometer',
   },
   he: {
     title: 'נורית LED ונגד',
     card: 'מדריכי רכיבים',
     open: 'פתיחת הדוגמה',
     close: 'סגירת המדריך',
+    button: 'לחצן',
+    pot: 'פוטנציומטר',
   },
 } as const;
 
@@ -67,6 +71,31 @@ for (const lang of ['en', 'he'] as const) {
       await expect(panel).toHaveCount(0);
       await expect(opener).toBeFocused();
     });
+
+    for (const [id, field] of [
+      ['button', 'button'],
+      ['potentiometer', 'pot'],
+    ] as const) {
+      test(`G3 ${id} guide: opens from Home by keyboard, values computed and isolated, Esc returns focus`, async ({
+        page,
+      }) => {
+        await toHome(page, lang);
+        const opener = page.getByTestId(`open-guide-${id}`);
+        await opener.focus();
+        await page.keyboard.press('Enter');
+        const panel = page.getByRole('complementary', { name: T[lang][field] });
+        await expect(panel).toBeVisible();
+        await expect(panel.getByRole('heading', { level: 2 })).toBeFocused();
+        await expect(panel.getByRole('heading', { level: 3 })).toHaveCount(5);
+        await expect(page.getByTestId('guide-values-missing')).toHaveCount(0);
+        expect(await panel.locator('bdi[dir="ltr"]').count()).toBeGreaterThan(3);
+        const text = (await panel.innerText()).replace(/\s+/g, ' ');
+        expect(text).not.toMatch(/\{\w+\}/);
+        await page.keyboard.press('Escape');
+        await expect(panel).toHaveCount(0);
+        await expect(opener).toBeFocused();
+      });
+    }
 
     test('no focus trap; close button works and returns focus', async ({ page }) => {
       await toHome(page, lang);

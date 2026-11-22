@@ -29,7 +29,7 @@ describe('guide schema', () => {
   it('has the first guide, ids are unique, and only the first-release guides exist', () => {
     const ids = GUIDES.map((g) => g.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toEqual(['led-resistor']);
+    expect(ids).toEqual(['led-resistor', 'button', 'potentiometer']);
   });
   for (const g of GUIDES) {
     describe(g.id, () => {
@@ -190,6 +190,7 @@ describe('try-it verification (deterministic, test-side)', () => {
 
   it('the action applies and the displayed after-values equal an independent solve', () => {
     const a = g.tryIt.action;
+    if (a.kind !== 'set-param') throw new Error('led try-it is a parameter change');
     const r = setParam(before, a.component, a.param, a.to);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -210,5 +211,76 @@ describe('try-it verification (deterministic, test-side)', () => {
   it('the original document is not mutated by the evaluation', () => {
     const r1 = before.components.find((c) => c.id === 'R1')!.params.resistance;
     expect(r1).toEqual({ value: 220, unit: 'ohm' });
+  });
+});
+
+describe('button guide (ideal momentary switch, verified against the engine)', () => {
+  const g = GUIDES.find((x) => x.id === 'button')!;
+  const before = doc('push-button');
+  const ev = evaluateGuide(g, before);
+  const f = (n: string) => ev.facts[n]!;
+
+  it('every fact evaluates and the try-it is a press of the example button', () => {
+    for (const [n, q] of Object.entries(ev.facts)) expect(q, n).not.toBeNull();
+    expect(g.tryIt.action).toEqual({ kind: 'press', component: 'SW1' });
+    expect(ev.tryIt).toMatchObject({ applied: true, solved: true });
+  });
+  it('open: no LED current and the whole supply across the button', () => {
+    expect(f('iOff').value).toBe(0);
+    expect(f('swOpenV').value).toBeCloseTo(f('supply').value, 9);
+  });
+  it('pressed (independent session): 0 V across the contact, LED current equals the solve', () => {
+    const s = new EngineSession(createSnapshot(before));
+    expect(s.setMomentary('SW1', true)).toBeNull();
+    const o = s.solve();
+    if (!o.ok) throw new Error('solve');
+    expect(o.components.SW1!.closed).toBe(true);
+    expect(f('swClosedV').value).toBe(o.components.SW1!.voltage);
+    expect(f('swClosedV').value).toBe(0);
+    expect(f('iOn').value).toBe(o.components.D1!.current);
+    expect(f('iOn').value).toBeGreaterThan(0);
+    // The press is runtime input only: the document is untouched.
+    expect(before.components.find((c) => c.id === 'SW1')!.params).toEqual({});
+  });
+  it('the model has no rating for a switch (the limits text says none)', () => {
+    expect(ratingWarnings(createSnapshot(before), solve(before))).toEqual([]);
+  });
+});
+
+describe('potentiometer guide (linear divider, verified against the engine)', () => {
+  const g = GUIDES.find((x) => x.id === 'potentiometer')!;
+  const before = doc('pot-divider');
+  const ev = evaluateGuide(g, before);
+  const f = (n: string) => ev.facts[n]!;
+
+  it('every fact evaluates', () => {
+    for (const [n, q] of Object.entries(ev.facts)) expect(q, n).not.toBeNull();
+    expect(ev.tryIt).toMatchObject({ applied: true, solved: true });
+  });
+  it('wiper voltage is the supply times the track share from A (A at GND, B at supply)', () => {
+    expect(f('vWiper').value).toBeCloseTo((f('supply').value * f('pos').value) / 100, 9);
+    expect(f('vWiperAfter').value).toBeCloseTo((f('supply').value * f('posTry').value) / 100, 9);
+    expect(f('vWiperAfter').value).toBeLessThan(f('vWiper').value);
+  });
+  it('the after value equals an independent solve of the changed document', () => {
+    const a = g.tryIt.action;
+    if (a.kind !== 'set-param') throw new Error('set-param expected');
+    const r = setParam(before, a.component, a.param, a.to);
+    if (!r.ok) throw new Error('setParam');
+    expect(f('vWiperAfter').value).toBe(solve(r.doc).components.RV1!.terminals.wiper);
+    expect(f('posTry')).toEqual(a.to);
+  });
+  it('the dimmer example uses the part as a rheostat (one end and the wiper wired)', () => {
+    const loaded = doc('pot-led-dimmer');
+    const o = solve(loaded);
+    // In the dimmer example the pot is a rheostat: only one end and the wiper are wired.
+    const pot = loaded.components.find((c) => c.type === 'component.potentiometer')!;
+    const used = loaded.connections.filter((c) => c.component === pot.id).map((c) => c.terminal);
+    expect(used.sort()).toEqual(['b', 'wiper']);
+    expect(o.components[pot.id]).toBeDefined();
+  });
+  it('formats in both locales (percent and volts)', () => {
+    expect(formatFacts(EN, ev.facts).pos).toBe('50 %');
+    expect(formatFacts(HE, ev.facts).vWiper).toBe(formatResult(HE, 2.5, 'volt'));
   });
 });

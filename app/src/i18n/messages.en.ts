@@ -2488,6 +2488,50 @@ export const en = {
   'compguide.led-resistor.limits.body':
     'The LED is a nominal part: there is no temperature drift, and its model is documented for a limited current range.',
 
+  // TBI-019 G3: button and potentiometer.
+  'compguide.button.title': 'Push button',
+  'compguide.button.what.heading': 'What the part does',
+  'compguide.button.what.body':
+    'A momentary push button is a switch that is closed only while you hold it. When you do not press it, it is open and no current passes. When you release it, it opens again.',
+  'compguide.button.behaviour.heading': 'How it behaves',
+  'compguide.button.behaviour.items.1':
+    'In the example circuit the push button is in series with a {r} resistor and the LED, on a {supply} supply. Not pressed, it is open: the LED current is {iOff}, and the whole supply voltage, {swOpenV}, falls across the push button.',
+  'compguide.button.behaviour.items.2':
+    'Pressed, the push button acts as an ideal conductor: the voltage across it is {swClosedV}, and the LED current rises to {iOn} with {vOn} across the LED.',
+  'compguide.button.behaviour.items.3':
+    'Pressing is a run-time input only. It is not saved in the project and does not change it.',
+  'compguide.button.circuit.heading': 'The circuit',
+  'compguide.button.circuit.body':
+    'A lab power supply, a push button, a resistor, an LED and ground, wired in one loop. Open it in the Lab to see the real circuit.',
+  'compguide.button.tryit.heading': 'Try it',
+  'compguide.button.tryit.action': 'Open the example, press Run, then hold the push button down.',
+  'compguide.button.tryit.expect':
+    'While the button is held the LED is on and its current is {iOn}. When you release it the current returns to {iOff}.',
+  'compguide.button.limits.heading': 'What is not modelled',
+  'compguide.button.limits.body':
+    'The button is an ideal contact in the model: no contact resistance, no contact bounce, and no maximum ratings that limit the current or voltage on it.',
+  'compguide.potentiometer.title': 'Potentiometer',
+  'compguide.potentiometer.what.heading': 'What the part does',
+  'compguide.potentiometer.what.body':
+    'A potentiometer is a resistance track with two ends, A and B, and a [[wiper]] that touches the track at a point you can move. The [[wiper]] position decides how much of the resistance is between A and the [[wiper]], and how much between the [[wiper]] and B.',
+  'compguide.potentiometer.behaviour.heading': 'How it behaves',
+  'compguide.potentiometer.behaviour.items.1':
+    'In the example circuit the track is {rTotal} in total, end A is connected to GND and end B to {supply}. This makes the part a voltage divider.',
+  'compguide.potentiometer.behaviour.items.2':
+    'With the [[wiper]] at {pos} of the track, the voltage on it is {vWiper}: the supply voltage times the share of the track from A to the [[wiper]].',
+  'compguide.potentiometer.behaviour.items.3':
+    'If you connect only one end and the [[wiper]], the part is a variable resistor. This is how the "LED dimmer (potentiometer)" example uses it.',
+  'compguide.potentiometer.circuit.heading': 'The circuit',
+  'compguide.potentiometer.circuit.body':
+    'A lab power supply and a potentiometer whose ends are on the supply voltage and on ground (GND). Open it in the Lab, move the position slider and watch the voltage at the [[wiper]].',
+  'compguide.potentiometer.tryit.heading': 'Try it',
+  'compguide.potentiometer.tryit.action':
+    'Open the example, run it, and move the position slider to {posTry}.',
+  'compguide.potentiometer.tryit.expect': 'The voltage at the [[wiper]] drops to {vWiperAfter}.',
+  'compguide.potentiometer.limits.heading': 'What is not modelled',
+  'compguide.potentiometer.limits.body':
+    'The model is a nominal part with an ideal track: at the ends of the track the [[wiper]] is an ideal contact, without the residual resistance the datasheet allows, without value tolerance, and without wiper contact resistance. The [[wiper]] position is the share of the electrical track, not the shaft angle.',
+
   // TBI-019 G2: the guide panel and its entry points.
   'guidepanel.home.heading': 'Component guides',
   'guidepanel.home.intro': 'Short lessons about one part, with a working circuit to open.',
