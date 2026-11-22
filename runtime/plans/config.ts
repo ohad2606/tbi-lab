@@ -50,8 +50,11 @@ export interface PlansConfig {
     monthAlertPercents: number[];
   };
   killSwitch: { autoTrigger: { enabled: boolean; multiple: number; minMicro: number } };
-  /** Sim minutes (slice 3b). leaseMs must equal the Session Host lease: billing stops at lastBeat + leaseMs. */
-  sim: { leaseMs: number; plans: Record<PlanId, SimPlanConfig> };
+  /**
+   * Sim minutes (slice 3b). leaseMs must equal the Session Host lease: billing stops at lastBeat + leaseMs.
+   * maxConcurrentPerPrincipal: live sessions one principal may hold at once (>= 1).
+   */
+  sim: { leaseMs: number; maxConcurrentPerPrincipal: number; plans: Record<PlanId, SimPlanConfig> };
   /** Fair queue (slice 3b). Memory only. rank: lower = served first. The host cap is NOT here (host config). */
   queue: {
     freeSlotCap: number;
@@ -59,6 +62,8 @@ export interface PlansConfig {
     maxWaitMs: number;
     vanishMs: number;
     maxLength: number;
+    /** most waiting Free entries; at most maxLength - 1, so a paid user can always join the queue */
+    maxFree: number;
     freeCooldownMs: number;
     rank: Record<PlanId, number>;
   };
@@ -123,6 +128,7 @@ export const DEFAULT_CONFIG: PlansConfig = {
   // legacy has no monthly meter. No daily sim cap is specified: null.
   sim: {
     leaseMs: 30000,
+    maxConcurrentPerPrincipal: 1,
     plans: {
       free: { monthlyMinutes: 60, dailyMinutes: null },
       advanced: { monthlyMinutes: 900, dailyMinutes: null },
@@ -137,6 +143,8 @@ export const DEFAULT_CONFIG: PlansConfig = {
     maxWaitMs: 600000,
     vanishMs: 30000,
     maxLength: 20,
+    // PROPOSAL: maxLength - 4 (4 places always kept for paid users)
+    maxFree: 16,
     freeCooldownMs: 60000,
     rank: { pro: 0, advanced: 1, legacy: 1, free: 2 },
   },
@@ -215,10 +223,12 @@ export function parseConfig(overrides: unknown = {}): PlansConfig {
   }
   if (cfg.queue.freeCapMode !== 'fixed' && cfg.queue.freeCapMode !== 'liftUntilFirstPaid')
     throw new ConfigError('queue.freeCapMode: must be fixed or liftUntilFirstPaid');
-  for (const k of ['leaseMs'] as const)
+  for (const k of ['leaseMs', 'maxConcurrentPerPrincipal'] as const)
     if (cfg.sim[k] < 1) throw new ConfigError(`sim.${k}: must be at least 1`);
   for (const k of ['maxWaitMs', 'vanishMs', 'maxLength'] as const)
     if (cfg.queue[k] < 1) throw new ConfigError(`queue.${k}: must be at least 1`);
+  if (cfg.queue.maxFree > cfg.queue.maxLength - 1)
+    throw new ConfigError('queue.maxFree: must be at most queue.maxLength - 1');
   try {
     new Intl.DateTimeFormat('en-CA', { timeZone: cfg.meter.timezone });
   } catch {

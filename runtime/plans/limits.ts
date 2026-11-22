@@ -15,6 +15,8 @@ export type LimitCode =
   | 'sim_daily'
   | 'queue'
   | 'queue_timeout'
+  | 'queue_full'
+  | 'sim_concurrent'
   | 'sim_cooldown'
   | 'queue_vanished'
   | 'lease_lost'
@@ -37,6 +39,8 @@ export const MESSAGE_KEY: Record<LimitCode, string | null> = {
   sim_daily: 'limit.sim.daily',
   queue: 'limit.sim.queue',
   queue_timeout: 'limit.sim.queue_timeout',
+  queue_full: 'limit.sim.queue_full',
+  sim_concurrent: 'limit.sim.concurrent',
   sim_cooldown: 'limit.sim.cooldown',
   // The client is gone (vanished / lease lost): nobody to show a message to.
   queue_vanished: null,

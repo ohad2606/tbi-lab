@@ -36,6 +36,11 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     'limit.sim.queue_timeout':
       'לא התפנה מקום הרצה בזמן סביר. נסו שוב בעוד כמה דקות. משתמשי מתקדם ו-Pro מקבלים עדיפות בתור.',
     'limit.sim.cooldown': 'אפשר להתחיל הרצה חינמית חדשה בעוד {n} שניות. אפשר להמשיך לערוך בינתיים.',
+    // NEEDS DOCS REVIEW (tbi-docs): queue_full and concurrent, draft wording.
+    'limit.sim.queue_full':
+      'תור ההרצה מלא כרגע. נסו שוב בעוד כמה דקות. משתמשי מתקדם ו-Pro מקבלים עדיפות בתור.',
+    'limit.sim.concurrent':
+      'כבר יש לך הרצה פעילה. אפשר לעצור אותה או לחכות שתסתיים, ואז להתחיל הרצה חדשה.',
   },
   en: {
     'limit.ai.credits_out':
@@ -67,6 +72,11 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
       'No run slot became free in a reasonable time. Please try again in a few minutes. Advanced and Pro users get queue priority.',
     'limit.sim.cooldown':
       'You can start a new free run in {n} seconds. You can keep editing meanwhile.',
+    // NEEDS DOCS REVIEW (tbi-docs): queue_full and concurrent, draft wording.
+    'limit.sim.queue_full':
+      'The run queue is full right now. Please try again in a few minutes. Advanced and Pro users get queue priority.',
+    'limit.sim.concurrent':
+      'You already have a run in progress. Stop it or wait until it ends, then start a new run.',
   },
 };
 

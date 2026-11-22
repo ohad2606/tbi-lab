@@ -4,7 +4,9 @@
  *
  * Order (R4.2): config rank of the plan (default Pro, then Advanced = legacy, then Free), then fewer sim ms
  * today, then FIFO (arrival sequence). Rules: Free slot cap (R4.1, D-3), max wait (R4.3), vanished client
- * (R4.3), max length (R4.6), Free re-queue cooldown (R4.5), drop on lease loss.
+ * (R4.3), max length (R4.6), Free re-queue cooldown (R4.5), drop on lease loss. At most queue.maxFree
+ * waiting Free entries (< maxLength), so Free can never fill the whole queue; a full queue is queue_full.
+ * A re-enqueue (same ticket, or same principal with a new ticket) refreshes the plan.
  *
  * It never selects a victim (R4.4): it knows running sessions only as counts given by the caller, and
  * `dequeue` returns a waiting entry or nothing. There is no API that ends or names a running session.
@@ -94,7 +96,12 @@ export class FairQueue {
     const i = this.ordered().findIndex((e) => e.ticket === ticket);
     return i === -1 ? null : i + 1;
   }
-  /** ms of Free cooldown left for a principal (0 = none). The host may use it before a direct start too. */
+  /**
+   * ms of Free cooldown left for a principal (0 = none).
+   * HOST CONTRACT: the queue enforces the cooldown only on enqueue. A host that starts a Free run
+   * directly (a slot is idle, no queue) MUST call cooldownMs(principal) first and refuse with
+   * sim_cooldown while it is > 0; otherwise the cooldown is not applied to direct starts.
+   */
   cooldownMs(principal: string): number {
     const until = this.cooldown.get(principal);
     return until === undefined ? 0 : Math.max(0, until - this.clock.now());
@@ -109,24 +116,30 @@ export class FairQueue {
       return fail(limitError('invalid_request'));
     const now = this.clock.now();
     const byTicket = this.entries.find((e) => e.ticket === req.ticket);
-    if (byTicket) {
-      if (byTicket.principal !== req.principal) return fail(limitError('invalid_request'));
-      byTicket.leaseAt = now;
-      return this.queued(byTicket.ticket, true);
-    }
-    const byPrincipal = this.entries.find((e) => e.principal === req.principal);
-    if (byPrincipal) {
-      // One waiting entry per principal. A reconnecting client gets a new ticket but keeps its place
-      // and its original enqueue time (so the max wait still counts from the first enqueue).
-      byPrincipal.ticket = req.ticket;
-      byPrincipal.leaseAt = now;
-      return this.queued(byPrincipal.ticket, true);
+    if (byTicket && byTicket.principal !== req.principal)
+      return fail(limitError('invalid_request'));
+    // One waiting entry per principal. A reconnecting client gets a new ticket but keeps its place
+    // and its original enqueue time (so the max wait still counts from the first enqueue).
+    const existing = byTicket ?? this.entries.find((e) => e.principal === req.principal);
+    if (existing) {
+      if (req.plan === 'free' && existing.plan !== 'free') {
+        // downgraded while waiting: it may not keep a paid place, and Free rules apply to it
+        const refusal = this.freeRefusal(req.principal);
+        if (refusal) {
+          this.entries = this.entries.filter((e) => e !== existing);
+          return fail(refusal);
+        }
+      }
+      existing.ticket = req.ticket;
+      existing.plan = req.plan;
+      existing.leaseAt = now;
+      return this.queued(existing.ticket, true);
     }
     if (req.plan === 'free') {
-      const left = this.cooldownMs(req.principal);
-      if (left > 0) return fail(limitError('sim_cooldown', { n: Math.ceil(left / 1000) }));
+      const refusal = this.freeRefusal(req.principal);
+      if (refusal) return fail(refusal);
     }
-    if (this.entries.length >= this.cfg.queue.maxLength) return fail(limitError('queue_timeout'));
+    if (this.entries.length >= this.cfg.queue.maxLength) return fail(limitError('queue_full'));
     this.entries.push({
       ticket: req.ticket,
       principal: req.principal,
@@ -137,6 +150,15 @@ export class FairQueue {
       seq: ++this.seq,
     });
     return this.queued(req.ticket, false);
+  }
+
+  /** Why a Free entry of `principal` may not join now (cooldown, Free share full), or null. */
+  private freeRefusal(principal: string): LimitError | null {
+    const left = this.cooldownMs(principal);
+    if (left > 0) return limitError('sim_cooldown', { n: Math.ceil(left / 1000) });
+    const free = this.entries.filter((e) => e.plan === 'free').length;
+    if (free >= this.cfg.queue.maxFree) return limitError('queue_full');
+    return null;
   }
 
   private queued(ticket: string, duplicate: boolean): EnqueueResult {
@@ -222,6 +244,8 @@ export class FairQueue {
       Number.isInteger(slots.capacity) &&
       Number.isInteger(slots.running) &&
       Number.isInteger(slots.runningFree) &&
+      slots.capacity >= 0 &&
+      slots.running >= 0 &&
       slots.runningFree >= 0 &&
       slots.runningFree <= slots.running;
     if (!okSlots || slots.running >= slots.capacity) return { entry: null, dropped };

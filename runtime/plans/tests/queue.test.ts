@@ -143,6 +143,9 @@ describe('FairQueue slots (acceptance 5) and no eviction (acceptance 7)', () => 
     expect(q.dequeue(open(6, 2, 3)).entry).toBeNull();
     expect(q.dequeue(open(Number.NaN, 0, 0)).entry).toBeNull();
     expect(q.dequeue(open(6, -1, -1)).entry).toBeNull();
+    expect(q.dequeue(open(6, -1, 0)).entry).toBeNull();
+    expect(q.dequeue(open(-1, 0, 0)).entry).toBeNull();
+    expect(q.dequeue(open(6, 1.5, 0)).entry).toBeNull();
     expect(q.dequeue(open(6, 0, 0)).entry?.ticket).toBe('p');
   });
 });
@@ -203,15 +206,79 @@ describe('FairQueue timeouts with a fake clock (acceptance 6)', () => {
 });
 
 describe('FairQueue bound, cooldown, idempotency', () => {
-  it('max length 20: the 21st gets queue_timeout at once', () => {
-    const { q } = make();
+  it('max length 20: the 21st gets queue_full at once', () => {
+    const { q } = make({ queue: { maxFree: 19 } });
     for (let i = 0; i < 20; i++)
       expect(
-        q.enqueue({ ticket: `t${i}`, principal: pid(i), plan: 'free', simMsToday: 0 }).ok,
+        q.enqueue({
+          ticket: `t${i}`,
+          principal: pid(i),
+          plan: i < 19 ? 'free' : 'pro',
+          simMsToday: 0,
+        }).ok,
       ).toBe(true);
     const r = q.enqueue({ ticket: 'x', principal: pid(99), plan: 'pro', simMsToday: 0 });
-    expect(r.ok ? 'ok' : r.error.code).toBe('queue_timeout');
+    expect(r.ok ? 'ok' : r.error.code).toBe('queue_full');
+    expect(r.ok ? null : r.error.messageKey).toBe('limit.sim.queue_full');
     expect(q.length).toBe(20);
+  });
+
+  it('Free waiting entries are capped (maxFree 16): paid users can still join a Free-crowded queue', () => {
+    const { q } = make();
+    for (let i = 0; i < 16; i++)
+      expect(
+        q.enqueue({ ticket: `f${i}`, principal: pid(i), plan: 'free', simMsToday: 0 }).ok,
+      ).toBe(true);
+    const f = q.enqueue({ ticket: 'f16', principal: pid(16), plan: 'free', simMsToday: 0 });
+    expect(f.ok ? 'ok' : f.error.code).toBe('queue_full');
+    for (let i = 0; i < 4; i++)
+      expect(
+        q.enqueue({ ticket: `p${i}`, principal: pid(50 + i), plan: 'advanced', simMsToday: 0 }).ok,
+      ).toBe(true);
+    const full = q.enqueue({ ticket: 'p4', principal: pid(60), plan: 'pro', simMsToday: 0 });
+    expect(full.ok ? 'ok' : full.error.code).toBe('queue_full');
+    expect(q.length).toBe(20);
+    // a Free entry leaves: a Free place is free again and the queue has one place
+    q.drop('f0');
+    expect(q.enqueue({ ticket: 'f16', principal: pid(16), plan: 'free', simMsToday: 0 }).ok).toBe(
+      true,
+    );
+  });
+
+  it('config: maxFree must leave room for paid users; queue ranges are not negative', () => {
+    expect(parseConfig().queue.maxFree).toBe(16);
+    expect(() => parseConfig({ queue: { maxFree: 20 } })).toThrow(/maxFree/);
+    expect(() => parseConfig({ queue: { maxLength: 5 } })).toThrow(/maxFree/);
+    expect(parseConfig({ queue: { maxLength: 5, maxFree: 4 } }).queue.maxFree).toBe(4);
+    expect(parseConfig({ queue: { maxFree: 0 } }).queue.maxFree).toBe(0);
+    for (const q of [
+      { maxFree: -1 },
+      { freeSlotCap: -1 },
+      { freeCooldownMs: -1 },
+      { rank: { pro: -1 } },
+      { rank: { free: -0.5 } },
+    ])
+      expect(() => parseConfig({ queue: q }), JSON.stringify(q)).toThrow(/negative/);
+  });
+
+  it('HOST CONTRACT: the cooldown is enforced on enqueue only; a direct start must ask cooldownMs()', () => {
+    const { q, clock } = make();
+    expect(q.cooldownMs(pid(1))).toBe(0);
+    q.sessionEnded(pid(1), 'free');
+    q.sessionEnded(pid(2), 'advanced');
+    // the host reads this before starting a Free run on an idle slot without queueing
+    expect(q.cooldownMs(pid(1))).toBe(60_000);
+    expect(q.cooldownMs(pid(2))).toBe(0);
+    clock.advance(59_000);
+    expect(q.cooldownMs(pid(1))).toBe(1_000);
+    clock.advance(1_000);
+    expect(q.cooldownMs(pid(1))).toBe(0);
+    q.tick();
+    expect(q.cooldownMs(pid(1))).toBe(0);
+    // freeCooldownMs 0 = no cooldown at all
+    const none = make({ queue: { freeCooldownMs: 0 } }).q;
+    none.sessionEnded(pid(1), 'free');
+    expect(none.cooldownMs(pid(1))).toBe(0);
   });
 
   it('Free cooldown 60 s after a session ends; none for paid', () => {
@@ -272,5 +339,39 @@ describe('FairQueue bound, cooldown, idempotency', () => {
       'invalid_request',
     );
     expect(JSON.stringify(q.snapshot())).not.toContain('@');
+  });
+
+  it('a re-enqueue refreshes the plan (upgrade while waiting moves the entry up)', () => {
+    const { q } = make();
+    q.enqueue({ ticket: 'a', principal: pid(1), plan: 'free', simMsToday: 0 });
+    q.enqueue({ ticket: 'b', principal: pid(2), plan: 'advanced', simMsToday: 0 });
+    expect(q.position('a')).toBe(2);
+    const up = q.enqueue({ ticket: 'a', principal: pid(1), plan: 'pro', simMsToday: 0 });
+    expect(up.ok && [up.duplicate, up.position]).toEqual([true, 1]);
+    expect(q.snapshot()[0]).toMatchObject({ ticket: 'a', plan: 'pro' });
+    // new ticket of the same principal: plan refreshed too, place in arrival order kept
+    const re = q.enqueue({ ticket: 'a2', principal: pid(1), plan: 'advanced', simMsToday: 0 });
+    expect(re.ok && re.position).toBe(1);
+    expect(q.snapshot().map((e) => [e.ticket, e.plan])).toEqual([
+      ['a2', 'advanced'],
+      ['b', 'advanced'],
+    ]);
+    // downgrade to Free: it gets the Free rank
+    q.enqueue({ ticket: 'a2', principal: pid(1), plan: 'free', simMsToday: 0 });
+    expect(q.position('a2')).toBe(2);
+  });
+
+  it('a downgrade to Free while waiting obeys the Free rules (cooldown, Free share)', () => {
+    const { q } = make({ queue: { maxFree: 1 } });
+    q.sessionEnded(pid(1), 'free');
+    q.enqueue({ ticket: 'a', principal: pid(1), plan: 'pro', simMsToday: 0 });
+    const r = q.enqueue({ ticket: 'a', principal: pid(1), plan: 'free', simMsToday: 0 });
+    expect(r.ok ? 'ok' : r.error.code).toBe('sim_cooldown');
+    expect(q.position('a')).toBeNull();
+    q.enqueue({ ticket: 'f', principal: pid(2), plan: 'free', simMsToday: 0 });
+    q.enqueue({ ticket: 'b', principal: pid(3), plan: 'pro', simMsToday: 0 });
+    const s = q.enqueue({ ticket: 'b', principal: pid(3), plan: 'free', simMsToday: 0 });
+    expect(s.ok ? 'ok' : s.error.code).toBe('queue_full');
+    expect(q.snapshot().map((e) => e.ticket)).toEqual(['f']);
   });
 });
