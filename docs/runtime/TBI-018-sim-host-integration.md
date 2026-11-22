@@ -34,6 +34,25 @@ Rules the adapter enforces (owner decisions 2026-11-22):
 - A user without minutes is refused before queueing.
 - Running count = max(host count, sessions the adapter admitted that the host has not reported ended).
 - Any store problem refuses (admit) or stops (heartbeat) with `system_unavailable`; nothing starts unmetered.
+- Ticket operations check ownership: `admit` drops a queued entry on a refusal only when it belongs to
+  `req.principal`; `cancel(ticket, principal)` and `touch(ticket, principal)` act only on the caller's own
+  entry. Tickets must still be server-generated and unguessable (never a client-chosen identity).
+- `admit` takes its own entry in one atomic queue step (`dequeue(slots, ticket)`, one clock reading), so
+  another waiter is never removed on its behalf; if its own entry timed out at that moment it is refused
+  with that drop's error (`queue_timeout` / `queue_vanished`).
+- `housekeeping()` stops tracking runs whose meter session is closed or whose lease ran out (the host
+  missed `ended`), so slot and Free-cap counts are not inflated; their Free cooldown starts at the prune.
+  A later `ended` is a duplicate close (same bill, no second cooldown).
+
+Limits of this slice (known, accepted for now):
+
+- The Free cooldown, the waiting list and live-run tracking are memory-only: a host restart loses them
+  (waiting clients must re-request; a Free user may start again without waiting out the cooldown). Billing
+  itself is journaled and survives a restart.
+- Host time must not go backwards. After a clock step back to before a run's open, its close is refused
+  (`system_unavailable`: the close event would end before it was written) until time passes the open
+  again; the housekeeping sweep then closes it at `lastBeat + leaseMs`. A step back to between the open
+  and the last beat ends the bill at the earlier time (under-bills, never over-bills).
 
 ## Integration points still to change (next slice, needs PM go)
 

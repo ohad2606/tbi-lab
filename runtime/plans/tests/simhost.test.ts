@@ -68,8 +68,8 @@ describe('SimHostAdapter flag off (metering.enabled=false, the default)', () => 
       clock.advance(MIN);
     }
     expect(await host.housekeeping()).toEqual({ metered: false });
-    expect(host.cancel('t1')).toEqual({ metered: false });
-    expect(host.touch('t1')).toEqual({ metered: false });
+    expect(host.cancel('t1', FREE)).toEqual({ metered: false });
+    expect(host.touch('t1', FREE)).toEqual({ metered: false });
     expect(store.appendCalls).toBe(0);
     expect(store.events).toEqual([]);
     expect(host.waiting).toBe(0);
@@ -522,19 +522,21 @@ describe('SimHostAdapter fails closed with explicit reasons', () => {
     // the waiter keeps polling, the running session's client is gone
     for (let i = 0; i < 40; i++) {
       clock.advance(15_000);
-      expect(host.touch(tw)).toEqual({ metered: true, queued: true });
+      expect(host.touch(tw, PRO)).toEqual({ metered: true, queued: true });
     }
     const h = await host.housekeeping();
     expect(h).toMatchObject({
       metered: true,
       ok: true,
       closed: 1,
+      pruned: 1,
       dropped: [{ ticket: tw, reason: 'timeout', error: { code: 'queue_timeout' } }],
     });
-    // the host still holds the slot until it reports the end (its own lease ends the session)
-    expect(host.tracked).toBe(1);
+    // the lease-lost run no longer counts as running (TBI-018 s3c M2), even before the host reports it
+    expect(host.tracked).toBe(0);
     expect(host.waiting).toBe(0);
-    // the lease-lost run was billed up to its last beat + lease (30 s), not the 10 minutes since
+    // the lease-lost run was billed up to its last beat + lease (30 s), not the 10 minutes since; the
+    // late ended() is a duplicate
     expect(await host.ended(sid(1), 'lease')).toEqual({
       metered: true,
       ok: true,
@@ -553,8 +555,8 @@ describe('SimHostAdapter fails closed with explicit reasons', () => {
       plan: 'pro',
       slots: slots(6),
     });
-    expect(host.cancel(tw)).toEqual({ metered: true, cancelled: true });
-    expect(host.cancel(tw)).toEqual({ metered: true, cancelled: false });
+    expect(host.cancel(tw, PRO)).toEqual({ metered: true, cancelled: true });
+    expect(host.cancel(tw, PRO)).toEqual({ metered: true, cancelled: false });
     expect(host.waiting).toBe(0);
   });
 });
