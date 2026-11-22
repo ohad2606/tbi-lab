@@ -14,24 +14,68 @@ import {
 } from '@tbi-lab/domain';
 import { en, type MessageKey } from './messages.en.js';
 import { he } from './messages.he.js';
+import { DEFAULT_LOCALE, LOCALE_REGISTRY, type Direction, type LocaleDef } from './locales.js';
 import { GLOSSARY, applyGlossary } from './glossary.js';
 
-export type Direction = 'ltr' | 'rtl';
+export type { Direction } from './locales.js';
 
 export interface LocaleInfo {
   code: string;
   dir: Direction;
   /** The language's own name for itself (an autonym), shown identically in every locale. */
   autonym: string;
+  /** Not yet reviewed by a native speaker; the picker labels it "beta". */
+  beta: boolean;
+  /** Always complete: keys a locale lacks are filled from English (never a raw key). */
   messages: Record<MessageKey, string>;
 }
 
-export const LOCALES: readonly LocaleInfo[] = [
-  { code: 'en', dir: 'ltr', autonym: 'English', messages: applyGlossary(en, GLOSSARY.en!) },
-  { code: 'he', dir: 'rtl', autonym: 'עברית', messages: applyGlossary(he, GLOSSARY.he!) },
-];
+type Bundle = Partial<Record<MessageKey, string>>;
 
-export const DEFAULT_LOCALE = 'en';
+const EN_MESSAGES: Record<MessageKey, string> = applyGlossary(en, GLOSSARY.en!);
+
+/**
+ * A locale's complete message table: its own (glossary-applied) messages, with English filling
+ * any key that is missing or blank. A raw key is never shown to the user.
+ */
+export function resolveMessages(
+  bundle: Bundle,
+  terms?: Parameters<typeof applyGlossary>[1],
+): Record<MessageKey, string> {
+  const own = terms ? applyGlossary(bundle as Record<string, string>, terms) : bundle;
+  const out = { ...EN_MESSAGES };
+  for (const key of Object.keys(EN_MESSAGES) as MessageKey[]) {
+    const v = (own as Bundle)[key];
+    if (typeof v === 'string' && v.trim() !== '') out[key] = v;
+  }
+  return out;
+}
+
+export function buildLocale(
+  def: LocaleDef,
+  bundle: Bundle,
+  terms?: Parameters<typeof applyGlossary>[1],
+): LocaleInfo {
+  return {
+    code: def.code,
+    dir: def.dir,
+    autonym: def.autonym,
+    beta: def.beta,
+    messages: resolveMessages(bundle, terms),
+  };
+}
+
+/** Message bundles wired in. A locale needs one of these AND an enabled registry entry. */
+const BUNDLES: Record<string, { messages: Bundle; terms?: Parameters<typeof applyGlossary>[1] }> = {
+  en: { messages: en, terms: GLOSSARY.en },
+  he: { messages: he, terms: GLOSSARY.he },
+};
+
+export const LOCALES: readonly LocaleInfo[] = LOCALE_REGISTRY.filter(
+  (d) => d.enabled && BUNDLES[d.code],
+).map((d) => buildLocale(d, BUNDLES[d.code]!.messages, BUNDLES[d.code]!.terms));
+
+export { DEFAULT_LOCALE };
 
 export function getLocale(code: string): LocaleInfo {
   return LOCALES.find((l) => l.code === code) ?? LOCALES.find((l) => l.code === DEFAULT_LOCALE)!;
