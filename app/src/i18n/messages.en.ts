@@ -1969,6 +1969,16 @@ export const en = {
   'firstRun.opened': 'Example opened. Press Run to start the simulation.',
   'firstRun.listLabel': 'Steps',
   'menu.firstRun': 'Welcome and first steps',
+  // TBI-014 slice 2: next-step card after the first Run.
+  'nextStep.title': 'It is running. What to try next',
+  'nextStep.step1': 'Change the lab power supply voltage while it runs and watch {probe} follow.',
+  'nextStep.step2':
+    'Press Stop, select the resistor, change its Resistance in Properties, press Run: the LED current changes.',
+  'nextStep.step3': 'Use the [[probe]] button on the canvas to pin another voltage or current.',
+  'nextStep.dismiss': 'Got it',
+  'nextStep.listLabel': 'Things to try',
+  'nextStep.announce':
+    'The simulation is running. A card with next steps is above the drawing area.',
   // Sprint 13 H7 (shown only when a deployment configures the form).
   'menu.feedback': 'Send feedback',
   // Sprint 14: in-app problem reports (shown only when a deployment enables them).

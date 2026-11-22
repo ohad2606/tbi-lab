@@ -100,6 +100,8 @@ export const PREF_LOCALE = 'tbi-lab.locale';
 export const PREF_LAST_PROJECT = 'tbi-lab.lastProject';
 /** TBI-014: the first-run welcome was started or dismissed for good on this device. */
 export const PREF_FIRST_RUN = 'tbi-lab.firstRun.v1';
+/** TBI-014 slice 2: the next-step card in the editor was dismissed on this device. */
+export const PREF_NEXT_STEP = 'tbi-lab.nextStep.v1';
 /** Sprint 13 H4: the first-run guide was dismissed on this device (versioned: a new guide shows again). */
 export const PREF_ONBOARDING = 'tbi-lab.onboarding.v1';
 
@@ -160,7 +162,7 @@ export interface AppState {
   /** Why saving failed, when saveState is 'error'. */
   saveError: 'quota' | 'write' | 'conflict' | null;
   /** Probes an opened example suggests for its project (editor presentation state only). */
-  suggestedProbes: { projectId: string; probes: ExampleProbe[] } | null;
+  suggestedProbes: { projectId: string; exampleId?: string; probes: ExampleProbe[] } | null;
   /**
    * The name just submitted to create or rename a project reads the same as another project's
    * name in this library (see projectNameKey). Shown inline next to the field; nothing was
@@ -735,6 +737,15 @@ export class AppStore {
     this.deps.prefs.set(PREF_FIRST_RUN, seen ? 'seen' : '');
   }
 
+  /** TBI-014 slice 2: whether this device has dismissed the editor's next-step card. */
+  nextStepSeen(): boolean {
+    return this.deps.prefs.get(PREF_NEXT_STEP) === 'seen';
+  }
+
+  setNextStepSeen(seen: boolean): void {
+    this.deps.prefs.set(PREF_NEXT_STEP, seen ? 'seen' : '');
+  }
+
   async exportProject(projectId: string): Promise<ExportedFile | null> {
     try {
       // Sprint 13 Task D: when this tab's changes could not be saved because another tab or
@@ -860,7 +871,7 @@ export class AppStore {
       unreadable: null,
       selection: emptySelection(),
       notice: null,
-      suggestedProbes: { projectId: doc.projectId, probes: example.probes },
+      suggestedProbes: { projectId: doc.projectId, exampleId, probes: example.probes },
     });
     await this.refreshProjects().catch(() => undefined);
     return true;

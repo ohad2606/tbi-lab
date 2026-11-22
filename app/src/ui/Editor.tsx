@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentTypeId } from '@tbi-lab/domain';
 import { Canvas, type CanvasApi } from './Canvas.js';
-import { useAppState, useT } from './context.js';
+import { useAppState, useStore, useT } from './context.js';
 import { onCodeViewRequest, programBoardOf } from './buildAction.js';
 import { CodeView } from './CodeView.js';
 import { LazyView } from './LazyView.js';
@@ -11,6 +11,8 @@ import { McuTerminal } from './McuTerminal.js';
 import { requiresMcuRuntime } from '../runtime/snapshot.js';
 import { WiresList } from './WiresList.js';
 import { Palette } from './Palette.js';
+import { NextStepCard } from './NextStepCard.js';
+import { shouldShowNextStep } from './nextStep.js';
 import { probeExists, sameTarget, type Probe, type ProbeInput } from './probes.js';
 
 // The generated views load on first use (not part of the editor's startup bundle).
@@ -37,8 +39,40 @@ const VIEW_NAME: Partial<Record<View, 'view.name.schematic'>> = {
  * session only and are never written into the project document.
  */
 export function Editor() {
-  const { doc, suggestedProbes, sim } = useAppState();
+  const { doc, suggestedProbes, sim, screen } = useAppState();
+  const store = useStore();
   const t = useT();
+  // TBI-014 slice 2: the next-step card. Latched once the first Run succeeded (the user presses
+  // Stop in step 2 and the card must stay), cleared by dismissal or a different project.
+  const [nextStep, setNextStep] = useState<string | null>(null);
+  const [nextStepAnnounce, setNextStepAnnounce] = useState('');
+  useEffect(() => {
+    if (nextStep !== null && nextStep !== doc?.projectId) setNextStep(null);
+  }, [doc?.projectId, nextStep]);
+  useEffect(() => {
+    if (!doc || nextStep === doc.projectId) return;
+    if (
+      shouldShowNextStep({
+        screen,
+        exampleId: suggestedProbes?.exampleId ?? null,
+        sameProject: suggestedProbes?.projectId === doc.projectId,
+        simStatus: sim.status,
+        solved: sim.status === 'running' && sim.outcome.ok,
+        mcu:
+          requiresMcuRuntime(doc) ||
+          !!programBoardOf(doc) ||
+          (sim.status === 'running' && !!sim.runtime),
+        seen: store.nextStepSeen(),
+      })
+    ) {
+      setNextStep(doc.projectId);
+      setNextStepAnnounce(t('nextStep.announce'));
+    }
+  }, [screen, doc, suggestedProbes, sim, nextStep]);
+  const dismissNextStep = () => {
+    setNextStep(null);
+    setNextStepAnnounce('');
+  };
   // The board whose program this project authors (V1: at most one), and which view shows.
   const programBoard = programBoardOf(doc);
   const [view, setView] = useState<View>('circuit');
@@ -119,7 +153,11 @@ export function Editor() {
           }
         }}
       />
-      <div class="workspace-center">
+      <div class={nextStep ? 'workspace-center has-next-step' : 'workspace-center'}>
+        <div class="visually-hidden" role="status" data-testid="next-step-status">
+          {nextStepAnnounce}
+        </div>
+        {nextStep && <NextStepCard onDismiss={dismissNextStep} />}
         <div
           class="view-tabs"
           role="tablist"
