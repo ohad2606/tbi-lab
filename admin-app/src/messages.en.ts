@@ -115,6 +115,60 @@ export const consoleEn = {
   'console.settings.language': 'Language',
   'console.settings.signOut': 'Sign out',
   'console.settings.signOutHint': 'Ends your TBI Lab Admin sign-in in this browser.',
+  'console.nav.signups': 'Sign-up requests',
+  'console.signups.heading': 'Open sign-up requests',
+  'console.signups.intro':
+    'People who asked to join, and approved requests whose email has not gone out yet. Approve adds the account and sends the welcome email.',
+  'console.signups.count.one': '1 open request',
+  'console.signups.count.other': '{count} open requests',
+  'console.signups.empty': 'No open sign-up requests.',
+  'console.signups.unavailable': 'Sign-up requests are not available right now.',
+  'console.signups.refresh': 'Refresh requests',
+  'console.signups.requested': 'Requested {time}',
+  'console.signups.role': 'Role',
+  'console.signups.language': 'Language',
+  'console.signups.lang.he': 'Hebrew',
+  'console.signups.lang.en': 'English',
+  'console.signups.lang.other': 'Other',
+  'console.signups.status.pending': 'Waiting for your decision',
+  'console.signups.status.emailFailed': 'Account added, but the email was not sent. Use Resend.',
+  'console.signups.status.accountPending':
+    'Approved, but the account is not ready yet. Approve again to finish.',
+  'console.signups.status.emailQueued':
+    'Account added. The email is scheduled and will be sent when quiet hours end.',
+  'console.signups.sendAfter': 'Email scheduled for {time}',
+  'console.signups.status.working': 'Working on it…',
+  'console.signups.approve': 'Approve',
+  'console.signups.reject': 'Reject',
+  'console.signups.resend': 'Resend email',
+  'console.signups.approveFor': 'Approve {name}',
+  'console.signups.rejectFor': 'Reject {name}',
+  'console.signups.resendFor': 'Resend email to {name}',
+  'console.signups.confirm.title': 'Reject the request of {name}?',
+  'console.signups.confirm.body': 'No email is sent to this person. The request is closed.',
+  'console.signups.confirm.ok': 'Reject request',
+  'console.signups.done.approve': 'Approved {name}: the account was added and the email was sent.',
+  'console.signups.done.approve.already_done': 'The request of {name} was already approved.',
+  'console.signups.done.approve.email_not_resent':
+    'The account of {name} exists. The email was not sent again.',
+  'console.signups.done.approve.email_queued':
+    'Approved {name}: the account was added. The email is scheduled and will be sent when quiet hours end.',
+  'console.signups.done.resend.email_queued':
+    'The email to {name} is scheduled and will be sent when quiet hours end.',
+  'console.signups.done.reject': 'Rejected the request of {name}. No email was sent.',
+  'console.signups.done.resend': 'The email to {name} was sent.',
+  'console.signups.err.account_pending':
+    'The account for {name} is not ready yet. Try again in a moment.',
+  'console.signups.err.bad_state': 'The request of {name} was already handled. Refresh the list.',
+  'console.signups.err.email_failed_use_resend':
+    'The account for {name} was added, but the email failed earlier. Use Resend email.',
+  'console.signups.err.cap_reached':
+    'All tester places are taken. Disable a tester first, then approve {name}.',
+  'console.signups.err.account_error':
+    'The account for {name} could not be added. Try again later.',
+  'console.signups.err.email_failed':
+    'The account for {name} was added, but the email could not be sent. Use Resend email.',
+  'console.signups.err.not_found': 'The request of {name} no longer exists.',
 } as const;
 
 export type ConsoleMessageKey = keyof typeof consoleEn;

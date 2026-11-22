@@ -66,6 +66,13 @@ export const Loading = () => {
   return <p class="muted">{t('admin.loading')}</p>;
 };
 
+/** The last element that took focus: what a confirmation opened from, even if its node is replaced. */
+let lastFocused: HTMLElement | null = null;
+if (typeof document !== 'undefined')
+  document.addEventListener('focusin', (e) => {
+    lastFocused = e.target instanceof HTMLElement ? e.target : null;
+  });
+
 /** An inline confirmation of a consequential action; it takes focus on its safe choice. */
 export function Confirm({
   title,
@@ -86,7 +93,32 @@ export function Confirm({
 }) {
   const t = useT();
   const cancel = useRef<HTMLButtonElement>(null);
-  useEffect(() => cancel.current?.focus(), []);
+  useEffect(() => {
+    // The caller may already have removed the opener's node (focus is then on <body>), so the
+    // opener is the last element that had focus; its replacement is found by id / test id.
+    const opener = lastFocused;
+    const id = opener?.id;
+    const testid = opener?.dataset?.testid;
+    cancel.current?.focus();
+    return () => {
+      requestAnimationFrame(() => {
+        const now = document.activeElement;
+        if (now && now !== document.body) return;
+        // Only an unambiguous replacement (one match), never "the first of many rows".
+        const byTestId = testid
+          ? document.querySelectorAll<HTMLElement>(`[data-testid="${CSS.escape(testid)}"]`)
+          : [];
+        const target = opener?.isConnected
+          ? opener
+          : id
+            ? document.getElementById(id)
+            : byTestId.length === 1
+              ? byTestId[0]
+              : null;
+        target?.focus();
+      });
+    };
+  }, []);
   return (
     <section
       role="alertdialog"
@@ -95,8 +127,14 @@ export function Confirm({
       aria-describedby="confirm-body"
       class="confirm"
       data-testid="confirm"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && !busy) {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
     >
-      <h3 id="confirm-title">{title}</h3>
+      <h2 id="confirm-title">{title}</h2>
       <div id="confirm-body">{children}</div>
       <div class="actions">
         <button

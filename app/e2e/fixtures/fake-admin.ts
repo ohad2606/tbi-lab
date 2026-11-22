@@ -12,17 +12,26 @@
  * testers over the last 30 Israel days, relative to now) and the helper's `view/audit.json`
  * (seeded lines, plus one per request it answers).
  *
+ * TBI-022 admin app: the REAL sign-up routes (`/signups...`, runtime/admin/signup/) on a private
+ * pending store, with approvals going through the REAL spool to this helper and a fake mail sender
+ * (no network; `signups({ seed, mailFail })` fills the store with one request per status and
+ * makes the next sends fail or succeed). Empty until seeded, so other tests never see it.
+ *
  * Registry addresses use example.invalid only. Subjects: the owner is `e2e-owner`; `e2e-user`
  * (the default test identity) is an ordinary tester, so the routine tests never see the entry.
  */
 import { createHash } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AccessView, deriveEmailTag } from '../../../runtime/identity/access.js';
 import { derivePrincipal } from '../../../runtime/identity/principal.js';
 import { AdminSpool, DEFAULT_ADMIN, createAdminServer } from '../../../runtime/admin/accounts.js';
 import { AdminViews, todayIn, viewPathsFromEnv } from '../../../runtime/admin/views.js';
+import type { EmailSender } from '../../../runtime/admin/signup/email.js';
+import { spoolAccountAdder } from '../../../runtime/admin/signup/http.js';
+import { SignupApprover } from '../../../runtime/admin/signup/service.js';
+import { PendingStore, type SignupStatus } from '../../../runtime/admin/signup/store.js';
 import { E2E_IDENTITY } from './identity.js';
 import { ownedTempDir } from './temp-dirs.js';
 
@@ -444,10 +453,32 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
   const access = new AccessView(join(dir, 'view', 'access.json'), { pollMs: 1000 }).start();
   const spool = new AdminSpool({ ...DEFAULT_ADMIN, dir, resultWaitMs: 2000, pollMs: 50 });
   setInterval(processSpool, 100).unref();
+  // TBI-022: the sign-up store (0700, as the real one demands) and a fake mail sender.
+  const signupDir = join(dir, 'signups');
+  mkdirSync(signupDir, { mode: 0o700 });
+  chmodSync(signupDir, 0o700);
+  const signupStore = new PendingStore(signupDir);
+  let mailFails = false;
+  const signupEmail: EmailSender = {
+    sendApproval: async () => {
+      if (mailFails) throw Object.assign(new Error('mail'), { status: 503 });
+    },
+  };
+  const clearSignups = () => {
+    for (const n of readdirSync(signupDir)) rmSync(join(signupDir, n), { force: true });
+  };
   const newService = () =>
     createAdminServer(E2E_IDENTITY, {
       access,
       spool,
+      signups: {
+        approver: (actor) =>
+          new SignupApprover({
+            store: signupStore,
+            accounts: spoolAccountAdder(spool, actor),
+            email: signupEmail,
+          }),
+      },
       capacity: async () => capacity(),
       views: new AdminViews(viewPathsFromEnv(dir, {})),
     });
@@ -466,10 +497,52 @@ export function startFakeAdmin(capacity: () => { live: number; max: number }) {
       writeHistory();
       hold = false;
       ownerRecorded = true;
+      mailFails = false;
+      clearSignups();
       for (const d of ['spool', 'results'])
         for (const n of readdirSync(join(dir, d))) rmSync(join(dir, d, n), { force: true });
       writeViews();
       access.reload();
+    },
+    /**
+     * TBI-022: an empty sign-up store, or (seed) one synthetic request per status, oldest first:
+     * pending, approved (account added, email outcome unknown), email_queued, email_failed,
+     * email_sent, rejected. `mailFail` makes the following sends fail (or succeed again).
+     */
+    async signups(o: { seed: boolean; mailFail: boolean }) {
+      mailFails = o.mailFail;
+      clearSignups();
+      if (!o.seed) return;
+      const statuses: SignupStatus[] = [
+        'pending',
+        'approved',
+        'email_queued',
+        'email_failed',
+        'email_sent',
+        'rejected',
+      ];
+      const later = new Date(Date.now() + 6 * 3_600_000).toISOString();
+      for (const [i, status] of statuses.entries()) {
+        // Distinct creation times keep the list order stable.
+        if (i > 0) await new Promise((res) => setTimeout(res, 5));
+        const r = await signupStore.create({
+          name: `Sample ${status.replace('_', ' ')}`,
+          email: `signup-${status.replace('_', '-')}@example.invalid`,
+          role: 'Teacher',
+          lang: i % 2 ? 'he' : 'en',
+          consent: true,
+        });
+        if (status === 'pending') continue;
+        await signupStore.update(r.id, {
+          status,
+          accountAdded: status !== 'rejected',
+          emailAttempts: status === 'email_failed' || status === 'approved' ? 1 : 0,
+          emailAttemptedAt:
+            status === 'email_failed' || status === 'approved' ? new Date().toISOString() : null,
+          emailSendAfter: status === 'email_queued' ? later : null,
+          lastError: status === 'email_failed' ? 'http_503' : null,
+        });
+      }
     },
     /** Keep requests unanswered (the 202 path); answer them once released. */
     hold(on: boolean) {

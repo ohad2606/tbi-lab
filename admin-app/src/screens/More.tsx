@@ -5,7 +5,7 @@ import { useConsole, useT } from '../context.js';
 export function More() {
   const t = useT();
   const { go, setNotice } = useConsole();
-  const row = (name: 'activity' | 'settings', icon: IconName) => (
+  const row = (name: 'signups' | 'activity' | 'settings', icon: IconName) => (
     <li class="item">
       <a
         class="item-link menu-link"
@@ -27,6 +27,7 @@ export function More() {
     <section aria-labelledby="more-h" class="stack">
       <h1 id="more-h">{t('console.nav.more')}</h1>
       <ul class="list" data-testid="more-menu">
+        {row('signups', 'add')}
         {row('activity', 'activity')}
         {row('settings', 'settings')}
         <li class="item">

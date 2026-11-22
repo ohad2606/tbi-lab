@@ -18,16 +18,18 @@ import { Activity } from './screens/Activity.js';
 import { Add } from './screens/Add.js';
 import { Feedback, Report } from './screens/Feedback.js';
 import { More } from './screens/More.js';
+import { Signups } from './screens/Signups.js';
 import { Settings } from './screens/Settings.js';
 import { TesterDetail, Testers } from './screens/Testers.js';
 import { Today } from './screens/Today.js';
 
 /** The desktop's side navigation; adding a tester is an action of the Testers screen. */
-const SECTIONS = ['today', 'testers', 'feedback', 'activity', 'settings'] as const;
+const SECTIONS = ['today', 'testers', 'feedback', 'signups', 'activity', 'settings'] as const;
 const NAV_ICONS: Record<(typeof SECTIONS)[number] | 'more', IconName> = {
   today: 'today',
   testers: 'testers',
   feedback: 'feedback',
+  signups: 'add',
   activity: 'activity',
   settings: 'settings',
   more: 'more',
@@ -319,6 +321,7 @@ export function App() {
           {route.name === 'add' && <Add />}
           {route.name === 'feedback' && <Feedback />}
           {route.name === 'report' && <Report key={route.id} id={route.id} />}
+          {route.name === 'signups' && <Signups />}
           {route.name === 'activity' && <Activity />}
           {route.name === 'settings' && <Settings />}
           {route.name === 'more' && <More />}

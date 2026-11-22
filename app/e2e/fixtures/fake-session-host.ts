@@ -39,6 +39,9 @@
  *                                        usage history and the audit view (503 tests)
  *     POST /__test/admin-rich            admin app layout tests: 30 testers with long names, usage
  *                                        for all, 300 audit lines (reset-admin restores the seed)
+ *     POST /__test/admin-signups?seed=1|0&mailFail=1|0   TBI-022: the REAL sign-up routes' store,
+ *                                        emptied, or one synthetic request per status; the fake
+ *                                        mail sender fails (1) or succeeds (0) from now on
  *   Sprint 23C feedback-only release: the same host on REPORTS_PORT (default 7497), whose
  *   `/admin` is the REAL reports mode (TBI_ADMIN_MODE=reports: report routes only, the owner
  *   `e2e-owner` from an owner reference file, every account path 404). The :4175 preview
@@ -535,6 +538,17 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
         audit: url.searchParams.get('audit') !== '0',
       });
       return reply({ ok: true });
+    case '/__test/admin-signups':
+      void fakeAdmin
+        .signups({
+          seed: url.searchParams.get('seed') === '1',
+          mailFail: url.searchParams.get('mailFail') === '1',
+        })
+        .then(
+          () => reply({ ok: true }),
+          () => res.writeHead(500).end(),
+        );
+      return;
     case '/__test/admin-rich':
       fakeAdmin.rich();
       return reply({ ok: true });
