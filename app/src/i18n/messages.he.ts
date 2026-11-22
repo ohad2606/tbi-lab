@@ -2124,6 +2124,66 @@ export const he: Record<MessageKey, string> = {
   'kbwire.list.item': 'חוט {n}: {from} אל {to}',
   'kbwire.list.selected': 'חוט {n} נבחר',
 
+  // TBI-005: מה קוד MicroPython נתמך (נוצר מ־runtime/builder/pyContract.ts).
+  'mpy.support.button': 'תמיכה ב־MicroPython',
+  'mpy.support.title': 'תמיכה ב־MicroPython ב־TBI Lab',
+  'mpy.support.intro':
+    'איזה קוד MicroPython יכול לרוץ על ה־ESP32 המדומה, ומה נדחה בשמו. הרשימה נוצרת מחוזה התמיכה, ולכן היא תואמת למה שבנייה והרצה עושות בפועל.',
+  'mpy.support.close': 'סגירה',
+  'mpy.support.section.supported': 'נתמך',
+  'mpy.support.section.refused': 'נדחה',
+  'mpy.support.section.unknown': 'לא מאומת',
+  'mpy.support.status.supported': 'נתמך',
+  'mpy.support.status.refused': 'נדחה',
+  'mpy.support.status.unknown': 'לא מאומת',
+  'mpy.support.at.build': 'נבדק בבנייה',
+  'mpy.support.at.session': 'נבדק כשהסשן מתחיל',
+  'mpy.support.at.run': 'נבדק בזמן ההרצה',
+  'mpy.support.refusal': 'מדווח בשם',
+  'mpy.contract.gpio_output.note':
+    'הפין מניע את המעגל (ערבויות V_OH/V_OL של ESP32); פין שנושא עומס אמיתי נבדק מול הדירוגים שלו',
+  'mpy.contract.gpio_input.note':
+    'הרמה שהמעגל נותן לפין (V_IH/V_IL); קריאה מפין לא מוגדר או לא מחובר מסיימת את ההרצה בשמה (בכל הרגיסטרים, ספרינט 25)',
+  'mpy.contract.gpio_internal_pull.note':
+    'התנגדות ה־pull הפנימית לא מאופיינת בסימולציה: השתמשו בנגד אמיתי במעגל',
+  'mpy.contract.gpio_drive_strength.note': 'עוצמות ההינע לא מאופיינות',
+  'mpy.contract.signal_drive.note':
+    'מניע את הפין כמו Pin (הפוך כשמבקשים); קריאה חזרה דרך Signal.value() לא מזוהה לפין על ידי ניתוח הבנייה, ולכן ההרצה עוקבת אחרי כל הפינים ונדחית בקריאה כל עוד פין כלשהו לא מחובר (כשל סגור)',
+  'mpy.contract.pwm.note':
+    'LEDC במהירות גבוהה: העומס רואה את הממוצע (מחזור עבודה × נקודת העבודה ב־HIGH); מצב מהירות נמוכה, רזולוציות אחרות או הגדרה מחדש מהירה מדי מסיימים את ההרצה בשמם (⁦pwm_unsupported_mode⁩, ⁦pwm_rate_exceeded⁩); מחזור עבודה 0 לתוך עומס נדחה',
+  'mpy.contract.irq_edge.note':
+    'פסיקות קצה נמסרות על ידי Runtime v5 לפי הסדר; השהיה של עד פרוסת אמולטור אחת (הליבות רצות בתורות)',
+  'mpy.contract.irq_level.note':
+    'פסיקות רמה, NMI והתעוררות משינה לא מדומות; נדחות בכתיבה לרגיסטר, לפני שהמטפל מופעל (ל־MicroPython 1.29 אין קבועי ⁦IRQ_*_LEVEL⁩; סוג רמה מספרי כן מגיע)',
+  'mpy.contract.timing.note':
+    'זמן סימולציה; דטרמיניסטי (שתי הרצות נותנות אותו תמלול ואותו רצף חשמלי)',
+  'mpy.contract.pulse_timing.note':
+    'מודד פולס על כניסה לפי הקצוות שהמעגל נותן לה (למשל הד של HC-SR04): בתוך ‎±2 µs‎ במדידה, עד ‎≈ 13 µs‎ איחור בתוך המרווח של הליבה האחרת (חוזה התזמון, כמו pulseIn); ‎−2‎ כשלא מתחיל פולס בתוך הזמן הקצוב, ‎−1‎ כשהוא לא מסתיים; המדידה מתחילה מהקריאה אם הפין כבר ברמה',
+  'mpy.contract.dht22.note':
+    'מנהל ההתקן של הקושחה מול מודל DHT22: כל מסגרת מדויקת מ־‎−40‎ עד ‎80 °C‎ ומ־0 עד 100 %RH; קריאה בלי מענה (אין חיישן, או בתוך 2 שניות תקופת האיסוף של החיישן) מעלה ⁦OSError(ETIMEDOUT)⁩ אחרי 268 ms של המנהל; בלי נגד pull-up ההרצה נדחית בשמה (⁦gpio_input_undefined⁩); המחלקה DHT11 לא מאומתת (אין רכיב DHT11)',
+  'mpy.contract.i2c.note':
+    'ארגומנטים מילוליים על פס 0 (GPIO22/21) עד 100 kHz, כתיבות לגב ה־LCD המדומה; השעון שהוגדר נבדק גם בכל START',
+  'mpy.contract.i2c_frequency.note': 'מהיר ממה שגב PCF8574 מדורג לו (100 kHz)',
+  'mpy.contract.i2c_read.note': 'אף רכיב מדומה לא עונה על אלה',
+  'mpy.contract.soft_i2c.note': 'I2C בהקפצת סיביות לא מאומת על ה־runtime',
+  'mpy.contract.adc.note':
+    'ה־ADC מסוג SAR באמולטור מקריס את האורח ואין פונקציית תמסורת מאופיינת; נדחה בגישה, לפני שערך כלשהו מגיע לתוכנית (בלי Guru Meditation)',
+  'mpy.contract.dac.note': 'לא מדומה',
+  'mpy.contract.spi.note': 'לא מדומה',
+  'mpy.contract.touch.note': 'חישה קיבולית לא מדומה',
+  'mpy.contract.timer.note': 'פסיקות טיימר חומרה לא מדומות (השתמשו ב־⁦time.sleep_ms⁩ או ב־ticks)',
+  'mpy.contract.uart.note': 'UART0 הוא מוניטור הטורי; UART אחרים לא מדומים',
+  'mpy.contract.rtc.note': 'לא מדומה',
+  'mpy.contract.cpu_frequency.note':
+    'שעון מופחת תוקע את האמולטור, שעון מוגבר לא ניתן לזיהוי בזמן ריצה; קריאת ⁦machine.freq()⁩ מותרת',
+  'mpy.contract.sleep_modes.note': 'לא מדומה',
+  'mpy.contract.restart.note': 'הפעלה מחדש של השבב כולו לא נתמכת ב־V1',
+  'mpy.contract.dynamic_access.note': 'ניתוח הבנייה קורא שמות כתובים בלבד (ספרינט 28 L7, כשל סגור)',
+  'mpy.contract.serial_input.note':
+    'לסשן אין נתיב קלט טורי (מוניטור הטורי מציג פלט בלבד): התוכנית הייתה מחכה לנצח',
+  'mpy.contract.network.note':
+    'אין רשת או רדיו בסימולטור (וגם לא מתוך ארגז החול של הקומפילציה או ההרצה)',
+
   // Admin app design §3: shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesHe,
 };
