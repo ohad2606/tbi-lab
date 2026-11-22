@@ -3624,6 +3624,15 @@ select {
 .getting-started {
   margin-block-end: 1rem;
 }
+.getting-started-quick {
+  border-inline-start: 4px solid var(--accent, currentColor);
+  padding-inline-start: 0.75rem;
+  margin-block: 0.75rem;
+}
+.getting-started-quick h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
 .getting-started-steps {
   padding-inline-start: 1.4rem;
 }
@@ -4946,4 +4955,55 @@ select {
     min-block-size: auto;
     overflow: visible;
   }
+}
+
+/* TBI-014: first-run welcome. */
+.first-run-dialog {
+  max-inline-size: 34rem;
+}
+.first-run-steps {
+  padding-inline-start: 1.4rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.first-run-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.first-run-actions .button {
+  min-block-size: 2rem;
+}
+
+/* TBI-014 slice 2: next-step card above the canvas. Compact, no motion, no timers. */
+.workspace-center.has-next-step {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+.next-step {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 0.25rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+}
+.next-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.next-step-title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.next-step-dismiss {
+  min-block-size: 1.75rem;
+  min-inline-size: 1.75rem;
+}
+.next-step-list {
+  margin: 0.25rem 0 0;
+  padding-inline-start: 1.2rem;
+  display: grid;
+  gap: 0.15rem;
 }

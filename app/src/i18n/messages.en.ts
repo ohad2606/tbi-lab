@@ -1942,6 +1942,10 @@ export const en = {
   'onboarding.heading': 'Getting started',
   'onboarding.intro':
     'TBI Lab is an electronics engineering workspace. It simulates a Classic ESP32 and the circuit around it, here in your browser.',
+  'onboarding.quick.heading': 'Fastest start: no build, no waiting',
+  'onboarding.quick.body':
+    'Open a small LED circuit, press Run in the top bar, then select the resistor R1 and change its value. The LED current changes with it.',
+  'onboarding.quick.open': 'Open the LED example',
   'onboarding.step1': 'Open an ESP32 example below, for example the distance alarm.',
   'onboarding.step2': 'In the Code tab, press Build. The first build can take about a minute.',
   'onboarding.step3':
@@ -1950,6 +1954,31 @@ export const en = {
     'Projects are saved in this browser only: use Export to keep a copy. The ESP32 simulator is shared by the alpha testers; if it is busy, try again in a moment.',
   'onboarding.dismiss': 'Got it',
   'onboarding.show': 'Show getting started',
+  // TBI-014: first-run welcome.
+  'firstRun.title': 'Welcome to TBI Lab',
+  'firstRun.intro': 'Three steps to your first simulated circuit. It takes about a minute.',
+  'firstRun.step1':
+    'Open the example: an LED with a current-limiting resistor, powered by the lab supply.',
+  'firstRun.step2': 'Press Run. The simulator solves the circuit and the LED lights up.',
+  'firstRun.step3':
+    'Read the probe on the canvas, for example {probe}, and any warning in the message bar: the numbers come from the simulator.',
+  'firstRun.start': 'Start with the example',
+  'firstRun.skip': 'Skip',
+  'firstRun.never': "Don't show again",
+  'firstRun.note': 'Nothing is sent anywhere: this choice is stored in this browser only.',
+  'firstRun.opened': 'Example opened. Press Run to start the simulation.',
+  'firstRun.listLabel': 'Steps',
+  'menu.firstRun': 'Welcome and first steps',
+  // TBI-014 slice 2: next-step card after the first Run.
+  'nextStep.title': 'It is running. What to try next',
+  'nextStep.step1': 'Change the lab power supply voltage while it runs and watch {probe} follow.',
+  'nextStep.step2':
+    'Press Stop, select the resistor, change its Resistance in Properties, press Run: the LED current changes.',
+  'nextStep.step3': 'Use the [[probe]] button on the canvas to pin another voltage or current.',
+  'nextStep.dismiss': 'Got it',
+  'nextStep.listLabel': 'Things to try',
+  'nextStep.announce':
+    'The simulation is running. A card with next steps is above the drawing area.',
   // Sprint 13 H7 (shown only when a deployment configures the form).
   'menu.feedback': 'Send feedback',
   // Sprint 14: in-app problem reports (shown only when a deployment enables them).

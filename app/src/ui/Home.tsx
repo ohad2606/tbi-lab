@@ -12,6 +12,7 @@ import {
 import { formatDateTime, isolateUserText, type LocaleInfo } from '../i18n/i18n.js';
 import type { ProjectIndexEntry } from '../persistence/store.js';
 import { useAppState, useStore, useT } from './context.js';
+import { FIRST_RUN_EXAMPLE } from './firstRun.js';
 
 /** The project library: new project, examples, import, and every local project. */
 export function Home() {
@@ -26,6 +27,7 @@ export function Home() {
   const createConflict = state.nameConflict?.scope === 'create' ? state.nameConflict : null;
   // Sprint 13 H4: the first-run guide, until dismissed on this device.
   const [guide, setGuide] = useState(() => !store.onboardingDismissed());
+  const reopenRef = useRef<HTMLButtonElement>(null);
   // Rows get the locale and translation as props and are rebuilt only when the list or the
   // language changes: 50+ rows each subscribed to the whole app state made every store update
   // re-render the entire library (Sprint 5 measurement).
@@ -62,9 +64,12 @@ export function Home() {
 
       {guide ? (
         <GettingStarted
+          onOpenStarter={() => void store.openExample(FIRST_RUN_EXAMPLE)}
           onDismiss={() => {
             store.setOnboardingDismissed(true);
             setGuide(false);
+            // The panel is gone: keep keyboard focus on the control that brings it back.
+            setTimeout(() => reopenRef.current?.focus(), 0);
           }}
         />
       ) : (
@@ -72,6 +77,7 @@ export function Home() {
           <button
             type="button"
             class="link-button"
+            ref={reopenRef}
             data-testid="onboarding-show"
             onClick={() => {
               store.setOnboardingDismissed(false);

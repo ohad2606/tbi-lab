@@ -11,6 +11,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { component, exportFromMenu, goToProjects, openAppMenu, storedProjects } from './helpers.js';
+import { markReturningUser } from './helpers/returningUser.js';
 
 test.skip(!process.env.TBI_S12_REAL, 'heavy: needs the real Session Host + QEMU (TBI_S12_REAL=1)');
 test.describe.configure({ mode: 'serial' });
@@ -21,6 +22,7 @@ const select = (p: Page, id: string) =>
 
 async function freshPage(browser: Browser, locale: 'en' | 'he') {
   const ctx = await browser.newContext();
+  await markReturningUser(ctx);
   const page = await ctx.newPage();
   await page.goto('/');
   await expect(T(page, 'example-list').or(T(page, 'canvas'))).toBeVisible();

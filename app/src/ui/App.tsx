@@ -1,3 +1,4 @@
+import { FirstRunHost } from './FirstRun.js';
 import { CapabilitiesHost } from './Capabilities.js';
 import { ProblemReportHost } from './ProblemReport.js';
 import { ShortcutsHost } from './ShortcutsDialog.js';
@@ -101,6 +102,7 @@ export function App() {
       {state.screen === 'editor' && state.doc ? <Editor /> : <Home />}
       <VersionStatus />
       <CapabilitiesHost />
+      <FirstRunHost />
       <ProblemReportHost />
       <ShortcutsHost />
       <GuideHost />

@@ -5,6 +5,7 @@
  */
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { waitSaved } from './helpers.js';
+import { markReturningUser } from './helpers/returningUser.js';
 
 const FAKE = 'http://127.0.0.1:7499';
 const phase = (page: Page) => page.getByTestId('build-phase');
@@ -17,6 +18,7 @@ test.beforeEach(async ({ request }) => {
 
 async function asUser(browser: Browser, user: string, baseURL: string) {
   const context = await browser.newContext({ baseURL });
+  await markReturningUser(context);
   await context.addCookies([{ name: 'tbi_test_user', value: user, url: baseURL }]);
   return { context, page: await context.newPage() };
 }

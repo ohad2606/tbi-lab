@@ -1624,6 +1624,29 @@ export const he: Record<MessageKey, string> = {
   'pin.gpio2': 'IO2',
   'pin.gpio15': 'IO15',
   // Sprint 13 H1: what runs on the ESP32 (packages/domain/src/capabilities.ts).
+  // TBI-014: first-run welcome.
+  'firstRun.title': 'ברוכים הבאים ל־TBI Lab',
+  'firstRun.intro': 'שלושה צעדים למעגל המדומה הראשון שלכם. זה לוקח כדקה.',
+  'firstRun.step1': 'פתחו את הדוגמה: נורית LED עם נגד מגביל זרם, מוזנת מספק הכוח של המעבדה.',
+  'firstRun.step2': 'לחצו על הרצה. הסימולטור פותר את המעגל והנורית נדלקת.',
+  'firstRun.step3':
+    'קראו את הבדיקה (probe) על הלוח, למשל {probe}, ואת האזהרה בסרגל ההודעות, אם יש: המספרים באים מהסימולטור.',
+  'firstRun.start': 'התחילו עם הדוגמה',
+  'firstRun.skip': 'דלגו',
+  'firstRun.never': 'אל תציגו שוב',
+  'firstRun.note': 'שום דבר לא נשלח: הבחירה נשמרת בדפדפן הזה בלבד.',
+  'firstRun.opened': 'הדוגמה נפתחה. לחצו על הרצה כדי להתחיל את הסימולציה.',
+  'firstRun.listLabel': 'צעדים',
+  'menu.firstRun': 'ברוכים הבאים וצעדים ראשונים',
+  // TBI-014 slice 2: next-step card after the first Run.
+  'nextStep.title': 'זה רץ. מה לנסות עכשיו',
+  'nextStep.step1': 'שנו את מתח ספק הכוח של המעבדה בזמן הריצה וראו איך {probe} עוקב.',
+  'nextStep.step2':
+    'לחצו על עצירה, בחרו את הנגד, שנו את ההתנגדות שלו בתכונות ולחצו על הרצה: זרם הנורית ישתנה.',
+  'nextStep.step3': 'השתמשו בכפתור [[probe]] שעל משטח השרטוט כדי לנעוץ מתח או זרם נוספים.',
+  'nextStep.dismiss': 'הבנתי',
+  'nextStep.listLabel': 'דברים לנסות',
+  'nextStep.announce': 'הסימולציה רצה. מעל משטח השרטוט יש כרטיס עם הצעדים הבאים.',
   'menu.capabilities': 'מה רץ על ה־ESP32',
   'capabilities.title': 'מה רץ על ה־ESP32 ב־TBI Lab',
   'capabilities.intro':
@@ -1858,6 +1881,10 @@ export const he: Record<MessageKey, string> = {
   'onboarding.heading': 'צעדים ראשונים',
   'onboarding.intro':
     'TBI Lab היא סביבת עבודה הנדסית לאלקטרוניקה. היא מדמה את ה־ESP32 הקלאסי ואת המעגל סביבו, כאן בדפדפן שלכם.',
+  'onboarding.quick.heading': 'ההתחלה המהירה: בלי בנייה ובלי המתנה',
+  'onboarding.quick.body':
+    'פתחו מעגל LED קטן, לחצו הרצה בסרגל העליון, בחרו את הנגד ⁦R1⁩ ושנו את ערכו. זרם ה־LED משתנה בהתאם.',
+  'onboarding.quick.open': 'פתיחת דוגמת ה־LED',
   'onboarding.step1': 'פתחו אחת מדוגמאות ה־ESP32 שלמטה, למשל אזעקת המרחק.',
   'onboarding.step2': 'בלשונית הקוד, לחצו בנייה. הבנייה הראשונה עשויה להימשך כדקה.',
   'onboarding.step3':

@@ -21,6 +21,7 @@ import {
   storedProjects,
   waitSaved,
 } from './helpers.js';
+import { markReturningUser } from './helpers/returningUser.js';
 
 test.skip(!process.env.TBI_RC6_REAL, 'heavy: needs the real stack (TBI_RC6_REAL=1)');
 test.describe.configure({ mode: 'serial' });
@@ -34,6 +35,7 @@ const select = (p: Page, id: string) =>
 
 async function freshPage(browser: Browser, locale: 'en' | 'he') {
   const ctx = await browser.newContext({ baseURL: BASE });
+  await markReturningUser(ctx);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => {
     throw e;
@@ -165,6 +167,7 @@ for (const [locale, other] of [
     await b.ctx.close();
 
     const owner = await browser.newContext({ baseURL: BASE });
+    await markReturningUser(owner);
     await owner.addCookies([{ name: 'tbi_test_user', value: OWNER, url: BASE }]);
     const o = await owner.newPage();
     await o.goto('/');
