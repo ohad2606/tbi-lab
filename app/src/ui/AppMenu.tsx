@@ -10,6 +10,7 @@ import {
 import { BUILD_INFO } from '../buildInfo.js';
 import { useAppState, useStore, useT } from './context.js';
 import { downloadProject } from './download.js';
+import { forgetSessionConsents } from './signOut.js';
 import { openProblemReport } from './ProblemReport.js';
 
 /**
@@ -255,7 +256,10 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
                 tabIndex={-1}
                 data-testid="sign-out"
                 href={SIGN_OUT_URL}
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  forgetSessionConsents();
+                  setOpen(false);
+                }}
               >
                 {t('topbar.signOut')}
               </a>

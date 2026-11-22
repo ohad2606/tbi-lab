@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import symbolUrl from '../assets/brand/tbi-lab-symbol.png';
 import { IS_DEV_ENV, SIGN_OUT_URL } from '../deployment.js';
+import { forgetSessionConsents } from './signOut.js';
 import { openAssist } from '../assist/open.js';
 import { LOCALES } from '../i18n/i18n.js';
 import { AppMenu } from './AppMenu.js';
@@ -80,7 +81,12 @@ function HomeBar() {
         <LanguageSelect />
         {/* Only a protected deployment configures this; a plain navigation leaves it. */}
         {SIGN_OUT_URL && (
-          <a class="button button-quiet sign-out" data-testid="sign-out" href={SIGN_OUT_URL}>
+          <a
+            class="button button-quiet sign-out"
+            data-testid="sign-out"
+            href={SIGN_OUT_URL}
+            onClick={() => forgetSessionConsents()}
+          >
             {t('topbar.signOut')}
           </a>
         )}

@@ -98,3 +98,25 @@ test('Sign out is a top-level navigation and leaves no auth state in projects', 
   expect(JSON.stringify(after)).not.toMatch(/sign_?out|oauth|session|token|cookie/i);
   expect(await page.evaluate(() => Object.keys(localStorage).sort())).toEqual(prefsBefore);
 });
+
+test('every Sign out link forgets the session-only AI consent', async ({ page }) => {
+  const KEY = 'tbi-lab.assist.consent/session/2026-11-22';
+  const seed = () => page.evaluate((k) => sessionStorage.setItem(k, '1'), KEY);
+  const has = () => page.evaluate((k) => sessionStorage.getItem(k), KEY);
+
+  // Workspace menu link.
+  await openExample(page, SIGNED, 'esp32-blink');
+  await seed();
+  await openAppMenu(page);
+  await signOut(page).click();
+  await page.waitForURL(`${SIGNED}/oauth2/sign_out`);
+  expect(await has()).toBeNull();
+
+  // Projects (top bar) link.
+  await page.goto(`${SIGNED}/`);
+  await expect(page.getByTestId('example-list')).toBeVisible();
+  await seed();
+  await page.getByRole('link', { name: /sign out|יציאה/i }).click();
+  await page.waitForURL(`${SIGNED}/oauth2/sign_out`);
+  expect(await has()).toBeNull();
+});

@@ -15,7 +15,8 @@ import { createPackage, serializePackage, type ProjectDocument } from '@tbi-lab/
 import { boardBench, ledLoop } from '../../packages/assist/eval/bench.js';
 import { goToProjects, openImported, storedProjects, waitSaved } from './helpers.js';
 
-const DEV = 'http://127.0.0.1:4175';
+// The DEV-Lab preview (playwright.app.config.ts); overridable when that port is taken.
+const DEV = process.env.TBI_E2E_DEV_URL ?? 'http://127.0.0.1:4175';
 const OUT = 'test-results/s27-assist';
 mkdirSync(OUT, { recursive: true });
 

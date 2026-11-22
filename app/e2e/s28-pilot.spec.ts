@@ -3,12 +3,15 @@
  *
  * The browser talks only to the TBI Lab AI provider service (/assist/v1/*); here that service is
  * stubbed with page.route: the server itself is tested in runtime/assist/tests and on staging.
- * - no service: the pilot says it is unavailable, nothing else happens;
+ * TBI-017 slice 1 UI (AI explanation in the panel; the status is asked once on opening):
+ * - no service: "not available", no Ask button, nothing else happens;
  * - disabled: the missing owner approvals are listed (EN, HE), there is no way to send anything;
- * - active, not a pilot user: no controls;
- * - active pilot user: nothing is sent until the user previews EXACTLY what would leave TBI Lab and
- *   gives consent of the current version; the reply is shown as findings + labelled explanation;
- *   the project is unchanged (no write action exists).
+ * - active, not a pilot user: "not available for your account", no controls;
+ * - active pilot user: nothing is sent until the user asks AND agrees in the consent dialog (which
+ *   can preview EXACTLY what would leave TBI Lab); then exactly one request carrying the consent
+ *   of the current version; the reply is shown as findings + labelled explanation; the project is
+ *   unchanged (no write action exists). Consent is remembered for the session: withdrawing it
+ *   brings the dialog back. The fuller keyboard/announcement coverage is a11y-ai-assistant.
  */
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
@@ -17,7 +20,7 @@ import { createPackage, serializePackage, type ProjectDocument } from '@tbi-lab/
 import { ledLoop } from '../../packages/assist/eval/bench.js';
 import { goToProjects, storedProjects, waitSaved } from './helpers.js';
 
-const DEV = 'http://127.0.0.1:4175';
+const DEV = process.env.TBI_E2E_DEV_URL ?? 'http://127.0.0.1:4175';
 const OUT = 'test-results/s28-pilot';
 mkdirSync(OUT, { recursive: true });
 
@@ -40,6 +43,7 @@ async function openDev(page: Page, doc: ProjectDocument) {
 
 async function analyze(page: Page) {
   await page.getByTestId('assist-open').click();
+  await expect(page.getByTestId('assist-panel')).toBeVisible();
   await page.getByTestId('assist-analyze').click();
   await expect(page.getByTestId('assist-panel')).toHaveAttribute('data-phase', 'done', {
     timeout: 15_000,
@@ -132,11 +136,16 @@ function stub(page: Page, st: Record<string, unknown>) {
   return calls;
 }
 
+const notFound = (page: Page) =>
+  page.route('**/assist/v1/**', (route) => json(route, { error: 'not_found' }, 404));
+
 test('no AI provider service: the pilot is unavailable and nothing is sent', async ({ page }) => {
+  await notFound(page);
   await openDev(page, ledLoop(5, 0.1, null).doc);
   await analyze(page);
-  await expect(page.getByTestId('assist-pilot-unavailable')).toBeVisible();
-  await expect(page.getByTestId('assist-pilot-preview')).toHaveCount(0);
+  await expect(page.getByTestId('ai-not-available')).toHaveAttribute('data-reason', 'unavailable');
+  await expect(page.getByTestId('ai-ask')).toHaveCount(0);
+  await expect(page.getByTestId('ai-consent')).toBeHidden();
 });
 
 test('disabled: the missing owner approvals are named (EN, HE); there is nothing to send', async ({
@@ -156,20 +165,20 @@ test('disabled: the missing owner approvals are named (EN, HE); there is nothing
   });
   await openDev(page, ledLoop(5, 0.1, null).doc);
   await analyze(page);
-  const pilot = page.getByTestId('assist-pilot');
-  await expect(pilot).toHaveAttribute('data-state', 'disabled');
-  await expect(page.getByTestId('assist-pilot-reasons').locator('li')).toHaveCount(7);
-  await expect(page.getByTestId('assist-pilot-reasons')).toContainText('hard monthly spending cap');
-  await expect(page.getByTestId('assist-pilot-preview')).toHaveCount(0);
-  await pilot.screenshot({ path: `${OUT}/disabled-en.png` });
+  const na = page.getByTestId('ai-not-available');
+  await expect(na).toHaveAttribute('data-reason', 'disabled');
+  await expect(page.getByTestId('ai-reasons').locator('li')).toHaveCount(7);
+  await expect(page.getByTestId('ai-reasons')).toContainText('hard monthly spending cap');
+  await expect(page.getByTestId('ai-ask')).toHaveCount(0);
+  await na.screenshot({ path: `${OUT}/disabled-en.png` });
   await page.getByTestId('language-select').selectOption('he');
-  await expect(page.getByTestId('assist-pilot-reasons')).toContainText('תקרת הוצאה חודשית קשיחה');
-  await pilot.screenshot({ path: `${OUT}/disabled-he.png` });
+  await expect(page.getByTestId('ai-reasons')).toContainText('תקרת הוצאה חודשית קשיחה');
+  await na.screenshot({ path: `${OUT}/disabled-he.png` });
   expect(calls.every((c) => c.path.endsWith('/status'))).toBe(true);
 });
 
 test('active, but not a pilot user: no controls', async ({ page }) => {
-  stub(page, {
+  const calls = stub(page, {
     state: 'active',
     mode: 'mock',
     provider: 'mock',
@@ -178,8 +187,9 @@ test('active, but not a pilot user: no controls', async ({ page }) => {
   });
   await openDev(page, ledLoop(5, 0.1, null).doc);
   await analyze(page);
-  await expect(page.getByTestId('assist-pilot-not-pilot')).toBeVisible();
-  await expect(page.getByTestId('assist-pilot-preview')).toHaveCount(0);
+  await expect(page.getByTestId('ai-not-available')).toHaveAttribute('data-reason', 'notAllowed');
+  await expect(page.getByTestId('ai-ask')).toHaveCount(0);
+  expect(calls.every((c) => c.path.endsWith('/status'))).toBe(true);
 });
 
 test('pilot user: exact preview, explicit consent, then one request; project unchanged (EN, HE)', async ({
@@ -196,22 +206,32 @@ test('pilot user: exact preview, explicit consent, then one request; project unc
   await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', 'running');
   const before = JSON.stringify(await storedProjects(page));
   await analyze(page);
-  await expect(page.getByTestId('assist-pilot-model')).toContainText('no AI model is involved');
+  const sentCalls = () => calls.filter((c) => !c.path.endsWith('/status'));
   // Opening and analysing sent nothing to explain or preview.
-  expect(calls.map((c) => c.path).filter((p) => !p.endsWith('/status'))).toEqual([]);
-  await page.getByTestId('assist-pilot-preview').click();
-  const payload = page.getByTestId('assist-pilot-payload');
-  await expect(payload).toContainText('Nothing has been sent');
-  await expect(payload.locator('pre')).toHaveAttribute('dir', 'ltr');
-  await expect(payload.locator('pre')).toContainText('current.led_overcurrent');
-  await expect(payload.locator('pre')).not.toContainText('Private project name');
-  // Send stays disabled without consent.
-  await expect(page.getByTestId('assist-pilot-send')).toBeDisabled();
+  expect(sentCalls()).toEqual([]);
+  await page.getByTestId('ai-ask').click();
+  const dialog = page.getByTestId('ai-consent');
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId('ai-consent-model')).toContainText('no AI model is involved');
+  // Asking opens the dialog only: nothing is sent until the user agrees.
+  expect(sentCalls()).toEqual([]);
+  await page.getByTestId('ai-preview').click();
+  const payload = page.getByTestId('ai-payload');
+  await expect(page.getByTestId('ai-preview-status')).toContainText('Nothing has been sent');
+  await expect(payload).toHaveAttribute('dir', 'ltr');
+  await expect(payload).toContainText('current.led_overcurrent');
+  await expect(payload).not.toContainText('Private project name');
   expect(calls.some((c) => c.path.endsWith('/explain'))).toBe(false);
-  await page.getByTestId('assist-pilot-consent').check();
-  await page.getByTestId('assist-pilot').screenshot({ path: `${OUT}/preview-en.png` });
-  await page.getByTestId('assist-pilot-send').click();
-  const reply = page.getByTestId('assist-pilot-reply');
+  await dialog.screenshot({ path: `${OUT}/preview-en.png` });
+  // Declining sends nothing and closes the dialog.
+  await page.getByTestId('ai-consent-cancel').click();
+  await expect(dialog).toBeHidden();
+  expect(calls.some((c) => c.path.endsWith('/explain'))).toBe(false);
+  // Asking again and agreeing: exactly one explain request, with the consent.
+  await page.getByTestId('ai-ask').click();
+  await expect(dialog).toBeVisible();
+  await page.getByTestId('ai-consent-agree').click();
+  const reply = page.getByTestId('ai-answer');
   await expect(reply).toHaveAttribute('data-same-findings', 'true');
   await expect(reply.getByTestId('assist-explanation').first()).toContainText(
     'Server template explanation',
@@ -226,17 +246,23 @@ test('pilot user: exact preview, explicit consent, then one request; project unc
   expect(JSON.stringify(explain[0]!.body)).not.toContain('Private project name');
   expect(JSON.stringify(await storedProjects(page))).toBe(before);
 
-  // Hebrew: a new analysis resets preview and consent; nothing is resent on the locale change.
+  // Hebrew: a new analysis clears the answer; nothing is resent on the locale change.
   await page.getByTestId('language-select').selectOption('he');
   await page.getByTestId('assist-analyze').click();
   await expect(page.getByTestId('assist-panel')).toHaveAttribute('data-phase', 'done', {
     timeout: 15_000,
   });
-  await expect(page.getByTestId('assist-pilot-payload')).toHaveCount(0);
+  await expect(page.getByTestId('ai-answer')).toHaveCount(0);
   expect(calls.filter((c) => c.path.endsWith('/explain'))).toHaveLength(1);
-  await page.getByTestId('assist-pilot-preview').click();
-  await expect(page.getByTestId('assist-pilot-send')).toBeDisabled();
-  await expect(page.getByTestId('assist-pilot-payload')).toContainText('שום דבר לא נשלח');
-  await page.getByTestId('assist-pilot').screenshot({ path: `${OUT}/preview-he.png` });
+  // The consent is remembered for the session; withdrawing it brings the dialog back.
+  await page.getByTestId('ai-withdraw').click();
+  await page.getByTestId('ai-ask').click();
+  await expect(dialog).toBeVisible();
+  await page.getByTestId('ai-preview').click();
+  await expect(page.getByTestId('ai-preview-status')).toContainText('שום דבר לא נשלח');
+  await dialog.screenshot({ path: `${OUT}/preview-he.png` });
+  await page.getByTestId('ai-consent-cancel').click();
+  await expect(dialog).toBeHidden();
+  expect(calls.filter((c) => c.path.endsWith('/explain'))).toHaveLength(1);
   expect(JSON.stringify(await storedProjects(page))).toBe(before);
 });

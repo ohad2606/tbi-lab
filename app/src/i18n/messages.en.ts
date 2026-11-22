@@ -1295,6 +1295,69 @@ export const en = {
     'The model’s reply failed the evidence checks and is not shown.',
   'assist.pilot.error.timeout': 'The AI provider did not answer in time.',
   'assist.pilot.error.other': 'The request did not complete.',
+  // TBI-017 slice 1: the AI explanation (action A). Visible names stay renamable (owner Q7).
+  'assist.ai.action.explain': 'Explain this circuit',
+  'assist.ai.action.again': 'Explain again',
+  'assist.ai.action.retry': 'Try again',
+  'assist.ai.cancel': 'Cancel request',
+  'assist.ai.heading': 'AI explanation',
+  'assist.ai.label': 'AI-generated, may be wrong. Check it against the simulator findings above.',
+  'assist.ai.idle':
+    'Ask with “Explain this circuit”. Nothing is sent before you agree in the next step.',
+  'assist.ai.sending': 'Asking the AI…',
+  'assist.ai.ready': 'Answer ready. Findings explained: {count}.',
+  'assist.ai.cancelled': 'The request was cancelled. The simulator findings are unchanged.',
+  'assist.ai.na.unavailable':
+    'AI explanation is not available here: the AI service does not answer. The simulator findings work as usual.',
+  'assist.ai.na.disabled':
+    'AI explanation is not available here: the AI service is turned off. The simulator findings work as usual.',
+  'assist.ai.na.notAllowed':
+    'AI explanation is not available for your account yet. The simulator findings work as usual.',
+  'assist.ai.data.unknown': 'another category ({id})',
+  'assist.ai.consent.title': 'Send this circuit to the AI?',
+  'assist.ai.consent.intro':
+    'To explain the findings, TBI Lab sends the items listed below to its AI service, for this request only. Your project is not changed.',
+  'assist.ai.consent.retention':
+    'TBI Lab keeps a usage record of each request (time, result, size and cost, not the circuit) for {days} days. The AI provider’s own retention terms are not confirmed yet.',
+  'assist.ai.consent.version': 'Consent version {version}.',
+  'assist.ai.consent.cancel': 'Cancel, send nothing',
+  'assist.ai.consent.agree': 'Agree and send',
+  'assist.ai.consent.declined': 'Nothing was sent.',
+  'assist.ai.consent.remembered':
+    'You agreed to send circuits to the AI service (consent version {version}). It is sent with each request.',
+  'assist.ai.consent.withdraw': 'Withdraw consent',
+  'assist.ai.consent.withdrawn':
+    'Consent withdrawn. You will be asked again before anything is sent.',
+  'assist.ai.preview.label': 'Exactly what would be sent',
+  'assist.ai.preview.loading': 'Loading the preview…',
+  'assist.ai.preview.ready':
+    'What would be sent is shown below: {bytes} bytes, about {tokens} tokens (estimate). Nothing has been sent to the AI provider.',
+  'assist.ai.preview.error': 'The preview could not be loaded. Nothing has been sent.',
+  'assist.ai.error.unauthenticated': 'You are signed out. Sign in again, then try again.',
+  'assist.ai.error.not_pilot': 'AI explanation is not available for your account yet.',
+  'assist.ai.error.pilot_disabled': 'The AI service is turned off.',
+  'assist.ai.error.consent_required':
+    'The consent terms have changed. Try again to review and agree to the current version.',
+  'assist.ai.error.bad_request': 'The AI service did not accept the request.',
+  'assist.ai.error.context_too_large':
+    'This project is too large to explain in one request. Nothing was sent.',
+  'assist.ai.error.rate_limited': 'Too many requests. You can try again in {seconds} s.',
+  'assist.ai.error.busy': 'The AI service is busy. You can try again in {seconds} s.',
+  'assist.ai.error.daily_limit': 'Today’s limit of AI explanations is reached.',
+  'assist.ai.error.spend_cap': 'The AI service’s monthly budget is reached. Nothing was sent.',
+  'assist.ai.error.token_ceiling': 'The AI service’s monthly limit is reached. Nothing was sent.',
+  'assist.ai.error.cancelled': 'The request was cancelled.',
+  'assist.ai.error.timeout': 'The AI did not answer in time.',
+  'assist.ai.error.provider_error': 'The AI provider failed to answer.',
+  'assist.ai.error.invalid_response':
+    'The AI’s answer did not pass the checks (only statements backed by the findings are allowed), so it is not shown.',
+  'assist.ai.error.unavailable': 'The AI service is not available.',
+  'assist.ai.error.internal': 'The AI service had an internal error.',
+  'assist.ai.error.offline': 'No connection to the AI service. Check your network.',
+  'assist.ai.error.other': 'The request did not complete.',
+  'assist.ai.error.hint.retry': 'The simulator findings above are unaffected. Use “Try again”.',
+  'assist.ai.error.hint.findings': 'The simulator findings above are unaffected.',
+  'assist.findings.notAi': 'These come from the simulation, not from AI.',
   'build.feature.spi': 'SPI bus',
   'build.feature.library': 'library {name}',
   'mcu.runs.program': 'Runs its code. Edit it in the Code tab, Build, then Run.',
