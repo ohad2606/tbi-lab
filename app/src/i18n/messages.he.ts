@@ -2061,6 +2061,10 @@ export const he: Record<MessageKey, string> = {
   'kbwire.wireCleared': 'בחירת החוט בוטלה',
   'kbwire.noWires': 'אין חוטים.',
   'kbwire.endJunction': 'צומת {id}',
+  'kbwire.list.title': 'חוטים',
+  'kbwire.list.empty': 'עדיין אין חוטים. חברו שני פינים כדי להוסיף חוט.',
+  'kbwire.list.item': 'חוט {n}: {from} אל {to}',
+  'kbwire.list.selected': 'חוט {n} נבחר',
 
   // Admin app design §3: shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesHe,

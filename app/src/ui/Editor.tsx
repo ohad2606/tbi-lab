@@ -9,6 +9,7 @@ import { Inspector } from './Inspector.js';
 import { ConnectionsPanel } from './ConnectionsPanel.js';
 import { McuTerminal } from './McuTerminal.js';
 import { requiresMcuRuntime } from '../runtime/snapshot.js';
+import { WiresList } from './WiresList.js';
 import { Palette } from './Palette.js';
 import { probeExists, sameTarget, type Probe, type ProbeInput } from './probes.js';
 
@@ -193,6 +194,7 @@ export function Editor() {
           onClearProbes={() => setProbes([])}
         />
         <ConnectionsPanel />
+        <WiresList />
         {doc && requiresMcuRuntime(doc) && <McuTerminal />}
       </div>
     </main>
