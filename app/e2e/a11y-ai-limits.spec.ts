@@ -192,7 +192,7 @@ async function setup(
   await page.evaluate(() =>
     sessionStorage.setItem(
       'tbi-lab.assist.consent/session/2026-11-22',
-      JSON.stringify({ accepted: true, at: '2026-11-22T00:00:00.000Z' }),
+      JSON.stringify({ accepted: true, who: 'c35f4cf784e067b5', at: '2026-11-22T00:00:00.000Z' }),
     ),
   );
   await page.getByTestId('assist-open').focus();
@@ -289,10 +289,13 @@ test('rate and retryAfterMs: Ask waits (aria-disabled, no request), then offers 
   const askBtn = page.getByTestId('ai-ask');
   await expect(askBtn).toHaveAttribute('aria-disabled', 'true');
   await expect(askBtn).toBeFocused();
+  await expect(askBtn).toHaveAttribute('aria-describedby', 'ai-limit-text');
+  await expect(page.locator('#ai-limit-text')).toContainText(iso(MSG.rate!.en));
   await page.keyboard.press('Enter');
   await page.waitForTimeout(200);
   expect(svc.count('POST', '/explain')).toBe(1);
   await expect(askBtn).not.toHaveAttribute('aria-disabled', 'true', { timeout: 4000 });
+  await expect(askBtn).not.toHaveAttribute('aria-describedby');
   await expect(askBtn).toHaveText('Try again');
   await expect(askBtn).toBeFocused();
   // Nothing was retried by the client on its own.
@@ -361,6 +364,44 @@ test('credits line: shown as given, updated after an answer and after a refusal,
   await expect.poll(() => svc.count('POST', '/explain')).toBe(4);
   await page.waitForTimeout(300);
   expect(svc.count('GET', '/status')).toBe(4);
+  await context.close();
+});
+
+test('language switch with credits shown: the line follows the language, nothing is re-announced, the next change is announced in the new language', async ({
+  browser,
+}) => {
+  const credits = (remaining: number) => ({ plan: 'free', remaining, total: 30 });
+  const { context, page } = await setup(browser, {
+    statuses: [STATUS({ credits: credits(12) }), STATUS({ credits: credits(11) })],
+    replies: ['ok'],
+  });
+  const line = page.getByTestId('ai-credits');
+  await expect(line).toHaveText(iso('AI credits left: 12 of 30.') + ' Plan: Free.');
+  await page.getByTestId('language-select').selectOption('he');
+  await expect(line).toHaveText(
+    `קרדיטי AI שנותרו: ${LRI}12${PDI} מתוך ${LRI}30${PDI}. מסלול: חינמי.`,
+  );
+  await page.waitForTimeout(400);
+  await expect(live(page)).toHaveText('');
+  await ask(page);
+  await expect(page.getByTestId('ai-result')).toHaveAttribute('data-state', 'success');
+  await expect(live(page)).toContainText(`קרדיטי AI שנותרו: ${LRI}11${PDI} מתוך ${LRI}30${PDI}`);
+  await expect(live(page)).not.toContainText('AI credits left');
+  await context.close();
+});
+
+test('a limit refusal is announced once: one alert, and the polite region does not repeat it', async ({
+  browser,
+}) => {
+  const { context, page } = await setup(browser, {
+    replies: [refusal('daily', { n: 1 })],
+  });
+  await ask(page);
+  await expect(page.getByTestId('ai-limit')).toHaveAttribute('data-limit', 'daily');
+  await page.waitForTimeout(400);
+  await expect(page.getByRole('alert')).toHaveCount(1);
+  await expect(live(page)).not.toContainText(iso(MSG.daily!.en));
+  await expect(live(page)).not.toContainText('limit');
   await context.close();
 });
 

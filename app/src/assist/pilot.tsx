@@ -165,7 +165,10 @@ export function useAiController({
   const focusLost = () => {
     const a = document.activeElement;
     return (
-      !a || a === document.body || !a.isConnected || !!a.closest('[data-ai-transient], dialog')
+      !a ||
+      a === document.body ||
+      !a.isConnected ||
+      !!a.closest('[data-ai-transient], .assist-consent-dialog')
     );
   };
 
@@ -319,6 +322,10 @@ export function AiControls({ ai, blocked }: { ai: AiController; blocked: boolean
         data-action="explain"
         ref={ai.askRef}
         aria-disabled={inactive ? 'true' : undefined}
+        // While the service's wait runs, the limit message says why Ask is unavailable.
+        aria-describedby={
+          waiting && p.kind === 'error' && limitCodeOf(p.error) ? 'ai-limit-text' : undefined
+        }
         onClick={() => !inactive && ai.ask()}
       >
         {t(label)}
@@ -398,6 +405,7 @@ export function AiResult({
           key={p.n}
           class="field-error"
           role="alert"
+          id="ai-limit-text"
           data-testid="ai-limit"
           data-limit={limit.code}
           data-source={limit.source}

@@ -191,7 +191,10 @@ const SESSION_KEY = 'tbi-lab.assist.consent/session/2026-11-22';
 const seedSessionConsent = (page: Page) =>
   page.evaluate(
     (k) =>
-      sessionStorage.setItem(k, JSON.stringify({ accepted: true, at: '2026-11-22T00:00:00.000Z' })),
+      sessionStorage.setItem(
+        k,
+        JSON.stringify({ accepted: true, who: 'c35f4cf784e067b5', at: '2026-11-22T00:00:00.000Z' }),
+      ),
     SESSION_KEY,
   );
 

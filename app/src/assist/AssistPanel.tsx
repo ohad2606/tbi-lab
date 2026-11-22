@@ -30,6 +30,7 @@ import {
 import { analyze, assistGateway, type Analysis } from './analyze.js';
 import { aiEnabled, getStatus, type StatusResult } from './client.js';
 import { creditsText } from './limits.js';
+import { stripControls } from './plainText.js';
 import {
   AiControls,
   AiFooter,
@@ -231,7 +232,7 @@ function Explanation({ a, r }: { a: Analysis; r: GatewayResult }) {
       <span key={c}>
         {i > 0 && ', '}
         <a href={`#assist-ev-${c}`} class="technical" dir="ltr" data-testid="assist-cite">
-          {c}
+          {stripControls(c)}
         </a>
       </span>
     ));
@@ -239,7 +240,7 @@ function Explanation({ a, r }: { a: Analysis; r: GatewayResult }) {
     <>
       {r.response.summary && (
         <p data-testid="assist-summary" dir="auto">
-          {r.response.summary.text}
+          {stripControls(r.response.summary.text)}
         </p>
       )}
       <ol class="assist-explanations">
@@ -252,9 +253,9 @@ function Explanation({ a, r }: { a: Analysis; r: GatewayResult }) {
                 class="small"
                 data-testid="assist-explanation-link"
               >
-                {f ? familyText(t, f) : e.finding}
+                {f ? familyText(t, f) : stripControls(e.finding)}
               </a>
-              <p dir="auto">{e.text}</p>
+              <p dir="auto">{stripControls(e.text)}</p>
               <p class="small muted">
                 {t('assist.explain.basedOn', { refs: '' })}
                 {refsOf(e.cites)}
@@ -271,14 +272,15 @@ function Explanation({ a, r }: { a: Analysis; r: GatewayResult }) {
         ))}
         {r.unexplained.map((k) => (
           <li key={k} data-testid="assist-unexplained" data-finding={k}>
-            <a href={`#assist-finding-${k}`}>{k}</a> {t('assist.explain.unexplained')}
+            <a href={`#assist-finding-${k}`}>{stripControls(k)}</a>{' '}
+            {t('assist.explain.unexplained')}
           </li>
         ))}
       </ol>
       <p class="small muted" data-testid="assist-accounting">
         {t('assist.accounting', {
-          provider: isolateLtr(acc.provider),
-          model: isolateLtr(acc.model),
+          provider: isolateLtr(stripControls(acc.provider)),
+          model: isolateLtr(stripControls(acc.model)),
           tokens: isolateLtr(String(acc.inputTokens + acc.outputTokens)),
           cost: isolateLtr(`$${acc.costUsd.toFixed(4)}`),
           ms: isolateLtr(String(Math.round(acc.latencyMs))),

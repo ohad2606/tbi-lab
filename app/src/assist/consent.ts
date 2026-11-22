@@ -34,6 +34,23 @@ export const isAccountRef = (account: string | undefined): account is string =>
 export const accountRef = (account: string | undefined) =>
   isAccountRef(account) ? `acct:${account}` : 'session';
 
+/**
+ * A short, non-reversible binding of a record to the identity it was given for (FNV-1a, two
+ * seeds; not a security hash: the service stays the authority, this only stops a copy that
+ * belongs to another identity from being honoured).
+ */
+export function identityHash(account: string | undefined): string {
+  const text = accountRef(account);
+  let a = 0x811c9dc5;
+  let b = 0x01000193;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    a = Math.imul(a ^ c, 0x01000193) >>> 0;
+    b = Math.imul(b ^ c, 0x811c9dc5) >>> 0;
+  }
+  return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
+}
+
 export function consentKey(
   account: string | undefined,
   version: string,
@@ -88,8 +105,10 @@ export class ConsentStore {
     try {
       const v = s.getItem(k);
       if (!v) return false;
-      const parsed = JSON.parse(v) as { accepted?: unknown };
-      return parsed.accepted === true;
+      const parsed = JSON.parse(v) as { accepted?: unknown; who?: unknown };
+      // Bound to the identity it was given for: a record of another identity (or an old one
+      // without the binding) is not valid, so the dialog asks again.
+      return parsed.accepted === true && parsed.who === identityHash(account);
     } catch {
       return false;
     }
@@ -101,7 +120,10 @@ export class ConsentStore {
     const s = this.backing(account);
     if (!k || !s) return false;
     try {
-      s.setItem(k, JSON.stringify({ accepted: true, at: now().toISOString() }));
+      s.setItem(
+        k,
+        JSON.stringify({ accepted: true, who: identityHash(account), at: now().toISOString() }),
+      );
       return true;
     } catch {
       return false;
