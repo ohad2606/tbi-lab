@@ -2364,6 +2364,19 @@ export const he: Record<MessageKey, string> = {
   'compguide.led-resistor.limits.body':
     'הנורית היא רכיב נומינלי: אין סחיפה עם הטמפרטורה, והמודל שלה מתועד לתחום זרם מוגבל.',
 
+  // TBI-019 G2: חלונית המדריך ונקודות הכניסה אליה.
+  'guidepanel.home.heading': 'מדריכי רכיבים',
+  'guidepanel.home.intro': 'שיעורים קצרים על רכיב אחד, עם מעגל עובד לפתיחה.',
+  'guidepanel.inspector.link': 'מדריך: {title}',
+  'guidepanel.panel.minutes': 'כ-{n} דקות',
+  'guidepanel.panel.close': 'סגירת המדריך',
+  'guidepanel.panel.loading': 'טוענים את ערכי המדריך.',
+  'guidepanel.panel.valuesUnavailable': 'לא ניתן היה לחשב כאן חלק מהערכים, ולכן הם מוצגים כמקף.',
+  'guidepanel.panel.expected': 'מה אמור לקרות:',
+  'guidepanel.panel.openExample': 'פתיחת הדוגמה',
+  'guidepanel.panel.exampleOpened': 'הדוגמה נפתחה במעבדה כפרויקט חדש.',
+  'guidepanel.panel.exampleFailed': 'לא ניתן היה לפתוח את הדוגמה.',
+
   // Admin app design §3: shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesHe,
 };

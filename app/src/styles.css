@@ -1733,7 +1733,7 @@ select {
 .home-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: 'new' 'recent' 'examples';
+  grid-template-areas: 'new' 'recent' 'examples' 'guides';
   gap: 1.25rem;
   align-items: start;
 }
@@ -1743,8 +1743,9 @@ select {
     grid-template-columns: minmax(26rem, 5fr) minmax(0, 7fr);
     grid-template-areas:
       'new examples'
-      'recent examples';
-    grid-template-rows: auto 1fr;
+      'recent examples'
+      'guides examples';
+    grid-template-rows: auto 1fr auto;
   }
 }
 
@@ -1756,6 +1757,19 @@ select {
 .home-new {
   grid-area: new;
   --section-accent: var(--brand-blue);
+}
+
+.home-guides {
+  grid-area: guides;
+  --section-accent: var(--brand-orange);
+}
+
+.guide-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
 }
 
 .home-recent {
@@ -4027,6 +4041,82 @@ select {
 }
 .logic-state .logic-gate-summary {
   margin-inline-start: 0.35em;
+}
+
+/* TBI-019 G2: the component guide, a non-modal side panel (bottom sheet on narrow screens). */
+.guide-panel {
+  position: fixed;
+  inset-block: 4.5rem 0;
+  inset-inline-end: 0;
+  z-index: 40;
+  width: min(24rem, calc(100vw - 2rem));
+  overflow-y: auto;
+  padding: 0.75rem 1rem 1.5rem;
+  background: var(--panel);
+  color: var(--text);
+  border-inline-start: 1px solid var(--border);
+  box-shadow: 0 0 1.5rem rgb(0 0 0 / 18%);
+  overflow-wrap: anywhere;
+}
+.guide-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.guide-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.guide-header .button {
+  margin-inline-start: auto;
+  min-block-size: 24px;
+}
+.guide-section h3 {
+  font-size: 1rem;
+  margin-block: 1rem 0.35rem;
+}
+.guide-section ul,
+.guide-section ol {
+  margin-block: 0.25rem;
+  padding-inline-start: 1.25rem;
+}
+.guide-note {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--warning-ink);
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+}
+.guide-link {
+  margin-block: 0.5rem;
+}
+.guide-link .link-button {
+  min-block-size: 24px;
+}
+/* Docked: the content makes room, so the panel never covers the canvas, the inspector or the
+   Projects cards. Wide screens: a column at the inline end; below 1280 px a bottom sheet. */
+@media (min-width: 1280px) {
+  .guide-panel {
+    width: 22rem;
+  }
+  .app:has(.guide-panel) > .workspace,
+  .app:has(.guide-panel) > .home {
+    padding-inline-end: 22rem;
+  }
+}
+@media (max-width: 1279px) {
+  .guide-panel {
+    inset-block: auto 0;
+    inset-inline: 0;
+    width: auto;
+    max-height: 40vh;
+    border-inline-start: none;
+    border-block-start: 1px solid var(--border);
+  }
+  .app:has(.guide-panel) > .workspace,
+  .app:has(.guide-panel) > .home {
+    padding-block-end: 40vh;
+  }
 }
 
 /* Sprint 27 (DEV-Lab only): the experimental Circuit Debugger, a non-modal side panel. */

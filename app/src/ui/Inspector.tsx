@@ -29,6 +29,8 @@ import { formatAngle, formatPower, formatPulseWidth, formatResult } from '../sim
 import { RatingGroup } from './NoticeBar.js';
 import { warningsFor } from '../sim/ratings.js';
 import { servosOnSupply } from '../sim/servoSupply.js';
+import { guidesForPart } from '../guides/catalog.js';
+import { openComponentGuide } from './componentGuideOpen.js';
 import { useAppState, useStore, useT } from './context.js';
 import { checkIssueText, checksFor } from './checks.js';
 import { NEUTRAL_HEX, resolveWireColors } from '../views/wireColors.js';
@@ -183,6 +185,7 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
       ) : (
         single && <ComponentProperties component={single} readOnly={!!readOnly} />
       )}
+      {single && <ComponentGuideLinks type={single.type} />}
       {single && isLogicType(single.type) && (
         // Sprint 20 (Phase 5): the truth table and pin states, discoverable before any Run;
         // live while running; the refusal explained by pin when the Run was refused for it.
@@ -238,6 +241,28 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
         <p class="muted small">{t('inspector.shortcuts')}</p>
       </details>
     </aside>
+  );
+}
+
+/** TBI-019 G2: a link to the component guide(s) of the selected part; nothing if it has none. */
+function ComponentGuideLinks({ type }: { type: string }) {
+  const t = useT();
+  const guides = guidesForPart(type);
+  if (guides.length === 0) return null;
+  return (
+    <p class="guide-link">
+      {guides.map((g) => (
+        <button
+          key={g.id}
+          type="button"
+          class="link-button"
+          data-testid={`inspector-guide-${g.id}`}
+          onClick={(e) => openComponentGuide(g.id, e.currentTarget)}
+        >
+          {t('guidepanel.inspector.link', { title: t(g.titleKey) })}
+        </button>
+      ))}
+    </p>
   );
 }
 
