@@ -49,6 +49,17 @@ export type SimBody =
       endAt: number;
       billedMs: number;
       parts: DayPart[];
+    }
+  /**
+   * Compaction (ops review fable11 LOW4): the whole state as ONE fact, only ever as the first event of
+   * a compacted journal. It carries the tombstones of pruned sessions forward, so a pruned id can never
+   * be opened (and billed) again after the old events are gone.
+   */
+  | {
+      t: 'sim_snapshot';
+      sessions: SimSession[];
+      usage: Record<string, Record<string, number>>;
+      tombstones: string[];
     };
 export type SimEvent = SimBody & { seq: number; at: number };
 
@@ -68,12 +79,23 @@ export interface SimState {
   sessions: Record<string, SimSession>;
   /** principal -> dayKey (zone) -> billed ms of closed sessions */
   usage: Record<string, Record<string, number>>;
+  /**
+   * Ids of closed sessions prune() forgot (ops review fable11 L2/LOW4). A second sim_open for one is
+   * refused live and is a corrupt journal on replay. Carried over by compaction (sim_snapshot), so the
+   * set grows by one id per session ever opened and is never shrunk (ids are not reusable).
+   */
+  tombstones: Record<string, true>;
   seq: number;
 }
 
 const dict = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
 
-export const emptySimState = (): SimState => ({ sessions: dict(), usage: dict(), seq: 0 });
+export const emptySimState = (): SimState => ({
+  sessions: dict(),
+  usage: dict(),
+  tombstones: dict(),
+  seq: 0,
+});
 
 const SESSION_ID = /^[A-Za-z0-9_.:-]{1,128}$/;
 const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -97,13 +119,86 @@ export function cloneSimState(s: SimState): SimState {
     for (const [k, ms] of Object.entries(days)) d[k] = ms;
     out.usage[p] = d;
   }
+  for (const k of Object.keys(s.tombstones)) out.tombstones[k] = true;
   return out;
+}
+
+const CLOSED_ONLY_KEYS = ['closedAt', 'closeReason', 'billedMs'] as const;
+
+/** Validate and load a snapshot into an EMPTY state. Throws on anything that does not fit. */
+function applySnapshot(s: SimState, ev: Extract<SimEvent, { t: 'sim_snapshot' }>): void {
+  if (s.seq !== 0 || ev.seq !== 1) throw new Error('sim_snapshot must be the first event');
+  if (!time(ev.at)) throw new Error('invalid time in event');
+  if (!Array.isArray(ev.sessions) || !Array.isArray(ev.tombstones))
+    throw new Error('invalid snapshot');
+  if (typeof ev.usage !== 'object' || ev.usage === null || Array.isArray(ev.usage))
+    throw new Error('invalid snapshot usage');
+  for (const id of ev.tombstones as unknown[]) {
+    if (!validSessionId(id) || Object.hasOwn(s.tombstones, id))
+      throw new Error('invalid snapshot tombstone');
+    s.tombstones[id] = true;
+  }
+  for (const raw of ev.sessions as unknown[]) {
+    const ss = raw as Partial<SimSession> | null;
+    if (typeof ss !== 'object' || ss === null) throw new Error('invalid snapshot session');
+    const id = ss.sessionId;
+    if (!validSessionId(id) || own(s.sessions, id) || Object.hasOwn(s.tombstones, id))
+      throw new Error('invalid snapshot session id');
+    if (!validPrincipal(ss.principal)) throw new Error('invalid principal in snapshot');
+    if (!PLAN_IDS.includes(ss.plan as PlanId)) throw new Error('invalid plan in snapshot');
+    if (!Number.isSafeInteger(ss.leaseMs) || (ss.leaseMs as number) < 1)
+      throw new Error('invalid lease in snapshot');
+    const openedAt = ss.openedAt;
+    const lastBeat = ss.lastBeat;
+    if (!time(openedAt) || !time(lastBeat) || lastBeat < openedAt || lastBeat > ev.at)
+      throw new Error('invalid session times in snapshot');
+    const out: SimSession = {
+      sessionId: id,
+      principal: ss.principal,
+      plan: ss.plan as PlanId,
+      leaseMs: ss.leaseMs as number,
+      openedAt,
+      lastBeat,
+    };
+    const closed = CLOSED_ONLY_KEYS.filter((k) => ss[k] !== undefined).length;
+    if (closed !== 0 && closed !== CLOSED_ONLY_KEYS.length)
+      throw new Error('invalid closed session in snapshot');
+    if (closed) {
+      const c = ss.closedAt;
+      if (
+        !time(c) ||
+        c < openedAt ||
+        c > ev.at ||
+        c > lastBeat + out.leaseMs ||
+        !CLOSE_REASONS.includes(ss.closeReason as CloseReason) ||
+        ss.billedMs !== c - openedAt
+      )
+        throw new Error('invalid closed session in snapshot');
+      out.closedAt = c;
+      out.closeReason = ss.closeReason as CloseReason;
+      out.billedMs = ss.billedMs;
+    }
+    s.sessions[id] = out;
+  }
+  for (const [p, days] of Object.entries(ev.usage as Record<string, unknown>)) {
+    if (!validPrincipal(p) || typeof days !== 'object' || days === null || Array.isArray(days))
+      throw new Error('invalid snapshot usage');
+    const d = dict<number>();
+    for (const [k, msv] of Object.entries(days as Record<string, unknown>)) {
+      if (!DAY_KEY.test(k) || !Number.isSafeInteger(msv) || (msv as number) < 0)
+        throw new Error('invalid snapshot usage');
+      d[k] = msv as number;
+    }
+    s.usage[p] = d;
+  }
+  s.seq = 1;
 }
 
 /** Pure reducer. Throws on a sequence gap or an event that does not fit the state (= corrupt journal). */
 export function applySimEvent(s: SimState, ev: SimEvent): void {
   if (ev.seq !== s.seq + 1)
     throw new Error(`journal sequence gap: expected ${s.seq + 1}, got ${ev.seq}`);
+  if (ev.t === 'sim_snapshot') return applySnapshot(s, ev);
   if (!validSessionId(ev.sessionId)) throw new Error('invalid session id in event');
   if (!time(ev.at)) throw new Error('invalid time in event');
   if (ev.t === 'sim_open') {
@@ -112,6 +207,8 @@ export function applySimEvent(s: SimState, ev: SimEvent): void {
     if (!Number.isSafeInteger(ev.leaseMs) || ev.leaseMs < 1)
       throw new Error('invalid lease in event');
     if (own(s.sessions, ev.sessionId)) throw new Error('sim_open for an existing session');
+    if (Object.hasOwn(s.tombstones, ev.sessionId))
+      throw new Error('sim_open for a pruned (tombstoned) session');
     s.seq = ev.seq;
     s.sessions[ev.sessionId] = {
       sessionId: ev.sessionId,
@@ -230,13 +327,6 @@ export class SimMeter {
   private tail: Promise<unknown> = Promise.resolve();
   /** newest heartbeat per open session that is not journaled yet (memory only, never replayed) */
   private liveBeat: Record<string, number> = dict();
-  /**
-   * Ids of closed sessions prune() forgot (ops review fable11 L2). They stay in the journal, so a second
-   * sim_open for one would make the next replay fail: open() refuses them. Rebuilt by every reload (the
-   * replay holds them again and prune() moves them here). Its size is bounded by the journal (one id per
-   * session ever opened); a future journal compaction must carry these ids over.
-   */
-  private tombstones = new Set<string>();
   private readonly persistMs: number;
 
   private constructor(
@@ -277,7 +367,7 @@ export class SimMeter {
     for (const [id, ss] of Object.entries(this.state.sessions))
       if (ss.closedAt !== undefined && ss.closedAt < cutoff) {
         delete this.state.sessions[id];
-        this.tombstones.add(id);
+        this.state.tombstones[id] = true;
       }
     for (const [p, days] of Object.entries(this.state.usage)) {
       let removed = false;
@@ -322,7 +412,6 @@ export class SimMeter {
     }
     this.state = s;
     this.liveBeat = dict();
-    this.tombstones = new Set();
     this.problem = problem;
     this.prune();
   }
@@ -484,7 +573,7 @@ export class SimMeter {
       const now = this.now();
       if (now === null) return unavailable();
       // a pruned closed session: closed like any other, its owner is no longer known here
-      if (this.tombstones.has(sessionId)) return bad('invalid_state');
+      if (Object.hasOwn(this.state.tombstones, sessionId)) return bad('invalid_state');
       const existing = own(this.state.sessions, sessionId);
       if (existing) {
         if (existing.principal !== principal) return bad('invalid_request');
@@ -535,10 +624,12 @@ export class SimMeter {
       if (now > ss.lastBeat + ss.leaseMs) return bad('lease_lost');
       const r = this.remainingAt(ss.principal, ss.plan, now);
       const err = this.exhausted(r, ss.plan, now);
-      if (err)
-        return (await this.commit([...this.flushBeat(stored), this.closeBody(ss, now, 'cap')]))
-          ? { ok: false, error: err }
-          : unavailable();
+      if (err) {
+        if (!(await this.commit([...this.flushBeat(stored), this.closeBody(ss, now, 'cap')])))
+          return unavailable();
+        this.prune(); // like close() and sweep() (LOW4)
+        return { ok: false, error: err };
+      }
       const left = [r.monthMs, r.dayMs].filter((x): x is number => x !== null);
       const out = { ...r, remainingMs: left.length ? Math.min(...left) : null };
       if (now <= ss.lastBeat) return { ok: true, metered: true, duplicate: true, ...out };
@@ -612,6 +703,48 @@ export class SimMeter {
       if (!(await this.commit(bodies))) return unavailable();
       this.prune();
       return { ok: true, metered: true, closed: expired.length };
+    });
+  }
+
+  /**
+   * Compaction (ops review fable11 LOW4): replace the journal by ONE sim_snapshot of the pruned state.
+   * The snapshot carries every tombstone, so a pruned id stays refused after the old events are gone.
+   * Only journaled facts go in (an in-memory beat stays in memory and is journaled later, as before).
+   * The snapshot is validated by replaying it before it is written; the store must replace the journal
+   * atomically (JournalStore: temp file, fsync, rename). A store without replace, or a failed replace,
+   * answers system_unavailable; after a failed replace the meter fails closed until it is reopened.
+   * Not called by anything yet (the host wiring decides when to compact).
+   */
+  compact(): Promise<SimResult<{ events: number }>> {
+    return this.run(async () => {
+      if (!this.cfg.metering.enabled) return { ok: true, metered: false };
+      if (this.problem || !this.store.replace) return unavailable();
+      const now = this.now();
+      if (now === null || !time(now)) return unavailable();
+      this.prune();
+      const snap: SimEvent = {
+        t: 'sim_snapshot',
+        sessions: Object.values(this.state.sessions).map((ss) => ({ ...ss })),
+        usage: Object.fromEntries(Object.entries(this.state.usage).map(([p, d]) => [p, { ...d }])),
+        tombstones: Object.keys(this.state.tombstones),
+        seq: 1,
+        at: now,
+      };
+      const next = emptySimState();
+      try {
+        applySimEvent(next, structuredClone(snap));
+      } catch {
+        return unavailable();
+      }
+      try {
+        await this.store.replace([snap]);
+      } catch {
+        // old or new journal is on disk (atomic replace), but which one is unknown here: fail closed
+        this.problem = { kind: 'corrupt', detail: 'compaction failed' };
+        return unavailable();
+      }
+      this.state = next;
+      return { ok: true, metered: true, events: 1 };
     });
   }
 }

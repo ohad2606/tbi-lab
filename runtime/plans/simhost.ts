@@ -14,6 +14,9 @@
  *                       and DO NOT touch the run (it is someone else's).
  *                       Billing is capped at the heartbeat that detected 0 (overshoot <= one interval).
  *   ended(id, reason, principal)  once the host session is terminal: bills (idempotent), starts the Free cooldown.
+ *                       The principal is REQUIRED (LOW5): it must be the one recorded at admission (and
+ *                       in the meter session); a missing one is invalid_request, another one invalid_state,
+ *                       and neither ends, bills or untracks the run.
  *   housekeeping()      on the host timer: drops timed-out / vanished waiters, bills lease-lost runs and
  *                       stops tracking runs whose meter session is closed or whose lease ran out (a missed
  *                       ended() must not hold a slot or the Free cap forever; the Free cooldown starts then).
@@ -40,7 +43,7 @@
  */
 import type { PlanId, PlansConfig } from './config.js';
 import { PLAN_IDS } from './config.js';
-import { limitError, type LimitError } from './limits.js';
+import { limitError, validPrincipal, type LimitError } from './limits.js';
 import { FairQueue, type Dropped } from './queue.js';
 import { SimMeter, type CloseReason, type SimEvent } from './simminutes.js';
 import type { Store } from './store.js';
@@ -256,12 +259,18 @@ export class SimHostAdapter {
     });
   }
 
-  /** The host session is terminal. Bills it (a second call is a duplicate) and frees the slot. */
-  ended(sessionId: string, reason: CloseReason, principal?: string): Promise<HostEnd> {
+  /**
+   * The host session is terminal. Bills it (a second call is a duplicate) and frees the slot. Only the
+   * principal the run was admitted for may end it (LOW5): the adapter's record while it tracks the run,
+   * the meter session's record after that (housekeeping may have stopped tracking it).
+   */
+  ended(sessionId: string, reason: CloseReason, principal: string): Promise<HostEnd> {
     if (!this.enabled) return Promise.resolve(OFF);
     return this.run(async () => {
+      if (!validPrincipal(principal))
+        return { metered: true, ok: false, error: limitError('invalid_request') };
       const s = this.live.get(sessionId);
-      if (s && principal !== undefined && s.principal !== principal)
+      if (s && s.principal !== principal)
         return { metered: true, ok: false, error: limitError('invalid_state') };
       this.live.delete(sessionId);
       if (s) this.queue.sessionEnded(s.principal, s.plan);
