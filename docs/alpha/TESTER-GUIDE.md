@@ -1,5 +1,7 @@
 # TBI Lab external alpha — tester guide (draft for owner review)
 
+Hebrew version (draft, pending native review): [TESTER-GUIDE.he.md](TESTER-GUIDE.he.md)
+
 Thank you for testing TBI Lab. This alpha is a working preview for five invited testers. Please
 read this page once; it takes three minutes.
 
