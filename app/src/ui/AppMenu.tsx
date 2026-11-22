@@ -10,6 +10,7 @@ import {
 import { BUILD_INFO } from '../buildInfo.js';
 import { useAppState, useStore, useT } from './context.js';
 import { downloadProject } from './download.js';
+import { openGuide } from './GuideDialog.js';
 import { openProblemReport } from './ProblemReport.js';
 
 /**
@@ -178,6 +179,16 @@ export function AppMenu({ chooseImport }: { chooseImport: () => void }) {
             onClick={run(() => openCapabilities('firmware'))}
           >
             {t('menu.capabilities')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            data-testid="menu-guide"
+            aria-haspopup="dialog"
+            onClick={run(() => openGuide(button.current))}
+          >
+            {t('guide.open')}
           </button>
           {recent.length > 0 && (
             <>

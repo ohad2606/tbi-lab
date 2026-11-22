@@ -2168,6 +2168,15 @@ export const en = {
   'kbwire.noWires': 'There are no wires.',
   'kbwire.endJunction': 'junction {id}',
 
+  // TBI-020 slice 4: Help panel (the guide text itself is docs/product/USER-GUIDE.*.md).
+  'guide.open': 'Help and user guide',
+  'guide.title': 'User guide',
+  'guide.close': 'Close',
+  'guide.contents': 'Contents',
+  'guide.shortcuts': 'Keyboard shortcuts',
+  'guide.textRegion': 'User guide text',
+  'guide.intro': 'Use the contents to jump to a section. Escape closes this window.',
+
   // TBI-020 slice 2: keyboard shortcuts dialog (app/src/ui/shortcuts.ts).
   'shortcuts.open': 'Keyboard shortcuts',
   'shortcuts.title': 'Keyboard shortcuts',
