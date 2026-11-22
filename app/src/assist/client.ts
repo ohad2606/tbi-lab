@@ -38,6 +38,23 @@ export interface ServiceStatus {
    */
   account?: string;
   data: { sent: string[]; neverSent: string[]; auditRetentionDays: number };
+  /**
+   * TBI-017 slice 2: the account's AI credits, when the service gives them (an additive field
+   * it does not send today; proposed shape for TBI-018). Shown exactly as given, never computed.
+   */
+  credits?: Credits;
+}
+
+/** Plan ids of TBI-018 (runtime/plans/config.ts); any other id is not shown. */
+export const PLAN_IDS = ['free', 'advanced', 'pro', 'legacy'] as const;
+export type PlanId = (typeof PLAN_IDS)[number];
+
+export interface Credits {
+  /** Credits the account can still use (all buckets), as the service counted them. */
+  remaining: number;
+  /** The plan's credits for the period, when the plan has a fixed number. */
+  total?: number;
+  plan?: PlanId;
 }
 
 export type StatusResult = { kind: 'unavailable' } | { kind: 'ok'; status: ServiceStatus };
@@ -66,10 +83,10 @@ export const EXPLAIN_ERRORS = [
 ] as const;
 export type ExplainErrorCode = (typeof EXPLAIN_ERRORS)[number];
 
-/** A TBI-018 limit refusal (parsed here; its UI is slice 2). */
+/** A TBI-018 limit refusal (its UI: limits.ts). `messageKey` is null for contract errors. */
 export interface LimitInfo {
   code: string;
-  messageKey: string;
+  messageKey: string | null;
   params: Record<string, string | number>;
 }
 
@@ -175,7 +192,22 @@ export function parseStatus(b: unknown): StatusResult {
   if (typeof b.provider === 'string') status.provider = b.provider;
   if (typeof b.model === 'string') status.model = b.model;
   if (typeof b.account === 'string' && OPAQUE.test(b.account)) status.account = b.account;
+  const credits = parseCredits(b.credits);
+  if (credits) status.credits = credits;
   return { kind: 'ok', status };
+}
+
+const isCount = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+
+/** The credits field, strictly: whole non-negative numbers only; anything else = not shown. */
+export function parseCredits(v: unknown): Credits | undefined {
+  if (!isObj(v) || !isCount(v.remaining)) return undefined;
+  if (v.total !== undefined && !(isCount(v.total) && v.total > 0)) return undefined;
+  const c: Credits = { remaining: v.remaining };
+  if (v.total !== undefined) c.total = v.total as number;
+  if ((PLAN_IDS as readonly unknown[]).includes(v.plan)) c.plan = v.plan as PlanId;
+  return c;
 }
 
 /**
@@ -203,14 +235,18 @@ export function parseError(httpStatus: number, b: unknown): ClientError {
     if (typeof ra === 'number' && Number.isFinite(ra) && ra >= 0)
       out.retryAfterMs = Math.min(ra, 24 * 3_600_000);
     const l = b.limit;
-    if (isObj(l) && typeof l.code === 'string' && typeof l.messageKey === 'string') {
+    if (
+      isObj(l) &&
+      typeof l.code === 'string' &&
+      (typeof l.messageKey === 'string' || l.messageKey === null)
+    ) {
       // No prototype, and the prototype-polluting names are skipped: the params come from outside.
       const params = Object.create(null) as Record<string, string | number>;
       if (isObj(l.params))
         for (const [k, v] of Object.entries(l.params))
           if ((typeof v === 'string' || typeof v === 'number') && !UNSAFE_KEYS.has(k))
             params[k] = v;
-      out.limit = { code: l.code, messageKey: l.messageKey, params };
+      out.limit = { code: l.code.slice(0, 64), messageKey: l.messageKey, params };
     }
     const m = b.message;
     if (isObj(m) && typeof m.he === 'string' && typeof m.en === 'string')

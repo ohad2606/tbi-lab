@@ -352,6 +352,9 @@ test('sending: Cancel aborts, is announced politely, focus stays usable, no aler
   await expect(page.getByTestId('ai-ask')).toHaveAttribute('aria-disabled', 'true');
   await page.keyboard.press('Enter');
   expect(svc.posts('/explain')).toHaveLength(1);
+  // The live region joins messages that follow each other within ~120 ms (by design): wait until
+  // the "sending" message has been delivered, so the cancel message is a separate announcement.
+  await expect(live(page)).toHaveText('Asking the AI…');
   await tabTo(page, 'ai-cancel');
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('ai-cancel')).toHaveCount(0);

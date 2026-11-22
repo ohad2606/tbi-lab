@@ -56,6 +56,8 @@ describe('locale bundles', () => {
     // Only language-neutral messages may be identical (unit symbols, the reference-and-type pattern).
     // CV and CC stay as professional technical terms in Hebrew (product scope §12).
     expect(same.filter((k) => !technical(k) && !address(k)).sort()).toEqual([
+      // TBI-017 slice 2: the plan name "Pro" (TBI-018), used as-is in Hebrew (commerce spec).
+      'assist.ai.credits.plan.pro',
       // Sprint 10: RGB channel letters (R, G, B) are technical tokens, like pin names.
       'canvas.componentLabel',
       // Sprint 13: a product name, used as-is in Hebrew.
