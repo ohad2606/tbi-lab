@@ -200,6 +200,12 @@ export class PendingStore {
           throw e;
         }
       };
+      // Dedupe first: at the cap a repeat of a live request is still answered (not 'full').
+      const existing = (await readFile(mark, 'utf8').catch(() => '')).trim();
+      if (REQUEST_ID_RE.test(existing)) {
+        const cur = await this.get(existing).catch(() => null);
+        if (cur && cur.status !== 'rejected') return { created: false, record: cur };
+      }
       const max = this.opts.maxRecords;
       if (max !== undefined && (await this.count()) >= max) throw new StoreError('full');
       const rec = this.build(input);
@@ -333,6 +339,9 @@ export class PendingStore {
    * (locks.ts), so a record approved, rejected or resent meanwhile is judged by its new status.
    * A record whose creation time cannot be read is deleted (it can never be shown to meet a limit).
    */
+  /** Unparseable record files removed by the last purge run. */
+  corruptPurged = 0;
+
   async purge(retention: Retention = DEFAULT_RETENTION, horizonMs = 0): Promise<string[]> {
     const t = this.now();
     const expired = (r: SignupRecord): boolean => {
@@ -357,6 +366,29 @@ export class PendingStore {
         return true;
       });
       if (gone) removed.push(id);
+    }
+    // Unparseable `<ULID>.json` files can never be shown to meet a limit and list() skips them:
+    // remove those older than the not-approved retention (by file time).
+    this.corruptPurged = 0;
+    const notApproved = Math.min(retention.notApprovedMs, retention.maxMs);
+    for (const f of await readdir(this.dir)) {
+      const m = /^([0-9A-HJKMNP-TV-Z]{26})\.json$/.exec(f);
+      if (!m) continue;
+      const id = m[1]!;
+      const gone = await serialById(id, async () => {
+        const ok = await this.get(id).then(
+          () => true,
+          (e: unknown) => !(e instanceof StoreError && e.code === 'corrupt'),
+        );
+        if (ok) return false;
+        const s = await stat(this.path(id)).catch(() => null);
+        if (!s || t + horizonMs - s.mtimeMs < notApproved) return false;
+        await unlink(this.path(id)).catch(() => undefined);
+        await unlink(join(this.dir, `${id}.notified`)).catch(() => undefined);
+        await unlink(join(this.dir, `${id}.notifyq`)).catch(() => undefined);
+        return true;
+      });
+      if (gone) this.corruptPurged++;
     }
     // Address markers whose record is gone, and orphaned temp files from a crash.
     for (const f of await readdir(this.dir)) {

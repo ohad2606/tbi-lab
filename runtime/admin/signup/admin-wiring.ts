@@ -159,7 +159,10 @@ export async function wireSignupAdmin(
         io.retention ?? c.retention ?? DEFAULT_RETENTION,
         PURGE_INTERVAL_MS,
       );
-      io.log(`signup: purge removed ${removed.length}`);
+      io.log(
+        `signup: purge removed ${removed.length}` +
+          (store.corruptPurged ? ` and ${store.corruptPurged} unreadable file(s)` : ''),
+      );
     } catch (e) {
       io.log(`signup: purge failed (${errorClass(e)})`);
     }

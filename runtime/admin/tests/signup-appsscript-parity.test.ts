@@ -124,6 +124,7 @@ function world(o: {
   const triggers: { handler: string; minutes: number; deleted: boolean }[] = [
     { handler: 'retryUnsent', minutes: 1, deleted: false },
   ];
+  const lock = { fails: false };
   const props: Record<string, string | null> = {
     ENDPOINT_URL: o.url === undefined ? URL_OK : o.url,
     HMAC_SECRET: SECRET,
@@ -143,7 +144,10 @@ function world(o: {
       getUuid: () => randomUUID(),
     },
     PropertiesService: {
-      getScriptProperties: () => ({ getProperty: (k: string) => props[k] ?? null }),
+      getScriptProperties: () => ({
+        getProperty: (k: string) => props[k] ?? null,
+        setProperty: (k: string, v: string) => void (props[k] = v),
+      }),
     },
     UrlFetchApp: {
       fetch: (url: string, opts: { payload: string; headers: Record<string, string> }) => {
@@ -177,7 +181,12 @@ function world(o: {
       }),
     },
     LockService: {
-      getScriptLock: () => ({ waitLock: () => undefined, releaseLock: () => undefined }),
+      getScriptLock: () => ({
+        waitLock: () => {
+          if (lock.fails) throw new Error('Could not obtain lock');
+        },
+        releaseLock: () => undefined,
+      }),
     },
     Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@example.invalid' }) },
     MailApp: {
@@ -217,7 +226,7 @@ function world(o: {
       alerted: r[8],
     }));
   };
-  return { gs, submit, status, posts, mails, responses, triggers, props };
+  return { gs, submit, status, posts, mails, responses, triggers, props, lock };
 }
 
 describe('Apps Script forwarder: send status, retry, owner alert', () => {
@@ -375,5 +384,58 @@ describe('Apps Script forwarder: send status, retry, owner alert', () => {
     expect(w.triggers.filter((t) => !t.deleted).map((t) => `${t.handler}@${t.minutes}`)).toEqual([
       'retryUnsent@5',
     ]);
+  });
+
+  it('M1: a lock timeout in onFormSubmit alerts the owner (rate-limited) and the row is reconciled later', () => {
+    const w = world({ answer: () => 202 });
+    w.lock.fails = true;
+    expect(() => w.submit()).not.toThrow();
+    expect(w.posts).toEqual([]);
+    expect(w.status()).toEqual([]);
+    expect(w.mails.map((m) => m.subject)).toEqual(['TBI Lab sign-up forwarding: lock']);
+    w.submit(); // a second lock failure inside the rate-limit window: no second mail
+    expect(w.mails).toHaveLength(1);
+    w.lock.fails = false;
+    expect(w.gs.retryUnsent()).toBe(2);
+    expect(w.posts).toHaveLength(2);
+    expect(w.posts.every((p) => p.verified && p.body === EXPECTED_BODY)).toBe(true);
+    expect(w.status().map((s) => [s.row, s.status])).toEqual([
+      [2, 'sent'],
+      [3, 'sent'],
+    ]);
+    expect(w.gs.retryUnsent()).toBe(0); // nothing is added twice
+    expect(w.posts).toHaveLength(2);
+    for (const m of w.mails) expect(m.body).not.toContain('person@example.com');
+  });
+
+  it('M1: reconcile adds only unrecorded response rows and ignores old (pre-install) rows', () => {
+    const w = world({ answer: () => 202 });
+    w.responses.appendRow([Date.now() - 30 * 24 * 3600_000, ...ANSWERS]); // old, no status row
+    w.submit(); // row 3, recorded and sent
+    w.responses.appendRow([Date.now() - 2000, ...ANSWERS]); // row 4, lost
+    expect(w.gs.retryUnsent()).toBe(1);
+    expect(w.status().map((s) => [s.row, s.status])).toEqual([
+      [3, 'sent'],
+      [4, 'sent'],
+    ]);
+    expect(w.posts).toHaveLength(2);
+  });
+
+  it('L4: several rows repeating in one retry run give one summarising alert', () => {
+    const w = world({ answer: () => 503 });
+    for (let i = 0; i < 3; i++) w.submit();
+    for (let k = 0; k < 2; k++) w.gs.retryUnsent(Math.max(...w.status().map((s) => s.next!)));
+    expect(w.mails).toHaveLength(1);
+    expect(w.mails[0]!.subject).toBe('TBI Lab sign-up forwarding: repeated');
+    expect(w.mails[0]!.body).toContain('3 sign-ups');
+    expect(w.status().every((s) => s.attempts === 3 && s.alerted === 'repeated')).toBe(true);
+  });
+
+  it('L7: the unused readAnswers_ helper is gone', () => {
+    const src = readFileSync(
+      new URL('../../../deploy/signup/apps-script/Code.gs', import.meta.url),
+      'utf8',
+    );
+    expect(src).not.toContain('readAnswers_');
   });
 });

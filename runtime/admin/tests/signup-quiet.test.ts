@@ -368,6 +368,45 @@ describe('a failed deferral never loses the owner alert (FABLE-REVIEW 7)', () =>
     expect(s.texts).toHaveLength(1);
   });
 
+  it('a throw mid-drain keeps the not-yet-handled in-memory deferrals for the next drain', async () => {
+    const c = clock(NIGHT);
+    const s = await setup(c);
+    const post = (email: string, nonce: string) => {
+      const raw = Buffer.from(JSON.stringify({ ...PERSON, name: email, email }));
+      const ts = Math.floor(c.t / 1000);
+      return s.intake.submit(
+        'x',
+        {
+          'x-tbi-timestamp': String(ts),
+          'x-tbi-nonce': nonce.repeat(20),
+          'x-tbi-signature': sign(SECRET, ts, nonce.repeat(20), raw),
+        },
+        raw,
+      );
+    };
+    await post('first@example.com', 'a'); // marker written to disk
+    c.t += 1000;
+    const real = s.store.markNotifyPending.bind(s.store);
+    s.store.markNotifyPending = async () => {
+      throw new Error('disk');
+    };
+    await post('second@example.com', 'b'); // deferral only in memory
+    s.store.markNotifyPending = real;
+    c.t = MORNING;
+    const realClear = s.store.clearNotifyPending.bind(s.store);
+    let boom = true;
+    s.store.clearNotifyPending = async (id: string) => {
+      if (boom) {
+        boom = false;
+        throw new Error('disk');
+      }
+      return realClear(id);
+    };
+    await s.intake.drainNotifications(); // throws on the first record: nothing may be forgotten
+    await s.intake.drainNotifications();
+    expect(s.texts.sort()).toEqual(['first@example.com', 'second@example.com']);
+  });
+
   it('a request decided before 08:00 is not alerted from memory either', async () => {
     const c = clock(NIGHT);
     const s = await setup(c);

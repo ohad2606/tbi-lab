@@ -229,6 +229,34 @@ describe('pending store', () => {
     await store.create(input);
     await expect(store.create(input)).rejects.toMatchObject({ code: 'full' });
   });
+  it('at the cap a duplicate request still gets its existing record; a new address is full', async () => {
+    const { store } = mk({ maxRecords: 1 });
+    await store.init();
+    const first = await store.createIfNew(input);
+    expect(first.created).toBe(true);
+    const dup = await store.createIfNew(input);
+    expect(dup).toEqual({ created: false, record: first.record });
+    await expect(store.createIfNew({ ...input, email: 'other@example.com' })).rejects.toMatchObject(
+      { code: 'full' },
+    );
+  });
+  it('purge removes unparseable <ULID>.json files older than the not-approved retention', async () => {
+    let t = Date.UTC(2026, 0, 1);
+    const { dir, store } = mk({ now: () => t });
+    await store.init();
+    const good = await store.create({ ...input, email: 'good@example.com' });
+    await store.update(good.id, { status: 'approved' });
+    const bad = '0123456789ABCDEFGHJKMNPQRS';
+    writeFileSync(join(dir, `${bad}.json`), '{nope', { mode: 0o600 });
+    utimesSync(join(dir, `${bad}.json`), new Date(t), new Date(t));
+    t += 89 * 86_400_000;
+    expect(await store.purge()).toEqual([]);
+    expect(readdirSync(dir)).toContain(`${bad}.json`);
+    t += 86_400_000; // 90 d
+    expect(await store.purge()).toEqual([]);
+    expect(store.corruptPurged).toBe(1);
+    expect(readdirSync(dir).sort()).toEqual([`${good.id}.json`]);
+  });
   it('purge: not approved (pending, rejected) 90 d, all others 365 d by creation; stale temp files removed', async () => {
     let t = Date.UTC(2026, 0, 1);
     const { dir, store } = mk({ now: () => t });

@@ -143,13 +143,18 @@ export class SignupIntake {
       }
       if (isQuiet(now, this.d.quiet ?? null)) return 0;
       const records = await this.d.store.list();
-      // Removed from memory only after a successful list: ids whose record is gone are dropped.
-      const fromMemory = new Set(this.unpersisted);
-      this.unpersisted.clear();
+      // An id leaves memory only once handled (a throw mid-loop keeps the unhandled ones); ids whose
+      // record is gone are dropped after a successful list.
+      const present = new Set(records.map((r) => r.id));
+      for (const id of [...this.unpersisted]) if (!present.has(id)) this.unpersisted.delete(id);
       for (const r of records) {
-        if (!r.notifyPending && !fromMemory.has(r.id)) continue;
+        const inMemory = this.unpersisted.has(r.id);
+        if (!r.notifyPending && !inMemory) continue;
         if (r.notifyPending) await this.d.store.clearNotifyPending(r.id);
-        if (r.notified || r.status !== 'pending') continue;
+        if (r.notified || r.status !== 'pending') {
+          this.unpersisted.delete(r.id);
+          continue;
+        }
         n++;
         try {
           await this.d.notifier.notify({ name: r.name, role: r.role });
@@ -157,6 +162,7 @@ export class SignupIntake {
         } catch (e) {
           this.d.log?.(`signup: notify failed (${errorClass(e)})`);
         }
+        this.unpersisted.delete(r.id);
       }
     } catch (e) {
       this.d.log?.(`signup: notify drain failed (${errorClass(e)})`);

@@ -20,6 +20,9 @@ import {
 /** A person's name inside a sentence or an accessible name: isolated, so it cannot reorder the text. */
 const isolate = (s: string) => `⁨${s}⁩`;
 
+/** Placeholder swapped for the time, so it can sit in its own left-to-right <bdi>. */
+const SLOT = '\u0001';
+
 interface RowMessage {
   key: MessageKey;
   ok: boolean;
@@ -105,7 +108,9 @@ export function Signups() {
         document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`) ??
         document.querySelector<HTMLElement>(
           `[data-signup-id="${id}"] [data-testid="signup-message"]`,
-        )
+        ) ??
+        rowFocus(id) ??
+        refreshBtn.current
       )?.focus(),
     );
   }, [keptTick]);
@@ -128,8 +133,13 @@ export function Signups() {
       if (!alive.current) return;
       const v = signupOutcomeView(o, action);
       const text = t(v.key as MessageKey, { name: isolate(r.name) });
-      say(text);
       const ids = list.value.map((x) => x.id);
+      // A row that stays without an action gets focus on its outcome sentence, which is read on
+      // focus: no live announcement then (it would be read twice). Every other outcome is spoken
+      // by the live region (the row is gone, or focus is on a button).
+      const messageFocused = !v.removed && signupRowKind(v.record ?? r) === 'queued';
+      if (messageFocused) setAnnounce('');
+      else say(text);
       if (v.removed) {
         focusId.current = focusAfterRemoval(ids, r.id);
         setList({ ok: true, value: list.value.filter((x) => x.id !== r.id) });
@@ -222,7 +232,18 @@ export function Signups() {
                   </div>
                   {kind === 'queued' && r.emailSendAfter && (
                     <div class="small" data-testid="signup-send-after">
-                      {t('console.signups.sendAfter', { time: date(r.emailSendAfter) ?? '' })}
+                      {t('console.signups.sendAfter', { time: SLOT })
+                        .split(SLOT)
+                        .flatMap((part, i) =>
+                          i === 0
+                            ? [part]
+                            : [
+                                <bdi key={i} dir="ltr">
+                                  {date(r.emailSendAfter!) ?? ''}
+                                </bdi>,
+                                part,
+                              ],
+                        )}
                     </div>
                   )}
                   {msg && (

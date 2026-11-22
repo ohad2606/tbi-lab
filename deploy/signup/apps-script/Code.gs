@@ -22,6 +22,11 @@
  * honoured when longer); at most 8 attempts, about 10.5 hours in total.
  * The script owner gets an email (MailApp, to the account that runs the triggers) when a row
  * fails for the third time, when it is given up or skipped, and when the configuration is wrong.
+ * Lost-submission safety: if the script lock cannot be taken in onFormSubmit (it is held by retry
+ * fetches), the owner gets one "lock" email per hour and no status row exists yet. `retryUnsent`
+ * then reconciles: every response row of the last 48 hours with a timestamp but no status row is
+ * added as `new` and sent. In one retry run all rows reaching the 3rd failure share ONE "repeated"
+ * email that names their count and response rows.
  * The email names only the response row, status and result code; never an answer.
  *
  * Script Properties (Project settings > Script properties); nothing secret lives in this file:
@@ -75,6 +80,8 @@ var BASE_DELAY_MIN = 5;
 var MAX_DELAY_MIN = 360;
 var RETRY_EVERY_MIN = 5;
 var LOCK_WAIT_MS = 30000;
+var LOCK_ALERT_EVERY_MS = 3600000; // at most one "lock" alert per hour
+var RECONCILE_WINDOW_MS = 48 * 3600000; // older unrecorded rows pre-date the script and are not sent
 
 /** Entry point for the installable "On form submit" trigger of the response spreadsheet. */
 function onFormSubmit(e) {
@@ -87,12 +94,25 @@ function onFormSubmit(e) {
   var sheet = e.range.getSheet();
   var row = e.range.getRow();
   var submitted = timeKey_(sheet.getRange(row, 1).getValue());
-  withLock_(function () {
-    var st = statusSheet_();
-    if (findStatus_(st, sheet.getSheetId(), row) < 0)
-      st.appendRow([row, sheet.getSheetId(), submitted, 'new', 0, '', '', new Date(), '']);
-  });
-  attempt_(sheet.getSheetId(), row, Date.now());
+  try {
+    withLock_(function () {
+      var st = statusSheet_();
+      if (findStatus_(st, sheet.getSheetId(), row) < 0)
+        st.appendRow([row, sheet.getSheetId(), submitted, 'new', 0, '', '', new Date(), '']);
+    });
+  } catch (err) {
+    // No status row could be written. The row stays in the response sheet; retryUnsent adds it.
+    console.log('lock timeout recording row ' + row);
+    alertOwner_(
+      'lock',
+      'The sign-up script could not take its lock for response row ' + row + '. The row is not lost: ' +
+        'the retry trigger adds it to the tab "' + STATUS_SHEET + '" and sends it.',
+      LOCK_ALERT_EVERY_MS
+    );
+    return;
+  }
+  var out = attempt_(sheet.getSheetId(), row, Date.now());
+  if (out && out.alert) alertOwner_(out.alert, alertText_(row, out.rec));
 }
 
 /**
@@ -102,6 +122,7 @@ function onFormSubmit(e) {
 function retryUnsent(nowMs) {
   var now = typeof nowMs === 'number' ? nowMs : Date.now();
   var due = withLock_(function () {
+    reconcile_(now);
     var values = statusSheet_().getDataRange().getValues();
     var out = [];
     for (var i = 1; i < values.length; i++) {
@@ -113,8 +134,46 @@ function retryUnsent(nowMs) {
     }
     return out;
   });
-  for (var j = 0; j < due.length; j++) attempt_(due[j][0], due[j][1], now);
+  var repeated = [];
+  for (var j = 0; j < due.length; j++) {
+    var out = attempt_(due[j][0], due[j][1], now);
+    if (!out || !out.alert) continue;
+    if (out.alert === 'repeated') repeated.push({ row: due[j][1], rec: out.rec });
+    else alertOwner_(out.alert, alertText_(due[j][1], out.rec));
+  }
+  if (repeated.length === 1) {
+    alertOwner_('repeated', alertText_(repeated[0].row, repeated[0].rec));
+  } else if (repeated.length > 1) {
+    alertOwner_('repeated', repeatedText_(repeated.map(function (x) { return x.row; })));
+  }
   return due.length;
+}
+
+/**
+ * Under the lock: every response row of the last RECONCILE_WINDOW_MS that has a timestamp but no
+ * status row (its onFormSubmit could not take the lock) gets a `new` status row.
+ */
+function reconcile_(now) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var st = statusSheet_();
+  var known = {};
+  var sv = st.getDataRange().getValues();
+  for (var i = 1; i < sv.length; i++) known[Number(sv[i][COL.sheetId]) + ':' + Number(sv[i][COL.row])] = true;
+  ss.getSheets().forEach(function (sheet) {
+    if (sheet.getName() === STATUS_SHEET || sheet.getLastRow() < 2) return;
+    var width = sheet.getLastColumn();
+    var titles = sheet.getRange(1, 1, 1, width).getValues()[0].map(String);
+    if (titles.indexOf(QUESTION_TITLES.email) < 0 || titles.indexOf(QUESTION_TITLES.consent) < 0) return;
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var r = 0; r < data.length; r++) {
+      var t = timeKey_(data[r][0]);
+      if (!isFinite(t) || t < now - RECONCILE_WINDOW_MS) continue;
+      var row = r + 2;
+      if (known[sheet.getSheetId() + ':' + row]) continue;
+      st.appendRow([row, sheet.getSheetId(), t, 'new', 0, '', '', new Date(now), '']);
+      console.log('row ' + row + ': reconciled');
+    }
+  });
 }
 
 /** Installs (or replaces) the time-driven retry trigger. Run once from the editor. */
@@ -131,13 +190,13 @@ function installRetryTrigger() {
  * still `new` / `retry` and due.
  */
 function attempt_(sheetId, row, now) {
-  withLock_(function () {
+  return withLock_(function () {
     var st = statusSheet_();
     var i = findStatus_(st, sheetId, row);
-    if (i < 0) return;
+    if (i < 0) return null;
     var rec = st.getRange(i + 1, 1, 1, STATUS_HEADERS.length).getValues()[0];
-    if (rec[COL.status] !== 'new' && rec[COL.status] !== 'retry') return;
-    if (rec[COL.next] && timeKey_(rec[COL.next]) > now) return;
+    if (rec[COL.status] !== 'new' && rec[COL.status] !== 'retry') return null;
+    if (rec[COL.next] && timeKey_(rec[COL.next]) > now) return null;
     var answers = answersForRow_(sheetId, row, rec[COL.submitted]);
     var result;
     if (answers === null) result = { kind: 'lost', code: 'row_moved' };
@@ -149,7 +208,7 @@ function attempt_(sheetId, row, now) {
     var next = applyResult_(rec, result, now);
     st.getRange(i + 1, 1, 1, STATUS_HEADERS.length).setValues([next.rec]);
     console.log('row ' + row + ': ' + next.rec[COL.status] + ' (' + result.code + ')');
-    if (next.alert) alertOwner_(next.alert, alertText_(row, next.rec));
+    return next; // { rec, alert }: the caller sends the alert, outside the lock
   });
 }
 
@@ -224,21 +283,6 @@ function answersForRow_(sheetId, row, submitted) {
   if (timeKey_(values[0]) !== Number(submitted)) return null;
   var out = {};
   for (var j = 0; j < titles.length; j++) out[String(titles[j])] = values[j];
-  return out;
-}
-
-/** Collects answers by question title from either a form event or a spreadsheet event. */
-function readAnswers_(e) {
-  var out = {};
-  if (e && e.response) {
-    e.response.getItemResponses().forEach(function (r) {
-      out[r.getItem().getTitle()] = r.getResponse();
-    });
-  } else if (e && e.namedValues) {
-    Object.keys(e.namedValues).forEach(function (k) {
-      out[k] = e.namedValues[k][0];
-    });
-  }
   return out;
 }
 
@@ -335,9 +379,31 @@ function alertText_(row, rec) {
   ].join('\n');
 }
 
-/** Emails the account the triggers run as. A failing alert is logged, never thrown. */
-function alertOwner_(kind, text) {
+/** One summary alert for several rows that reached the repeated-failure stage in one run. */
+function repeatedText_(rows) {
+  return [
+    rows.length + ' sign-ups for TBI Lab could not be forwarded to the lab yet (repeated failures).',
+    '',
+    'Response rows: ' + rows.join(', '),
+    '',
+    'The tab "' + STATUS_SHEET + '" shows every row. Rows marked "retry" are tried again',
+    'automatically; "failed" or "skipped" rows need a look.'
+  ].join('\n');
+}
+
+/**
+ * Emails the account the triggers run as. A failing alert is logged, never thrown. With
+ * `minGapMs`, the same kind is sent at most once per that interval (kept in a script property).
+ */
+function alertOwner_(kind, text, minGapMs) {
   try {
+    var props = PropertiesService.getScriptProperties();
+    var key = 'LAST_ALERT_' + kind;
+    if (minGapMs) {
+      var last = Number(props.getProperty(key) || 0);
+      if (last && Date.now() - last < minGapMs) return;
+      props.setProperty(key, String(Date.now()));
+    }
     var to = Session.getEffectiveUser().getEmail();
     if (!to) throw new Error('no address');
     MailApp.sendEmail(to, 'TBI Lab sign-up forwarding: ' + kind, text);
