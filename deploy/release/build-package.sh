@@ -67,7 +67,7 @@ if [ "$admin_bundle" = 1 ]; then
     --define:__TBI_RUNTIME_VERSION__="\"$version\"" --define:__TBI_RUNTIME_COMMIT__="\"$R\"" \
     --outfile=runtime/admin/dist/admin-service.mjs --log-level=warning
   grep -q "$R" runtime/admin/dist/admin-service.mjs
-  # TBI-022: the public sign-up intake ships with the admin service (tbi-signup.service runs
+  # TBI-022: the public sign-up intake ships with the admin service (the planned tbi-signup unit will run
   # @BUNDLES@/signup-intake.mjs; inert unless TBI_SIGNUP_INTAKE=1).
   env -i "${base_env[@]}" npx esbuild runtime/admin/signup/intake-main.ts --bundle --platform=node --format=esm --target=node22 \
     --outfile=runtime/admin/dist/signup-intake.mjs --log-level=warning
