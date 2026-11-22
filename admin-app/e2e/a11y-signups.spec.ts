@@ -154,7 +154,7 @@ test('signups: Reject asks first; Esc cancels and returns to Reject; confirm the
   const confirm = page.getByTestId('confirm');
   await expect(confirm).toBeVisible();
   await expect(confirm).toHaveAttribute('role', 'alertdialog');
-  expect(await focusedId(page)).toBe('confirm-cancel@r1');
+  await expect.poll(() => focusedId(page)).toBe('confirm-cancel@r1');
   // Heading order: the confirmation title is an h2 under the page's h1.
   await expect(confirm.getByRole('heading', { level: 2 })).toBeVisible();
   await page.keyboard.press('Escape');
@@ -165,7 +165,7 @@ test('signups: Reject asks first; Esc cancels and returns to Reject; confirm the
   await page.keyboard.press('Enter');
   await expect.poll(() => focusedId(page)).toBe('confirm-cancel@r1');
   await page.keyboard.press('Tab');
-  expect(await focusedId(page)).toBe('confirm-ok@r1');
+  await expect.poll(() => focusedId(page)).toBe('confirm-ok@r1');
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('signup-row')).toHaveCount(2);
   expect(calls).toEqual(['r1/reject']);
