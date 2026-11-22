@@ -4754,6 +4754,7 @@ select {
 .wires-list-item:focus-visible {
   outline: 3px solid currentColor;
   outline-offset: 2px;
+}
 
 /* TBI-020 slice 2: keyboard shortcuts dialog and its top-bar button. */
 .shortcuts-open {
