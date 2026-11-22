@@ -11,6 +11,7 @@ import {
   openSync,
   readFileSync,
   renameSync,
+  unlinkSync,
   truncateSync,
   writeSync,
 } from 'node:fs';
@@ -123,7 +124,13 @@ export class JournalStore<E = PlanEvent> implements Store<E> {
   async replace(events: E[]): Promise<void> {
     const tmp = `${this.path}.compact-tmp`;
     const data = Buffer.from(events.map(encodeLine).join(''), 'utf8');
-    const fd = openSync(tmp, 'w', 0o600);
+    // never follow a planted file or symlink: remove whatever is there, then create exclusively
+    try {
+      unlinkSync(tmp);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+    }
+    const fd = openSync(tmp, 'wx', 0o600);
     try {
       let off = 0;
       while (off < data.length) off += writeSync(fd, data, off);

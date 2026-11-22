@@ -382,6 +382,7 @@ export function checkEvent(s: PlansState, ev: PlanEvent): void {
       need(r.principal === ev.principal, `${ev.t} principal`);
       checkSpend(ev.spend);
       need(ev.spend.k === ev.t, `${ev.t} spend kind`);
+      need(ev.spend.reservedMicro === r.usdMicro, `${ev.t} spend reservedMicro`);
       const reserved = r.parts.reduce((n, p) => n + p.credits, 0);
       if (ev.t === 'settle') {
         need(count(ev.deducted) && ev.deducted === reserved, 'settle deducted');
