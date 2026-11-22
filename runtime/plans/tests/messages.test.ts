@@ -32,6 +32,10 @@ describe('messages', () => {
         .sort(),
     ).toEqual(heKeys);
   });
+  it('he addresses the user in the plural only (FABLE-REVIEW 14)', () => {
+    for (const [k, t] of Object.entries(MESSAGES.he))
+      expect(t, k).not.toMatch(/שלך|הגעת(?!ם)(?=\s)|רוצה |יש לך|חויבת(?!ם)/);
+  });
   it('renders params; missing param or code without message is an error', () => {
     expect(renderLimit('en', limitError('rate', { n: 50 }))).toContain('50 seconds');
     expect(renderLimit('he', limitError('credits_out', { date: '01.12.2026' }))).toContain(

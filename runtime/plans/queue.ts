@@ -57,8 +57,8 @@ export interface Slots {
 }
 
 export type EnqueueResult =
-  | { ok: true; duplicate: boolean; position: number; status: LimitError }
-  | { ok: false; error: LimitError };
+  | { ok: true; duplicate: boolean; position: number; status: LimitError; dropped?: Dropped[] }
+  | { ok: false; error: LimitError; dropped?: Dropped[] };
 
 const TICKET = /^[A-Za-z0-9_.:-]{1,128}$/;
 const fail = (error: LimitError): { ok: false; error: LimitError } => ({ ok: false, error });
@@ -107,7 +107,20 @@ export class FairQueue {
     return until === undefined ? 0 : Math.max(0, until - this.clock.now());
   }
 
+  /**
+   * Expires stale entries first (tick), so an entry that already waited too long is dropped as such and
+   * a fresh request is never joined to it (s3b follow-up 13: no immediate queue_timeout for a new
+   * request). The drops are returned in `dropped` (only when there were some) so the caller can tell
+   * those clients.
+   */
   enqueue(req: EnqueueRequest): EnqueueResult {
+    // this enqueue is itself a sign of life of the same principal: only max-wait applies to its old entry
+    const dropped = this.tick(typeof req.principal === 'string' ? req.principal : undefined);
+    const r = this.enqueueFresh(req);
+    return dropped.length ? { ...r, dropped } : r;
+  }
+
+  private enqueueFresh(req: EnqueueRequest): EnqueueResult {
     if (!validPrincipal(req.principal)) return fail(limitError('invalid_principal'));
     if (typeof req.ticket !== 'string' || !TICKET.test(req.ticket))
       return fail(limitError('invalid_request'));
@@ -166,17 +179,27 @@ export class FairQueue {
     return { ok: true, duplicate, position, status: limitError('queue', { n: position }) };
   }
 
-  /** The waiting client is still there (its poll). Returns false when the ticket is not queued. */
-  touch(ticket: string): boolean {
+  /**
+   * The waiting client is still there (its poll). Returns false when the ticket is not queued.
+   * HOST CONTRACT: pass the calling principal; another principal's ticket then answers false, like an
+   * unknown ticket (s3b follow-up 12). Without it the ticket alone is the capability.
+   */
+  touch(ticket: string, principal?: string): boolean {
     const e = this.entries.find((x) => x.ticket === ticket);
-    if (!e) return false;
+    if (!e || (principal !== undefined && e.principal !== principal)) return false;
     e.leaseAt = Math.max(e.leaseAt, this.clock.now());
     return true;
   }
 
-  /** Remove a waiting entry (client cancelled, or its lease was lost). */
-  drop(ticket: string, reason: 'cancelled' | 'lease_lost' = 'cancelled'): Dropped | null {
-    const i = this.entries.findIndex((x) => x.ticket === ticket);
+  /** Remove a waiting entry (client cancelled, or its lease was lost). `principal`: see touch(). */
+  drop(
+    ticket: string,
+    reason: 'cancelled' | 'lease_lost' = 'cancelled',
+    principal?: string,
+  ): Dropped | null {
+    const i = this.entries.findIndex(
+      (x) => x.ticket === ticket && (principal === undefined || x.principal === principal),
+    );
     if (i === -1) return null;
     const [e] = this.entries.splice(i, 1) as [QueueEntry];
     return {
@@ -193,8 +216,11 @@ export class FairQueue {
     this.cooldown.set(principal, this.clock.now() + this.cfg.queue.freeCooldownMs);
   }
 
-  /** Drop entries that waited too long or whose client vanished; forget finished cooldowns. */
-  tick(): Dropped[] {
+  /**
+   * Drop entries that waited too long or whose client vanished; forget finished cooldowns.
+   * `alive`: a principal that just proved it is there (enqueue); its entry is not dropped as vanished.
+   */
+  tick(alive?: string): Dropped[] {
     const now = this.clock.now();
     const q = this.cfg.queue;
     const out: Dropped[] = [];
@@ -208,7 +234,7 @@ export class FairQueue {
         });
         return false;
       }
-      if (now - e.leaseAt >= q.vanishMs) {
+      if (e.principal !== alive && now - e.leaseAt >= q.vanishMs) {
         out.push({
           ticket: e.ticket,
           principal: e.principal,
