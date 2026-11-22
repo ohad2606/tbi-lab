@@ -202,6 +202,15 @@ export type SimResult<T extends object = object> =
 export interface SimMeterOptions {
   config: PlansConfig;
   clock: Clock;
+  /**
+   * Heartbeat journal throttle (s3b follow-up 11): a heartbeat is written to the journal only when the
+   * last journaled beat is at least this many ms old; in between it lives in memory only. Default
+   * leaseMs / 3 (>= 1). 0 = journal every beat. Billing is NOT affected while the process lives (the
+   * in-memory beat is used); a close/sweep first journals the newest beat so the journal stays
+   * self-consistent. After a crash the replay bills up to the last JOURNALED beat + lease, so the bill
+   * can be lower by at most this interval (never higher). Must be < leaseMs.
+   */
+  beatPersistMs?: number;
 }
 
 const unavailable = (): { ok: false; error: LimitError } => ({
@@ -219,11 +228,61 @@ export class SimMeter {
   private state: SimState = emptySimState();
   private problem: StoreProblem | undefined;
   private tail: Promise<unknown> = Promise.resolve();
+  /** newest heartbeat per open session that is not journaled yet (memory only, never replayed) */
+  private liveBeat: Record<string, number> = dict();
+  private readonly persistMs: number;
 
   private constructor(
     private readonly store: Store<SimEvent>,
     private readonly opts: SimMeterOptions,
-  ) {}
+  ) {
+    const lease = opts.config.sim.leaseMs;
+    const want = opts.beatPersistMs ?? Math.max(1, Math.floor(lease / 3));
+    this.persistMs =
+      Number.isFinite(want) && want >= 0 ? Math.min(want, Math.max(0, lease - 1)) : 0;
+  }
+
+  /** The session as the meter sees it now: the newest beat, journaled or not. */
+  private eff(ss: SimSession): SimSession {
+    const b = own(this.liveBeat, ss.sessionId);
+    return b !== undefined && b > ss.lastBeat ? { ...ss, lastBeat: b } : ss;
+  }
+
+  /** The journal event that makes an in-memory beat durable before a close, or none. */
+  private flushBeat(ss: SimSession): (SimBody & { at: number })[] {
+    const e = this.eff(ss);
+    return e.lastBeat > ss.lastBeat
+      ? [{ t: 'sim_beat', sessionId: ss.sessionId, at: e.lastBeat }]
+      : [];
+  }
+
+  /**
+   * Bounded memory (s3b follow-up 11): only the current and the previous calendar month matter for
+   * the allowance, so older usage days and old closed sessions are forgotten. Called after a replay and
+   * after sweep/close. Does not change any allowance, remaining time or open session.
+   */
+  private prune(): void {
+    const now = this.now();
+    if (now === null) return;
+    const tz = this.cfg.meter.timezone;
+    const cutoff = monthStart(now, tz, -1);
+    const cutMonth = dayKey(cutoff, tz).slice(0, 7);
+    for (const [id, ss] of Object.entries(this.state.sessions))
+      if (ss.closedAt !== undefined && ss.closedAt < cutoff) delete this.state.sessions[id];
+    for (const [p, days] of Object.entries(this.state.usage)) {
+      let removed = false;
+      for (const k of Object.keys(days))
+        if (k.slice(0, 7) < cutMonth) {
+          delete days[k];
+          removed = true;
+        }
+      if (removed && Object.keys(days).length === 0) delete this.state.usage[p];
+    }
+    for (const id of Object.keys(this.liveBeat)) {
+      const ss = own(this.state.sessions, id);
+      if (!ss || ss.closedAt !== undefined) delete this.liveBeat[id];
+    }
+  }
 
   /** Rebuild from the journal; when metering is on, sessions whose lease ran out are closed at lastBeat + lease. */
   static async open(store: Store<SimEvent>, opts: SimMeterOptions): Promise<SimMeter> {
@@ -252,7 +311,9 @@ export class SimMeter {
       return;
     }
     this.state = s;
+    this.liveBeat = dict();
     this.problem = problem;
+    this.prune();
   }
 
   private run<T>(fn: () => Promise<T>): Promise<T> {
@@ -267,6 +328,11 @@ export class SimMeter {
     return Number.isFinite(t) ? t : null;
   }
 
+  /** A plan the config has no sim limits for cannot be metered: fail closed (system_unavailable). */
+  private planConfigured(plan: PlanId): boolean {
+    return Object.hasOwn(this.cfg.sim.plans, plan) && this.cfg.sim.plans[plan] != null;
+  }
+
   private get cfg(): PlansConfig {
     return this.opts.config;
   }
@@ -275,7 +341,7 @@ export class SimMeter {
   }
   session(sessionId: string): SimSession | undefined {
     const s = typeof sessionId === 'string' ? own(this.state.sessions, sessionId) : undefined;
-    return s ? structuredClone(s) : undefined;
+    return s ? structuredClone(this.eff(s)) : undefined;
   }
   stateJson(): string {
     return JSON.stringify(this.state);
@@ -299,6 +365,7 @@ export class SimMeter {
       return false;
     }
     this.state = next;
+    for (const b of bodies) if (b.t === 'sim_close') delete this.liveBeat[b.sessionId];
     return true;
   }
 
@@ -317,7 +384,7 @@ export class SimMeter {
     for (const [k, ms] of Object.entries(own(this.state.usage, principal) ?? {})) add(k, ms);
     for (const ss of Object.values(this.state.sessions)) {
       if (ss.principal !== principal || ss.closedAt !== undefined) continue;
-      for (const p of splitByDay(ss.openedAt, billEnd(ss, now), tz)) add(p.dayKey, p.ms);
+      for (const p of splitByDay(ss.openedAt, billEnd(this.eff(ss), now), tz)) add(p.dayKey, p.ms);
     }
     return { today, month };
   }
@@ -340,7 +407,7 @@ export class SimMeter {
     if (!this.cfg.metering.enabled) return { ok: true, metered: false };
     if (!validPrincipal(principal)) return bad('invalid_principal');
     if (!PLAN_IDS.includes(plan)) return bad('invalid_request');
-    if (this.problem) return unavailable();
+    if (this.problem || !this.planConfigured(plan)) return unavailable();
     const now = this.now();
     if (now === null) return unavailable();
     return { ok: true, metered: true, ...this.remainingAt(principal, plan, now) };
@@ -390,7 +457,7 @@ export class SimMeter {
       if (
         ss.principal === principal &&
         ss.closedAt === undefined &&
-        now <= ss.lastBeat + ss.leaseMs
+        now <= this.eff(ss).lastBeat + ss.leaseMs
       )
         n++;
     return n;
@@ -402,13 +469,14 @@ export class SimMeter {
       if (!validPrincipal(principal)) return bad('invalid_principal');
       if (!validSessionId(sessionId)) return bad('invalid_request');
       if (!PLAN_IDS.includes(plan)) return bad('invalid_request');
-      if (this.problem) return unavailable();
+      if (this.problem || !this.planConfigured(plan)) return unavailable();
       const now = this.now();
       if (now === null) return unavailable();
       const existing = own(this.state.sessions, sessionId);
       if (existing) {
         if (existing.principal !== principal) return bad('invalid_request');
         if (existing.closedAt !== undefined) return bad('invalid_state');
+        if (!this.planConfigured(existing.plan)) return unavailable();
         return {
           ok: true,
           metered: true,
@@ -435,26 +503,39 @@ export class SimMeter {
    * close() is a duplicate that reports the billed time. After the lease ran out the session is lost
    * (lease_lost): the caller closes it.
    */
-  heartbeat(sessionId: string): Promise<SimResult<SimRemaining & { remainingMs: number | null }>> {
+  heartbeat(
+    sessionId: string,
+    principal?: string,
+  ): Promise<SimResult<SimRemaining & { remainingMs: number | null }>> {
     return this.run(async () => {
       if (!this.cfg.metering.enabled) return { ok: true, metered: false };
       if (!validSessionId(sessionId)) return bad('invalid_request');
       if (this.problem) return unavailable();
-      const ss = own(this.state.sessions, sessionId);
-      if (!ss || ss.closedAt !== undefined) return bad('invalid_state');
+      const stored = own(this.state.sessions, sessionId);
+      // another principal's session answers exactly like an unknown one (no leak, s3b follow-up 12)
+      if (!stored || stored.closedAt !== undefined) return bad('invalid_state');
+      if (principal !== undefined && stored.principal !== principal) return bad('invalid_state');
+      const ss = this.eff(stored);
+      if (!this.planConfigured(ss.plan)) return unavailable();
       const now = this.now();
       if (now === null) return unavailable();
       if (now > ss.lastBeat + ss.leaseMs) return bad('lease_lost');
       const r = this.remainingAt(ss.principal, ss.plan, now);
       const err = this.exhausted(r, ss.plan, now);
       if (err)
-        return (await this.commit([this.closeBody(ss, now, 'cap')]))
+        return (await this.commit([...this.flushBeat(stored), this.closeBody(ss, now, 'cap')]))
           ? { ok: false, error: err }
           : unavailable();
       const left = [r.monthMs, r.dayMs].filter((x): x is number => x !== null);
       const out = { ...r, remainingMs: left.length ? Math.min(...left) : null };
       if (now <= ss.lastBeat) return { ok: true, metered: true, duplicate: true, ...out };
+      // throttle: a beat inside the persist interval stays in memory (billing uses it, see eff())
+      if (now - stored.lastBeat < this.persistMs) {
+        this.liveBeat[sessionId] = now;
+        return { ok: true, metered: true, ...out };
+      }
       const ok = await this.commit([{ t: 'sim_beat', sessionId, at: now }]);
+      if (ok) delete this.liveBeat[sessionId];
       return ok ? { ok: true, metered: true, ...out } : unavailable();
     });
   }
@@ -463,22 +544,24 @@ export class SimMeter {
   close(
     sessionId: string,
     reason: CloseReason = 'ended',
+    principal?: string,
   ): Promise<SimResult<{ billedMs: number }>> {
     return this.run(async () => {
       if (!this.cfg.metering.enabled) return { ok: true, metered: false };
       if (!validSessionId(sessionId)) return bad('invalid_request');
       if (!CLOSE_REASONS.includes(reason)) return bad('invalid_request');
       if (this.problem) return unavailable();
-      const ss = own(this.state.sessions, sessionId);
-      if (!ss) return bad('invalid_state');
-      if (ss.closedAt !== undefined)
-        return { ok: true, metered: true, duplicate: true, billedMs: ss.billedMs ?? 0 };
+      const stored = own(this.state.sessions, sessionId);
+      if (!stored) return bad('invalid_state');
+      if (principal !== undefined && stored.principal !== principal) return bad('invalid_state');
+      if (stored.closedAt !== undefined)
+        return { ok: true, metered: true, duplicate: true, billedMs: stored.billedMs ?? 0 };
       const now = this.now();
       if (now === null) return unavailable();
-      const body = this.closeBody(ss, now, reason);
-      return (await this.commit([body]))
-        ? { ok: true, metered: true, duplicate: false, billedMs: body.billedMs }
-        : unavailable();
+      const body = this.closeBody(this.eff(stored), now, reason);
+      if (!(await this.commit([...this.flushBeat(stored), body]))) return unavailable();
+      this.prune();
+      return { ok: true, metered: true, duplicate: false, billedMs: body.billedMs };
     });
   }
 
@@ -506,12 +589,16 @@ export class SimMeter {
       if (this.problem) return unavailable();
       const now = this.now();
       if (now === null) return unavailable();
-      const bodies = Object.values(this.state.sessions)
-        .filter((ss) => ss.closedAt === undefined && now > ss.lastBeat + ss.leaseMs)
-        .map((ss) => this.closeBody(ss, now, 'lease'));
-      return (await this.commit(bodies))
-        ? { ok: true, metered: true, closed: bodies.length }
-        : unavailable();
+      const expired = Object.values(this.state.sessions).filter(
+        (ss) => ss.closedAt === undefined && now > this.eff(ss).lastBeat + ss.leaseMs,
+      );
+      const bodies = expired.flatMap((ss) => [
+        ...this.flushBeat(ss),
+        this.closeBody(this.eff(ss), now, 'lease'),
+      ]);
+      if (!(await this.commit(bodies))) return unavailable();
+      this.prune();
+      return { ok: true, metered: true, closed: expired.length };
     });
   }
 }

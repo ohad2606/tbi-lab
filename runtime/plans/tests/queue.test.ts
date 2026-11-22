@@ -187,8 +187,9 @@ describe('FairQueue timeouts with a fake clock (acceptance 6)', () => {
   it('dequeue never hands out an expired entry and reports its drop', () => {
     const { q, clock } = make();
     q.enqueue({ ticket: 'old', principal: pid(1), plan: 'pro', simMsToday: 0 });
-    clock.advance(30_000);
+    clock.advance(15_000);
     q.enqueue({ ticket: 'new', principal: pid(2), plan: 'free', simMsToday: 0 });
+    clock.advance(15_000);
     const d = q.dequeue(open(6));
     expect(d.entry?.ticket).toBe('new');
     expect(d.dropped.map((x) => x.ticket)).toEqual(['old']);
@@ -307,6 +308,7 @@ describe('FairQueue bound, cooldown, idempotency', () => {
     const again = q.enqueue({ ticket: 'a', principal: pid(1), plan: 'free', simMsToday: 0 });
     expect(again.ok && again.duplicate).toBe(true);
     clock.advance(5 * MIN);
+    q.touch('b');
     const re = q.enqueue({ ticket: 'a2', principal: pid(1), plan: 'free', simMsToday: 0 });
     expect(re.ok && [re.duplicate, re.position, re.status.params.n]).toEqual([true, 1, 1]);
     expect(q.length).toBe(2);
@@ -373,5 +375,70 @@ describe('FairQueue bound, cooldown, idempotency', () => {
     const s = q.enqueue({ ticket: 'b', principal: pid(3), plan: 'free', simMsToday: 0 });
     expect(s.ok ? 'ok' : s.error.code).toBe('queue_full');
     expect(q.snapshot().map((e) => e.ticket)).toEqual(['f']);
+  });
+});
+
+describe('FairQueue enqueue expires stale entries first (FABLE-REVIEW 13)', () => {
+  it('a stale entry is dropped as a timeout and the fresh request of the same principal is not', () => {
+    const { q, clock } = make();
+    q.enqueue({ ticket: 'old', principal: pid(1), plan: 'pro', simMsToday: 0 });
+    for (let i = 0; i < 20; i++) {
+      clock.advance(MIN / 2);
+      q.touch('old');
+    }
+    // 10 min = maxWaitMs: the old entry is at its limit. The new request must not inherit it.
+    const r = q.enqueue({ ticket: 'new', principal: pid(1), plan: 'pro', simMsToday: 0 });
+    expect(r.ok && [r.duplicate, r.position]).toEqual([false, 1]);
+    expect(r.ok && r.dropped?.map((d) => [d.ticket, d.reason])).toEqual([['old', 'timeout']]);
+    expect(q.snapshot().map((e) => e.ticket)).toEqual(['new']);
+    expect(q.tick()).toEqual([]);
+    clock.advance(1);
+    expect(q.tick()).toEqual([]);
+  });
+
+  it('a vanished entry of another principal is dropped on enqueue, the caller is told', () => {
+    const { q, clock } = make();
+    q.enqueue({ ticket: 'gone', principal: pid(1), plan: 'pro', simMsToday: 0 });
+    clock.advance(30_000);
+    const r = q.enqueue({ ticket: 'x', principal: pid(2), plan: 'pro', simMsToday: 0 });
+    expect(r.ok && r.dropped?.map((d) => [d.ticket, d.reason])).toEqual([['gone', 'vanished']]);
+    expect(q.length).toBe(1);
+  });
+
+  it('no stale entry: no dropped field', () => {
+    const { q } = make();
+    const r = q.enqueue({ ticket: 'x', principal: pid(2), plan: 'pro', simMsToday: 0 });
+    expect(r.ok && 'dropped' in r).toBe(false);
+  });
+});
+
+describe('FairQueue principal check on touch/drop (FABLE-REVIEW 12)', () => {
+  it("another principal's ticket answers like an unknown one and changes nothing", () => {
+    const { q, clock } = make();
+    q.enqueue({ ticket: 't1', principal: pid(1), plan: 'pro', simMsToday: 0 });
+    clock.advance(10_000);
+    expect(q.touch('t1', pid(2))).toBe(false);
+    expect(q.drop('t1', 'cancelled', pid(2))).toBeNull();
+    expect(q.snapshot()[0]?.leaseAt).toBe(NOON);
+    expect(q.touch('t1', pid(1))).toBe(true);
+    expect(q.drop('t1', 'cancelled', pid(1))?.principal).toBe(pid(1));
+  });
+});
+
+describe('FairQueue freeSlotCap edge (FABLE-REVIEW 15)', () => {
+  it('freeSlotCap 0: a Free entry never starts, a paid entry behind it does', () => {
+    const { q } = make({ queue: { freeSlotCap: 0 } });
+    expect(q.freeCap(open(6))).toBe(0);
+    q.enqueue({ ticket: 'f', principal: pid(1), plan: 'free', simMsToday: 0 });
+    q.enqueue({ ticket: 'p', principal: pid(2), plan: 'advanced', simMsToday: 0 });
+    expect(q.dequeue(open(6), 'f').entry).toBeNull();
+    expect(q.dequeue(open(6)).entry?.ticket).toBe('p');
+    expect(q.dequeue(open(6)).entry).toBeNull();
+    expect(q.length).toBe(1);
+  });
+  it('freeSlotCap 0 with liftUntilFirstPaid: lifted only while no paid user exists', () => {
+    const { q } = make({ queue: { freeSlotCap: 0, freeCapMode: 'liftUntilFirstPaid' } });
+    expect(q.freeCap({ ...open(6), anyPaidUser: false })).toBe(6);
+    expect(q.freeCap({ ...open(6), anyPaidUser: true })).toBe(0);
   });
 });
