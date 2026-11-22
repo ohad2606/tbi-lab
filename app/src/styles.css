@@ -4870,3 +4870,62 @@ select {
 .mpy-support-button {
   min-block-size: 24px;
 }
+
+/* TBI-020 slice 4: Help panel (the user guide). */
+.guide-dialog {
+  max-inline-size: min(48rem, 94vw);
+  max-block-size: 88vh;
+  overflow: hidden;
+}
+.guide-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.guide-dialog h2:focus,
+.guide-body h3:focus,
+.guide-body h4:focus {
+  outline: none;
+}
+.guide-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.5rem;
+}
+.guide-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+.guide-toc a {
+  display: inline-block;
+  min-block-size: 24px;
+  color: var(--accent, inherit);
+  text-decoration: underline;
+}
+.guide-body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding-inline-end: 0.5rem;
+  overflow-wrap: anywhere;
+  border-block-start: 1px solid var(--border);
+}
+.guide-body ul,
+.guide-body ol {
+  padding-inline-start: 1.5rem;
+}
+.guide-body code {
+  unicode-bidi: isolate;
+  font-family: ui-monospace, monospace;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 0.25rem;
+}
+.guide-dialog .dialog-actions {
+  flex: none;
+}

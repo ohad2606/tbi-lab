@@ -2328,6 +2328,15 @@ export const en = {
     'a session has no serial input path (the serial monitor shows output only): the program would wait forever',
   'mpy.contract.network.note':
     'no network or radio in the simulator (and none from a compilation or run sandbox)',
+  // TBI-020 slice 4: Help panel (the guide text itself is docs/product/USER-GUIDE.*.md).
+  'guide.open': 'Help and user guide',
+  'guide.title': 'User guide',
+  'guide.close': 'Close',
+  'guide.contents': 'Contents',
+  'guide.shortcuts': 'Keyboard shortcuts',
+  'guide.textRegion': 'User guide text',
+  'guide.intro': 'Use the contents to jump to a section. Escape closes this window.',
+
   // TBI-020 slice 2: keyboard shortcuts dialog (app/src/ui/shortcuts.ts).
   'shortcuts.open': 'Keyboard shortcuts',
   'shortcuts.title': 'Keyboard shortcuts',

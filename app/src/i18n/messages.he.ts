@@ -2210,6 +2210,15 @@ export const he: Record<MessageKey, string> = {
     'לסשן אין נתיב קלט טורי (מוניטור הטורי מציג פלט בלבד): התוכנית הייתה מחכה לנצח',
   'mpy.contract.network.note':
     'אין רשת או רדיו בסימולטור (וגם לא מתוך ארגז החול של הקומפילציה או ההרצה)',
+  // TBI-020 slice 4: Help panel (the guide text itself is docs/product/USER-GUIDE.*.md).
+  'guide.open': 'עזרה ומדריך למשתמש',
+  'guide.title': 'מדריך למשתמש',
+  'guide.close': 'סגירה',
+  'guide.contents': 'תוכן העניינים',
+  'guide.shortcuts': 'קיצורי מקלדת',
+  'guide.textRegion': 'טקסט המדריך',
+  'guide.intro': 'בתוכן העניינים אפשר לקפוץ לפרק. מקש Esc סוגר את החלון.',
+
   // TBI-020 slice 2: keyboard shortcuts dialog (app/src/ui/shortcuts.ts).
   'shortcuts.open': 'קיצורי מקלדת',
   'shortcuts.title': 'קיצורי מקלדת',

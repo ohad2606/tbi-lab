@@ -100,7 +100,7 @@ const FOCUSABLE =
  * Keep Tab inside the modal: the browser would otherwise move on to its own controls. The heading
  * (tabindex -1) is the start; the close button is the only stop, so Tab and Shift+Tab stay on it.
  */
-function trapTab(e: KeyboardEvent) {
+export function trapTab(e: KeyboardEvent) {
   if (e.key !== 'Tab') return;
   const dialog = e.currentTarget as HTMLElement;
   const stops = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)];
