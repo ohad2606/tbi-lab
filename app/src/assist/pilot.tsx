@@ -124,7 +124,15 @@ export function useAiController({
   useEffect(() => {
     if (refocus.current && phase.kind !== 'sending' && phase.kind !== 'consent') {
       refocus.current = false;
-      askRef.current?.focus();
+      // Only when focus is really gone (body, a removed control, the closing dialog): never steal
+      // it from a control the person moved to while waiting.
+      if (focusLost()) {
+        askRef.current?.focus();
+        // The closing <dialog> may hand focus back to its opener after this commit: settle once more.
+        setTimeout(() => {
+          if (focusLost()) askRef.current?.focus();
+        }, 0);
+      }
     }
   });
   useEffect(() => () => abortInFlight(), []);
@@ -135,7 +143,9 @@ export function useAiController({
   }
   const focusLost = () => {
     const a = document.activeElement;
-    return !a || a === document.body || !!a.closest('[data-ai-transient]');
+    return (
+      !a || a === document.body || !a.isConnected || !!a.closest('[data-ai-transient], dialog')
+    );
   };
 
   function fail(error: ClientError) {
@@ -166,6 +176,8 @@ export function useAiController({
         consent.withdraw(account);
         setConsented(false);
         const s = await refreshStatus(ctl.signal);
+        // A cancelled re-fetch leaves the status stale even when this call was superseded.
+        if (ctl.signal.aborted) statusStale.current = true;
         const now = phaseRef.current;
         if (now.kind !== 'sending' || now.ctl !== ctl) return; // superseded
         // Focus may have moved onto Cancel while the status was asked: it goes with the phase.
@@ -228,6 +240,9 @@ export function useAiController({
       if (p.kind !== 'consent') return;
       // Remembered when the browser allows it; sent with this request either way.
       setConsented(consent.grant(account, version));
+      // The dialog (and the focused Agree) goes away with this phase change: focus is restored
+      // to Ask after the commit that settles the request, whatever the browser did meanwhile.
+      refocus.current = true;
       void send(p.context);
     },
     decline: () => {
