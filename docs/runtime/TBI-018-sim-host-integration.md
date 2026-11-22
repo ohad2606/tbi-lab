@@ -18,7 +18,7 @@ Status: adapter built and tested; the Session Host is **not wired**. Metering st
 | Host moment | Call | Host action on the answer |
 |---|---|---|
 | `POST /sessions` (and every poll of a queued client, same `ticket`) | `admit({ ticket, sessionId, principal, plan, slots: { capacity, running } })` | `start`: create the session as today, arm a stop timer at `remainingMs`. `queued`: answer with `position` / `limit.sim.queue`, the client polls. `refused`: answer the `LimitError` (code + params), create nothing. |
-| heartbeat: an attached stream or request renews the lease, plus the stop timer | `heartbeat(sessionId)` | `continue`: re-arm the stop timer at `remainingMs`. `stop`: end the run with the error (`minutes_out*`, `sim_daily`, `lease_lost`, `system_unavailable`). |
+| heartbeat: an attached stream or request renews the lease, plus the stop timer | `heartbeat(sessionId, principal)` (principal = the authenticated principal of the caller) | `continue`: re-arm the stop timer at `remainingMs`. `stop`: end the run with the error (`minutes_out*`, `sim_daily`, `lease_lost`, `system_unavailable`, `invalid_state`). `refused`: the caller does not own the run; answer the caller with the error (`invalid_state`, same as an unknown id) and leave the run untouched. |
 | session terminal (any reason) | `ended(sessionId, closeReasonOf(reason))` | Log `billedMs`; an error is logged, the run is over anyway. |
 | housekeeping timer | `housekeeping()` | Tell the dropped waiters (`queue_timeout`, `queue_vanished`). |
 | client cancels while queued / polls | `cancel(ticket)` / `touch(ticket)` | none |

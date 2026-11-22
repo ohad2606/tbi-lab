@@ -34,7 +34,11 @@ const slots = (running: number, capacity = 6): HostSlots => ({ capacity, running
 const decision = (r: HostAdmit): string =>
   !r.metered ? 'unmetered' : r.decision === 'refused' ? `refused:${r.error.code}` : r.decision;
 const beat = (r: HostBeat): string =>
-  !r.metered ? 'unmetered' : r.decision === 'stop' ? `stop:${r.error.code}` : 'continue';
+  !r.metered
+    ? 'unmetered'
+    : r.decision === 'continue'
+      ? 'continue'
+      : `${r.decision}:${r.error.code}`;
 
 let t = 0;
 const ticket = (): string => `t${++t}`;

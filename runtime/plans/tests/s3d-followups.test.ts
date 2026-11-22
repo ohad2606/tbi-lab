@@ -157,7 +157,7 @@ describe('SimMeter principal check on heartbeat/close (FABLE-REVIEW 12)', () => 
     });
     expect(a.metered && a.decision).toBe('start');
     const wrong = await host.heartbeat('sess1', FREE);
-    expect(wrong.metered && wrong.decision).toBe('stop');
+    expect(wrong.metered && wrong.decision).toBe('refused');
     const end = await host.ended('sess1', 'ended', FREE);
     expect(end.metered && end.ok).toBe(false);
     expect(host.tracked).toBe(1);

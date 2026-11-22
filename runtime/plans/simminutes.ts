@@ -230,6 +230,13 @@ export class SimMeter {
   private tail: Promise<unknown> = Promise.resolve();
   /** newest heartbeat per open session that is not journaled yet (memory only, never replayed) */
   private liveBeat: Record<string, number> = dict();
+  /**
+   * Ids of closed sessions prune() forgot (ops review fable11 L2). They stay in the journal, so a second
+   * sim_open for one would make the next replay fail: open() refuses them. Rebuilt by every reload (the
+   * replay holds them again and prune() moves them here). Its size is bounded by the journal (one id per
+   * session ever opened); a future journal compaction must carry these ids over.
+   */
+  private tombstones = new Set<string>();
   private readonly persistMs: number;
 
   private constructor(
@@ -268,7 +275,10 @@ export class SimMeter {
     const cutoff = monthStart(now, tz, -1);
     const cutMonth = dayKey(cutoff, tz).slice(0, 7);
     for (const [id, ss] of Object.entries(this.state.sessions))
-      if (ss.closedAt !== undefined && ss.closedAt < cutoff) delete this.state.sessions[id];
+      if (ss.closedAt !== undefined && ss.closedAt < cutoff) {
+        delete this.state.sessions[id];
+        this.tombstones.add(id);
+      }
     for (const [p, days] of Object.entries(this.state.usage)) {
       let removed = false;
       for (const k of Object.keys(days))
@@ -312,6 +322,7 @@ export class SimMeter {
     }
     this.state = s;
     this.liveBeat = dict();
+    this.tombstones = new Set();
     this.problem = problem;
     this.prune();
   }
@@ -472,6 +483,8 @@ export class SimMeter {
       if (this.problem || !this.planConfigured(plan)) return unavailable();
       const now = this.now();
       if (now === null) return unavailable();
+      // a pruned closed session: closed like any other, its owner is no longer known here
+      if (this.tombstones.has(sessionId)) return bad('invalid_state');
       const existing = own(this.state.sessions, sessionId);
       if (existing) {
         if (existing.principal !== principal) return bad('invalid_request');
