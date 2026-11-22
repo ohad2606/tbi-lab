@@ -2,7 +2,8 @@
  * TBI-018 slice 1: the engine. admit / settle / release / grant / revoke / addPack, owner pause/resume, sweep.
  * Every command runs inside one serial mutex, builds its journal events FIRST from a read-only view,
  * appends them, and only then applies them to the in-memory state. If append throws, the in-memory
- * state is exactly what it was before the call and nothing was consumed (system_unavailable).
+ * state is exactly what it was before the call and nothing was consumed (system_unavailable), and the
+ * engine refuses every command until the journal is replayed (open / recover).
  * Imported by nothing outside runtime/plans in this slice; metering.enabled=false writes nothing.
  */
 import type { Mode, PackType, PlanId, PlansConfig } from './config.js';
@@ -180,6 +181,9 @@ export class PlansEngine {
     try {
       await this.store.append(events);
     } catch {
+      // Part of the batch may be on disk; the next append would reuse its sequence numbers. Fail
+      // closed until the journal is replayed (open / recover), as SimMeter does (s3b follow-up).
+      this.problem = { kind: 'corrupt', detail: 'append failed' };
       return false;
     }
     for (const ev of events) applyEvent(this.state, ev);

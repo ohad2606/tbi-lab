@@ -39,6 +39,10 @@ export class SessionHost {
   private closing = false;
 
   constructor(readonly config: HostConfig) {
+    // TBI-018 s3c flag-off hook: sim metering is not wired into create/lease/terminate yet; an
+    // enabled adapter is refused before anything is created (fail closed, never silently unmetered).
+    if (config.simPlans?.enabled)
+      throw new Error('sim metering is not wired into the Session Host yet; refusing to start');
     // A host that was killed outright cannot clean up: its runtimes exit on their own (the
     // bridge connection drops), but its private root would remain. Remove any root whose
     // owning host process no longer exists.

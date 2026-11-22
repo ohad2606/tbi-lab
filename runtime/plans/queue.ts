@@ -237,8 +237,10 @@ export class FairQueue {
    * Hand the next waiting entry a free slot, if any. Runs tick() first (its drops are returned so the
    * caller can tell those clients). A Free entry is skipped while Free already holds its cap; a paid
    * entry behind it may then start. A full host gives nothing: no running session is ever displaced.
+   * `only`: hand out the next entry only when it has this ticket; otherwise nothing is removed (the
+   * check and the removal use one clock reading, so a caller never takes someone else's entry).
    */
-  dequeue(slots: Slots): { entry: QueueEntry | null; dropped: Dropped[] } {
+  dequeue(slots: Slots, only?: string): { entry: QueueEntry | null; dropped: Dropped[] } {
     const dropped = this.tick();
     const okSlots =
       Number.isInteger(slots.capacity) &&
@@ -251,7 +253,7 @@ export class FairQueue {
     if (!okSlots || slots.running >= slots.capacity) return { entry: null, dropped };
     const freeFull = slots.runningFree >= this.freeCap(slots);
     const next = this.ordered().find((e) => !(e.plan === 'free' && freeFull));
-    if (!next) return { entry: null, dropped };
+    if (!next || (only !== undefined && next.ticket !== only)) return { entry: null, dropped };
     this.entries = this.entries.filter((e) => e !== next);
     return { entry: { ...next }, dropped };
   }
