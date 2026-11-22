@@ -176,5 +176,56 @@ for (const lang of ['en', 'he'] as const) {
         })
         .toBeGreaterThanOrEqual(-1);
     });
+
+    test('focus is never obscured by the panel while tabbing the editor (1024, 1280)', async ({
+      page,
+    }) => {
+      for (const width of [1024, 1280]) {
+        // Size first, then open: the editor fits the viewport it is laid out in.
+        await page.setViewportSize({ width, height: 800 });
+        await toHome(page, lang);
+        await page.getByTestId('open-guide-led-resistor').click();
+        await page.getByTestId('guide-open-example').click();
+        await expect(page.getByTestId('canvas')).toBeVisible();
+        await component(page, 'D1').click();
+        await expect(page.getByTestId('guide-panel')).toBeVisible();
+        await page.getByTestId('canvas').focus();
+        let outside = 0;
+        for (let i = 0; i < 60; i++) {
+          await page.keyboard.press('Tab');
+          const r = await page.evaluate(() => {
+            const a = document.activeElement as HTMLElement | null;
+            const p = document.querySelector('.guide-panel')?.getBoundingClientRect();
+            if (!a || !p || a === document.body || a.closest('.guide-panel')) return null;
+            const b = a.getBoundingClientRect();
+            if (!b.width || !b.height) return null;
+            const overlap =
+              Math.min(b.right, p.right) - Math.max(b.left, p.left) > 1 &&
+              Math.min(b.bottom, p.bottom) - Math.max(b.top, p.top) > 1;
+            return {
+              overlap,
+              id: `${a.getAttribute('data-testid') ?? a.tagName} ${a.getAttribute('class')} b=${[b.left, b.top, b.right, b.bottom].map(Math.round)} p=${[p.left, p.top, p.right, p.bottom].map(Math.round)}`,
+            };
+          });
+          if (r) {
+            outside++;
+            expect(r.overlap, `${r.id} under the panel at ${width}px`).toBe(false);
+          }
+        }
+        expect(outside).toBeGreaterThan(3);
+      }
+    });
+
+    test('values-unavailable note is a polite status when the example fails to load', async ({
+      page,
+    }) => {
+      await page.route(/examples\/documents[^/]*\.(js|ts)|\/documents-[^/]*\.js/, (r) => r.abort());
+      await toHome(page, lang);
+      await page.getByTestId('open-guide-led-resistor').click();
+      const notes = page.getByTestId('guide-notes');
+      await expect(notes).toHaveAttribute('role', 'status');
+      await expect(page.getByTestId('guide-values-missing')).toBeVisible();
+      await expect(notes.getByTestId('guide-values-missing')).toHaveText(/\S/);
+    });
   });
 }

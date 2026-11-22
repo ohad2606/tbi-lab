@@ -4100,7 +4100,9 @@ select {
     width: 22rem;
   }
   .app:has(.guide-panel) > .workspace,
-  .app:has(.guide-panel) > .home {
+  .app:has(.guide-panel) > .home,
+  .app:has(.guide-panel) > .statusbar,
+  .app:has(.guide-panel) > .product-footer {
     padding-inline-end: 22rem;
   }
 }
@@ -4113,9 +4115,10 @@ select {
     border-inline-start: none;
     border-block-start: 1px solid var(--border);
   }
-  .app:has(.guide-panel) > .workspace,
-  .app:has(.guide-panel) > .home {
+  /* The whole app (footer included) ends above the sheet, so no control sits under it. */
+  .app:has(.guide-panel) {
     padding-block-end: 40vh;
+    box-sizing: border-box;
   }
 }
 

@@ -42,7 +42,6 @@ export function GuidePanel({
 
   // Focus the title on open; on close return to the opener, or to the canvas if the opener is gone.
   useEffect(() => {
-    heading.current?.focus();
     return () => {
       clearTimeout(announceTimer.current);
       const target =
@@ -52,6 +51,12 @@ export function GuidePanel({
       target?.focus();
     };
   }, []);
+
+  // Focus the title on open and whenever another guide replaces this one while the panel stays
+  // mounted (latent today: only one guide exists, so no e2e can switch guides yet).
+  useEffect(() => {
+    heading.current?.focus();
+  }, [guideId]);
 
   // The numbers come from the real engine on the example's own document; the panel is already on
   // screen while this runs (it never blocks on it).
@@ -86,7 +91,10 @@ export function GuidePanel({
   };
 
   if (!guide) return null;
-  const missing = !!evaluation && Object.values(evaluation.facts).some((f) => f === null);
+  const missing =
+    !!evaluation &&
+    (Object.keys(evaluation.facts).length === 0 ||
+      Object.values(evaluation.facts).some((f) => f === null));
   const msg = (k: MessageKey) => <LtrMessage k={k} params={params} />;
 
   const openExample = async () => {
@@ -117,12 +125,14 @@ export function GuidePanel({
         </button>
       </header>
       <p class="muted small">{t('guidepanel.panel.minutes', { n: guide.minutes })}</p>
-      {!evaluation && <p class="muted">{t('guidepanel.panel.loading')}</p>}
-      {missing && (
-        <p class="guide-note" data-testid="guide-values-missing">
-          {t('guidepanel.panel.valuesUnavailable')}
-        </p>
-      )}
+      <div role="status" data-testid="guide-notes">
+        {!evaluation && <p class="muted">{t('guidepanel.panel.loading')}</p>}
+        {missing && (
+          <p class="guide-note" data-testid="guide-values-missing">
+            {t('guidepanel.panel.valuesUnavailable')}
+          </p>
+        )}
+      </div>
       {evaluation &&
         guide.sections.map((s) => {
           const [head, ...rest] = s.keys;
