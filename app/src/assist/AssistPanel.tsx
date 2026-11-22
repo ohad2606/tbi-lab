@@ -30,6 +30,7 @@ import {
 import { analyze, assistGateway, type Analysis } from './analyze.js';
 import { aiEnabled, getStatus, type StatusResult } from './client.js';
 import { creditsText } from './limits.js';
+import { stripControls } from './plainText.js';
 import {
   AiControls,
   AiFooter,
@@ -239,7 +240,7 @@ function Explanation({ a, r }: { a: Analysis; r: GatewayResult }) {
     <>
       {r.response.summary && (
         <p data-testid="assist-summary" dir="auto">
-          {r.response.summary.text}
+          {stripControls(r.response.summary.text)}
         </p>
       )}
       <ol class="assist-explanations">
@@ -254,7 +255,7 @@ function Explanation({ a, r }: { a: Analysis; r: GatewayResult }) {
               >
                 {f ? familyText(t, f) : e.finding}
               </a>
-              <p dir="auto">{e.text}</p>
+              <p dir="auto">{stripControls(e.text)}</p>
               <p class="small muted">
                 {t('assist.explain.basedOn', { refs: '' })}
                 {refsOf(e.cites)}

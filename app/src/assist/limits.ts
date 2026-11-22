@@ -11,6 +11,7 @@
  * - Money-adjacent: credits are shown exactly as the service gave them; no arithmetic here.
  *   The only computed value is the wait in seconds, from the service's `retryAfterMs`.
  */
+import { stripControls } from './plainText.js';
 import { isolateLtr, translate, type LocaleInfo } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
 import { retryable, type ClientError, type Credits } from './client.js';
@@ -65,14 +66,13 @@ export function limitCodeOf(e: ClientError): LimitCode | null {
 
 /** dd.mm.yyyy (runtime/plans/time.ts formatDate); anything else is not shown. */
 const DATE = /^\d{2}\.\d{2}\.\d{4}$/;
-const BIDI = /[‎‏‪-‮⁦-⁩]/g;
 const NUMBER = /\d+(?:[.:/]\d+)*/g;
 const MAX_SERVICE_TEXT = 600;
 
 /** Service text as shown: plain text, its bidi controls dropped, numbers isolated LTR. */
 function serviceText(raw: string | undefined): string | null {
   if (typeof raw !== 'string') return null;
-  const t = raw.replace(BIDI, '').trim();
+  const t = stripControls(raw).trim();
   if (!t || t.length > MAX_SERVICE_TEXT) return null;
   return t.replace(NUMBER, (m) => isolateLtr(m));
 }

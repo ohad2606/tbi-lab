@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CONSENT_PREFIX,
   ConsentStore,
+  identityHash,
   consentKey,
   type ConsentStorage,
 } from '../src/assist/consent.js';
@@ -37,7 +38,11 @@ describe('consent store', () => {
     expect(c.has('acc_2', 'v1')).toBe(false);
     expect(c.has(undefined, 'v1')).toBe(false);
     expect(s.map.get(`${CONSENT_PREFIX}/acct:acc_1/v1`)).toBe(
-      JSON.stringify({ accepted: true, at: '2026-11-22T00:00:00.000Z' }),
+      JSON.stringify({
+        accepted: true,
+        who: identityHash('acc_1'),
+        at: '2026-11-22T00:00:00.000Z',
+      }),
     );
   });
   it('without an account reference: session storage only, never the long-lived one', () => {
@@ -118,5 +123,34 @@ describe('consent store', () => {
     }
     expect(new ConsentStore(null, null, memory()).has('acc_1', 'v1')).toBe(false);
     expect(new ConsentStore(null, null, memory()).grant('acc_1', 'v1')).toBe(false);
+  });
+});
+
+describe('consent is bound to the identity (TBI-017 s3 #9)', () => {
+  it('the session binding is the value the e2e specs seed', () => {
+    expect(identityHash(undefined)).toBe('c35f4cf784e067b5');
+  });
+  it('identity A consent is not valid for identity B, even when the record is copied', () => {
+    const s = memory();
+    const c = new ConsentStore(s, null, memory());
+    c.grant('acc_a', 'v1');
+    expect(c.has('acc_a', 'v1')).toBe(true);
+    expect(c.has('acc_b', 'v1')).toBe(false);
+    s.setItem(`${CONSENT_PREFIX}/acct:acc_b/v1`, s.getItem(`${CONSENT_PREFIX}/acct:acc_a/v1`)!);
+    expect(c.has('acc_b', 'v1')).toBe(false);
+    expect(identityHash('acc_a')).not.toBe(identityHash('acc_b'));
+    expect(identityHash('acc_a')).not.toContain('acc_a');
+  });
+  it('a record without the binding (slice 1) asks again', () => {
+    const s = memory();
+    s.setItem(`${CONSENT_PREFIX}/acct:acc_a/v1`, '{"accepted":true}');
+    expect(new ConsentStore(s, null, memory()).has('acc_a', 'v1')).toBe(false);
+  });
+  it('the session copy is not valid once an account reference appears or the identity differs', () => {
+    const session = memory();
+    const c = new ConsentStore(memory(), null, session);
+    c.grant(undefined, 'v1');
+    expect(c.has(undefined, 'v1')).toBe(true);
+    expect(c.has('acc_a', 'v1')).toBe(false);
   });
 });
