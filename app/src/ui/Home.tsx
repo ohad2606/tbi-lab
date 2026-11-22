@@ -12,9 +12,7 @@ import {
 import { formatDateTime, isolateUserText, type LocaleInfo } from '../i18n/i18n.js';
 import type { ProjectIndexEntry } from '../persistence/store.js';
 import { useAppState, useStore, useT } from './context.js';
-
-/** TBI-014: the first example a new user is pointed to (local, no build, no shared simulator). */
-const STARTER_EXAMPLE = 'led-current';
+import { FIRST_RUN_EXAMPLE } from './firstRun.js';
 
 /** The project library: new project, examples, import, and every local project. */
 export function Home() {
@@ -66,7 +64,7 @@ export function Home() {
 
       {guide ? (
         <GettingStarted
-          onOpenStarter={() => void store.openExample(STARTER_EXAMPLE)}
+          onOpenStarter={() => void store.openExample(FIRST_RUN_EXAMPLE)}
           onDismiss={() => {
             store.setOnboardingDismissed(true);
             setGuide(false);
