@@ -63,9 +63,11 @@ export function scan(text, kind) {
   return { hits, gated: GATED[kind].test(text) };
 }
 
-const tsFiles = [...walk('runtime/tests', '.ts'), ...walk('app/e2e', '.ts'), ...walk('admin-app/e2e', '.ts')].filter(
-  (f) => !f.endsWith('mutation-gate.ts'),
-);
+const tsFiles = [
+  ...walk('runtime/tests', '.ts'),
+  ...walk('app/e2e', '.ts'),
+  ...walk('admin-app/e2e', '.ts'),
+].filter((f) => !f.endsWith('mutation-gate.ts'));
 const shFiles = [...walk('deploy', '.sh'), ...walk('scripts', '.sh')].filter(
   (f) => !f.endsWith('require-mutation.sh'),
 );
