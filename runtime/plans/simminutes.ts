@@ -82,6 +82,8 @@ export function validSessionId(id: unknown): id is string {
   return typeof id === 'string' && SESSION_ID.test(id) && !RESERVED_KEYS.has(id);
 }
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+/** A journal time: an integer ms since the epoch (a clock reading). */
+const time = (t: unknown): t is number => Number.isSafeInteger(t) && (t as number) >= 0;
 const own = <T>(rec: Record<string, T>, k: string): T | undefined =>
   Object.hasOwn(rec, k) ? rec[k] : undefined;
 
@@ -103,10 +105,14 @@ export function applySimEvent(s: SimState, ev: SimEvent): void {
   if (ev.seq !== s.seq + 1)
     throw new Error(`journal sequence gap: expected ${s.seq + 1}, got ${ev.seq}`);
   if (!validSessionId(ev.sessionId)) throw new Error('invalid session id in event');
-  s.seq = ev.seq;
+  if (!time(ev.at)) throw new Error('invalid time in event');
   if (ev.t === 'sim_open') {
     if (!validPrincipal(ev.principal)) throw new Error('invalid principal in event');
+    if (!PLAN_IDS.includes(ev.plan)) throw new Error('invalid plan in event');
+    if (!Number.isSafeInteger(ev.leaseMs) || ev.leaseMs < 1)
+      throw new Error('invalid lease in event');
     if (own(s.sessions, ev.sessionId)) throw new Error('sim_open for an existing session');
+    s.seq = ev.seq;
     s.sessions[ev.sessionId] = {
       sessionId: ev.sessionId,
       principal: ev.principal,
@@ -120,15 +126,37 @@ export function applySimEvent(s: SimState, ev: SimEvent): void {
   const ss = own(s.sessions, ev.sessionId);
   if (!ss || ss.closedAt !== undefined) throw new Error(`${ev.t} for a session that is not open`);
   if (ev.t === 'sim_beat') {
+    s.seq = ev.seq;
     ss.lastBeat = Math.max(ss.lastBeat, ev.at);
     return;
   }
+  // Billing invariants (s3b follow-up): a close bills exactly [openedAt, endAt), never past the
+  // lease after the last beat nor past the event's own time, and its day parts sum to the bill.
+  if (!CLOSE_REASONS.includes(ev.reason)) throw new Error('invalid close reason in event');
+  if (!time(ev.endAt) || ev.endAt < ss.openedAt || ev.endAt > ev.at)
+    throw new Error('invalid close time in event');
+  if (ev.endAt > ss.lastBeat + ss.leaseMs) throw new Error('close bills past the lease');
+  if (ev.billedMs !== ev.endAt - ss.openedAt) throw new Error('invalid billed time in event');
+  if (!Array.isArray(ev.parts)) throw new Error('invalid day parts in event');
+  let sum = 0;
+  for (const p of ev.parts as unknown[]) {
+    const part = p as Partial<DayPart> | null;
+    if (
+      typeof part !== 'object' ||
+      part === null ||
+      typeof part.dayKey !== 'string' ||
+      !DAY_KEY.test(part.dayKey) ||
+      !Number.isSafeInteger(part.ms) ||
+      (part.ms as number) < 0
+    )
+      throw new Error('invalid day part in event');
+    sum += part.ms as number;
+  }
+  if (sum !== ev.billedMs) throw new Error('day parts do not sum to the billed time');
+  s.seq = ev.seq;
   ss.closedAt = ev.endAt;
   ss.closeReason = ev.reason;
   ss.billedMs = ev.billedMs;
-  for (const p of ev.parts)
-    if (typeof p.dayKey !== 'string' || !DAY_KEY.test(p.dayKey) || !Number.isFinite(p.ms))
-      throw new Error('invalid day part in event');
   const u = own(s.usage, ss.principal) ?? (s.usage[ss.principal] = dict<number>());
   for (const p of ev.parts) u[p.dayKey] = (own(u, p.dayKey) ?? 0) + p.ms;
 }
@@ -316,6 +344,20 @@ export class SimMeter {
     const now = this.now();
     if (now === null) return unavailable();
     return { ok: true, metered: true, ...this.remainingAt(principal, plan, now) };
+  }
+
+  /**
+   * May `principal` start a run on `plan` now? The same allowance check as open(), without opening
+   * and without writing: the remaining time, or the refusal (minutes_out / minutes_out_free / sim_daily).
+   * The host adapter asks it before it queues a request, so nobody waits for a run they cannot have.
+   */
+  admissible(principal: string, plan: PlanId): SimResult<SimRemaining> {
+    const r = this.remaining(principal, plan);
+    if (!r.ok || !r.metered) return r;
+    const now = this.now();
+    if (now === null) return unavailable();
+    const err = this.exhausted(r, plan, now);
+    return err ? { ok: false, error: err } : r;
   }
 
   /** Billed sim ms of a principal today (zone); the fair queue's second key. */
