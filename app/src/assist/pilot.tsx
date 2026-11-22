@@ -22,20 +22,20 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { EngineeringContext, Finding, GatewayResult } from '@tbi-lab/assist';
 import { isMessageKey, isolateLtr } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
-import { useT } from '../ui/context.js';
+import { useAppState, useT } from '../ui/context.js';
 import {
   aiEnabled,
   explainBody,
   postExplain,
   postPreview,
   previewText,
-  retryable,
   type ClientError,
   type ExplainOk,
   type ServiceStatus,
   type StatusResult,
 } from './client.js';
 import { ConsentStore } from './consent.js';
+import { canRetry, limitCodeOf, limitView, limitWaitMs } from './limits.js';
 
 export type AiPhase =
   | { kind: 'idle' }
@@ -93,6 +93,7 @@ export function useAiController({
   ensureContext,
   announce,
   refreshStatus,
+  refreshCredits,
   store,
 }: {
   status: ServiceStatus | null;
@@ -101,6 +102,11 @@ export function useAiController({
   announce: (text: string) => void;
   /** Ask the service's status again (the panel stores it); used after `consent_required`. */
   refreshStatus: (signal: AbortSignal) => Promise<StatusResult>;
+  /**
+   * TBI-017 slice 2: ask the service for the credits again (only when the status carries them),
+   * after an answer or a limit refusal, so the credits line is never left on an old number.
+   */
+  refreshCredits?: (signal: AbortSignal) => Promise<void>;
   store?: ConsentStore;
 }): AiController {
   const t = useT();
@@ -135,7 +141,22 @@ export function useAiController({
       }
     }
   });
-  useEffect(() => () => abortInFlight(), []);
+  /** The credits re-fetch after a request (aborted by the next request or on unmount). */
+  const creditsCtl = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      abortInFlight();
+      creditsCtl.current?.abort();
+    },
+    [],
+  );
+  function updateCredits() {
+    if (!status?.credits || !refreshCredits) return;
+    creditsCtl.current?.abort();
+    const c = new AbortController();
+    creditsCtl.current = c;
+    void refreshCredits(c.signal);
+  }
 
   function abortInFlight() {
     const p = phaseRef.current;
@@ -150,7 +171,8 @@ export function useAiController({
 
   function fail(error: ClientError) {
     errors.current += 1;
-    const retryAt = error.retryAfterMs ? Date.now() + error.retryAfterMs : 0;
+    const wait = limitWaitMs(error);
+    const retryAt = wait ? Date.now() + wait : 0;
     setPhase({ kind: 'error', error, n: errors.current, retryAt });
   }
 
@@ -166,6 +188,7 @@ export function useAiController({
     if (r.ok) {
       setPhase({ kind: 'success', result: r });
       announce(t('assist.ai.ready', { count: String(r.response.explanations.length) }));
+      updateCredits();
     } else if (r.error === 'cancelled') {
       setPhase({ kind: 'idle' });
       announce(t('assist.ai.cancelled'));
@@ -198,6 +221,8 @@ export function useAiController({
         return;
       }
       fail(r);
+      // A limit refusal changes (or confirms) what is left: the credits line follows the service.
+      if (limitCodeOf(r)) updateCredits();
     }
   }
 
@@ -282,7 +307,7 @@ export function AiControls({ ai, blocked }: { ai: AiController; blocked: boolean
   const label: MessageKey =
     p.kind === 'success'
       ? 'assist.ai.action.again'
-      : p.kind === 'error' && retryable(p.error.error)
+      : p.kind === 'error' && canRetry(p.error)
         ? 'assist.ai.action.retry'
         : 'assist.ai.action.explain';
   return (
@@ -349,7 +374,9 @@ export function AiResult({
   renderReply: (r: GatewayResult, serverFindings: Finding[]) => ComponentChild;
 }) {
   const t = useT();
+  const { locale } = useAppState();
   const p = ai.phase;
+  const limit = p.kind === 'error' ? limitView(locale, p.error) : null;
   return (
     <section
       class="assist-section assist-ai"
@@ -364,7 +391,29 @@ export function AiResult({
       {(p.kind === 'idle' || p.kind === 'consent') && (
         <p class="small muted">{t('assist.ai.idle')}</p>
       )}
-      {p.kind === 'error' && (
+      {p.kind === 'error' && limit && (
+        // TBI-018 limit reached: the service's own text (fallback: client keys), never blank.
+        // Re-mounted per occurrence (key) so the same limit again is announced again.
+        <div
+          key={p.n}
+          class="field-error"
+          role="alert"
+          data-testid="ai-limit"
+          data-limit={limit.code}
+          data-source={limit.source}
+        >
+          <p>{limit.text}</p>
+          {limit.showWait && (
+            <p class="small" data-testid="ai-limit-wait">
+              {t('assist.limit.wait', { seconds: isolateLtr(String(limit.waitSeconds)) })}
+            </p>
+          )}
+          <p class="small">
+            {t(limit.retry ? 'assist.ai.error.hint.retry' : 'assist.ai.error.hint.findings')}
+          </p>
+        </div>
+      )}
+      {p.kind === 'error' && !limit && (
         <div
           key={p.n}
           class="field-error"
@@ -378,11 +427,7 @@ export function AiResult({
             })}
           </p>
           <p class="small">
-            {t(
-              retryable(p.error.error)
-                ? 'assist.ai.error.hint.retry'
-                : 'assist.ai.error.hint.findings',
-            )}
+            {t(canRetry(p.error) ? 'assist.ai.error.hint.retry' : 'assist.ai.error.hint.findings')}
           </p>
         </div>
       )}

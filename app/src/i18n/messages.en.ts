@@ -1357,6 +1357,36 @@ export const en = {
   'assist.ai.error.other': 'The request did not complete.',
   'assist.ai.error.hint.retry': 'The simulator findings above are unaffected. Use “Try again”.',
   'assist.ai.error.hint.findings': 'The simulator findings above are unaffected.',
+  // TBI-017 slice 2: TBI-018 limit refusals (fallback when the service sends no text) and credits.
+  'assist.limit.ai.credits_out':
+    'You have used all your AI credits for this period. They renew on {date}. The simulator findings keep working.',
+  'assist.limit.ai.credits_out.nodate':
+    'You have used all your AI credits for this period. The simulator findings keep working.',
+  'assist.limit.ai.credits_out_free':
+    'You have used your free AI credits for this month. They renew on {date}. The simulator findings keep working.',
+  'assist.limit.ai.credits_out_free.nodate':
+    'You have used your free AI credits for this month. The simulator findings keep working.',
+  'assist.limit.ai.daily':
+    'You have reached today’s limit of AI explanations. It resets tomorrow. The simulator findings keep working.',
+  'assist.limit.ai.global_off':
+    'AI explanations are paused for now and will be back later. The simulator findings keep working. Your credits were not used.',
+  'assist.limit.ai.rate': 'Too many requests in a short time. You can try again in {n} s.',
+  'assist.limit.ai.rate.nowait':
+    'Too many requests in a short time. Wait a moment, then try again.',
+  'assist.limit.ai.too_long':
+    'This project is too large for one AI explanation. Nothing was sent. The simulator findings keep working.',
+  'assist.limit.system.unavailable':
+    'The AI service is unavailable for a moment. You were not charged. Try again shortly.',
+  'assist.limit.ai.deep_not_in_plan':
+    'This kind of AI explanation is not included in your plan. You can ask for a standard explanation.',
+  'assist.limit.wait': 'You can try again in {seconds} s.',
+  'assist.ai.credits.left': 'AI credits left: {remaining} of {total}.',
+  'assist.ai.credits.leftNoTotal': 'AI credits left: {remaining}.',
+  'assist.ai.credits.plan': 'Plan: {plan}.',
+  'assist.ai.credits.plan.free': 'Free',
+  'assist.ai.credits.plan.advanced': 'Advanced',
+  'assist.ai.credits.plan.pro': 'Pro',
+  'assist.ai.credits.plan.legacy': 'Early access',
   'assist.findings.notAi': 'These come from the simulation, not from AI.',
   'build.feature.spi': 'SPI bus',
   'build.feature.library': 'library {name}',
