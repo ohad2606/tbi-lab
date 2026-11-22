@@ -35,11 +35,36 @@ const plain = (src: string) =>
     .map((i) => i.text)
     .join('');
 
-const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
+const HEADING = /^(#{1,6})\s+/;
+
+/** Drop `<!-- ... -->` comments (an unclosed one runs to the end) without regex backtracking. */
+function stripComments(md: string): string {
+  let out = '';
+  let pos = 0;
+  for (;;) {
+    const open = md.indexOf('<!--', pos);
+    if (open < 0) return out + md.slice(pos);
+    out += md.slice(pos, open);
+    const close = md.indexOf('-->', open + 4);
+    if (close < 0) return out;
+    pos = close + 3;
+  }
+}
+
+/** Heading text without surrounding blanks and a trailing run of `#` (closing marker). */
+function headingText(rest: string): string {
+  let t = rest.trim();
+  if (t.endsWith('#')) {
+    let end = t.length;
+    while (end > 0 && t[end - 1] === '#') end--;
+    t = t.slice(0, end).trimEnd();
+  }
+  return t;
+}
 const ITEM = /^(\s*)([-*]|\d+\.)\s+(.*)$/;
 
 export function parseGuide(md: string, idPrefix = 'guide-h'): Block[] {
-  const lines = md.replace(/<!--[\s\S]*?-->/g, '').split(/\r?\n/);
+  const lines = stripComments(md).split(/\r?\n/);
   const blocks: Block[] = [];
   let para: string[] = [];
   let headings = 0;
@@ -64,12 +89,13 @@ export function parseGuide(md: string, idPrefix = 'guide-h'): Block[] {
     if (h) {
       flushPara();
       closeLists();
-      const text = plain(h[2]!);
+      const raw = headingText(line.slice(h[0].length));
+      const text = plain(raw);
       blocks.push({
         type: 'heading',
         level: h[1]!.length,
         id: `${idPrefix}-${headings++}`,
-        inline: parseInline(h[2]!),
+        inline: parseInline(raw),
         text,
       });
       continue;

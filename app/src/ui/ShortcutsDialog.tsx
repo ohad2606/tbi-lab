@@ -45,7 +45,7 @@ export function ShortcutsHost() {
 
 /** Key names inside translated text (Esc, Tab, ...) stay left-to-right. */
 const KEY_WORDS = /\b(Esc|Tab|Shift|Ctrl|Cmd|Enter|Space|Delete)\b/g;
-function isolateKeyNames(text: string): ComponentChildren {
+export function isolateKeyNames(text: string): ComponentChildren {
   const parts = text.split(KEY_WORDS);
   return parts.map((p, i) =>
     i % 2 === 1 ? (
@@ -100,7 +100,7 @@ const FOCUSABLE =
  * Keep Tab inside the modal: the browser would otherwise move on to its own controls. The heading
  * (tabindex -1) is the start; the close button is the only stop, so Tab and Shift+Tab stay on it.
  */
-export function trapTab(e: KeyboardEvent) {
+function trapTab(e: KeyboardEvent) {
   if (e.key !== 'Tab') return;
   const dialog = e.currentTarget as HTMLElement;
   const stops = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)];
