@@ -13,7 +13,7 @@ test('picker: name, option lang/dir, keyboard switch updates html lang/dir', asy
   await expect(library.or(page.getByTestId('canvas'))).toBeVisible();
   if (!(await library.isVisible())) await goToProjects(page);
   const select = page.getByTestId('language-select');
-  await expect(select).toHaveAccessibleName('שפה');
+  await expect(select).toHaveAccessibleName('Language'); // app default locale is en
   const opts = await select
     .locator('option')
     .evaluateAll((os) =>
@@ -23,20 +23,21 @@ test('picker: name, option lang/dir, keyboard switch updates html lang/dir', asy
     ['en', 'en', 'ltr'],
     ['he', 'he', 'rtl'],
   ]);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 
   await select.focus();
   await expect(select).toBeFocused();
-  await page.keyboard.press('ArrowUp'); // he -> en (HE default; order en, he)
-  await expect(select).toHaveValue('en');
-  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
-  await expect(select).toHaveAccessibleName('Language');
-  await expect(select).toBeFocused();
-
-  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown'); // en -> he
   await expect(select).toHaveValue('he');
   await expect(page.locator('html')).toHaveAttribute('lang', 'he');
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+  await expect(select).toHaveAccessibleName('שפה');
+  await expect(select).toBeFocused();
+
+  await page.keyboard.press('ArrowUp'); // he -> en
+  await expect(select).toHaveValue('en');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
   await expect(select).toBeFocused();
 });
 
