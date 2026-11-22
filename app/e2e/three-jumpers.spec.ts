@@ -24,6 +24,15 @@ const shapes = (page: Page) =>
     return JSON.stringify([...host.tbiViewer.wireShapes()]);
   });
 
+/** `ready` can precede the first wire build: wait until both jumpers have a drawn shape. */
+const shapesBuilt = (page: Page) =>
+  expect
+    .poll(async () => {
+      const ids = (JSON.parse(await shapes(page)) as [string, unknown][]).map(([id]) => id);
+      return ['W1', 'W4'].every((id) => ids.includes(id));
+    })
+    .toBe(true);
+
 /** The exported package's project, without the export's own timestamp. */
 const exported = async (page: Page) => {
   const pkg = JSON.parse(readFileSync((await (await exportFromMenu(page)).path())!, 'utf8'));
@@ -48,6 +57,7 @@ test('ESP32 blink: jumpers leave through a neck, mode-independent, project uncha
   const view = page.getByTestId('view3d');
   await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 120_000 });
   await expect(view).toHaveAttribute('data-preset', 'realistic');
+  await shapesBuilt(page);
   const realistic = await shapes(page);
   const parsed = new Map(
     JSON.parse(realistic) as [
@@ -90,5 +100,6 @@ test('ESP32 blink: jumpers leave through a neck, mode-independent, project uncha
   // Viewed again after the reload: the very same cables.
   await page.getByTestId('view-3d').click();
   await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 120_000 });
+  await shapesBuilt(page);
   expect(await shapes(page)).toBe(realistic);
 });
