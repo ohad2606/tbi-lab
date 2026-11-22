@@ -131,7 +131,7 @@ Opt-in by request header, so an old browser tab never receives a 202 it would tr
   `queue.maxWaitMs`). Tickets: `randomBytes(16)` base64url, server-generated only.
   - Entries are created only after the creation-rate step (section 2 step 6) succeeded and only for a
     `queued` or `start` result; a refused admission or a rate refusal creates none.
-  - At most one `waiting` ticket per principal: a new one replaces the old (old becomes `dropped`).
+  - At most one `waiting` ticket per principal: a new one replaces the old (old becomes `dropped` with reason `replaced`; a poll with such a ticket gets 409 `queue_replaced` and never re-enqueues; new key `queue_replaced` is added to the s3d-5 message list).
   - TTL per entry: `queue.maxWaitMs + queue.vanishMs`; a global cap on entries with oldest-first eviction
     (cap is a host config value; an evicted ticket behaves as unknown). Tests: a flood of ticketless
     requests from many principals and from one principal never grows the registry past the cap.
@@ -272,7 +272,7 @@ at `start` for the whole run (adapter rule).
 | Case | Behaviour |
 |---|---|
 | Double click / two tabs, same principal, both new | host `session_quota` check sees neither (both await admit); the adapter mutex serialises; queue holds one entry per principal; the second start is refused `sim_concurrent` by `SimMeter.open` |
-| Two tabs both waiting | the newer ticket takes over the principal's single entry (`FairQueue.enqueueFresh`), keeping its place, and the older ticket is `dropped` in the registry; the older tab's next poll is then a new admission and takes the entry back (one waiting ticket per principal at any time); one start, the other `sim_concurrent` / `session_quota` |
+| Two tabs both waiting | the newer ticket takes over the principal's single entry (`FairQueue.enqueueFresh`), keeping its place, and the older ticket is `dropped` in the registry; the older tab's next poll answers 409 `queue_replaced` (dropped reason `replaced`: it is waiting in another tab; no new admission, the entry is NOT taken back, so two tabs never swap it); at most one start, a second concurrent create is `sim_concurrent` / `session_quota` |
 | Start answer lost, client polls again | `started` ticket -> same 201 (O-5); without it the orphan session ends by lease (bills at most one lease) |
 | Client gone while admit is pending | session terminated before answering (section 2 step 9) |
 | `ended` and a beat race | beat after `ended` answers `stop invalid_state` for a terminal session: ignored |
