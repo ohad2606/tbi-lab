@@ -30,12 +30,19 @@ async function open3d(page: Page) {
   });
 }
 type Scene = { wires: { id: string; points: { y: number }[] }[]; routeLimits?: string[] };
-const shown = (page: Page) =>
+const read = (page: Page) =>
   page.evaluate(
     () =>
-      (document.querySelector('[data-testid="view3d-host"]') as unknown as { tbiScene: Scene })
-        .tbiScene,
+      (document.querySelector('[data-testid="view3d-host"]') as unknown as { tbiScene?: Scene })
+        ?.tbiScene ?? null,
   );
+// status=ready can precede the scene being published on the host element: wait for it (CI flake).
+const shown = async (page: Page): Promise<Scene> => {
+  await expect
+    .poll(async () => (await read(page))?.wires?.length ?? 0, { timeout: 30_000 })
+    .toBeGreaterThan(0);
+  return (await read(page))!;
+};
 
 test('owner bench, gate turned 180 degrees: no wire arches over the gate; nothing flagged', async ({
   page,
