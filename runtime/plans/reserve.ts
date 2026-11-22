@@ -11,6 +11,7 @@ import {
   applyEvent,
   applyToAccount,
   emptyState,
+  safeKey,
   stateJson,
   type Account,
   type EventBody,
@@ -121,6 +122,12 @@ export class PlansEngine {
     });
   }
 
+  /** The clock reading as journal time (non-negative safe integer ms), or null: callers fail closed. */
+  private now(): number | null {
+    const t = this.opts.clock.now();
+    return Number.isSafeInteger(t) && t >= 0 ? t : null;
+  }
+
   private run<T>(fn: () => Promise<T>): Promise<T> {
     const p = this.tail.then(fn);
     this.tail = p.catch(() => undefined);
@@ -143,7 +150,9 @@ export class PlansEngine {
     return a ? structuredClone(a) : undefined;
   }
   reservation(reqId: string): Reservation | undefined {
-    const r = this.state.reservations[reqId];
+    const r = Object.hasOwn(this.state.reservations, reqId)
+      ? this.state.reservations[reqId]
+      : undefined;
     return r ? structuredClone(r) : undefined;
   }
   /** Credits in all buckets (raw, including time-expired ones not yet purged) and the conservation terms. */
@@ -178,6 +187,14 @@ export class PlansEngine {
   private async commit(pending: PendingEvent[]): Promise<boolean> {
     if (pending.length === 0) return true;
     const events = pending.map((p, i) => ({ ...p, seq: this.state.seq + 1 + i }) as PlanEvent);
+    // Replay validation BEFORE writing: an event the next replay would reject (a bad number, a
+    // duplicate id) is never written (system_unavailable, nothing consumed, state unchanged).
+    const next = structuredClone(this.state);
+    try {
+      for (const ev of events) applyEvent(next, structuredClone(ev));
+    } catch {
+      return false;
+    }
     try {
       await this.store.append(events);
     } catch {
@@ -186,7 +203,7 @@ export class PlansEngine {
       this.problem = { kind: 'corrupt', detail: 'append failed' };
       return false;
     }
-    for (const ev of events) applyEvent(this.state, ev);
+    this.state = next;
     this.dispatchAlerts(events);
     return true;
   }
@@ -300,16 +317,18 @@ export class PlansEngine {
     if (!cfg.metering.enabled) return { ok: true, metered: false };
     if (!validPrincipal(req.principal))
       return { ok: false, error: limitError('invalid_principal') };
-    if (typeof req.reqId !== 'string' || !REQ_ID.test(req.reqId))
+    if (typeof req.reqId !== 'string' || !REQ_ID.test(req.reqId) || !safeKey(req.reqId))
       return { ok: false, error: limitError('invalid_request') };
     if (
       (req.mode !== 'standard' && req.mode !== 'deep') ||
-      !Number.isInteger(req.inputTokens) ||
+      !Number.isSafeInteger(req.inputTokens) ||
       req.inputTokens < 0
     )
       return { ok: false, error: limitError('invalid_request') };
     if (this.problem) return unavailable();
-    const existing = this.state.reservations[req.reqId];
+    const existing = Object.hasOwn(this.state.reservations, req.reqId)
+      ? this.state.reservations[req.reqId]
+      : undefined;
     if (existing) {
       if (existing.principal !== req.principal)
         return { ok: false, error: limitError('invalid_request') };
@@ -317,7 +336,8 @@ export class PlansEngine {
       if (existing.state !== 'open') return { ok: false, error: limitError('invalid_state') };
       return { ok: true, metered: true, duplicate: true, reservation: structuredClone(existing) };
     }
-    const now = this.opts.clock.now();
+    const now = this.now();
+    if (now === null) return unavailable();
     const pre: PendingEvent[] = [];
     // Writes that happen even when the request is refused: period/day roll-overs and a cap trip.
     const refuse = async (error: LimitError): Promise<AdmitResult> =>
@@ -393,14 +413,17 @@ export class PlansEngine {
   settle(reqId: string, actualMicro: number): Promise<CommandResult> {
     return this.run(async () => {
       if (!this.cfg.metering.enabled) return { ok: true, noop: true };
-      if (!Number.isInteger(actualMicro) || actualMicro < 0)
+      if (!Number.isSafeInteger(actualMicro) || actualMicro < 0)
         return { ok: false, error: limitError('invalid_request') };
       if (this.problem) return unavailable();
-      const r = this.state.reservations[reqId];
+      const r = Object.hasOwn(this.state.reservations, reqId)
+        ? this.state.reservations[reqId]
+        : undefined;
       if (!r) return { ok: false, error: limitError('invalid_state') };
       if (r.state === 'settled') return { ok: true, noop: true };
       if (r.state === 'released') return { ok: false, error: limitError('invalid_state') };
-      const now = this.opts.clock.now();
+      const now = this.now();
+      if (now === null) return unavailable();
       const { spend, events } = this.rolled(now);
       events.push(this.spendEvent(r, 'settle', spend, actualMicro, now));
       return (await this.commit(events)) ? { ok: true } : unavailable();
@@ -412,11 +435,14 @@ export class PlansEngine {
     return this.run(async () => {
       if (!this.cfg.metering.enabled) return { ok: true, noop: true };
       if (this.problem) return unavailable();
-      const r = this.state.reservations[reqId];
+      const r = Object.hasOwn(this.state.reservations, reqId)
+        ? this.state.reservations[reqId]
+        : undefined;
       if (!r) return { ok: false, error: limitError('invalid_state') };
       if (r.state === 'released') return { ok: true, noop: true };
       if (r.state === 'settled') return { ok: false, error: limitError('invalid_state') };
-      const now = this.opts.clock.now();
+      const now = this.now();
+      if (now === null) return unavailable();
       const { spend, events } = this.rolled(now);
       events.push(this.spendEvent(r, reason, spend, 0, now));
       return (await this.commit(events)) ? { ok: true } : unavailable();
@@ -476,7 +502,8 @@ export class PlansEngine {
   sweep(): Promise<number> {
     return this.run(async () => {
       if (!this.cfg.metering.enabled || this.problem) return 0;
-      const now = this.opts.clock.now();
+      const now = this.now();
+      if (now === null) return 0;
       const open = Object.values(this.state.reservations).filter(
         (r) => r.state === 'open' && r.ttlAt <= now,
       );
@@ -503,16 +530,21 @@ export class PlansEngine {
   ): Promise<CommandResult> {
     return this.run(async () => {
       if (!validPrincipal(principal)) return { ok: false, error: limitError('invalid_principal') };
+      const count = (n: unknown): boolean => Number.isSafeInteger(n) && (n as number) >= 0;
       if (
-        !ref ||
+        !safeKey(ref) ||
+        !period ||
+        !count(period.start) ||
+        !count(period.end) ||
         (plan !== 'legacy' && !(period.end > period.start)) ||
         !(plan in this.cfg.plans) ||
         plan === ('free' as PlanId)
       )
         return { ok: false, error: limitError('invalid_request') };
       if (this.problem) return unavailable();
-      if (this.state.refs[ref]) return { ok: true, duplicate: true };
-      const now = this.opts.clock.now();
+      if (Object.hasOwn(this.state.refs, ref)) return { ok: true, duplicate: true };
+      const now = this.now();
+      if (now === null) return unavailable();
       const { events: pre, acc } = this.ensure(principal, now);
       const grant: PendingEvent = {
         t: 'grant',
@@ -539,7 +571,8 @@ export class PlansEngine {
     return this.run(async () => {
       if (!validPrincipal(principal)) return { ok: false, error: limitError('invalid_principal') };
       if (this.problem) return unavailable();
-      const now = this.opts.clock.now();
+      const now = this.now();
+      if (now === null) return unavailable();
       const { events: pre, acc } = this.ensure(principal, now);
       if (!acc.entitlements.some((e) => e.status === 'active')) return { ok: true, noop: true };
       const rev: PendingEvent = { t: 'revoke', at: now, principal };
@@ -553,11 +586,12 @@ export class PlansEngine {
   addPack(principal: string, type: PackType, ref: string): Promise<CommandResult> {
     return this.run(async () => {
       if (!validPrincipal(principal)) return { ok: false, error: limitError('invalid_principal') };
-      if (!ref || !(type in this.cfg.packs) || type === ('refund' as PackType))
+      if (!safeKey(ref) || !Object.hasOwn(this.cfg.packs, type) || type === ('refund' as PackType))
         return { ok: false, error: limitError('invalid_request') };
       if (this.problem) return unavailable();
-      if (this.state.refs[ref]) return { ok: true, duplicate: true };
-      const now = this.opts.clock.now();
+      if (Object.hasOwn(this.state.refs, ref)) return { ok: true, duplicate: true };
+      const now = this.now();
+      if (now === null) return unavailable();
       const { events: pre, acc } = this.ensure(principal, now);
       const plan = effectivePlan(acc.entitlements, now);
       if (plan !== 'advanced' && plan !== 'pro') {
@@ -589,7 +623,10 @@ export class PlansEngine {
 
   /** Owner turns the AI back on; `extraDayMicro` adds headroom to today's cap. With none, the next request trips again. */
   ownerResume(opts: { extraDayMicro?: number } = {}): Promise<CommandResult> {
-    return this.ownerSpend({ k: 'resume', extraDayMicro: opts.extraDayMicro ?? 0 });
+    const extra = opts.extraDayMicro ?? 0;
+    if (!Number.isSafeInteger(extra) || extra < 0)
+      return Promise.resolve({ ok: false, error: limitError('invalid_request') });
+    return this.ownerSpend({ k: 'resume', extraDayMicro: extra });
   }
   /** Owner pauses the AI for everyone (Free and paid alike). */
   ownerPause(): Promise<CommandResult> {
@@ -603,7 +640,8 @@ export class PlansEngine {
   private ownerSpend(delta: SpendDelta): Promise<CommandResult> {
     return this.run(async () => {
       if (this.problem) return unavailable();
-      const now = this.opts.clock.now();
+      const now = this.now();
+      if (now === null) return unavailable();
       const { events } = this.rolled(now);
       events.push({ t: 'spend', spend: delta, at: now });
       return (await this.commit(events)) ? { ok: true } : unavailable();

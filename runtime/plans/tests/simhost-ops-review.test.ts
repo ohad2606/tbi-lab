@@ -39,7 +39,7 @@ async function exhaustFree(host: SimHostAdapter, clock: FakeClock): Promise<void
     clock.advance(20_000);
     await host.heartbeat(sid(1));
   }
-  await host.ended(sid(1), 'ended');
+  await host.ended(sid(1), 'ended', FREE);
   clock.advance(10 * MIN);
 }
 
@@ -99,7 +99,7 @@ describe('M1: ticket operations check the principal', () => {
       await host.heartbeat(sid(1));
       expect(host.touch('fq', ADV)).toEqual({ metered: true, queued: true });
     }
-    await host.ended(sid(1), 'ended');
+    await host.ended(sid(1), 'ended', ADV);
     const r = await host.admit({
       ticket: 'fq',
       sessionId: sid(6),
@@ -166,7 +166,7 @@ describe('M2: housekeeping prunes runs the host never reported ended', () => {
     expect(host.tracked).toBe(0);
     expect(host.planOf(sid(1))).toBeUndefined();
     // the late ended() is a duplicate: same bill, no second cooldown / slot release
-    expect(await host.ended(sid(1), 'lease')).toEqual({
+    expect(await host.ended(sid(1), 'lease', FREE)).toEqual({
       metered: true,
       ok: true,
       billedMs: 30_000,

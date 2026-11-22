@@ -68,7 +68,7 @@ describe('SimHostAdapter flag off (metering.enabled=false, the default)', () => 
         }),
       ).toEqual({ metered: false });
       expect(await host.heartbeat(sid(i + 1))).toEqual({ metered: false });
-      expect(await host.ended(sid(i + 1), 'ended')).toEqual({ metered: false });
+      expect(await host.ended(sid(i + 1), 'ended', FREE)).toEqual({ metered: false });
       clock.advance(MIN);
     }
     expect(await host.housekeeping()).toEqual({ metered: false });
@@ -270,7 +270,7 @@ describe('SimHostAdapter admit at session open', () => {
     clock.advance(20_000);
     await host.heartbeat(sid(1));
     clock.advance(20_000);
-    await host.ended(sid(1), 'ended');
+    await host.ended(sid(1), 'ended', FREE);
     clock.advance(10 * MIN); // past the Free cooldown
     const r = await host.admit({
       ticket: ticket(),
@@ -343,7 +343,7 @@ describe('SimHostAdapter bill at heartbeat, stop by remainingMs', () => {
     clock.advance(15_000 + 4_000);
     const s = await host.heartbeat(sid(1));
     expect(beat(s)).toBe('stop:minutes_out_free');
-    const e = await host.ended(sid(1), 'ended');
+    const e = await host.ended(sid(1), 'ended', FREE);
     expect(e).toEqual({ metered: true, ok: true, billedMs: 64_000 });
     expect(host.tracked).toBe(0);
   });
@@ -373,7 +373,7 @@ describe('SimHostAdapter bill at heartbeat, stop by remainingMs', () => {
       slots: slots(0),
     });
     clock.advance(10_000);
-    await host.ended(sid(1), 'ended');
+    await host.ended(sid(1), 'ended', FREE);
     const r = await host.admit({
       ticket: ticket(),
       sessionId: sid(2),
@@ -448,7 +448,7 @@ describe('SimHostAdapter fails closed with explicit reasons', () => {
     store.failOnCall = 'always';
     clock.advance(10_000);
     expect(beat(await host.heartbeat(sid(1)))).toBe('stop:system_unavailable');
-    const e = await host.ended(sid(1), 'ended');
+    const e = await host.ended(sid(1), 'ended', ADV);
     expect(e).toMatchObject({ metered: true, ok: false, error: { code: 'system_unavailable' } });
     expect(host.tracked).toBe(0);
   });
@@ -541,7 +541,7 @@ describe('SimHostAdapter fails closed with explicit reasons', () => {
     expect(host.waiting).toBe(0);
     // the lease-lost run was billed up to its last beat + lease (30 s), not the 10 minutes since; the
     // late ended() is a duplicate
-    expect(await host.ended(sid(1), 'lease')).toEqual({
+    expect(await host.ended(sid(1), 'lease', ADV)).toEqual({
       metered: true,
       ok: true,
       billedMs: 30_000,

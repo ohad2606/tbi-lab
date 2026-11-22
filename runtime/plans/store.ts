@@ -10,9 +10,11 @@ import {
   fsyncSync,
   openSync,
   readFileSync,
+  renameSync,
   truncateSync,
   writeSync,
 } from 'node:fs';
+import { dirname } from 'node:path';
 import type { PlanEvent } from './events.js';
 
 export type StoreProblem =
@@ -29,6 +31,11 @@ export interface Store<E = PlanEvent> {
   load(): Promise<LoadResult<E>>;
   /** Explicit recovery: drop a torn tail. Corruption in the middle is never repaired. */
   recoverTornTail?(): Promise<void>;
+  /**
+   * Compaction: replace the WHOLE journal by `events`, atomically (after a crash the journal is either
+   * the old one or the new one, never a mix). Optional: a store without it cannot be compacted.
+   */
+  replace?(events: E[]): Promise<void>;
 }
 
 export class MemoryStore<E = PlanEvent> implements Store<E> {
@@ -36,6 +43,8 @@ export class MemoryStore<E = PlanEvent> implements Store<E> {
   appendCalls = 0;
   /** test hook: throw on append call number n (1-based), or on every call when `always` */
   failOnCall: number | 'always' | null = null;
+  /** test hook: replace() throws and leaves the events unchanged */
+  failReplace = false;
   async append(events: E[]): Promise<void> {
     this.appendCalls += 1;
     if (this.failOnCall === 'always' || this.failOnCall === this.appendCalls)
@@ -44,6 +53,10 @@ export class MemoryStore<E = PlanEvent> implements Store<E> {
   }
   async load(): Promise<LoadResult<E>> {
     return { events: structuredClone(this.events) };
+  }
+  async replace(events: E[]): Promise<void> {
+    if (this.failReplace) throw new Error('store replace failed (test hook)');
+    this.events = structuredClone(events);
   }
 }
 
@@ -104,6 +117,27 @@ export class JournalStore<E = PlanEvent> implements Store<E> {
       pos = nl + 1;
     }
     return { events };
+  }
+
+  /** Write a temp file, fsync it, rename it over the journal, fsync the directory. */
+  async replace(events: E[]): Promise<void> {
+    const tmp = `${this.path}.compact-tmp`;
+    const data = Buffer.from(events.map(encodeLine).join(''), 'utf8');
+    const fd = openSync(tmp, 'w', 0o600);
+    try {
+      let off = 0;
+      while (off < data.length) off += writeSync(fd, data, off);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(tmp, this.path);
+    const dfd = openSync(dirname(this.path), 'r');
+    try {
+      fsyncSync(dfd);
+    } finally {
+      closeSync(dfd);
+    }
   }
 
   async recoverTornTail(): Promise<void> {

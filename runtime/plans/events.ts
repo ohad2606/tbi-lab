@@ -3,7 +3,8 @@
  * is in the event), so replay needs no config and no clock: live state == replayed state.
  * No e-mail, prompt, reply or token text appears in any event.
  */
-import type { Mode, PackType, PlanId } from './config.js';
+import { PLAN_IDS, type Mode, type PackType, type PlanId } from './config.js';
+import { validPrincipal } from './limits.js';
 import type { Entitlement } from './plans.js';
 import type { Part, PackBucket, RolloverBucket } from './ledger.js';
 import { applySpend, initialSpend, type SpendDelta, type SpendState } from './spend.js';
@@ -237,9 +238,169 @@ export function applyToAccount(prev: Account | undefined, ev: PendingEvent): Acc
   }
 }
 
+// ---------------------------------------------------------------- replay validation
+// Every number in an event is a count (credits, micro-USD, ms, sequence): a non-negative safe integer.
+// NaN, Infinity, negatives, fractions and unsafe integers are a corrupt journal, never coerced. Ids used
+// as object keys must not be prototype keys. Events must fit the state (no second reserve for an id, no
+// settle/release of a reservation that is not open, no second use of a grant/pack ref), so a replayed
+// duplicate can never charge or grant twice.
+
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+/** An id that may be used as an object key in the state. */
+export const safeKey = (k: unknown): k is string =>
+  typeof k === 'string' && k.length > 0 && k.length <= 128 && !RESERVED_KEYS.has(k);
+const count = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 0;
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH_KEY = /^\d{4}-\d{2}$/;
+
+function need(ok: boolean, what: string): asserts ok {
+  if (!ok) throw new Error(`invalid ${what} in event`);
+}
+
+function checkParts(parts: unknown): number {
+  need(Array.isArray(parts), 'parts');
+  let total = 0;
+  for (const raw of parts as unknown[]) {
+    const p = raw as Partial<Part> & Record<string, unknown>;
+    need(typeof p === 'object' && p !== null, 'part');
+    need(count(p.credits), 'part credits');
+    if (p.bucket === 'rollover') need(count(p.expiresAt), 'part expiry');
+    else if (p.bucket === 'pack') need(count(p.expiresAt) && safeKey(p.packId), 'pack part');
+    else need(p.bucket === 'allowance', 'part bucket');
+    total += p.credits as number;
+  }
+  need(Number.isSafeInteger(total), 'parts total');
+  return total;
+}
+
+function checkSpend(d: unknown): void {
+  const x = d as Record<string, unknown> | null;
+  need(typeof x === 'object' && x !== null, 'spend');
+  const alerts = (): void =>
+    need(Array.isArray(x.alerts) && x.alerts.every((a) => typeof a === 'string'), 'alerts');
+  const stop = (): void =>
+    need(
+      x.stop === undefined ||
+        x.stop === 'daily_cap' ||
+        x.stop === 'monthly_cap' ||
+        x.stop === 'auto_trigger',
+      'stop reason',
+    );
+  switch (x.k) {
+    case 'roll':
+      need(typeof x.dayKey === 'string' && DAY_KEY.test(x.dayKey), 'roll day');
+      need(typeof x.monthKey === 'string' && MONTH_KEY.test(x.monthKey), 'roll month');
+      need(typeof x.clearState === 'boolean', 'roll flag');
+      return;
+    case 'reserve':
+      need(count(x.micro), 'spend micro');
+      return;
+    case 'settle':
+      need(count(x.reservedMicro) && count(x.actualMicro), 'settle micro');
+      stop();
+      alerts();
+      return;
+    case 'release':
+      need(count(x.reservedMicro) && count(x.countedMicro), 'release micro');
+      stop();
+      alerts();
+      return;
+    case 'trip':
+      need(x.stop !== undefined, 'trip stop');
+      stop();
+      alerts();
+      return;
+    case 'resume':
+      need(count(x.extraDayMicro), 'resume micro');
+      return;
+    case 'pause':
+      return;
+    case 'seed': {
+      const patch = x.patch as Record<string, unknown> | null;
+      need(typeof patch === 'object' && patch !== null, 'seed patch');
+      for (const k of ['dayMicro', 'monthMicro', 'reservedMicro', 'dayExtraMicro'])
+        if (k in patch) need(count(patch[k]), `seed ${k}`);
+      return;
+    }
+    default:
+      need(false, 'spend kind');
+  }
+}
+
+/** Throws when `ev` has a bad number or does not fit `s` (a corrupt journal; replay stops). */
+export function checkEvent(s: PlansState, ev: PlanEvent): void {
+  const e = ev as PlanEvent & Record<string, unknown>;
+  need(count(e.seq) && e.seq >= 1, 'seq');
+  need(count(e.at), 'time');
+  if (ev.t === 'spend') return checkSpend(ev.spend);
+  need(validPrincipal(ev.principal) && safeKey(ev.principal), 'principal');
+  switch (ev.t) {
+    case 'account': {
+      need(PLAN_IDS.includes(ev.plan), 'plan');
+      need(count(ev.periodStart) && count(ev.periodEnd), 'period');
+      need(count(ev.allowance) && count(ev.granted) && count(ev.expired), 'account credits');
+      if (ev.rollover !== null) {
+        const r = ev.rollover as Partial<RolloverBucket> | undefined;
+        need(typeof r === 'object' && r !== null, 'rollover');
+        need(count(r.credits) && count(r.expiresAt), 'rollover');
+      }
+      return;
+    }
+    case 'grant':
+      need(PLAN_IDS.includes(ev.plan) && ev.plan !== 'free', 'plan');
+      need(count(ev.periodStart) && count(ev.periodEnd), 'period');
+      need(safeKey(ev.ref) && !Object.hasOwn(s.refs, ev.ref), 'grant ref (duplicate?)');
+      need(Object.hasOwn(s.accounts, ev.principal), 'grant account');
+      return;
+    case 'revoke':
+      need(Object.hasOwn(s.accounts, ev.principal), 'revoke account');
+      return;
+    case 'pack': {
+      need(safeKey(ev.ref) && !Object.hasOwn(s.refs, ev.ref), 'pack ref (duplicate?)');
+      const pk = ev.pack as Partial<PackRecord> | undefined;
+      need(typeof pk === 'object' && pk !== null && safeKey(pk.id), 'pack');
+      need(count(pk.credits) && count(pk.boughtAt) && count(pk.expiresAt), 'pack numbers');
+      need(Object.hasOwn(s.accounts, ev.principal), 'pack account');
+      return;
+    }
+    case 'reserve': {
+      need(safeKey(ev.reqId) && !Object.hasOwn(s.reservations, ev.reqId), 'reqId (duplicate?)');
+      need(ev.mode === 'standard' || ev.mode === 'deep', 'mode');
+      need(PLAN_IDS.includes(ev.plan), 'plan');
+      need(count(ev.credits) && count(ev.usdMicro) && count(ev.ttlAt), 'reserve numbers');
+      need(count(ev.periodSeq), 'period seq');
+      need(typeof ev.dayKey === 'string' && DAY_KEY.test(ev.dayKey), 'day key');
+      checkParts(ev.parts);
+      need(Object.hasOwn(s.accounts, ev.principal), 'reserve account');
+      return;
+    }
+    case 'settle':
+    case 'release': {
+      need(safeKey(ev.reqId) && Object.hasOwn(s.reservations, ev.reqId), 'reqId (unknown)');
+      const r = s.reservations[ev.reqId] as Reservation;
+      need(r.state === 'open', `${ev.t} of a reservation that is not open`);
+      need(r.principal === ev.principal, `${ev.t} principal`);
+      checkSpend(ev.spend);
+      need(ev.spend.k === ev.t, `${ev.t} spend kind`);
+      const reserved = r.parts.reduce((n, p) => n + p.credits, 0);
+      if (ev.t === 'settle') {
+        need(count(ev.deducted) && ev.deducted === reserved, 'settle deducted');
+        return;
+      }
+      need(ev.reason === 'failed' || ev.reason === 'ttl', 'release reason');
+      need(count(ev.credits) && ev.credits === r.credits, 'release credits');
+      need(checkParts(ev.parts) === reserved, 'release parts');
+      need(count(ev.periodSeq) && ev.periodSeq === r.periodSeq, 'release period seq');
+      need(ev.dayKey === r.dayKey, 'release day key');
+      return;
+    }
+  }
+}
+
 export function applyEvent(s: PlansState, ev: PlanEvent): void {
   if (ev.seq !== s.seq + 1)
     throw new Error(`journal sequence gap: expected ${s.seq + 1}, got ${ev.seq}`);
+  checkEvent(s, ev);
   s.seq = ev.seq;
   if (ev.t === 'spend') {
     s.spend = applySpend(s.spend, ev.spend);
