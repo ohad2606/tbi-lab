@@ -323,7 +323,12 @@ test('a11y: Escape in a field belongs to the field, not to the armed placement',
   await expect(field).not.toHaveValue('12345'); // reverted
   await expect(tile).toHaveAttribute('aria-pressed', 'true'); // still armed
   await page.keyboard.press('Escape'); // focus on the field: still the field's
-  await tile.focus();
-  await page.keyboard.press('Escape');
-  await expect(tile).toHaveAttribute('aria-pressed', 'false');
+  // CI flake (failed on 2 unrelated PRs): the tile.focus() can land while the field's revert is
+  // still re-rendering, so the Escape then targets the field. Retry focus+Escape until it sticks.
+  await expect(async () => {
+    await tile.focus();
+    await expect(tile).toBeFocused({ timeout: 1000 });
+    await page.keyboard.press('Escape');
+    await expect(tile).toHaveAttribute('aria-pressed', 'false', { timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
 });
