@@ -45,7 +45,7 @@ export function ShortcutsHost() {
 
 /** Key names inside translated text (Esc, Tab, ...) stay left-to-right. */
 const KEY_WORDS = /\b(Esc|Tab|Shift|Ctrl|Cmd|Enter|Space|Delete)\b/g;
-function isolateKeyNames(text: string): ComponentChildren {
+export function isolateKeyNames(text: string): ComponentChildren {
   const parts = text.split(KEY_WORDS);
   return parts.map((p, i) =>
     i % 2 === 1 ? (
