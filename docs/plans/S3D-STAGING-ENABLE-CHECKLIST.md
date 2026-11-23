@@ -17,16 +17,21 @@ template, `<user>` = the Session Host's user).
       owner: "The host and the repair tool never delete journal copies. The operator keeps the last
       N = 3 `.pre-compact` and the last N = 3 `.pre-repair` copies per state directory and deletes older
       ones by hand only, with the host stopped, after checking that the live journal replays (repair
-      tool report-only: exit 0); each deletion is written in the ops log (file name, size, date)."
+      tool report-only: exit 0); each deletion is written in the ops log (file name, size, date). The N = 3 rule is also tied to a
+      dispute/audit window: a copy younger than X days is never deleted, even when it is older than
+      the last 3 (X = owner decision)."
       Nothing deletes automatically, and no auto-deletion will be built without a new owner decision.
 - [ ] The app with queue + limit handling (s3d-5) is deployed on staging BEFORE the host (R-2).
 - [ ] The staged Session Host bundle contains s3d-6 (boot recovery, refusal exit 78), and the repair
-      bundle `sim-journal-repair.mjs` built from the SAME commit is installed beside it (mode 0644, in
-      the directory that holds `session-host.mjs`, called `<bundles>` below). Build:
+      bundle `sim-journal-repair.mjs` built from the SAME commit is installed (mode 0644) in a
+      separate operator directory, called `<bundles>` below (preferred: the CLI needs only node and the
+      state dir). If it is put in the release directory instead (next to `session-host.mjs`): do it
+      under the pipeline lock, record it in the ops log, and repeat it after any release switch or
+      rollback. Build:
       `npm run simrepair:build` -> `runtime/plans/dist/sim-journal-repair.mjs` (one self-contained
       file, like `session-host.mjs`; needs no `node_modules`). The release/install scripts
       (`deploy/release/build-package.sh` services/, `deploy/dev-lab/s8/install.sh`) do NOT ship it
-      yet (PM/owner decision): until they do, install it by hand next to the host bundle.
+      yet (PM/owner decision): until they do, install it by hand as described above.
 - [ ] The installed unit has `RestartPreventExitStatus=78` (template change of s3d-6; re-render and
       install the unit, `systemctl daemon-reload`).
 - [ ] Pipeline lock held for the whole procedure; staging state recorded before (TEST-SAFETY).
@@ -36,7 +41,9 @@ template, `<user>` = the Session Host's user).
       `System clock synchronized: yes` with an active NTP service; the host's UTC time matches a
       reference within 1 s. (The per-day split uses the config's `meter.timezone`, default
       `Asia/Jerusalem`, through Node's built-in ICU, not the host's local time zone.) Do not enable while the clock is unsynchronised or was just stepped; never set
-      the clock by hand while metering is on.
+      the clock by hand while metering is on. Recovery: if the clock was stepped while metering was on
+      and the host then refuses with a corrupt journal (the replay rejects `endAt < openedAt`; repair
+      tool exit 3), use the rollback (§6) and investigate; never hand-edit the journal.
 
 ## 1. Configuration files (prepared, reviewed, not yet referenced by the unit)
 
@@ -95,15 +102,21 @@ Drill first (dry-run on a COPY; the live state directory is never touched during
 - [ ] Make the copy as `<user>`: `install -d -m 0700 <drill dir>` (absolute, no symlink, outside the
       live state dir), then `cp -p <state dir>/sim-journal.log <drill dir>/`. Copy ONLY the journal:
       never `host.lock` / `host.lock.takeover` (a copied lock names the live host's pid, and the tool
-      would refuse with exit 1).
-- [ ] Report only on the copy: exit 0 (`clean`, event count = the live count from the boot line).
+      would refuse with exit 1). A copy taken while the host runs may be torn (a write in flight):
+      exit 2 on such a copy is expected, so re-copy (or copy with the host stopped). The live
+      directory is never at risk.
+- [ ] Report only on the copy: exit 0 (`clean`). To compare the event count, run a report-only run on the live state dir with the
+      host stopped; otherwise drop the comparison (the `sim_boot` line has no event count).
 - [ ] Simulate a torn tail on the copy (append a few bytes without a newline, e.g.
       `printf 'x' >> <drill dir>/sim-journal.log`): report only -> exit 2 (`torn`), the copy unchanged.
 - [ ] `--apply` on the copy -> exit 0 (`repaired`), a `sim-journal.log.<UTC>.pre-repair` file appeared
       in the drill dir; report only again -> exit 0. Record the outputs.
 - [ ] Optional (staging only, maintenance window): point a stopped staging host at the drill dir and
       check that it refuses with the torn copy (exit 78, unit stays down) and boots after the repair.
+      Afterwards, restore and verify: point the host back at the live state dir and check that the
+      drop-in names the live state dir (not the drill dir).
 - [ ] Remove the drill dir by hand after the record is written (it is a copy, not the journal).
+      Before removing, verify that the path equals the recorded drill dir and is not the state dir.
 
 Real repair (only after the host refused with exit 78 and the report says `torn`):
 
@@ -120,8 +133,9 @@ Stale lock (`host.lock` holds the pid of the host that owns the state dir):
       process).
 - [ ] Before removing anything, check ALL of: the unit is not active (`systemctl is-active`), no host
       process of `<user>` exists (`pgrep -u <user> -f session-host.mjs` prints nothing), no repair run
-      is in progress, and the pid in the lock (`cat <state dir>/host.lock`) is not a running Session
-      Host (`ps -p <pid> -o args=`). Record the lock content in the report.
+      is in progress (`pgrep -u <user> -f sim-journal-repair.mjs` prints nothing), and the pid in the lock (`cat <state dir>/host.lock`) is not a running Session
+      Host (`ps -p <pid> -o args=`). A reused pid shows up only as the generic "locked by another host" message, so `ps -p`
+      is what tells them apart. Record the lock content in the report.
 - [ ] NEVER remove a lock while a host runs or might start (the lock is what keeps two writers off
       one journal). Remove only the named lock file; never the journal or its copies.
 
