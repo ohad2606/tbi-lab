@@ -26,6 +26,8 @@
  *                      feedback only, owner from TBI_OWNER_PRINCIPAL_FILE (owner.ts); refuses
  *                      TBI_ADMIN_DIR. Inconsistent combinations refuse to start.
  *   TBI_OWNER_PRINCIPAL_FILE   `reports` mode: root:<host group> 0640, exactly one principal
+ *   TBI_HOST_SIM_*     TBI-018 sim metering and the fair queue (runtime/host/simboot.ts,
+ *                      runtime/plans/hostboot.ts). Unset: off. A refusal exits 78 (no restart).
  *
  * SIGTERM / SIGINT: stop accepting requests, terminate every session (host_shutdown), release
  * every child process and temporary file, then exit.
@@ -46,15 +48,8 @@ import { ReportStore, reportsConfigFromEnv } from './reports.js';
 import { accessViewFromEnv } from '../identity/access.js';
 import { IdentityObserver, adminEnvFromEnv } from './admin.js';
 import { OwnerReference } from './owner.js';
-import { HOST_SIM_REFUSED_EXIT, hostSimStartRefusal } from '../plans/hostflags.js';
-
-// TBI-018 s3d-1: sim metering (TBI_HOST_SIM_*) is not wired yet. Any of its flags set = refuse to
-// start before anything else runs (no unit is stopped, nothing is read or created). Unset: no change.
-const simRefusal = hostSimStartRefusal(process.env);
-if (simRefusal !== null) {
-  process.stderr.write(`${simRefusal}\n`);
-  process.exit(HOST_SIM_REFUSED_EXIT);
-}
+import { HOST_SIM_REFUSED_EXIT } from '../plans/hostflags.js';
+import { hostSimFromEnv, simRefusalLine, type HostSimBoot } from './simboot.js';
 
 // Same locations as runtime/provision/provision.sh (and harness/env.ts).
 const RUNTIME_HOME =
@@ -120,6 +115,22 @@ const pace = process.env.TBI_HOST_PACE ?? '1';
 config.paceRate = pace === 'off' ? null : Number(pace);
 if (config.paceRate !== null && !(config.paceRate > 0))
   throw new Error(`TBI_HOST_PACE must be 'off' or a positive rate, not ${pace}`);
+// TBI-018 s3d-6: sim metering (TBI_HOST_SIM_*, simboot.ts). Unset = no adapter, today's host. Set =
+// config checks, state-dir lock, journal replay, recovery of the previous process's meter sessions
+// (its runtimes were stopped above) and compaction, all before the host exists or listens. Any
+// refusal exits HOST_SIM_REFUSED_EXIT (78), excluded from the units' restart policy (no hot loop).
+let sim: HostSimBoot | undefined;
+try {
+  sim = await hostSimFromEnv(process.env, config);
+} catch (e) {
+  process.stderr.write(`${simRefusalLine(e)}\n`);
+  process.exit(HOST_SIM_REFUSED_EXIT);
+}
+if (sim) {
+  config.simPlans = sim.simPlans;
+  config.simAdmission = sim.simAdmission;
+  process.stderr.write(`${sim.logLine}\n`);
+}
 const host = new SessionHost(config);
 const reportsConfig = reportsConfigFromEnv();
 const reports = reportsConfig ? new ReportStore(reportsConfig) : null;
@@ -152,7 +163,10 @@ const stop = () => {
   healthServer?.close();
   healthServer?.closeAllConnections();
   access?.stop();
-  void host.shutdown().then(() => process.exit(0));
+  void host.shutdown().then(() => {
+    sim?.lock.release();
+    process.exit(0);
+  });
 };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);

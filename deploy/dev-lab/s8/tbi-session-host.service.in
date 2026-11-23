@@ -71,6 +71,9 @@ ReadOnlyPaths=@STORE@
 ExecStart=/opt/tbi-node/bin/node /opt/tbi-build/session-host.mjs
 Restart=on-failure
 RestartSec=2
+# Exit 78 = refused to start (TBI-018 sim metering config or journal, runtime/plans/hostflags.ts):
+# restarting cannot fix it; stay down for the operator, never a 2 s restart loop.
+RestartPreventExitStatus=78
 KillSignal=SIGTERM
 # SIGTERM to the host only: it ends its sessions in order (each runtime unit stops, records its
 # exit, then the session directory goes). Anything left gets SIGKILL after the timeout.

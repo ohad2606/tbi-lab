@@ -436,6 +436,19 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
    check, `.pre-compact` copy, the torn-tail repair tool. Acceptance: restart and journal-problem tests
    green; repair tool exists and is tested; unit does not hot-loop on the refusal exit code; staging
    enabling checklist written (not executed).
+   *Implemented (2026-11-23, partial):* `SimMeter.closeAllOpen` / `SimHostAdapter.recoverAtBoot` /
+   `compactAtBoot`; `bootSimPlans` recovers after the replay and compacts past
+   `DEFAULT_SIM_COMPACT_EVENTS` (20000, compile-time) with a never-overwritten
+   `sim-journal.log.<UTC>.pre-compact` copy first (a failed copy skips, a failed compaction refuses);
+   `runtime/host/simboot.ts` `hostSimFromEnv` replaces the s3d-1 refusal in `main.ts` (refusal = one line,
+   exit 78; units `RestartPreventExitStatus=78`; SIGTERM releases the state lock); health-socket
+   `capacity` + `waiting`, `metered` with an enabled adapter; boot bounds `checkSimBounds` (s3d-4 ops
+   LOW-4: `1 <= beatMs < leaseMs`, `housekeepingMs >=` host, `endWaitMs <= 12000`; not enforced in the
+   constructor, tests use out-of-bound beats); repair tool `runtime/plans/repairjournal.ts` + CLI
+   `repair-main.ts`; checklist `docs/plans/S3D-STAGING-ENABLE-CHECKLIST.md`. The heartbeat timeout
+   `max(1, leaseMs - beatMs)` uses the host lease, which boot forces equal to `sim.leaseMs`.
+   Not done (s3d-7): cooldown seed (O-9, owner decision), packaging of the repair CLI in the release
+   bundle, a config validator, unit re-install on any host.
 
 ## 13. Open owner / PM decisions
 

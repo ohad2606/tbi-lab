@@ -29,7 +29,7 @@ import {
   type HostSimPlans,
 } from '../hostboot.js';
 import { JournalStore } from '../store.js';
-import { HOST_SIM_FLAGS, hostSimFlagsSet, hostSimStartRefusal } from '../hostflags.js';
+import { HOST_SIM_FLAGS, hostSimFlagsSet } from '../hostflags.js';
 
 const parent = mkdtempSync(join(tmpdir(), 'plans-hostboot-'));
 afterAll(() => rmSync(parent, { recursive: true, force: true }));
@@ -99,17 +99,11 @@ describe('parsePlanMap', () => {
   });
 });
 
-describe('hostSimStartRefusal (main.ts guard)', () => {
-  it('no flag: null', () => {
-    expect(hostSimStartRefusal({})).toBeNull();
-    expect(hostSimStartRefusal({ TBI_PLANS_CONFIG: '/x', TBI_HOST_LEASE_MS: '1' })).toBeNull();
+describe('hostSimFlagsSet', () => {
+  it("no flag: none (other services' flags ignored)", () => {
+    expect(hostSimFlagsSet({ TBI_PLANS_CONFIG: '/x', TBI_HOST_LEASE_MS: '1' })).toEqual([]);
   });
-  it.each(HOST_SIM_FLAGS)('%s alone (even empty) refuses, naming the flag, not its value', (f) => {
-    const msg = hostSimStartRefusal({ [f]: '/secret/value-xyz' });
-    expect(msg).toMatch(/refusing to start/);
-    expect(msg).toContain(f);
-    expect(msg).not.toContain('value-xyz');
-    expect(hostSimStartRefusal({ [f]: '' })).not.toBeNull();
+  it.each(HOST_SIM_FLAGS)('%s alone, even empty, is named', (f) => {
     expect(hostSimFlagsSet({ [f]: '' })).toEqual([f]);
   });
 });

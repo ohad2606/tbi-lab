@@ -110,6 +110,33 @@ const MINUTES_CODES: ReadonlySet<string> = new Set([
 ]);
 /** s3d-4: default bounded wait of shutdown for pending `ended` calls (unit TimeoutStopSec=20) */
 const DEFAULT_END_WAIT_MS = 8_000;
+/**
+ * s3d-6 (s3d-4 ops review LOW-4): the most `endWaitMs` may be. Shutdown also stops the runtimes, so the
+ * wait plus that must stay below the unit's TimeoutStopSec=20 or systemd kills the host mid-wait.
+ */
+export const MAX_SIM_END_WAIT_MS = 12_000;
+
+/**
+ * s3d-6 (s3d-4 ops review LOW-4): interval bounds of the metered admission, checked at boot
+ * (runtime/host/simboot.ts) on the values the host will really use: 1 <= beatMs < leaseMs (a beat at or
+ * past the lease would make every run lease_lost), housekeepingMs >= the host housekeeping,
+ * 0 <= endWaitMs <= MAX_SIM_END_WAIT_MS. Absent values take their defaults, which satisfy the bounds.
+ * Not enforced by the constructor: unit tests build hosts with out-of-bound beats on purpose.
+ */
+export function checkSimBounds(config: HostConfig): void {
+  const sim = config.simAdmission;
+  if (!sim) return;
+  const int = (v: number) => Number.isSafeInteger(v);
+  const beat = sim.beatMs;
+  if (beat !== undefined && (!int(beat) || beat < 1 || beat >= config.leaseMs))
+    throw new Error('sim beatMs must be >= 1 and < leaseMs');
+  const hk = sim.housekeepingMs;
+  if (hk !== undefined && (!int(hk) || hk < 1 || hk < config.housekeepingMs))
+    throw new Error('sim housekeepingMs must be >= the host housekeepingMs');
+  const wait = sim.endWaitMs;
+  if (wait !== undefined && (!int(wait) || wait < 0 || wait > MAX_SIM_END_WAIT_MS))
+    throw new Error(`sim endWaitMs must be between 0 and ${MAX_SIM_END_WAIT_MS}`);
+}
 const DEFAULT_SIM_HOUSEKEEPING_MS = 5_000;
 
 type Adapter = NonNullable<HostConfig['simPlans']>;
@@ -815,14 +842,23 @@ export class SessionHost {
     return n;
   }
 
-  /** Sprint 23B: live (non-terminal) sessions, and the host's effective ceiling. */
-  capacity(): { live: number; max: number } {
+  /**
+   * Sprint 23B: live (non-terminal) sessions, and the host's effective ceiling. TBI-018 s3d-6 (design
+   * §10 R-1b, m8): with an ENABLED sim adapter also two coarse counts, `waiting` (queue entries) and
+   * `metered` (metered runs not terminal yet); never a principal, ticket or session id. Flag-off: the
+   * exact Sprint 23B body.
+   */
+  capacity(): { live: number; max: number; waiting?: number; metered?: number } {
     const live = [...this.sessions.values()].filter((s) => !isTerminal(s.state)).length;
     const policy = this.config.policy;
     const max = policy
       ? Math.min(policy.maxLiveSessions, this.config.maxSessions)
       : this.config.maxSessions;
-    return { live, max };
+    const adapter = this.queueAdapter;
+    if (!adapter) return { live, max };
+    const w = (adapter as { waiting?: unknown }).waiting;
+    const waiting = typeof w === 'number' && Number.isSafeInteger(w) && w >= 0 ? w : undefined;
+    return { live, max, ...(waiting !== undefined ? { waiting } : {}), metered: this.metered.size };
   }
 
   /** Stop admitting sessions, terminate every live one, release every resource. */

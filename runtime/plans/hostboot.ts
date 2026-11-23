@@ -1,8 +1,10 @@
 /**
  * TBI-018 s3d-1: opt-in construction of the sim-minutes adapter for the Session Host (design
- * docs/plans/S3D-HOST-WIRING-DESIGN.md §9, state directory rules §7). NOT wired: `runtime/host/main.ts`
- * still refuses to start while any flag is set (hostflags.ts); this module exists so the checks are
- * in place and tested before any wiring slice.
+ * docs/plans/S3D-HOST-WIRING-DESIGN.md §9, state directory rules §7). s3d-6: `runtime/host/main.ts`
+ * calls it at boot (the s3d-1 "not wired" refusal is gone); unset flags = no adapter, today's host.
+ * After the journal is opened: recovery (every open meter session closed with 'host') and, past a
+ * threshold, compaction with a `.pre-compact` copy first. A torn or corrupt journal refuses; it is
+ * never repaired here (operator tool: runtime/plans/repairjournal.ts).
  *
  *   TBI_HOST_SIM_PLANS_CONFIG     plans config file (strict parseConfig). Unset: no adapter, nothing read.
  *   TBI_HOST_SIM_PLANS_STATE      journal directory, required (no default under another service's state)
@@ -16,7 +18,9 @@
  */
 import {
   closeSync,
+  copyFileSync,
   constants as fsc,
+  fsyncSync,
   fstatSync,
   lstatSync,
   mkdirSync,
@@ -45,6 +49,13 @@ export const SIM_LOCK_TAKEOVER_FILE = 'host.lock.takeover';
 export const MAX_SIM_CONFIG_BYTES = 1024 * 1024;
 export const DEFAULT_SIM_HOUSEKEEPING_MS = 5000;
 export const DEFAULT_SIM_POLL_S = 15;
+/**
+ * s3d-6: boot compaction runs when the journal holds more than this many events (since it began or was
+ * last compacted) and no session is open after recovery. Compile-time default; tests override it.
+ */
+export const DEFAULT_SIM_COMPACT_EVENTS = 20_000;
+/** s3d-6: suffix of the copy written before a compaction (never deleted or overwritten automatically) */
+export const PRE_COMPACT_SUFFIX = '.pre-compact';
 
 /** Host facts the checks need (design §9: policy required, housekeeping floor). */
 export interface HostSimBootHost {
@@ -62,6 +73,10 @@ export interface HostSimBootDeps {
   uid?: number;
   /** test hooks into the lock protocol (interleaving simulation) */
   lockHooks?: StateLockHooks;
+  /** s3d-6: boot compaction threshold (events); default DEFAULT_SIM_COMPACT_EVENTS */
+  compactAfterEvents?: number;
+  /** s3d-6 test hook: replaces the pre-compaction copy (to simulate a failing copy) */
+  copyJournal?: (from: string, to: string) => void;
 }
 
 export interface StateLockHooks {
@@ -84,6 +99,40 @@ export interface HostSimPlans {
   housekeepingMs: number;
   pollAfterS: number;
   lock: HostSimLock;
+  /** s3d-6: what boot recovery did (counts and a file name only; logged by main.ts) */
+  boot: HostSimBootReport;
+}
+
+export interface HostSimBootReport {
+  /** meter sessions of a previous process closed with reason 'host' */
+  recovered: number;
+  /**
+   * compaction at boot: 'no' (below the threshold or sessions open), 'done' (with the copy's file
+   * name, inside the state dir), or 'copy_failed' (the copy could not be written: no compaction)
+   */
+  compaction: { kind: 'no' } | { kind: 'done'; copy: string } | { kind: 'copy_failed' };
+}
+
+/** `sim-journal.log.<UTC time>.pre-compact`; the time has no ':' or '.' (safe file name). */
+export function preCompactName(nowMs: number): string {
+  const stamp = new Date(nowMs).toISOString().replace(/[:.]/g, '-');
+  return `${SIM_JOURNAL_FILE}.${stamp}${PRE_COMPACT_SUFFIX}`;
+}
+
+/** Copy `from` to `to` without ever overwriting (COPYFILE_EXCL), then fsync the copy and its directory. */
+export function durableCopy(from: string, to: string): void {
+  copyFileSync(from, to, fsc.COPYFILE_EXCL);
+  for (const [p, flags] of [
+    [to, 'r'],
+    [join(to, '..'), 'r'],
+  ] as const) {
+    const fd = openSync(p, flags);
+    try {
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  }
 }
 
 const POLICY_NAME = /^[A-Za-z0-9_-]{1,64}$/;
@@ -257,7 +306,7 @@ export function acquireStateLock(
 }
 
 /** The state directory must exist (created 0700 if absent), be a real directory, ours, mode 0700. */
-function checkStateDir(dir: string, uid: number | undefined): void {
+export function checkStateDir(dir: string, uid: number | undefined): void {
   // `link/` and `link/.` make lstat follow a symlink: only the exact absolute normalised path is taken.
   if (!isAbsolute(dir) || resolve(dir) !== dir)
     throw new HostSimBootError(
@@ -395,14 +444,61 @@ export async function bootSimPlans(
       new JournalStore<SimEvent>(join(dir, SIM_JOURNAL_FILE)),
       {
         config: cfg,
-        clock: deps.clock ?? { now: () => Date.now() },
+        clock: clockOf(deps),
       },
     );
     // A torn or corrupt journal: refuse (design §7, O-7); never repaired automatically.
     if (adapter.storeProblem) throw new Error('journal problem');
-    return { adapter, config: cfg, planMap, beatMs, housekeepingMs, pollAfterS, lock };
+    // s3d-6 recovery: no run of a previous process survives (the caller stopped the old runtimes
+    // before this point), so every meter session still open is closed with 'host'.
+    const rec = await adapter.recoverAtBoot();
+    if (!rec.metered || !rec.ok) throw new Error('recovery failed');
+    const compaction = await compactAtBoot(adapter, dir, deps, clockOf(deps));
+    if (adapter.storeProblem) throw new Error('journal problem after compaction');
+    return {
+      adapter,
+      config: cfg,
+      planMap,
+      beatMs,
+      housekeepingMs,
+      pollAfterS,
+      lock,
+      boot: { recovered: rec.closed, compaction },
+    };
   } catch {
     lock.release();
     throw new HostSimBootError('sim plans state unusable; refusing to start');
   }
+}
+
+const clockOf = (deps: HostSimBootDeps): Clock => deps.clock ?? { now: () => Date.now() };
+
+/**
+ * s3d-6 boot compaction (design §7, M5): only past the threshold and only when no session is open. The
+ * journal is first copied to a timestamped `.pre-compact` file that is never overwritten or deleted
+ * automatically (retention is an owner decision, m11). A failed copy skips the compaction (the journal
+ * is untouched, boot continues). A failed compaction leaves the meter failed closed (storeProblem):
+ * the caller refuses to start; the journal on disk is the old or the new one (atomic replace).
+ */
+async function compactAtBoot(
+  adapter: SimHostAdapter,
+  dir: string,
+  deps: HostSimBootDeps,
+  clock: Clock,
+): Promise<HostSimBootReport['compaction']> {
+  const limit = deps.compactAfterEvents ?? DEFAULT_SIM_COMPACT_EVENTS;
+  if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('bad compaction threshold');
+  if (adapter.journalSeq <= limit || adapter.openMeterSessions > 0 || adapter.tracked > 0)
+    return { kind: 'no' };
+  const now = clock.now();
+  if (!Number.isFinite(now)) return { kind: 'no' };
+  const copy = preCompactName(now);
+  try {
+    (deps.copyJournal ?? durableCopy)(join(dir, SIM_JOURNAL_FILE), join(dir, copy));
+  } catch {
+    return { kind: 'copy_failed' };
+  }
+  const r = await adapter.compactAtBoot();
+  if (!r.metered || !r.ok) throw new Error('compaction failed');
+  return r.skipped ? { kind: 'no' } : { kind: 'done', copy };
 }
