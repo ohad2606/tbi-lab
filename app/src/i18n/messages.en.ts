@@ -2280,10 +2280,23 @@ export const en = {
   'kbwire.refused': 'Cannot connect: {reason}',
   'kbwire.reason.same_endpoint': 'both ends are the same point',
   'kbwire.reason.other': 'the edit was refused',
+  'kbwire.reason.wire_unchanged': 'that end is already connected there',
+  'kbwire.reason.duplicate_wire': 'another wire already joins these two points',
+  'kbwire.repick.noWire':
+    'No wire is selected. Select one with {prev} or {next}, then press {key}.',
+  'kbwire.repick.ends':
+    'Wire {n}: {from} to {to}. Choose the end to move: {k1} for the first end, {k2} for the second, or {tab} and then {enter}. {escape} cancels.',
+  'kbwire.repick.end': 'End {k}: {end}. {enter} chooses it.',
+  'kbwire.repick.start':
+    'Moving end {k}, now at {end}. {tab} chooses the new target, {enter} reconnects, {escape} cancels.',
+  'kbwire.repick.noTargets': 'No other pin to move end {k} to.',
+  'kbwire.repick.done': 'Wire {n} reconnected: {from} to {to}',
+  'kbwire.repick.cancel': 'Re-pick cancelled. Wire {n} is unchanged.',
+  'kbwire.repick.stale': 'Re-pick cancelled because the circuit or the selection changed.',
   'kbwire.running': 'Wiring is unavailable while the simulation runs. Stop the simulation first.',
   'kbwire.noTargets': 'No other pin to connect {pin} to.',
   'kbwire.wireSelected': 'Wire {n} of {total}: {from} to {to}.{hint}',
-  'kbwire.wireSelected.hint': ' {delete} removes it, {escape} deselects.',
+  'kbwire.wireSelected.hint': ' {delete} removes it, {key} moves an end, {escape} deselects.',
   'kbwire.wireDeleteRefused':
     'Cannot remove the wire: editing is unavailable (the simulation is running or the project is read-only).',
   'kbwire.wireRemoved': 'Removed wire: {from} to {to}',
@@ -2396,6 +2409,9 @@ export const en = {
   'shortcut.pinMode.when': 'A part has focus; not while running',
   'shortcut.wireSelect.action': 'Select the previous or next wire; its ends are announced',
   'shortcut.wireSelect.when': 'Circuit view, not in pin mode',
+  'shortcut.wireRepick.action':
+    'Re-pick one end of the selected wire (choose the end, then the new pin)',
+  'shortcut.wireRepick.when': 'A wire is selected; not while running or read-only',
   'shortcut.escStep.action':
     'Step back one level: probe mode, armed part, drawing mode, then clear the selection',
   'shortcut.escStep.when': 'Circuit view',
@@ -2424,9 +2440,13 @@ export const en = {
   'shortcut.wireStart.when': 'Pin mode',
   'shortcut.targetCycle.action': 'Move between possible targets (Tab is kept inside on purpose)',
   'shortcut.targetCycle.when': 'While choosing where the wire ends',
+  'shortcut.repickEnd.action':
+    'Choose which end of the wire to move: 1 is the first end, 2 the second; or switch ends with the arrow keys or Tab and Shift + Tab, and press Enter to choose',
+  'shortcut.repickEnd.when': 'After E, while choosing the end',
   'shortcut.wireConnect.action': 'Connect the wire to the chosen target',
   'shortcut.wireConnect.when': 'While choosing where the wire ends',
-  'shortcut.wireCancel.action': 'Cancel; focus returns to the part',
+  'shortcut.wireCancel.action':
+    'Cancel; focus returns to the part (during a re-pick it stays on the canvas)',
   'shortcut.wireCancel.when': 'Pin mode or wiring',
   'shortcut.schematicSelect.action': 'Select the symbol or module',
   'shortcut.schematicSelect.when': 'A symbol has focus',

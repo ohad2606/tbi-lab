@@ -11,12 +11,16 @@ import {
   GRID,
   addWire,
   connectivity,
+  endPosition,
+  nodeKey,
   pinKey,
+  reconnectWire,
   terminalPosition,
   type EditError,
   type PinRef,
   type Point,
   type ProjectDocument,
+  type WireEnd,
 } from '@tbi-lab/domain';
 
 /** Why a candidate deserves a warning; presentation localises it. Never hides the candidate. */
@@ -50,8 +54,19 @@ export function candidateTargets(
 ): Candidate[] {
   const origin = terminalPosition(doc, from.component, from.terminal);
   if (!origin) return [];
+  return rankPins(doc, origin, from, opts);
+}
+
+/** `from` is the source pin (excluded with everything joined to it); undefined for a junction
+ *  source, where only the position orders the pins. */
+function rankPins(
+  doc: ProjectDocument,
+  origin: Point,
+  from: PinRef | undefined,
+  opts: CandidateOptions,
+): Candidate[] {
   const g = connectivity(doc);
-  const fromNode = g.nodeOf.get(pinKey(from.component, from.terminal));
+  const fromNode = from ? g.nodeOf.get(pinKey(from.component, from.terminal)) : undefined;
   const kindOf = new Map(g.nodes.map((n) => [n.id, n.kind]));
 
   // Pins already joined to the source: directly by a wire, or on its electrical node.
@@ -60,6 +75,7 @@ export function candidateTargets(
     if (w.from.kind !== 'terminal' || w.to.kind !== 'terminal') continue;
     const a = { component: w.from.component, terminal: w.from.terminal };
     const b = { component: w.to.component, terminal: w.to.terminal };
+    if (!from) break;
     if (samePin(a, from)) joined.add(pinKey(b.component, b.terminal));
     if (samePin(b, from)) joined.add(pinKey(a.component, a.terminal));
   }
@@ -68,7 +84,7 @@ export function candidateTargets(
   for (const c of doc.components) {
     for (const t of CATALOG[c.type].terminals) {
       const pin = { component: c.id, terminal: t.id };
-      if (samePin(pin, from)) continue;
+      if (from && samePin(pin, from)) continue;
       const key = pinKey(c.id, t.id);
       if (joined.has(key)) continue;
       const node = g.nodeOf.get(key);
@@ -99,12 +115,62 @@ export function candidateTargets(
 export const distanceCells = (distance: number) => Math.max(1, Math.round(distance / GRID));
 
 // ---------------------------------------------------------------------------------------------
+// Re-pick an endpoint (TBI-001 slice 4)
+
+export type WireSide = 'from' | 'to';
+
+/**
+ * Candidate pins for the moving `side` of a wire: the same ordering and hints as creation
+ * (`candidateTargets`), computed as if the wire were not there (so pins that are on the fixed
+ * end's net only THROUGH this wire stay offered). The pin the side already has is not offered.
+ * Undefined when the wire does not exist.
+ */
+export function reconnectCandidates(
+  doc: ProjectDocument,
+  wireId: string,
+  side: WireSide,
+): Candidate[] | undefined {
+  const wire = doc.layout.wires.find((w) => w.id === wireId);
+  if (!wire) return undefined;
+  const fixed = side === 'from' ? wire.to : wire.from;
+  const moving = side === 'from' ? wire.from : wire.to;
+  const without: ProjectDocument = {
+    ...doc,
+    layout: { ...doc.layout, wires: doc.layout.wires.filter((w) => w.id !== wireId) },
+  };
+  let list: Candidate[];
+  if (fixed.kind === 'terminal') {
+    list = candidateTargets(without, { component: fixed.component, terminal: fixed.terminal });
+  } else {
+    const origin = endPosition(without, fixed);
+    list = origin ? rankPins(without, origin, undefined, {}) : [];
+  }
+  // Another wire already joining the fixed end and a pin would be a refused duplicate.
+  const twins = new Set(
+    without.layout.wires.flatMap((w) =>
+      nodeKey(w.from) === nodeKey(fixed) && w.to.kind === 'terminal'
+        ? [nodeKey(w.to)]
+        : nodeKey(w.to) === nodeKey(fixed) && w.from.kind === 'terminal'
+          ? [nodeKey(w.from)]
+          : [],
+    ),
+  );
+  return list.filter((c) => {
+    const k = nodeKey({ kind: 'terminal', ...c.pin });
+    return !twins.has(k) && !(moving.kind === 'terminal' && nodeKey(moving) === k);
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
 // State machine
 
 export type WireKbState =
   | { mode: 'idle' }
   | { mode: 'pins'; component: string; index: number }
-  | { mode: 'wiring'; from: PinRef; candidates: Candidate[]; index: number };
+  | { mode: 'wiring'; from: PinRef; candidates: Candidate[]; index: number }
+  // Re-pick (slice 4): choosing which end of the selected wire to move, then its new target.
+  | { mode: 'ends'; wire: string; side: WireSide }
+  | { mode: 'repick'; wire: string; side: WireSide; candidates: Candidate[]; index: number };
 
 export type WireKbAction =
   | { type: 'enterPins'; component: string }
@@ -112,7 +178,12 @@ export type WireKbAction =
   | { type: 'start' }
   | { type: 'cycle'; delta: number }
   | { type: 'commit' }
-  | { type: 'cancel' };
+  | { type: 'cancel' }
+  | { type: 'repickStart'; wire: string }
+  /** Move the end highlight to the other end (Tab). */
+  | { type: 'repickToggle' }
+  /** Choose an end: `side` (keys 1/2), or the highlighted one when omitted (Enter). */
+  | { type: 'repickChoose'; side?: WireSide };
 
 export interface WireKbContext {
   doc: ProjectDocument;
@@ -132,7 +203,13 @@ export type WireKbEvent =
   | { kind: 'cancel' }
   | { kind: 'refused'; reason: EditError }
   | { kind: 'running' }
-  | { kind: 'noTargets'; pin: PinRef };
+  | { kind: 'noTargets'; pin: PinRef }
+  | { kind: 'repickEnds'; wire: string; from: WireEnd; to: WireEnd }
+  | { kind: 'repickSide'; side: WireSide; end: WireEnd }
+  | { kind: 'repickStart'; wire: string; side: WireSide; end: WireEnd }
+  | { kind: 'repickNoTargets'; wire: string; side: WireSide }
+  | { kind: 'repickDone'; wire: string; from: WireEnd; to: WireEnd }
+  | { kind: 'repickCancel'; wire: string };
 
 export interface WireKbResult {
   state: WireKbState;
@@ -177,7 +254,7 @@ export function reduceWireKeyboard(
       };
     }
     case 'cycle': {
-      if (state.mode !== 'wiring') return { state };
+      if (state.mode !== 'wiring' && state.mode !== 'repick') return { state };
       const index = wrap(state.index + action.delta, state.candidates.length);
       return {
         state: { ...state, index },
@@ -190,6 +267,31 @@ export function reduceWireKeyboard(
       };
     }
     case 'commit': {
+      if (state.mode === 'repick') {
+        if (ctx.running) return { state, event: { kind: 'running' } };
+        const w = ctx.doc.layout.wires.find((x) => x.id === state.wire);
+        if (!w) return { state: { mode: 'idle' } };
+        const to = state.candidates[state.index]!.pin;
+        const fixed = state.side === 'from' ? w.to : w.from;
+        const a = endPosition(ctx.doc, fixed);
+        const b = terminalPosition(ctx.doc, to.component, to.terminal);
+        const vertices = a && b && ctx.route ? ctx.route(a, b).vertices : [];
+        const r = reconnectWire(
+          ctx.doc,
+          w.id,
+          state.side,
+          { kind: 'terminal', ...to },
+          // The router's route runs from the fixed end to the new one; stored order is from->to.
+          state.side === 'from' ? [...vertices].reverse() : vertices,
+        );
+        if (!r.ok) return { state, event: { kind: 'refused', reason: r.error } };
+        const nw = r.doc.layout.wires.find((x) => x.id === w.id) ?? w;
+        return {
+          state: { mode: 'idle' },
+          doc: r.doc,
+          event: { kind: 'repickDone', wire: w.id, from: nw.from, to: nw.to },
+        };
+      }
       if (state.mode !== 'wiring') return { state };
       if (ctx.running) return { state, event: { kind: 'running' } };
       const to = state.candidates[state.index]!.pin;
@@ -218,7 +320,40 @@ export function reduceWireKeyboard(
     }
     case 'cancel':
       if (state.mode === 'idle') return { state };
+      if (state.mode === 'ends' || state.mode === 'repick')
+        return { state: { mode: 'idle' }, event: { kind: 'repickCancel', wire: state.wire } };
       return { state: { mode: 'idle' }, event: { kind: 'cancel' } };
+    case 'repickStart': {
+      if (state.mode !== 'idle') return { state };
+      if (ctx.running) return { state, event: { kind: 'running' } };
+      const w = ctx.doc.layout.wires.find((x) => x.id === action.wire);
+      if (!w) return { state };
+      return {
+        state: { mode: 'ends', wire: w.id, side: 'from' },
+        event: { kind: 'repickEnds', wire: w.id, from: w.from, to: w.to },
+      };
+    }
+    case 'repickToggle': {
+      if (state.mode !== 'ends') return { state };
+      const w = ctx.doc.layout.wires.find((x) => x.id === state.wire);
+      if (!w) return { state: { mode: 'idle' } };
+      const side: WireSide = state.side === 'from' ? 'to' : 'from';
+      return { state: { ...state, side }, event: { kind: 'repickSide', side, end: w[side] } };
+    }
+    case 'repickChoose': {
+      if (state.mode !== 'ends') return { state };
+      if (ctx.running) return { state, event: { kind: 'running' } };
+      const side = action.side ?? state.side;
+      const w = ctx.doc.layout.wires.find((x) => x.id === state.wire);
+      if (!w) return { state: { mode: 'idle' } };
+      const candidates = reconnectCandidates(ctx.doc, w.id, side) ?? [];
+      if (!candidates.length)
+        return { state: { ...state, side }, event: { kind: 'repickNoTargets', wire: w.id, side } };
+      return {
+        state: { mode: 'repick', wire: w.id, side, candidates, index: 0 },
+        event: { kind: 'repickStart', wire: w.id, side, end: w[side] },
+      };
+    }
   }
 }
 
@@ -281,6 +416,49 @@ export function wireBracketStep(e: BracketKeyEvent): 1 | -1 | null {
   if (e.code === 'BracketLeft') return -1;
   if (e.code === 'BracketRight') return 1;
   return null;
+}
+
+/**
+ * While choosing the end / the new target (slice 4) these keys must not fall through to the
+ * wire-selection, wiring-start, re-pick-start or delete handlers (they would leave stale kb state).
+ * Ctrl/Meta/Alt combinations (undo, redo) are not swallowed; the mode resets when the document changes.
+ */
+export function repickSwallowsKey(e: BracketKeyEvent): boolean {
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  return (
+    wireBracketStep(e) !== null ||
+    e.key === 'Delete' ||
+    e.key === 'Backspace' ||
+    e.code === 'KeyW' ||
+    e.code === 'KeyE'
+  );
+}
+
+/**
+ * True when a re-pick in progress no longer applies: the simulation runs, the wire is gone, the
+ * document changed since the mode started (edit, undo, redo) or the selection is no longer exactly
+ * that wire.
+ */
+export function repickIsStale(
+  wire: string,
+  doc: ProjectDocument,
+  startDoc: ProjectDocument,
+  running: boolean,
+  selection: {
+    wires: readonly string[];
+    components: readonly string[];
+    junctions: readonly string[];
+  },
+): boolean {
+  return (
+    running ||
+    doc !== startDoc ||
+    !doc.layout.wires.some((w) => w.id === wire) ||
+    selection.wires.length !== 1 ||
+    selection.wires[0] !== wire ||
+    selection.components.length > 0 ||
+    selection.junctions.length > 0
+  );
 }
 
 // Wires list (TBI-001 slice 3): the same stable document order as `stepWireSelection`.

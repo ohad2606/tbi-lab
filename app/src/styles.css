@@ -770,7 +770,8 @@ select {
 
 /* The wire's source pin stays marked while choosing a target: a solid, thicker ring (the target
    ring is dashed and filled), so the two differ by shape and not by colour. */
-.terminal.kb-source .kb-ring {
+.terminal.kb-source .kb-ring,
+.junction.kb-source .kb-ring {
   visibility: visible;
   stroke-width: 5;
   stroke-dasharray: none;
