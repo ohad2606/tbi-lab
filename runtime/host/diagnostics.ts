@@ -67,6 +67,9 @@ export const REASON_CLASS: Readonly<
   // Sprint 23B: the owner disabled the account. An existing category (the line's closed set and
   // the alerter's rules are unchanged); the `reason` field names it exactly.
   account_disabled: { category: 'client_release', severity: 'info' },
+  // TBI-018 s3d-4: the sim meter ended the run (allowance used up / meter unavailable, fail closed)
+  sim_minutes: { category: 'timeout', severity: 'info' },
+  sim_unavailable: { category: 'internal', severity: 'warning' },
   // failed: what the user's project or firmware asked for (not host faults)
   unsupported_feature: { category: 'user_content', severity: 'info' },
   invalid_attachment: { category: 'user_content', severity: 'info' },
