@@ -43,6 +43,8 @@
      stays an accent only. */
   --focus: #0a1a33;
   --focus-halo: #ffffff;
+  /* A11Y-028: selected row in the connections list; text (#14181f) on it is >= 12:1. */
+  --selection-bg: #d6e6fb;
   font-family: system-ui, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Sans Hebrew', Arial, sans-serif;
   font-size: 15px;
   color: var(--text);
@@ -2374,6 +2376,7 @@ select {
 /* The side column: the inspector (scrolls) and, for ESP32 projects, the terminal under it. */
 .side-column {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto auto;
   min-width: 0;
   min-height: 0;
@@ -4786,6 +4789,8 @@ select {
 
 /* A11Y-028: the connections text alternative. */
 .connections {
+  min-width: 0;
+  max-width: 100%;
   border-block-start: 1px solid var(--border);
   background: var(--panel);
   padding: 0.25rem 0.75rem;
@@ -4819,11 +4824,7 @@ select {
   margin: 0;
   padding-inline-start: 1.1rem;
 }
-.connections-body:focus-visible,
-.conn-select:focus-visible {
-  outline: 2px solid var(--focus, currentColor);
-  outline-offset: 2px;
-}
+/* Focus: the global two-tone :focus-visible ring (3 px outline + white halo) applies; no override. */
 .conn-select {
   min-height: 24px;
   min-width: 24px;
@@ -4840,7 +4841,7 @@ select {
   border-width: 2px;
 }
 .connections-body tr[data-selected='true'] {
-  background: var(--selection-bg, rgba(80, 140, 255, 0.18));
+  background: var(--selection-bg);
 }
 .conn-pin.selected {
   font-weight: 700;
