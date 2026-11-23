@@ -13,6 +13,7 @@
     "builder/**/*.ts",
     "identity/**/*.ts",
     "admin/**/*.ts",
-    "plans/**/*.ts"
+    "plans/**/*.ts",
+    "mailer/**/*.ts"
   ]
 }

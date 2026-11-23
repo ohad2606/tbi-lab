@@ -1,0 +1,91 @@
+# ARC-MAILER (D-ARC-2) — DRAFT unit, NOT rendered by any installer and NOT installed anywhere.
+# Design: docs/alpha/MAILER-DESIGN.md. Placeholders (@...@) are filled by a later deploy slice.
+#
+# The only TBI process with network egress for mail, and the only one that can read the mail
+# provider key. It reads the mail queue written by the admin service (which keeps
+# PrivateNetwork=yes) and writes only its own status ledger. No spool, no accounts, no sessions,
+# no pending sign-up store, no artifacts, no other secret.
+#
+# Directories (created by the installer, never by this unit):
+#   /var/lib/tbi-mail/queue   3730 tbi-mailer:tbi-mailq  admin writes (group wx), only the mailer lists/removes
+#   /var/lib/tbi-mail/status  2750 tbi-mailer:tbi-mailq  mailer writes ledgers 0640, admin reads
+# Queue files are 0640 <admin uid>:tbi-mailq (setgid directory): the mailer reads them through its
+# supplementary group tbi-mailq (below). The admin service also joins tbi-mailq (a later,
+# separately reviewed change to its unit).
+[Unit]
+Description=TBI Lab mailer (@N@)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+User=tbi-mailer
+Group=tbi-mailer
+# Read access to the admin-owned 0640 queue files (group tbi-mailq); the only extra group.
+SupplementaryGroups=tbi-mailq
+UMask=0027
+# Off unless the deploy step sets TBI_MAILER=1 (an unset flag exits 0 with one log line).
+Environment=TBI_MAILER=0
+Environment=TBI_MAILER_QUEUE_DIR=/var/lib/tbi-mail/queue
+Environment=TBI_MAILER_STATUS_DIR=/var/lib/tbi-mail/status
+Environment=TBI_MAILER_QUEUE_UID=@ADMIN_UID@
+Environment=TBI_MAILER_FROM=@MAIL_FROM@
+Environment=TBI_MAILER_LAB_URL=@LAB_URL@
+# The key: systemd copies the root-owned 0400 file into this unit's private credential directory
+# (%d, readable by this service only); the process never sees the original path.
+LoadCredential=resend.key:/etc/tbi-signup/resend.key
+Environment=TBI_MAILER_KEY_FILE=%d/resend.key
+BindReadOnlyPaths=@NODE@:/opt/tbi-node
+BindReadOnlyPaths=@BUNDLES@:/opt/tbi-build
+ExecStart=/opt/tbi-node/bin/node /opt/tbi-build/mailer-service.mjs
+Restart=on-failure
+RestartSec=10
+
+# Filesystem: read-only everywhere except its two directories.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/tbi-mail/queue /var/lib/tbi-mail/status
+InaccessiblePaths=-/var/lib/tbi-admin -/var/lib/tbi-signup -/etc/tbi-signup -/etc/@N@
+InaccessiblePaths=-@STORE@ -/var/lib/@N@-runtime -/var/lib/@N@-build -/var/lib/private
+InaccessiblePaths=-/run/@N@-admin -/run/@N@-runtime -/var/log/tbi-admin
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateIPC=yes
+RemoveIPC=yes
+KeyringMode=private
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# Privileges and kernel surface.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# MemoryDenyWriteExecute stays off: Node's JIT needs writable+executable pages.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallArchitectures=native
+DevicePolicy=closed
+MemoryMax=128M
+TasksMax=16
+# Network: outbound to the mail provider and the local DNS stub only. IPAddressAllow takes
+# addresses, not host names: @MAIL_EGRESS_ALLOW@ is the provider's published address list kept by
+# ops (open question in the design: provider addresses can change; alternative is an egress proxy).
+# AF_UNIX is kept for the libc resolver (to be verified on staging; drop it if not needed).
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=127.0.0.53/32 @MAIL_EGRESS_ALLOW@
+# Client only: it never listens or binds a socket (systemd >= 249).
+SocketBindDeny=any
+
+[Install]
+WantedBy=multi-user.target
