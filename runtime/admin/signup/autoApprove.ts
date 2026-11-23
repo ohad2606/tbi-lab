@@ -172,7 +172,7 @@ export async function autoStateDirCheck(
   rawPath: string,
   opts: { lstat?: (p: string) => Promise<DirStat> } = {},
 ): Promise<string | null> {
-  // A trailing slash is the same directory: strip it before the checks (a symlink is still caught by realpath).
+  // A trailing slash is the same directory: strip it before the checks (a symlink is still refused: lstat says not_dir).
   const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') || '/' : rawPath;
   const stat = opts.lstat ?? lstatAsync;
   const uid = process.getuid?.();
