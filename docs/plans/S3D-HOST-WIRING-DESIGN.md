@@ -270,12 +270,15 @@ at `start` for the whole run (adapter rule).
   must exist and be tested BEFORE metering is enabled anywhere (acceptance of s3d-6).
 - Lost on restart (memory only, accepted in s3c): waiting list (clients re-join, section 4), ticket
   registry, Free cooldown. Optional: seed Free cooldowns from the journal (`closedAt` of the last Free
-  session + `queue.freeCooldownMs`), decision O-9.
+  session + `queue.freeCooldownMs`), decision O-9. *Owner 2026-11-23: O-9 = accept the s3c limit; no
+  seed is built.*
 - Compaction: `SimMeter.compact()` is not called anywhere yet. Proposed: at boot after recovery when
   the journal exceeds a configured event count, never while sessions are open. It replaces the journal
   atomically and keeps no old copy itself, so the host first writes a timestamped `.pre-compact` copy
   that is never deleted automatically (M5). Journal retention (how long copies and old events are kept)
-  is an owner decision (m11).
+  is an owner decision (m11), still OPEN (D-day1417-2); proposed wording (operator keeps the last N = 3
+  `.pre-compact` / `.pre-repair` copies, deletes older ones by hand only, logged; no auto-deletion) is in
+  `S3D-STAGING-ENABLE-CHECKLIST.md` §0.
 
 ## 8. Races and idempotency
 
@@ -447,10 +450,26 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
    constructor, tests use out-of-bound beats); repair tool `runtime/plans/repairjournal.ts` + CLI
    `repair-main.ts`; checklist `docs/plans/S3D-STAGING-ENABLE-CHECKLIST.md`. The heartbeat timeout
    `max(1, leaseMs - beatMs)` uses the host lease, which boot forces equal to `sim.leaseMs`.
-   Not done (s3d-7): cooldown seed (O-9, owner decision), packaging of the repair CLI in the release
+   Not done in s3d-6: cooldown seed (O-9, owner decision), packaging of the repair CLI in the release
    bundle, a config validator, unit re-install on any host.
+7. **s3d-7 money/metering hardening (flag-off).** *Implemented (2026-11-23):* the repair CLI is
+   packaged as one self-contained bundle: `npm run simrepair:build` ->
+   `runtime/plans/dist/sim-journal-repair.mjs` (esbuild node ESM like `session-host.mjs`; runs with no
+   `node_modules`); a test builds it, runs it alone from an empty directory and pins exit 0 / 2 / 3 / 1
+   report-only with nothing written. Checklist: the real command, a drill on a COPY of the journal,
+   stale-lock handling, a clock/time-skew check, owner decisions of 2026-11-23. Test hygiene: host and
+   plans tests kill their children (SIGKILL after a sync timeout, `afterEach` for async spawns; a static
+   test pins both). O-9 accepted as the s3c limit: no cooldown seed.
+   *What remains:* shipping the bundle in `deploy/release/build-package.sh` (services/) and
+   `deploy/dev-lab/s8/install.sh` (release/install tooling, not changed here: PM/owner decision); a
+   separate config validator; retention m11 (owner, D-day1417-2); unit re-install on a host. Enabling
+   metering on staging or anywhere stays a SEPARATE owner approval (O-10), executed with
+   `S3D-STAGING-ENABLE-CHECKLIST.md`.
 
-## 13. Open owner / PM decisions
+## 13. Owner / PM decisions
+
+*Owner 2026-11-23: O-1 .. O-11 below are ACCEPTED as proposed; O-9 = accept the s3c limit (no Free
+cooldown seed). Still open: m11 journal retention (D-day1417-2) and the enabling approval itself (O-10).*
 
 - O-1 Plan source for the host: policy-name map now (`preview`/`system` -> `legacy`), entitlements
   later? Which plan do principals without an assignment get once metering is on?
