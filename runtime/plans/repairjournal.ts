@@ -78,7 +78,7 @@ async function replays(file: string): Promise<{ ok: boolean; events: number }> {
 
 export async function repairTornTail(dir: string, opts: RepairOptions): Promise<RepairOutcome> {
   // the directory must already exist: the tool never creates state
-  let isDir = false;
+  let isDir: boolean;
   try {
     isDir = lstatSync(dir).isDirectory();
   } catch {
