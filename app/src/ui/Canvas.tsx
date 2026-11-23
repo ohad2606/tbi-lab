@@ -1070,9 +1070,7 @@ export function Canvas({
         const gone = !doc.layout.wires.some((w) => w.id === kb.wire);
         setKb({ mode: 'idle' });
         kbRepickDoc.current = null;
-        kbAnnounce(
-          gone || simActive ? '' : t('kbwire.repick.cancel', { n: wirePosition(doc, kb.wire) }),
-        );
+        kbAnnounce(gone || simActive ? '' : t('kbwire.repick.stale'));
       }
       return;
     }

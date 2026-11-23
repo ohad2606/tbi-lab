@@ -96,3 +96,37 @@ describe('reconnectWire', () => {
     });
   });
 });
+
+describe('reconnectWire and junctions', () => {
+  /** W1 PSU1.positive -> R1.a is split by a junction when R2.a joins it: three wires meet there. */
+  function tee(): ProjectDocument {
+    const doc = must(
+      addWire(bench(), t('R2', 'a'), { kind: 'wire', wire: 'W1', at: { x: -60, y: -20 } }),
+    ).doc;
+    return doc;
+  }
+  it('dissolves a junction left with two wires, and undo (the input document) is untouched', () => {
+    const before = tee();
+    expect(before.layout.junctions).toHaveLength(1);
+    expect(before.layout.wires).toHaveLength(3);
+    const snap = JSON.stringify(before);
+    const j = before.layout.junctions[0]!.id;
+    const spur = before.layout.wires.find(
+      (w) => w.from.kind === 'junction' || w.to.kind === 'junction',
+    )!;
+    // Find a wire with one end on the junction and the other on a terminal: the R2.a spur.
+    const r2 = before.layout.wires.find(
+      (w) =>
+        (w.from.kind === 'terminal' && w.from.component === 'R2') ||
+        (w.to.kind === 'terminal' && w.to.component === 'R2'),
+    )!;
+    expect(spur).toBeTruthy();
+    const end = r2.from.kind === 'junction' ? 'from' : 'to';
+    expect(end === 'from' ? r2.from : r2.to).toEqual({ kind: 'junction', junction: j });
+    const after = must(reconnectWire(before, r2.id, end, t('R2', 'b'))).doc;
+    expect(validateProject(after)).toEqual([]);
+    expect(after.layout.junctions).toEqual([]);
+    expect(after.layout.wires).toHaveLength(2);
+    expect(JSON.stringify(before)).toBe(snap); // restoring = the previous document, unchanged
+  });
+});

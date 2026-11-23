@@ -2175,6 +2175,7 @@ export const he: Record<MessageKey, string> = {
   'kbwire.repick.noTargets': 'אין פין אחר שאפשר להעביר אליו את קצה {k}.',
   'kbwire.repick.done': 'חוט {n} חובר מחדש: {from} אל {to}',
   'kbwire.repick.cancel': 'בחירה מחדש בוטלה. חוט {n} לא השתנה.',
+  'kbwire.repick.stale': 'הבחירה מחדש בוטלה כי המעגל או הבחירה השתנו.',
   'kbwire.running': 'חיווט אינו זמין בזמן שהסימולציה רצה. עצרו את הסימולציה תחילה.',
   'kbwire.noTargets': 'אין פין אחר לחבר אליו את {pin}.',
   'kbwire.wireSelected': 'חוט {n} מתוך {total}: {from} אל {to}.{hint}',
@@ -2290,7 +2291,7 @@ export const he: Record<MessageKey, string> = {
   'shortcut.wireSelect.when': 'תצוגת המעגל, לא במצב פינים',
   'shortcut.wireRepick.action':
     'בחירה מחדש של קצה אחד בחוט הנבחר (בוחרים את הקצה ואז את הפין החדש)',
-  'shortcut.wireRepick.when': 'חוט נבחר; לא בזמן הרצה',
+  'shortcut.wireRepick.when': 'חוט נבחר; לא בזמן הרצה ולא לקריאה בלבד',
   'shortcut.escStep.action': 'חזרה צעד אחד אחורה: מצב בדיקה, רכיב מוכן, מצב ציור, ואז ניקוי הבחירה',
   'shortcut.escStep.when': 'תצוגת המעגל',
   'shortcut.delete.action': 'מחיקת הרכיבים, החוטים או הצמתים הנבחרים',
@@ -2317,11 +2318,13 @@ export const he: Record<MessageKey, string> = {
   'shortcut.wireStart.when': 'מצב פינים',
   'shortcut.targetCycle.action': 'מעבר בין יעדים אפשריים (Tab נשאר כאן בכוונה)',
   'shortcut.targetCycle.when': 'בזמן בחירת סוף החוט',
-  'shortcut.repickEnd.action': 'בחירת הקצה להזזה: 1 הקצה הראשון, 2 השני (גם Tab ו-Enter עובדים)',
+  'shortcut.repickEnd.action':
+    'בחירת הקצה להזזה: 1 הקצה הראשון, 2 השני; או מעבר בין הקצוות במקשי החצים או ב-Tab וב-Shift + Tab, ו-Enter בוחר',
   'shortcut.repickEnd.when': 'אחרי E, בזמן בחירת הקצה',
   'shortcut.wireConnect.action': 'חיבור החוט ליעד שנבחר',
   'shortcut.wireConnect.when': 'בזמן בחירת סוף החוט',
-  'shortcut.wireCancel.action': 'ביטול; המיקוד חוזר לרכיב',
+  'shortcut.wireCancel.action':
+    'ביטול; המיקוד חוזר לרכיב (בבחירה מחדש של קצה חוט הוא נשאר על הקנבס)',
   'shortcut.wireCancel.when': 'מצב פינים או חיווט',
   'shortcut.schematicSelect.action': 'בחירת הסמל או המודול',
   'shortcut.schematicSelect.when': 'סמל ממוקד',
