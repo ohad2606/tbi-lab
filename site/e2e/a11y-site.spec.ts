@@ -104,6 +104,11 @@ for (const { lang, dir } of LANGS) {
     // default build links the owner-supplied https form; pending build links the how-to-apply section
     const primary = page.locator('a.btn-primary').first();
     if (await primary.count()) {
+      // SITE_SIGNUP_ENABLED=1 (flip mode): the CTA is the own sign-up page, same tab
+      if (process.env.SITE_SIGNUP_ENABLED === '1') {
+        await expect(primary).toHaveAttribute('href', `/${lang}/signup/`);
+        return;
+      }
       await expect(primary).toHaveAttribute('href', /^https:\/\/forms\.gle\//);
       await expect(primary).toHaveAttribute('rel', 'noopener');
       return;
