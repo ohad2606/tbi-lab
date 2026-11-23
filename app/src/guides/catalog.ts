@@ -59,6 +59,11 @@ export function guideById(id: string): ComponentGuide | undefined {
   return GUIDES.find((g) => g.id === id);
 }
 
+/** Guides whose main part is `part` (the Inspector link). */
+export function guidesForPart(part: string): ComponentGuide[] {
+  return GUIDES.filter((g) => g.part === part);
+}
+
 /** Every key a guide needs (title plus all section keys). */
 export function requiredKeys(guide: ComponentGuide): MessageKey[] {
   return [guide.titleKey, ...guide.sections.flatMap((s) => s.keys)];

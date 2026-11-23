@@ -13,6 +13,8 @@ import { formatDateTime, isolateUserText, type LocaleInfo } from '../i18n/i18n.j
 import type { ProjectIndexEntry } from '../persistence/store.js';
 import { useAppState, useStore, useT } from './context.js';
 import { FIRST_RUN_EXAMPLE } from './firstRun.js';
+import { GUIDES } from '../guides/catalog.js';
+import { openComponentGuide } from './componentGuideOpen.js';
 
 /** The project library: new project, examples, import, and every local project. */
 export function Home() {
@@ -170,6 +172,30 @@ export function Home() {
           <h2 id="examples-heading">{t('library.examples.heading')}</h2>
           <p class="muted small">{t('library.examples.intro')}</p>
           <ExampleFinder onOpen={(id) => void store.openExample(id)} />
+        </section>
+
+        <section
+          class="card home-guides"
+          aria-labelledby="component-guides-heading"
+          data-testid="home-guides"
+        >
+          <h2 id="component-guides-heading">{t('guidepanel.home.heading')}</h2>
+          <p class="muted small">{t('guidepanel.home.intro')}</p>
+          <ul class="guide-list">
+            {GUIDES.map((g) => (
+              <li key={g.id}>
+                <button
+                  type="button"
+                  class="button"
+                  data-testid={`open-guide-${g.id}`}
+                  onClick={(e) => openComponentGuide(g.id, e.currentTarget)}
+                >
+                  {t(g.titleKey)}
+                </button>{' '}
+                <span class="muted small">{t('guidepanel.panel.minutes', { n: g.minutes })}</span>
+              </li>
+            ))}
+          </ul>
         </section>
       </div>
 

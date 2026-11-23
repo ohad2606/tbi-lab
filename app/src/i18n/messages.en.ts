@@ -2488,6 +2488,20 @@ export const en = {
   'compguide.led-resistor.limits.body':
     'The LED is a nominal part: there is no temperature drift, and its model is documented for a limited current range.',
 
+  // TBI-019 G2: the guide panel and its entry points.
+  'guidepanel.home.heading': 'Component guides',
+  'guidepanel.home.intro': 'Short lessons about one part, with a working circuit to open.',
+  'guidepanel.inspector.link': 'Guide: {title}',
+  'guidepanel.panel.minutes': 'About {n} minutes',
+  'guidepanel.panel.close': 'Close guide',
+  'guidepanel.panel.loading': 'Loading the guide values.',
+  'guidepanel.panel.valuesUnavailable':
+    'Some values could not be calculated here, so they are shown as a dash.',
+  'guidepanel.panel.expected': 'You should see:',
+  'guidepanel.panel.openExample': 'Open the example',
+  'guidepanel.panel.exampleOpened': 'The example is open in the Lab as a new project.',
+  'guidepanel.panel.exampleFailed': 'The example could not be opened.',
+
   // Admin app design §3: the administration's texts (and the report kinds and areas it shows)
   // are shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesEn,
