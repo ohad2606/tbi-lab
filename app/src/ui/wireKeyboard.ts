@@ -418,6 +418,49 @@ export function wireBracketStep(e: BracketKeyEvent): 1 | -1 | null {
   return null;
 }
 
+/**
+ * While choosing the end / the new target (slice 4) these keys must not fall through to the
+ * wire-selection, wiring-start, re-pick-start or delete handlers (they would leave stale kb state).
+ * Ctrl/Meta/Alt combinations (undo, redo) are not swallowed; the mode resets when the document changes.
+ */
+export function repickSwallowsKey(e: BracketKeyEvent): boolean {
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  return (
+    wireBracketStep(e) !== null ||
+    e.key === 'Delete' ||
+    e.key === 'Backspace' ||
+    e.code === 'KeyW' ||
+    e.code === 'KeyE'
+  );
+}
+
+/**
+ * True when a re-pick in progress no longer applies: the simulation runs, the wire is gone, the
+ * document changed since the mode started (edit, undo, redo) or the selection is no longer exactly
+ * that wire.
+ */
+export function repickIsStale(
+  wire: string,
+  doc: ProjectDocument,
+  startDoc: ProjectDocument,
+  running: boolean,
+  selection: {
+    wires: readonly string[];
+    components: readonly string[];
+    junctions: readonly string[];
+  },
+): boolean {
+  return (
+    running ||
+    doc !== startDoc ||
+    !doc.layout.wires.some((w) => w.id === wire) ||
+    selection.wires.length !== 1 ||
+    selection.wires[0] !== wire ||
+    selection.components.length > 0 ||
+    selection.junctions.length > 0
+  );
+}
+
 // Wires list (TBI-001 slice 3): the same stable document order as `stepWireSelection`.
 export interface WireListEntry {
   id: string;

@@ -2178,7 +2178,8 @@ export const he: Record<MessageKey, string> = {
   'kbwire.running': 'חיווט אינו זמין בזמן שהסימולציה רצה. עצרו את הסימולציה תחילה.',
   'kbwire.noTargets': 'אין פין אחר לחבר אליו את {pin}.',
   'kbwire.wireSelected': 'חוט {n} מתוך {total}: {from} אל {to}.{hint}',
-  'kbwire.wireSelected.hint': ' מקש {delete} מסיר אותו, מקש {escape} מבטל בחירה.',
+  'kbwire.wireSelected.hint':
+    ' מקש {delete} מסיר אותו, מקש {key} מזיז קצה, מקש {escape} מבטל בחירה.',
   'kbwire.wireDeleteRefused':
     'אי אפשר להסיר את החוט: העריכה אינה זמינה (הסימולציה רצה או שהפרויקט לקריאה בלבד).',
   'kbwire.wireRemoved': 'החוט הוסר: {from} אל {to}',

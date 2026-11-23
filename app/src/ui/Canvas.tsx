@@ -74,6 +74,8 @@ import {
   stepWireSelection,
   wirePosition,
   wireBracketStep,
+  repickIsStale,
+  repickSwallowsKey,
   type WireKbAction,
   type WireKbEvent,
   type WireKbState,
@@ -791,6 +793,7 @@ export function Canvas({
           : t('kbwire.wireSelected.hint', {
               delete: isolateLtr('Delete'),
               escape: isolateLtr('Escape'),
+              key: isolateLtr('E'),
             }),
       }),
     );
@@ -898,6 +901,10 @@ export function Canvas({
     if (e.key === 'Escape') {
       e.preventDefault();
       kbDispatch({ type: 'cancel' });
+      return true;
+    }
+    if (repickSwallowsKey(e)) {
+      e.preventDefault();
       return true;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return false;
@@ -1013,6 +1020,7 @@ export function Canvas({
     ) as SVGElement | null;
     el?.focus({ preventScroll: true });
   }, [kbPinKey]);
+  const kbRepickDoc = useRef<typeof doc | null>(null);
   const kbCandidate =
     kb.mode === 'wiring' || kb.mode === 'repick' ? kb.candidates[kb.index] : undefined;
   // The end of the wire being re-picked that the user is on (ring only; focus stays on the canvas).
@@ -1020,6 +1028,12 @@ export function Canvas({
     if (kb.mode !== 'ends' && kb.mode !== 'repick') return undefined;
     const end = doc.layout.wires.find((w) => w.id === kb.wire)?.[kb.side];
     return end?.kind === 'terminal' ? `${end.component}\u0000${end.terminal}` : undefined;
+  })();
+  // Same ring on a junction when the end being moved is a junction.
+  const kbRepickJunction = (() => {
+    if (kb.mode !== 'ends' && kb.mode !== 'repick') return undefined;
+    const end = doc.layout.wires.find((w) => w.id === kb.wire)?.[kb.side];
+    return end?.kind === 'junction' ? end.junction : undefined;
   })();
   const kbCandidatePos = kbCandidate
     ? terminalPosition(doc, kbCandidate.pin.component, kbCandidate.pin.terminal)
@@ -1045,18 +1059,26 @@ export function Canvas({
   }, [kbCandidatePos?.x, kbCandidatePos?.y]);
   // Leaving the document state (simulation start, component removed) ends keyboard wiring.
   useEffect(() => {
-    if (kb.mode === 'idle') return;
+    if (kb.mode === 'idle') {
+      kbRepickDoc.current = null;
+      return;
+    }
     if (kb.mode === 'ends' || kb.mode === 'repick') {
-      const gone = !doc.layout.wires.some((w) => w.id === kb.wire);
-      if (simActive || gone) {
+      // Slice 4: the selected wire or the document changed (edit, undo, redo, selection moved).
+      const start = (kbRepickDoc.current ??= doc);
+      if (repickIsStale(kb.wire, doc, start, simActive, selection)) {
+        const gone = !doc.layout.wires.some((w) => w.id === kb.wire);
         setKb({ mode: 'idle' });
-        kbAnnounce('');
+        kbRepickDoc.current = null;
+        kbAnnounce(
+          gone || simActive ? '' : t('kbwire.repick.cancel', { n: wirePosition(doc, kb.wire) }),
+        );
       }
       return;
     }
     const comp = kb.mode === 'pins' ? kb.component : kb.from.component;
     if (simActive || !doc.components.some((c) => c.id === comp)) setKb({ mode: 'idle' });
-  }, [simActive, doc]);
+  }, [simActive, doc, selection]);
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (onKbKey(e)) return;
@@ -1548,7 +1570,7 @@ export function Canvas({
               key={j.id}
               data-hit="junction"
               data-id={j.id}
-              class={selected.junctions.has(j.id) ? 'junction selected' : 'junction'}
+              class={`${selected.junctions.has(j.id) ? 'junction selected' : 'junction'}${kbRepickJunction === j.id ? ' kb-source' : ''}`}
             >
               <circle class="junction-hit" cx={j.x} cy={j.y} r={8} />
               <circle
@@ -1558,6 +1580,7 @@ export function Canvas({
                 r={4.5}
                 aria-label={t('canvas.junctionLabel', { id: j.id })}
               />
+              {kbRepickJunction === j.id && <circle class="kb-ring" cx={j.x} cy={j.y} r={11} />}
             </g>
           ))}
         </g>

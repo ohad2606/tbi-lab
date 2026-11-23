@@ -13,6 +13,8 @@ import { en } from '../src/i18n/messages.en.js';
 import { he } from '../src/i18n/messages.he.js';
 import {
   reconnectCandidates,
+  repickIsStale,
+  repickSwallowsKey,
   reduceWireKeyboard,
   type WireKbAction,
   type WireKbState,
@@ -186,5 +188,42 @@ describe('re-pick texts (en/he parity)', () => {
       expect(ph(H[k]!), k).toEqual(ph(E[k]!));
       expect(H[k]!.trim(), k).toBeTruthy();
     }
+  });
+});
+
+describe('re-pick: stale state and swallowed keys (review fixes)', () => {
+  const ev = (key: string, extra: Record<string, unknown> = {}) => ({
+    key,
+    code: key.length === 1 ? `Key${key.toUpperCase()}` : key,
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+    shiftKey: false,
+    ...extra,
+  });
+  const sel = (wires: string[]) => ({
+    wires,
+    components: [] as string[],
+    junctions: [] as string[],
+  });
+
+  it('swallows [ ] W E Delete Backspace but not Ctrl+Z or Escape', () => {
+    for (const k of ['[', ']', 'w', 'e', 'Delete', 'Backspace'])
+      expect(repickSwallowsKey(ev(k)), k).toBe(true);
+    expect(repickSwallowsKey({ ...ev('z'), ctrlKey: true })).toBe(false);
+    expect(repickSwallowsKey(ev('Escape'))).toBe(false);
+    expect(repickSwallowsKey(ev('1'))).toBe(false);
+  });
+
+  it('is stale after undo/redo/edit, selection change, wire removal or running', () => {
+    const doc = bench();
+    const id = doc.layout.wires[0]!.id;
+    expect(repickIsStale(id, doc, doc, false, sel([id]))).toBe(false);
+    expect(repickIsStale(id, { ...doc }, doc, false, sel([id]))).toBe(true);
+    expect(repickIsStale(id, doc, doc, false, sel([]))).toBe(true);
+    expect(repickIsStale(id, doc, doc, false, sel(['W9']))).toBe(true);
+    expect(repickIsStale(id, doc, doc, true, sel([id]))).toBe(true);
+    const gone = { ...doc, layout: { ...doc.layout, wires: [] } };
+    expect(repickIsStale(id, gone, gone, false, sel([id]))).toBe(true);
   });
 });

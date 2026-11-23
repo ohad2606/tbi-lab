@@ -117,6 +117,28 @@ for (const lang of ['en', 'he'] as const) {
   });
 }
 
+test('A11Y-002 kbwire s4: bracket/W/Delete are swallowed while choosing; undo cancels the mode', async ({
+  page,
+}) => {
+  const { status, wire } = await oneWire(page, 'en');
+  await page.keyboard.press(']');
+  await page.keyboard.press('e');
+  await expect(status).toHaveText(TEXT.en.ends);
+  await expect(page.locator('.kb-source')).toHaveCount(1);
+  for (const k of [']', '[', 'w', 'Delete']) await page.keyboard.press(k);
+  await expect(status).toHaveText(TEXT.en.ends); // nothing fell through
+  await page.keyboard.press('Tab'); // the highlighted end changes visibly
+  await expect(status).toHaveText(TEXT.en.end2);
+  await expect(page.locator('.kb-ring')).toHaveCount(1);
+  await page.waitForTimeout(400);
+  const stored = await waitForStoredProject(page, () => true, 'stored');
+  expect(stored.layout.wires).toEqual([wire]);
+  // Ctrl+Z (document changes under the mode) resets the mode with a cancel announcement.
+  await page.keyboard.press('Control+z');
+  await expect(status).toHaveText(/^$|^Re-pick cancelled/);
+  await expect(page.locator('.kb-ring')).toHaveCount(0);
+});
+
 test('A11Y-002 kbwire s4: E without a selected wire says what to do and changes nothing', async ({
   page,
 }) => {

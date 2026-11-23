@@ -78,6 +78,7 @@ This list is copied from the shortcuts registry in the app (`app/src/ui/shortcut
 
 - <!-- shortcut:pinMode -->`W`: Start wiring from the focused part: choose one of its pins (A part has focus; not while running)
 - <!-- shortcut:wireSelect -->`]` or `[`: Select the previous or next wire; its ends are announced (Circuit view, not in pin mode)
+- <!-- shortcut:wireRepick -->`E`: Re-pick one end of the selected wire (choose the end, then the new pin) (A wire is selected; not while running)
 - <!-- shortcut:escStep -->`Esc`: Step back one level: probe mode, armed part, drawing mode, then clear the selection (Circuit view)
 - <!-- shortcut:delete -->`Delete` or `Backspace`: Delete the selected parts, wires or junctions (Something is selected; not in a read-only example)
 - <!-- shortcut:rotate -->`R`: Rotate the selected parts (Parts are selected; not read-only)
@@ -93,6 +94,7 @@ This list is copied from the shortcuts registry in the app (`app/src/ui/shortcut
 - <!-- shortcut:pinNext -->`Arrow Down` or `Arrow Right`: Next pin of the part (Pin mode)
 - <!-- shortcut:pinPrev -->`Arrow Up` or `Arrow Left` or `Shift + Tab`: Previous pin of the part (Pin mode)
 - <!-- shortcut:wireStart -->`Enter`: Start a wire from this pin (Pin mode)
+- <!-- shortcut:repickEnd -->`1` or `2`: Choose which end of the wire to move: 1 is the first end, 2 the second (Tab and Enter also work) (After E, while choosing the end)
 - <!-- shortcut:targetCycle -->`Arrow keys` or `Tab`: Move between possible targets (Tab is kept inside on purpose) (While choosing where the wire ends)
 - <!-- shortcut:wireConnect -->`Enter`: Connect the wire to the chosen target (While choosing where the wire ends)
 - <!-- shortcut:wireCancel -->`Esc`: Cancel; focus returns to the part (Pin mode or wiring)
