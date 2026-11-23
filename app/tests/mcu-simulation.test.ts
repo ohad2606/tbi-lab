@@ -607,3 +607,24 @@ describe('Alpha: session lifetime (30 min under the Alpha policy) — warning, e
     }
   });
 });
+
+describe('TBI-018 s3d-4: host end reasons the app does not know yet', () => {
+  // s3d-5 adds their own texts; until then an unexpected end is a lost session (no app change).
+  for (const reason of ['sim_minutes', 'sim_unavailable'])
+    it(`ended with ${reason} -> session_lost`, async () => {
+      const f = fakeClient();
+      const sim = new McuSimulation({ client: f.client });
+      const s = await running(sim, f, example('esp32-blink'));
+      s.emit({
+        type: 'state',
+        simNs: null,
+        state: 'ended',
+        reason,
+        detail: { code: 'system_unavailable', messageKey: 'limit.system.unavailable' },
+      });
+      expect(sim.state).toMatchObject({
+        status: 'failed',
+        failure: { kind: 'runtime', code: 'session_lost', detail: reason },
+      });
+    });
+});

@@ -67,6 +67,9 @@ export interface AdmitOptions {
 /** Legacy answer for a queued principal of a client without the queue protocol (today's code). */
 const LEGACY_CAPACITY_RETRY_MS = 15_000;
 
+/** s3d-4 ops review MEDIUM-1: the race marker of a heartbeat that did not answer in time. */
+const BEAT_TIMEOUT: unique symbol = Symbol('beat_timeout');
+
 const SYSTEM_LIMIT: PublicLimit = {
   code: 'system_unavailable',
   messageKey: 'limit.system.unavailable',
@@ -583,15 +586,32 @@ export class SessionHost {
     // no client: no beat; the host lease ends the run and the meter bills at most lastBeat + leaseMs
     if (!(s.streams > 0 || performance.now() - s.lastActivity <= this.config.leaseMs))
       return this.scheduleBeat(adapter, s, null);
-    let b: HostBeat;
+    // s3d-4 ops review MEDIUM-1: a beat that does not answer within max(1, leaseMs - beatMs) stops
+    // the run (fail closed). The previous answered beat was at most beatMs before this one, so a hung
+    // adapter never leaves a run unmetered for longer than one host lease; a late answer is ignored.
+    const timeoutMs = Math.max(1, this.config.leaseMs - this.simBeatMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let b: HostBeat | typeof BEAT_TIMEOUT;
     try {
-      b = await adapter.heartbeat(s.id, s.owner);
+      b = await Promise.race([
+        Promise.resolve().then(() => adapter.heartbeat(s.id, s.owner)),
+        new Promise<typeof BEAT_TIMEOUT>((r) => {
+          timer = setTimeout(() => r(BEAT_TIMEOUT), timeoutMs);
+          timer.unref();
+        }),
+      ]);
     } catch {
+      clearTimeout(timer);
       logBeatFault('error');
       return this.stopRun(s, 'sim_unavailable', SYSTEM_LIMIT);
     }
+    clearTimeout(timer);
     // an answer for a session that is terminal by now is ignored (design section 8)
     if (isTerminal(s.state) || this.metered.get(s.id) !== m) return;
+    if (b === BEAT_TIMEOUT) {
+      logBeatFault('timeout');
+      return this.stopRun(s, 'sim_unavailable', SYSTEM_LIMIT);
+    }
     if (b === null || typeof b !== 'object' || b.metered !== true) {
       // an enabled adapter answering unmetered: a contradiction, fail closed
       logBeatFault('unmetered');
@@ -811,6 +831,14 @@ export class SessionHost {
     clearInterval(this.timer);
     for (const m of this.metered.values()) if (m.timer) clearTimeout(m.timer);
     await Promise.all([...this.sessions.values()].map((s) => s.terminate('host_shutdown')));
+    // s3d-4 ops review LOW-3: a metered session still `creating` reaches its terminal state only
+    // after prepare returns; end its meter session now so it is inside the bounded wait (settle is
+    // idempotent: the later terminal event gets the same promise)
+    const adapter = this.queueAdapter;
+    if (adapter)
+      for (const s of this.sessions.values())
+        if (s.state === 'creating' && this.metered.has(s.id))
+          void this.settle(adapter, s.id, s.owner, 'host');
     await Promise.all([...this.sessions.values()].map((s) => s.done()));
     await this.awaitPendingEnds();
     if (this.config.sessionRoot)
@@ -861,7 +889,7 @@ function logQueueFault(op: 'peek' | 'cancel' | 'ended' | 'housekeeping'): void {
 }
 
 /** s3d-4: one operator line for a beat the host could not use (never a principal, id or text). */
-function logBeatFault(op: 'error' | 'unmetered' | 'malformed' | 'refused'): void {
+function logBeatFault(op: 'error' | 'timeout' | 'unmetered' | 'malformed' | 'refused'): void {
   try {
     process.stderr.write(`${JSON.stringify({ event: 'sim_beat_fault', op })}\n`);
   } catch {

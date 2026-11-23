@@ -17,7 +17,7 @@ import { TEST_IDENTITY, principalFor, startTestGate, ticketFor } from '../../ide
 import { parseConfig, type PlanId } from '../../plans/config.js';
 import { limitError } from '../../plans/limits.js';
 import type { SimEvent } from '../../plans/simminutes.js';
-import { SimHostAdapter, type HostHousekeeping } from '../../plans/simhost.js';
+import { SimHostAdapter, type HostBeat, type HostHousekeeping } from '../../plans/simhost.js';
 import { MemoryStore } from '../../plans/store.js';
 import { FakeClock } from '../../plans/time.js';
 import { DEFAULT_POLICY, Policy } from '../../policy/policy.js';
@@ -497,5 +497,149 @@ describe('s3d-4: flag-off unchanged', () => {
     await host.terminate(c.value.session);
     expect(terminalEvent(c.value.session)).toMatchObject({ reason: 'terminated' });
     expect(SessionHost.prototype).toBeDefined();
+  });
+});
+
+describe('s3d-4: ops review', () => {
+  const passThrough = (real: SimHostAdapter): Adapter => ({
+    enabled: real.enabled,
+    hasWaiting: (p) => real.hasWaiting(p),
+    cancel: (t, p) => real.cancel(t, p),
+    admit: (req) => real.admit(req),
+    heartbeat: (id, p) => real.heartbeat(id, p),
+    ended: (id, why, p) => real.ended(id, why, p),
+    housekeeping: () => real.housekeeping(),
+  });
+
+  it('MEDIUM-1: a heartbeat that never answers stops the run (sim_unavailable) after max(1, leaseMs - beatMs); a late answer is ignored', async () => {
+    let beats = 0;
+    let late: ((b: HostBeat) => void) | null = null;
+    const w = await world({
+      beatMs: 20,
+      leaseMs: 400,
+      simPlans: (real) => ({
+        ...passThrough(real),
+        heartbeat: () => {
+          beats++;
+          return new Promise<HostBeat>((r) => (late = r));
+        },
+      }),
+    });
+    const ended = vi.spyOn(w.host.config.simPlans!, 'ended');
+    const r = await w.post(0, { queue: true });
+    expect(r.status).toBe(201);
+    const s = w.session(r.body);
+    const t0 = Date.now();
+    // the client is there the whole time (the beat only runs while the host lease lives)
+    const keep = setInterval(() => w.session(r.body), 20);
+    try {
+      await until(() => terminalEvent(s) !== undefined, 3_000);
+    } finally {
+      clearInterval(keep);
+    }
+    // first beat at ~20 ms, timeout 400 - 20 = 380 ms after it
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(350);
+    expect(beats).toBe(1);
+    expect(terminalEvent(s)).toMatchObject({
+      state: 'ended',
+      reason: 'sim_unavailable',
+      detail: { code: 'system_unavailable' },
+    });
+    const faults = stderr.filter((l) => l.includes('"sim_beat_fault"'));
+    expect(faults).toEqual([`${JSON.stringify({ event: 'sim_beat_fault', op: 'timeout' })}\n`]);
+    expect(stderr.join('')).not.toContain(A);
+    expect(stderr.join('')).not.toContain(r.body.sessionId!);
+    await until(() => ended.mock.calls.length === 1);
+    // the late answer changes nothing: no second stop, no new beat, no second ended
+    late!({ metered: true, decision: 'stop', error: limitError('sim_daily') });
+    await new Promise((res) => setTimeout(res, 80));
+    expect(terminalEvent(s)).toMatchObject({ reason: 'sim_unavailable' });
+    expect(beats).toBe(1);
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(w.closes(r.body.sessionId)).toHaveLength(1);
+  });
+
+  it('MEDIUM-1: a heartbeat that answers in time is not timed out', async () => {
+    let beats = 0;
+    const w = await world({
+      beatMs: 20,
+      leaseMs: 400,
+      simPlans: (real) => ({
+        ...passThrough(real),
+        heartbeat: async (id, p) => {
+          beats++;
+          await new Promise((res) => setTimeout(res, 100));
+          return real.heartbeat(id, p);
+        },
+      }),
+    });
+    const r = await w.post(0, { queue: true });
+    const s = w.session(r.body);
+    const keep = setInterval(() => w.session(r.body), 20);
+    try {
+      await until(() => beats >= 4, 3_000);
+    } finally {
+      clearInterval(keep);
+    }
+    expect(terminalEvent(s)).toBeUndefined();
+    expect(stderr.some((l) => l.includes('"timeout"'))).toBe(false);
+  });
+
+  const LIMIT = { code: 'system_unavailable', messageKey: 'limit.system.unavailable' };
+  it('LOW-2: sim stop then shutdown: the first request wins for reason AND detail', async () => {
+    const w = await world({ beatMs: 60_000 });
+    const r = await w.post(0, { queue: true });
+    const s = w.session(r.body);
+    expect(s.run()).toEqual({ ok: true });
+    const first = s.terminate('sim_unavailable', structuredClone(LIMIT));
+    const second = s.terminate('host_shutdown');
+    await Promise.all([first, second]);
+    expect(terminalEvent(s)).toMatchObject({
+      state: 'ended',
+      reason: 'sim_unavailable',
+      detail: LIMIT,
+    });
+  });
+
+  it('LOW-2: shutdown then sim stop: host_shutdown without the later detail', async () => {
+    const w = await world({ beatMs: 60_000 });
+    const r = await w.post(0, { queue: true });
+    const s = w.session(r.body);
+    expect(s.run()).toEqual({ ok: true });
+    const first = s.terminate('host_shutdown');
+    const second = s.terminate('sim_minutes', { code: 'sim_daily' });
+    await Promise.all([first, second]);
+    const e = terminalEvent(s);
+    expect(e).toMatchObject({ state: 'ended', reason: 'host_shutdown' });
+    expect((e as { detail?: unknown }).detail).toBeUndefined();
+  });
+
+  it('LOW-2: both orders while creating', async () => {
+    const { HostSession } = await import('../session.js');
+    const prepare = vi.spyOn(HostSession.prototype, 'prepare').mockImplementation(() => {});
+    const w = await world({ beatMs: 60_000 });
+    const r = await w.post(0, { queue: true });
+    const s = w.session(r.body);
+    expect(s.state).toBe('creating');
+    await s.terminate('sim_unavailable', structuredClone(LIMIT));
+    await s.terminate('host_shutdown');
+    prepare.mockRestore();
+    s.prepare();
+    expect(terminalEvent(s)).toMatchObject({ reason: 'sim_unavailable', detail: LIMIT });
+  });
+
+  it('LOW-3: a metered session still creating at shutdown is ended (host) inside the bounded wait', async () => {
+    const { HostSession } = await import('../session.js');
+    vi.spyOn(HostSession.prototype, 'prepare').mockImplementation(() => {});
+    const w = await world({ beatMs: 60_000 });
+    const ended = vi.spyOn(w.host.config.simPlans!, 'ended');
+    const r = await w.post(0, { queue: true });
+    expect(r.status).toBe(201);
+    expect(w.session(r.body).state).toBe('creating');
+    await w.host.shutdown();
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(ended.mock.calls[0]).toEqual([r.body.sessionId, 'host', A]);
+    expect(w.closes(r.body.sessionId)).toHaveLength(1);
+    expect(w.closes(r.body.sessionId)[0]).toMatchObject({ reason: 'host' });
   });
 });
