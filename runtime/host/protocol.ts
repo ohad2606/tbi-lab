@@ -42,7 +42,11 @@ export type EndReason =
   | 'lease_expired' // no client for longer than the lease
   | 'lifetime_exceeded' // maximum session lifetime reached
   | 'host_shutdown' // the host process is shutting down
-  | 'account_disabled'; // Sprint 23B: the owner disabled the account (access view)
+  | 'account_disabled' // Sprint 23B: the owner disabled the account (access view)
+  // TBI-018 s3d-4 (decision O-3, additive): the sim meter stopped the run. The state event's `detail`
+  // is the public limit ({ code, messageKey, params }). Older apps show an unknown reason as session_lost.
+  | 'sim_minutes' // the plan's sim minutes (month / day) are used up
+  | 'sim_unavailable'; // the meter cannot bill (journal fault, lost meter lease, contract error): fail closed
 
 export type FailReason =
   | 'artifact_unknown'

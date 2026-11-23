@@ -18,9 +18,16 @@ import { checkResources } from '../policy/resources.js';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PlanId } from '../plans/config.js';
-import type { HostAdmit } from '../plans/simhost.js';
+import type { Dropped } from '../plans/queue.js';
+import type { CloseReason } from '../plans/simminutes.js';
+import {
+  closeReasonOf,
+  type HostAdmit,
+  type HostBeat,
+  type HostHousekeeping,
+} from '../plans/simhost.js';
 import type { HostConfig, SimAdmissionConfig } from './config.js';
-import { validateCommand, validateCreate, type EndReason } from './protocol.js';
+import { validateCommand, validateCreate, type EndReason, type FailReason } from './protocol.js';
 import { newQueueTicket, type TicketState } from './queueTickets.js';
 import { HostSession, SESSION_ID_RE, newSessionId, type SessionStatus } from './session.js';
 import {
@@ -92,6 +99,18 @@ const simLimit = (limit: PublicLimit, status = statusOfLimit(limit)): AdmitResul
   };
 };
 
+/** TBI-018 s3d-4: meter stop codes that mean "the plan's sim minutes are used up" (end reason sim_minutes) */
+const MINUTES_CODES: ReadonlySet<string> = new Set([
+  'minutes_out',
+  'minutes_out_free',
+  'sim_daily',
+]);
+/** s3d-4: default bounded wait of shutdown for pending `ended` calls (unit TimeoutStopSec=20) */
+const DEFAULT_END_WAIT_MS = 8_000;
+const DEFAULT_SIM_HOUSEKEEPING_MS = 5_000;
+
+type Adapter = NonNullable<HostConfig['simPlans']>;
+
 const refused = (r: Refusal): { ok: false; status: number; error: string; refusal: Refusal } => ({
   ok: false,
   status: r.status,
@@ -104,6 +123,17 @@ export class SessionHost {
   readonly tmpRoot: string;
   private readonly timer: ReturnType<typeof setInterval>;
   private closing = false;
+  /** TBI-018 s3d-4: metered sessions that are not terminal yet: their beat timer and log subscription */
+  private readonly metered = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout> | null; unsubscribe: () => void }
+  >();
+  /** s3d-4: the one `adapter.ended` call per meter session id (idempotent: a second path reuses it) */
+  private readonly settles = new Map<string, Promise<void>>();
+  /** s3d-4: `ended` calls still in flight (shutdown waits for them, bounded) */
+  private readonly pendingEnds = new Set<Promise<void>>();
+  private simHkInFlight = false;
+  private simHkLast = performance.now();
 
   constructor(readonly config: HostConfig) {
     // TBI-018 s3d-3b: the "not wired" guard moved to boot (main.ts refuses every TBI_HOST_SIM_* flag
@@ -308,7 +338,10 @@ export class SessionHost {
       await this.withdraw(adapter, sim, ticket, principal, poll !== null);
       return simLimit(SYSTEM_LIMIT, 503);
     }
-    this.applyDropped(sim, a);
+    this.applyDropped(
+      sim,
+      a !== null && typeof a === 'object' && a.metered ? a.dropped : undefined,
+    );
     // 8: the answer table (design section 3)
     const r = simAdmissionResponse(a);
     if (r.kind === 'unmetered') {
@@ -355,16 +388,26 @@ export class SessionHost {
     if (r.sessionId !== sessionId) {
       // the adapter opened a run under another id: a contract break, close it and fail closed
       logSimFault('admit');
-      await this.safeEnded(adapter, r.sessionId, principal);
-      await this.safeEnded(adapter, sessionId, principal);
+      await this.settle(adapter, r.sessionId, principal, 'ended');
+      await this.settle(adapter, sessionId, principal, 'ended');
       if (poll !== null) sim.tickets.markDropped(poll, principal, SYSTEM_LIMIT);
       return simLimit(SYSTEM_LIMIT, 503);
     }
     if (gone || this.closing) {
       // a lost request must not bill a whole lease: the run never becomes a host session
-      await this.safeEnded(adapter, sessionId, principal);
+      await this.settle(adapter, sessionId, principal, 'ended');
       if (poll !== null) sim.tickets.markDropped(poll, principal, SYSTEM_LIMIT);
       return { ok: false, status: 503, error: 'host shutting down' };
+    }
+    // s3d-3b review (a): the per-principal limit again, after the awaited admission (another path may
+    // have registered a session for this principal meanwhile); violated -> the run is ended, never started
+    if (
+      [...this.sessions.values()].filter((s) => s.owner === principal && !isTerminal(s.state))
+        .length >= plan.runtime.maxSessions
+    ) {
+      await this.settle(adapter, sessionId, principal, 'ended');
+      if (poll !== null) sim.tickets.markDropped(poll, principal, SYSTEM_LIMIT);
+      return refused(new Refusal('session_quota'));
     }
     let session: HostSession | undefined;
     try {
@@ -379,19 +422,22 @@ export class SessionHost {
       session.emailTag = emailTag;
       session.simAdmitted = { plan: r.plan, remainingMs: r.remainingMs };
       this.sessions.set(session.id, session);
+      // s3d-4: subscribed before prepare, so a synchronous prepare failure is ended (billed) too
+      this.track(adapter, session, r.remainingMs);
       session.prepare();
+      // s3d-3b review (b): ticket bookkeeping inside the guarded block
+      if (capable) {
+        if (poll === null) this.issueTicket(adapter, sim, principal, ticket);
+        sim.tickets.markStarted(ticket, principal, sessionId);
+      }
     } catch {
       // the meter session ends at once (bills the few ms the run existed; no leaked slot)
       logSimFault('start');
       if (session && this.sessions.get(session.id) === session)
         void session.failNow('start_failed');
-      await this.safeEnded(adapter, sessionId, principal);
+      await this.settle(adapter, sessionId, principal, 'ended');
       if (poll !== null) sim.tickets.markDropped(poll, principal, SYSTEM_LIMIT);
       return { ok: false, status: 500, error: 'internal error' };
-    }
-    if (capable) {
-      if (poll === null) this.issueTicket(adapter, sim, principal, ticket);
-      sim.tickets.markStarted(ticket, principal, sessionId);
     }
     simAdmissionEvent('admitted', principal);
     return { ok: true, value: { session } };
@@ -421,13 +467,12 @@ export class SessionHost {
   }
 
   /** Drops the adapter reported (other waiters' timeouts, vanished) reach the registry. */
-  private applyDropped(sim: SimAdmissionConfig, a: HostAdmit): void {
-    if (a === null || typeof a !== 'object') return;
-    const dropped = (a as { dropped?: unknown }).dropped;
+  private applyDropped(sim: SimAdmissionConfig, dropped: readonly Dropped[] | undefined): void {
     if (!Array.isArray(dropped)) return;
-    for (const d of dropped as { ticket?: unknown; principal?: unknown; error?: unknown }[]) {
-      if (typeof d?.principal !== 'string') continue;
-      sim.tickets.markDropped(d.ticket, d.principal, simLimitAnswer(d.error as never).body);
+    for (const d of dropped) {
+      // defensive: the adapter is a trust boundary for shape (M1), never for another principal's entry
+      if (d === null || typeof d !== 'object' || typeof d.principal !== 'string') continue;
+      sim.tickets.markDropped(d.ticket, d.principal, simLimitAnswer(d.error).body);
     }
   }
 
@@ -455,18 +500,175 @@ export class SessionHost {
     }
   }
 
-  /** M1: `ended` never throws into the host; a refusal is one line (no principal, no id). */
-  private async safeEnded(
-    adapter: NonNullable<HostConfig['simPlans']>,
+  /**
+   * TBI-018 s3d-4: the ONE `adapter.ended` call of a meter session id (every terminal path, design
+   * section 5). A second call for the same id returns the first promise, so no path bills twice. M1:
+   * never throws into the host; a refusal or fault is one line (no principal, no id).
+   */
+  private settle(
+    adapter: Adapter,
     sessionId: string,
     principal: Principal,
+    reason: CloseReason,
   ): Promise<void> {
-    try {
-      const r = await adapter.ended(sessionId, 'ended', principal);
-      if (r.metered && !r.ok) logQueueFault('ended');
-    } catch {
-      logQueueFault('ended');
+    const had = this.settles.get(sessionId);
+    if (had) return had;
+    const p = (async () => {
+      try {
+        const r = await adapter.ended(sessionId, reason, principal);
+        if (r === null || typeof r !== 'object' || (r.metered && !r.ok)) logQueueFault('ended');
+      } catch {
+        logQueueFault('ended');
+      }
+    })();
+    this.settles.set(sessionId, p);
+    this.pendingEnds.add(p);
+    void p.finally(() => {
+      this.pendingEnds.delete(p);
+      // a run that never became a host session has no retention entry to clear this later
+      if (!this.sessions.has(sessionId)) this.settles.delete(sessionId);
+    });
+    return p;
+  }
+
+  /**
+   * TBI-018 s3d-4: meter a registered session: the first terminal state event ends its meter session
+   * (`closeReasonOf`), and a beat timer runs until then.
+   */
+  private track(adapter: Adapter, s: HostSession, remainingMs: number | null): void {
+    const entry = { timer: null as ReturnType<typeof setTimeout> | null, unsubscribe: () => {} };
+    this.metered.set(s.id, entry);
+    const unsubscribe = s.log.subscribe((e) => {
+      if (e.type === 'state' && isTerminal(e.state)) this.onTerminal(adapter, s, e.reason);
+    });
+    entry.unsubscribe = () => void unsubscribe();
+    this.scheduleBeat(adapter, s, remainingMs);
+  }
+
+  private onTerminal(
+    adapter: Adapter,
+    s: HostSession,
+    reason: EndReason | FailReason | undefined,
+  ): void {
+    const m = this.metered.get(s.id);
+    if (m) {
+      if (m.timer) clearTimeout(m.timer);
+      m.unsubscribe();
+      this.metered.delete(s.id);
     }
+    void this.settle(adapter, s.id, s.owner, closeReasonOf(reason ?? 'ended'));
+  }
+
+  private get simBeatMs(): number {
+    const v = this.config.simAdmission?.beatMs;
+    return v !== undefined && Number.isSafeInteger(v) && v >= 1
+      ? v
+      : Math.max(1, Math.floor(this.config.leaseMs / 3));
+  }
+
+  /** Next beat at min(simBeatMs, remainingMs); remainingMs null = no sim limit (design section 5). */
+  private scheduleBeat(adapter: Adapter, s: HostSession, remainingMs: number | null): void {
+    const m = this.metered.get(s.id);
+    if (!m || this.closing) return;
+    const every = this.simBeatMs;
+    const wait = remainingMs === null ? every : Math.max(0, Math.min(every, remainingMs));
+    m.timer = setTimeout(() => void this.beat(adapter, s), wait);
+    m.timer.unref();
+  }
+
+  private async beat(adapter: Adapter, s: HostSession): Promise<void> {
+    const m = this.metered.get(s.id);
+    if (!m || isTerminal(s.state)) return;
+    m.timer = null;
+    // no client: no beat; the host lease ends the run and the meter bills at most lastBeat + leaseMs
+    if (!(s.streams > 0 || performance.now() - s.lastActivity <= this.config.leaseMs))
+      return this.scheduleBeat(adapter, s, null);
+    let b: HostBeat;
+    try {
+      b = await adapter.heartbeat(s.id, s.owner);
+    } catch {
+      logBeatFault('error');
+      return this.stopRun(s, 'sim_unavailable', SYSTEM_LIMIT);
+    }
+    // an answer for a session that is terminal by now is ignored (design section 8)
+    if (isTerminal(s.state) || this.metered.get(s.id) !== m) return;
+    if (b === null || typeof b !== 'object' || b.metered !== true) {
+      // an enabled adapter answering unmetered: a contradiction, fail closed
+      logBeatFault('unmetered');
+      return this.stopRun(s, 'sim_unavailable', SYSTEM_LIMIT);
+    }
+    switch (b.decision) {
+      case 'continue':
+        if (
+          b.remainingMs !== null &&
+          !(Number.isSafeInteger(b.remainingMs) && b.remainingMs >= 0)
+        ) {
+          logBeatFault('malformed');
+          return this.stopRun(s, 'sim_unavailable', SYSTEM_LIMIT);
+        }
+        return this.scheduleBeat(adapter, s, b.remainingMs);
+      case 'refused':
+        // only possible through a host bug (the caller is the owner): logged, the run is NOT stopped
+        logBeatFault('refused');
+        return this.scheduleBeat(adapter, s, null);
+      case 'stop': {
+        const code = b.error?.code;
+        if (typeof code === 'string' && MINUTES_CODES.has(code)) {
+          const answer = simLimitAnswer(b.error);
+          if (answer.body.code !== 'system_unavailable')
+            return this.stopRun(s, 'sim_minutes', answer.body);
+        }
+        // system_unavailable, lease_lost, invalid_state, anything else: the meter cannot bill this run
+        return this.stopRun(s, 'sim_unavailable', SYSTEM_LIMIT);
+      }
+      default: {
+        const unhandled: never = b;
+        void unhandled;
+        logBeatFault('malformed');
+        return this.stopRun(s, 'sim_unavailable', SYSTEM_LIMIT);
+      }
+    }
+  }
+
+  private stopRun(s: HostSession, reason: 'sim_minutes' | 'sim_unavailable', limit: PublicLimit) {
+    if (isTerminal(s.state)) return;
+    void s.terminate(reason, structuredClone(limit));
+  }
+
+  /**
+   * TBI-018 s3d-4: `adapter.housekeeping()` every simHousekeepingMs, never two at once (the host timer
+   * is synchronous and runs every housekeepingMs). Dropped waiters reach the registry; `pruned` is
+   * logged as a count; a fault is one line and swallowed (M1).
+   */
+  private simHousekeeping(): void {
+    const adapter = this.queueAdapter;
+    const sim = this.config.simAdmission;
+    if (!adapter || !sim || this.simHkInFlight || this.closing) return;
+    const now = performance.now();
+    if (now - this.simHkLast < (sim.housekeepingMs ?? DEFAULT_SIM_HOUSEKEEPING_MS)) return;
+    this.simHkLast = now;
+    this.simHkInFlight = true;
+    let p: Promise<HostHousekeeping>;
+    try {
+      p = Promise.resolve(adapter.housekeeping());
+    } catch {
+      logQueueFault('housekeeping');
+      this.simHkInFlight = false;
+      return;
+    }
+    void p
+      .then(
+        (r) => {
+          if (r === null || typeof r !== 'object' || r.metered !== true) return;
+          this.applyDropped(sim, r.dropped);
+          if (!r.ok) logQueueFault('housekeeping');
+          else if (Number.isSafeInteger(r.pruned) && r.pruned > 0) logSimCount('pruned', r.pruned);
+        },
+        () => logQueueFault('housekeeping'),
+      )
+      .finally(() => {
+        this.simHkInFlight = false;
+      });
   }
 
   /** TBI-018 s3d-3a: the sim adapter's queue surface, only when the adapter is enabled. */
@@ -551,7 +753,10 @@ export class SessionHost {
     for (const [id, s] of this.sessions) {
       if (isTerminal(s.state)) {
         const ended = s.endedAt?.getTime() ?? Date.now();
-        if (Date.now() - ended > this.config.retainEndedMs) this.sessions.delete(id);
+        if (Date.now() - ended > this.config.retainEndedMs) {
+          this.sessions.delete(id);
+          this.settles.delete(id);
+        }
         continue;
       }
       if (s.streams === 0 && now - s.lastActivity > this.config.leaseMs) {
@@ -560,6 +765,7 @@ export class SessionHost {
       }
       if (s.storageBytes() > this.config.maxSessionStorageBytes) void s.failNow('storage_limit');
     }
+    this.simHousekeeping();
   }
 
   /** Terminate one session (idempotent). */
@@ -603,12 +809,33 @@ export class SessionHost {
   async shutdown(): Promise<void> {
     this.closing = true;
     clearInterval(this.timer);
+    for (const m of this.metered.values()) if (m.timer) clearTimeout(m.timer);
     await Promise.all([...this.sessions.values()].map((s) => s.terminate('host_shutdown')));
     await Promise.all([...this.sessions.values()].map((s) => s.done()));
+    await this.awaitPendingEnds();
     if (this.config.sessionRoot)
       for (const name of readdirSync(this.tmpRoot))
         rmSync(join(this.tmpRoot, name), { recursive: true, force: true });
     else rmSync(this.tmpRoot, { recursive: true, force: true });
+  }
+
+  /**
+   * TBI-018 s3d-4 (design section 5, m3): wait for the `ended` calls still in flight, bounded below the
+   * unit's TimeoutStopSec. On timeout one line with the count; the meter sweep and boot recovery close
+   * what is left.
+   */
+  private async awaitPendingEnds(): Promise<void> {
+    if (this.pendingEnds.size === 0) return;
+    const ms = this.config.simAdmission?.endWaitMs ?? DEFAULT_END_WAIT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = await Promise.race([
+      Promise.allSettled([...this.pendingEnds]).then(() => false),
+      new Promise<boolean>((r) => {
+        timer = setTimeout(() => r(true), ms);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (timedOut) logSimCount('end_wait_timeout', this.pendingEnds.size);
   }
 
   /** Session count by state (health endpoint; no identifiers). */
@@ -625,9 +852,31 @@ export class SessionHost {
 }
 
 /** One operator line for a failed queue call: the operation only (never a principal, ticket or error text). */
-function logQueueFault(op: 'peek' | 'cancel' | 'ended'): void {
+function logQueueFault(op: 'peek' | 'cancel' | 'ended' | 'housekeeping'): void {
   try {
     process.stderr.write(`${JSON.stringify({ event: 'sim_queue_fault', op })}\n`);
+  } catch {
+    // logging never changes the outcome
+  }
+}
+
+/** s3d-4: one operator line for a beat the host could not use (never a principal, id or text). */
+function logBeatFault(op: 'error' | 'unmetered' | 'malformed' | 'refused'): void {
+  try {
+    process.stderr.write(`${JSON.stringify({ event: 'sim_beat_fault', op })}\n`);
+  } catch {
+    // logging never changes the outcome
+  }
+}
+
+/** s3d-4: one operator line with a count only. */
+function logSimCount(what: 'pruned' | 'end_wait_timeout', n: number): void {
+  try {
+    const line =
+      what === 'pruned'
+        ? { event: 'sim_housekeeping', pruned: n }
+        : { event: 'sim_end_wait_timeout', pending: n };
+    process.stderr.write(`${JSON.stringify(line)}\n`);
   } catch {
     // logging never changes the outcome
   }

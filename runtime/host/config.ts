@@ -41,7 +41,10 @@ export interface HostConfig {
    * enabled adapter is acceptable only in tests: `main.ts` refuses to boot with any TBI_HOST_SIM_* flag
    * (runtime/plans/hostflags.ts) until s3d-6.
    */
-  simPlans?: Pick<SimHostAdapter, 'enabled' | 'hasWaiting' | 'cancel' | 'admit' | 'ended'>;
+  simPlans?: Pick<
+    SimHostAdapter,
+    'enabled' | 'hasWaiting' | 'cancel' | 'admit' | 'ended' | 'heartbeat' | 'housekeeping'
+  >;
   /** TBI-018 s3d-3b: what the metered admission needs besides the adapter (unused flag-off). */
   simAdmission?: SimAdmissionConfig;
   /** Persistent per-principal rate windows (session creation). */
@@ -112,6 +115,12 @@ export interface SimAdmissionConfig {
   pollAfterS: number;
   /** the queue ticket registry of this host process (memory only) */
   tickets: TicketRegistry;
+  /** TBI-018 s3d-4: beat interval of a metered run (default floor(leaseMs / 3); boot: 1 <= v < leaseMs) */
+  beatMs?: number;
+  /** TBI-018 s3d-4: adapter housekeeping interval (default 5000) */
+  housekeepingMs?: number;
+  /** TBI-018 s3d-4: how long shutdown waits for pending `ended` calls (default 8000, below the unit's TimeoutStopSec=20) */
+  endWaitMs?: number;
 }
 
 export function defaultConfig(
