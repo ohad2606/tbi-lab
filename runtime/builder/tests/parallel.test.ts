@@ -98,8 +98,11 @@ describe('parallel build workers (global.build.maxActive)', () => {
     for (const [i, u] of users.entries()) service.submit(sketch(`s${i}`), u);
     await service.whenIdle();
     expect(provider.peak).toBe(2);
-    // First come, first served: builds START in submission order.
-    expect(provider.started.map((t) => t.match(/s\d/)![0])).toEqual(['s0', 's1', 's2', 's3', 's4']);
+    // First come, first served: the two that start together (s0, s1) may begin in either order (their
+    // async preparation races); everything queued behind them starts strictly in submission order.
+    const order = provider.started.map((t) => t.match(/s\d/)![0]);
+    expect(order.slice(0, 2).sort()).toEqual(['s0', 's1']);
+    expect(order.slice(2)).toEqual(['s2', 's3', 's4']);
   });
 
   it('five users submitting at once (two each, preview quotas): all queued, none refused; per-user quota still applies', async () => {
