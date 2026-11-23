@@ -8,10 +8,12 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
@@ -21,10 +23,12 @@ import {
   parsePlanMap,
   SIM_JOURNAL_FILE,
   SIM_LOCK_FILE,
+  SIM_LOCK_TAKEOVER_FILE,
   type HostSimBootDeps,
   type HostSimBootHost,
   type HostSimPlans,
 } from '../hostboot.js';
+import { JournalStore } from '../store.js';
 import { HOST_SIM_FLAGS, hostSimFlagsSet, hostSimStartRefusal } from '../hostflags.js';
 
 const parent = mkdtempSync(join(tmpdir(), 'plans-hostboot-'));
@@ -167,6 +171,16 @@ describe('bootSimPlans', () => {
       await expect(p).rejects.toThrow(/config unusable/);
       await expect(p).rejects.not.toThrow(/secret_x/);
     });
+    it('config must be a regular file of at most 1 MiB (dir, FIFO, oversize refused)', async () => {
+      await refuses(env({ TBI_HOST_SIM_PLANS_CONFIG: tmp() }), /config unusable/);
+      const fifo = join(tmp(), 'fifo');
+      execFileSync('mkfifo', [fifo]);
+      // must refuse without blocking on the FIFO (no writer ever opens it)
+      await refuses(env({ TBI_HOST_SIM_PLANS_CONFIG: fifo }), /config unusable/);
+      const big = join(tmp(), 'big.json');
+      writeFileSync(big, JSON.stringify(ON) + ' '.repeat(1024 * 1024));
+      await refuses(env({ TBI_HOST_SIM_PLANS_CONFIG: big }), /config unusable/);
+    });
     it('metering.enabled must be true', async () => {
       await refuses(env({}, {}), /metering.enabled/);
       await refuses(env({}, { metering: { enabled: false } }), /metering.enabled/);
@@ -290,6 +304,32 @@ describe('bootSimPlans', () => {
         /not a directory/,
       );
     });
+    it.each(['link/', 'link/.', 'real/', 'real/.', 'rel'])(
+      'a non-normalised or relative state path %j refuses before anything is created',
+      async (suffix) => {
+        const base = tmp();
+        const real = join(base, 'real');
+        mkdirSync(real, { mode: 0o700 });
+        symlinkSync(real, join(base, 'link'));
+        const d = suffix === 'rel' ? 'relative-state' : `${base}/${suffix}`;
+        await expect(boot(env({ TBI_HOST_SIM_PLANS_STATE: d }))).rejects.toThrow(
+          /absolute normalised path/,
+        );
+        expect(existsSync(join(real, SIM_LOCK_FILE))).toBe(false);
+        expect(existsSync('relative-state')).toBe(false);
+      },
+    );
+    it('a state dir below a symlinked parent refuses', async () => {
+      const real = join(tmp(), 'real');
+      mkdirSync(join(real, 'st'), { recursive: true, mode: 0o700 });
+      chmodSync(join(real, 'st'), 0o700);
+      const link = join(tmp(), 'link');
+      symlinkSync(real, link);
+      await expect(boot(env({ TBI_HOST_SIM_PLANS_STATE: join(link, 'st') }))).rejects.toThrow(
+        /symlinked parent/,
+      );
+      expect(existsSync(join(real, 'st', SIM_LOCK_FILE))).toBe(false);
+    });
     it('a state path under a regular file refuses', async () => {
       const f = join(tmp(), 'file');
       writeFileSync(f, 'x');
@@ -334,6 +374,81 @@ describe('bootSimPlans', () => {
       mkdirSync(d, { mode: 0o700 });
       writeFileSync(join(d, SIM_LOCK_FILE), c);
       expect(() => acquireStateLock(d, () => false)).toThrow(/malformed/);
+    });
+    it('stale takeover race: a second taker that saw the same dead pid refuses after the first took over', () => {
+      const d = join(tmp(), 'st');
+      mkdirSync(d, { mode: 0o700 });
+      writeFileSync(join(d, SIM_LOCK_FILE), '4242\n');
+      let first: ReturnType<typeof acquireStateLock> | undefined;
+      // B has read the dead pid 4242; before B takes over, A runs its whole takeover
+      expect(() =>
+        acquireStateLock(d, () => false, {
+          beforeTakeover: () => {
+            first = acquireStateLock(d, () => false);
+          },
+        }),
+      ).toThrow(/locked by another host/);
+      expect(first).toBeDefined();
+      expect(readFileSync(join(d, SIM_LOCK_FILE), 'utf8')).toBe(`${process.pid}\n`);
+      expect(existsSync(join(d, SIM_LOCK_TAKEOVER_FILE))).toBe(false);
+      first!.release();
+      expect(existsSync(join(d, SIM_LOCK_FILE))).toBe(false);
+    });
+    it('a takeover in progress (live mutex holder) refuses; mutex and lock left in place', () => {
+      const d = join(tmp(), 'st');
+      mkdirSync(d, { mode: 0o700 });
+      writeFileSync(join(d, SIM_LOCK_FILE), '4242\n');
+      writeFileSync(join(d, SIM_LOCK_TAKEOVER_FILE), '5151\n');
+      expect(() => acquireStateLock(d, (pid) => pid === 5151)).toThrow(/takeover in progress/);
+      expect(readFileSync(join(d, SIM_LOCK_TAKEOVER_FILE), 'utf8')).toBe('5151\n');
+      expect(readFileSync(join(d, SIM_LOCK_FILE), 'utf8')).toBe('4242\n');
+    });
+    it.each(['5151\n', 'junk'])(
+      'a stale or malformed takeover mutex %j refuses with an operator message',
+      (c) => {
+        const d = join(tmp(), 'st');
+        mkdirSync(d, { mode: 0o700 });
+        writeFileSync(join(d, SIM_LOCK_FILE), '4242\n');
+        writeFileSync(join(d, SIM_LOCK_TAKEOVER_FILE), c);
+        expect(() => acquireStateLock(d, () => false)).toThrow(/remove .* by hand/);
+        expect(readFileSync(join(d, SIM_LOCK_TAKEOVER_FILE), 'utf8')).toBe(c);
+      },
+    );
+    it('an empty takeover mutex (holder between create and write) reads as in progress', () => {
+      const d = join(tmp(), 'st');
+      mkdirSync(d, { mode: 0o700 });
+      writeFileSync(join(d, SIM_LOCK_FILE), '4242\n');
+      writeFileSync(join(d, SIM_LOCK_TAKEOVER_FILE), '');
+      expect(() => acquireStateLock(d, () => false)).toThrow(/takeover in progress/);
+    });
+    it('a takeover mutex does not block a free lock', () => {
+      const d = join(tmp(), 'st');
+      mkdirSync(d, { mode: 0o700 });
+      writeFileSync(join(d, SIM_LOCK_TAKEOVER_FILE), '5151\n');
+      const l = acquireStateLock(d, () => false);
+      expect(readFileSync(join(d, SIM_LOCK_FILE), 'utf8')).toBe(`${process.pid}\n`);
+      // release under a foreign mutex: lock left (later a stale takeover), mutex untouched
+      l.release();
+      expect(existsSync(join(d, SIM_LOCK_FILE))).toBe(true);
+      expect(readFileSync(join(d, SIM_LOCK_TAKEOVER_FILE), 'utf8')).toBe('5151\n');
+    });
+    it('release takes the mutex and leaves none behind', () => {
+      const d = join(tmp(), 'st');
+      mkdirSync(d, { mode: 0o700 });
+      const l = acquireStateLock(d);
+      l.release();
+      expect(existsSync(join(d, SIM_LOCK_FILE))).toBe(false);
+      expect(existsSync(join(d, SIM_LOCK_TAKEOVER_FILE))).toBe(false);
+    });
+    it('the journal file is created mode 0600 (independent of the umask)', async () => {
+      const f = join(tmp(), SIM_JOURNAL_FILE);
+      const old = process.umask(0o022);
+      try {
+        await new JournalStore<{ type: string }>(f).append([{ type: 'x' }]);
+      } finally {
+        process.umask(old);
+      }
+      expect(statSync(f).mode & 0o777).toBe(0o600);
     });
     it('release never removes a lock that is no longer ours', () => {
       const d = join(tmp(), 'st');
