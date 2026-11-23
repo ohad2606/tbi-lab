@@ -30,14 +30,19 @@ const esc = (s) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 /** Escape, then turn [[TOKEN]] into an LTR isolate. */
-const rich = (s) => esc(s).replace(/\[\[([^\]]+)\]\]/g, '<span dir="ltr">$1</span>');
+const rich = (s, lang = 'en') =>
+  esc(s).replace(/\[\[([^\]]+)\]\]/g, (_, tok) =>
+    lang === 'he' && /^[\x20-\x7E]*[A-Za-z][\x20-\x7E]*$/.test(tok)
+      ? `<span dir="ltr" lang="en">${tok}</span>`
+      : `<span dir="ltr">${tok}</span>`,
+  );
 const plain = (s) => String(s).replace(/\[\[([^\]]+)\]\]/g, '$1');
 
 export const pagePath = (lang, page) => (page === 'home' ? `/${lang}/` : `/${lang}/${page}/`);
 
 const mail = `<a href="mailto:${CONTACT_EMAIL}"><span dir="ltr">${CONTACT_EMAIL}</span></a>`;
 /** rich text plus the public contact address turned into a mailto link. */
-const rich2 = (s) => rich(s).replaceAll(CONTACT_EMAIL, mail);
+const rich2 = (s, lang) => rich(s, lang).replaceAll(CONTACT_EMAIL, mail);
 
 function checkApplyUrl(u) {
   if (u !== '' && !/^https:\/\/[^\s"'<>]+$/.test(u))
@@ -45,10 +50,10 @@ function checkApplyUrl(u) {
   return u;
 }
 
-function renderSection(s, level = 2) {
-  const p = (s.p ?? []).map((t) => `<p>${rich2(t)}</p>`).join('\n');
-  const ul = s.ul ? `<ul>\n${s.ul.map((t) => `<li>${rich2(t)}</li>`).join('\n')}\n</ul>` : '';
-  return `<section>\n<h${level} id="${s.id}" tabindex="-1">${rich(s.h)}</h${level}>\n${p}\n${ul}\n</section>`;
+function renderSection(s, level = 2, lang = 'en') {
+  const p = (s.p ?? []).map((t) => `<p>${rich2(t, lang)}</p>`).join('\n');
+  const ul = s.ul ? `<ul>\n${s.ul.map((t) => `<li>${rich2(t, lang)}</li>`).join('\n')}\n</ul>` : '';
+  return `<section>\n<h${level} id="${s.id}" tabindex="-1">${rich(s.h, lang)}</h${level}>\n${p}\n${ul}\n</section>`;
 }
 
 /** Public origin of the landing site; used only for link-preview (Open Graph) tags, which must be absolute. */
@@ -117,8 +122,8 @@ ${SCREENSHOTS.map((i) => `<li><figure><img src="${i.src}" width="${i.width}" hei
     body = `<div class="hero">
 <div class="wrap">
 <p class="eyebrow" lang="${t.descriptorLang}" dir="ltr">${esc(t.descriptor)}</p>
-<h1>${rich(pg.h1)}</h1>
-<p class="value">${rich(pg.lead)}</p>
+<h1>${rich(pg.h1, lang)}</h1>
+<p class="value">${rich(pg.lead, lang)}</p>
 <p class="cta-row">${cta('hero')}</p>
 <p class="req">${esc(t.desktopNote)}</p>
 </div>
@@ -127,12 +132,12 @@ ${SCREENSHOTS.map((i) => `<li><figure><img src="${i.src}" width="${i.width}" hei
 <div class="wrap">
 <h2 id="features" tabindex="-1">${esc(pg.featuresH)}</h2>
 <ul class="cards" role="list">
-${pg.features.map((f) => `<li class="card"><h3>${rich(f.h)}</h3><p>${rich(f.p)}</p></li>`).join('\n')}
+${pg.features.map((f) => `<li class="card"><h3>${rich(f.h, lang)}</h3><p>${rich(f.p, lang)}</p></li>`).join('\n')}
 </ul>
 </div>
 </section>
 ${shots}
-${pg.sections.map((s) => `<div class="wrap prose">${renderSection(s)}</div>`).join('\n')}
+${pg.sections.map((s) => `<div class="wrap prose">${renderSection(s, 2, lang)}</div>`).join('\n')}
 <div class="wrap prose join">
 <p class="cta-row">${cta('band')}</p>
 <p>${signIn('signin')}</p>
@@ -141,7 +146,7 @@ ${pg.sections.map((s) => `<div class="wrap prose">${renderSection(s)}</div>`).jo
     body = `<div class="wrap prose">
 <h1>${esc(pg.h1)}</h1>
 ${page === 'privacy' ? `<p class="draft">${esc(t.interimNote)}</p>` : ''}
-${pg.sections.map((s) => renderSection(s)).join('\n')}
+${pg.sections.map((s) => renderSection(s, 2, lang)).join('\n')}
 </div>`;
   } else {
     const how = (s) => {
@@ -150,10 +155,10 @@ ${pg.sections.map((s) => renderSection(s)).join('\n')}
     };
     body = `<div class="wrap prose">
 <h1>${esc(pg.h1)}</h1>
-${pg.lead ? `<p class="lead">${rich(pg.lead)}</p>` : ''}
+${pg.lead ? `<p class="lead">${rich(pg.lead, lang)}</p>` : ''}
 ${pg.sections
   .map((s) => {
-    const r = renderSection(how(s));
+    const r = renderSection(how(s), 2, lang);
     if (s.id === 'how-to-apply')
       return applyUrl
         ? r.replace('</section>', `<p class="cta-row">${cta('alpha')}</p>\n</section>`)
@@ -227,7 +232,7 @@ function renderRoot() {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TBI Lab — עברית / English</title>
 <meta name="description" content="TBI Lab — Electronics Engineering Workspace. Choose a language.">
-${ogTags({ url: '/', title: 'TBI Lab — Electronics Engineering Workspace', description: 'An electronics and ESP32 lab in your browser, with Arduino (C++) and MicroPython. Free Alpha, limited places.', locale: 'he_IL', altLocale: 'en_US' })}
+${ogTags({ url: '/', title: 'TBI Lab — Electronics Engineering Workspace', description: 'An electronics and classic ESP32 lab in your browser, with Arduino (C++) and MicroPython. Free Alpha, limited places.', locale: 'he_IL', altLocale: 'en_US' })}
 ${alts}
 <link rel="alternate" hreflang="x-default" href="/">
 <link rel="icon" href="/assets/favicon.ico" sizes="any">

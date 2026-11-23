@@ -95,8 +95,8 @@ describe('build output', () => {
       }
   });
   it('technical tokens are LTR isolates', () => {
-    expect(html('he', 'product')).toContain('<span dir="ltr">ESP32</span>');
-    expect(html('he', 'product')).toContain('<span dir="ltr">GPIO2</span>');
+    expect(html('he', 'product')).toContain('<span dir="ltr" lang="en">ESP32</span>');
+    expect(html('he', 'product')).toContain('<span dir="ltr" lang="en">GPIO2</span>');
   });
   it('internal links and fragments resolve', () => {
     for (const f of walk(out).filter((x) => x.endsWith('.html'))) {
@@ -327,5 +327,46 @@ describe('HE titles are Hebrew', () => {
       const desc = h.match(/<meta name="description" content="([^"]*)"/)[1];
       expect(desc, `${page} description`).toMatch(/[֐-׿]/);
     }
+  });
+});
+
+describe('rich tokens in Hebrew pages', () => {
+  it('Latin [[tokens]] get lang="en" on he pages only; en pages unchanged', () => {
+    const he = html('he', 'home');
+    expect(he).toContain('<span dir="ltr" lang="en">ESP32</span>');
+    expect(he).not.toMatch(/<span dir="ltr">ESP32<\/span>/);
+    const en = html('en', 'home');
+    expect(en).toContain('<span dir="ltr">ESP32</span>');
+    expect(en).not.toContain('<span dir="ltr" lang="en">');
+  });
+});
+
+describe('claims: only the classic ESP32', () => {
+  const strip = (s) => s.replace(/\[\[([^\]]+)\]\]/g, '$1');
+  const bad = (text) => {
+    const out = [];
+    for (const m of text.matchAll(/ESP32/g)) {
+      const before = text.slice(Math.max(0, m.index - 10), m.index);
+      const after = text.slice(m.index + 5, m.index + 12);
+      if (/classic $/i.test(before) || /^ קלאסי/.test(after)) continue;
+      out.push(text.slice(Math.max(0, m.index - 20), m.index + 15));
+    }
+    return out;
+  };
+  it('every ESP32 in home text and meta is qualified as classic', () => {
+    for (const lang of LANGS) {
+      const home = content[lang].pages.home;
+      const texts = [
+        home.title,
+        home.description,
+        home.h1,
+        home.lead,
+        ...home.features.flatMap((f) => [f.h, f.p]),
+      ];
+      for (const t of texts) expect(bad(strip(t)), `${lang}: ${t}`).toEqual([]);
+    }
+    const root = read('index.html');
+    for (const m of root.matchAll(/content="([^"]*ESP32[^"]*)"/g))
+      expect(bad(m[1]), m[1]).toEqual([]);
   });
 });

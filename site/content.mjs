@@ -96,11 +96,11 @@ const en = {
   screenshotsH: 'See it in the Lab',
   pages: {
     home: {
-      title: 'TBI Lab — an electronics engineering lab for ESP32 in your browser',
+      title: 'TBI Lab — an electronics engineering lab for the classic ESP32 in your browser',
       description:
-        'TBI Lab is an engineering tool in the browser: a deterministic simulation of circuits and [[ESP32]] with Arduino (C++) or MicroPython code, parts flagged beyond their absolute maximum ratings, and wiring errors explained. Free Alpha, limited places.',
-      h1: 'An electronics lab for [[ESP32]], in your browser',
-      lead: 'Build a circuit, write Arduino (C++) or MicroPython code and run it on a simulated [[ESP32]], then see what happens in the circuit. An engineering tool, not a game.',
+        'TBI Lab is an engineering tool in the browser: a deterministic simulation of circuits and the classic [[ESP32]] with Arduino (C++) or MicroPython code, parts flagged beyond their absolute maximum ratings, and wiring errors explained. Free Alpha, limited places.',
+      h1: 'An electronics lab for the classic [[ESP32]], in your browser',
+      lead: 'Build a circuit, write Arduino (C++) or MicroPython code and run it on a simulated classic [[ESP32]], then see what happens in the circuit. An engineering tool, not a game.',
       featuresH: 'Built for engineering, not for show',
       features: [
         {
@@ -120,7 +120,7 @@ const en = {
           p: 'What cannot yet be simulated reliably is stated openly. There are no fake results.',
         },
         {
-          h: 'ESP32, Arduino, MicroPython and parts',
+          h: 'Classic ESP32, Arduino, MicroPython and parts',
           p: 'Arduino (C++) or MicroPython code on a classic [[ESP32]], with an [[HC-SR04]] distance sensor, a temperature sensor and an [[I2C]] LCD.',
         },
         {
@@ -377,11 +377,11 @@ const he = {
   screenshotsH: 'ככה זה נראה במעבדה',
   pages: {
     home: {
-      title: 'TBI Lab — מעבדת הנדסת אלקטרוניקה ל-ESP32 בדפדפן',
+      title: 'TBI Lab — מעבדת הנדסת אלקטרוניקה ל-ESP32 קלאסי בדפדפן',
       description:
-        'TBI Lab הוא כלי הנדסי בדפדפן: סימולציה דטרמיניסטית של מעגלים ושל [[ESP32]] עם קוד Arduino (C++) או MicroPython, רכיבים שמסומנים כשהם חורגים מהמגבלות המקסימליות, והסבר על שגיאות חיווט. אלפא חינמית, מספר מקומות מוגבל.',
-      h1: 'מעבדת אלקטרוניקה ל-[[ESP32]], בתוך הדפדפן',
-      lead: 'מתכננים מעגל, כותבים קוד Arduino (C++) או MicroPython ומריצים אותו על [[ESP32]] מדומה, ורואים מה קורה במעגל. כלי הנדסי, לא משחק.',
+        'TBI Lab הוא כלי הנדסי בדפדפן: סימולציה דטרמיניסטית של מעגלים ושל [[ESP32]] קלאסי עם קוד Arduino (C++) או MicroPython, רכיבים שמסומנים כשהם חורגים מהמגבלות המקסימליות, והסבר על שגיאות חיווט. אלפא חינמית, מספר מקומות מוגבל.',
+      h1: 'מעבדת אלקטרוניקה ל-[[ESP32]] קלאסי, בתוך הדפדפן',
+      lead: 'מתכננים מעגל, כותבים קוד Arduino (C++) או MicroPython ומריצים אותו על [[ESP32]] קלאסי מדומה, ורואים מה קורה במעגל. כלי הנדסי, לא משחק.',
       featuresH: 'בנוי להנדסה, לא להצגה',
       features: [
         {
@@ -401,7 +401,7 @@ const he = {
           p: 'מה שעדיין אי אפשר לדמות בצורה אמינה נאמר במפורש. אין תוצאות מזויפות.',
         },
         {
-          h: 'ESP32, Arduino, MicroPython ורכיבים',
+          h: 'ESP32 קלאסי, Arduino, MicroPython ורכיבים',
           p: 'קוד Arduino (C++) או MicroPython על [[ESP32]] קלאסי, עם חיישן מרחק [[HC-SR04]], חיישן טמפרטורה ומסך [[I2C]] LCD.',
         },
         {
