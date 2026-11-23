@@ -169,9 +169,11 @@ interface DirStat {
  * With no uid (non-POSIX) the owner checks are skipped. `lstat` is a test hook.
  */
 export async function autoStateDirCheck(
-  path: string,
+  rawPath: string,
   opts: { lstat?: (p: string) => Promise<DirStat> } = {},
 ): Promise<string | null> {
+  // A trailing slash is the same directory: strip it before the checks (a symlink is still caught by realpath).
+  const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') || '/' : rawPath;
   const stat = opts.lstat ?? lstatAsync;
   const uid = process.getuid?.();
   try {

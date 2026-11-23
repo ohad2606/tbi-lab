@@ -267,3 +267,8 @@ once an hour per reason (fake clock).
 - Open: stop during startup can still run one sweep; the cut-off is written before the pause check.
 - Open (out of scope here): no cross-process lock (one admin service process per store is assumed).
 - Deploy item: never put the state dir under the store dir; create it 0700, owned by the admin service user.
+
+### Runbook note (QA day2213)
+- The state dir chain must have no group/world-writable non-sticky ancestors and no symlinks: use the real path
+  (e.g. `/var/lib/tbi-signup/auto`, 0700, owned by the admin uid), not `/var/run/...`. A trailing slash is tolerated.
+- Ancestors such as 0775 directories are refused (`ancestor_mode`) — by design.
