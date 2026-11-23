@@ -105,7 +105,7 @@ const en = {
       features: [
         {
           h: 'Deterministic simulation',
-          p: 'Voltages, currents and timing come from a simulation engine, not from an animation. The same circuit gives the same result every time.',
+          p: 'Voltages and currents are computed by a deterministic DC simulation engine, not drawn by an animation. The same circuit gives the same result every time.',
         },
         {
           h: 'Parts flagged beyond their limits',
@@ -386,7 +386,7 @@ const he = {
       features: [
         {
           h: 'סימולציה דטרמיניסטית',
-          p: 'מתחים, זרמים ותזמון מחושבים במנוע סימולציה ולא באנימציה. אותו מעגל נותן אותה תוצאה בכל פעם.',
+          p: 'מתחים וזרמים מחושבים במנוע סימולציה דטרמיניסטי (DC), ולא מצוירים באנימציה. אותו מעגל נותן אותה תוצאה בכל פעם.',
         },
         {
           h: 'רכיבים שחורגים מהמגבלות מסומנים',

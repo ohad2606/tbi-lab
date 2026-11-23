@@ -233,6 +233,15 @@ describe('build output', () => {
       }
     }
   });
+  it('D-1420-5: deterministic-simulation feature card makes no timing claim', () => {
+    for (const l of LANGS) {
+      const card = content[l].pages.home.features[0];
+      expect(`${card.h} ${card.p}`).not.toMatch(/timing|תזמון/i);
+      expect(card.p).toContain(
+        l === 'he' ? 'דטרמיניסטי (DC)' : 'deterministic DC simulation engine',
+      );
+    }
+  });
   it('CTA: pending state when APPLY_URL is empty, https link when set (both modes)', () => {
     // the configured form (owner-supplied Google Form) is https and is what the default build links to
     expect(APPLY_URL === '' || /^https:\/\/forms\.gle\/[A-Za-z0-9]+$/.test(APPLY_URL)).toBe(true);
