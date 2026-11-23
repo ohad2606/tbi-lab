@@ -2,8 +2,11 @@
  * TBI-018 s3d-6: operator CLI for the Session Host sim journal torn-tail repair (repairjournal.ts).
  * Run by hand with the Session Host STOPPED, as the host's user, never from a unit or at boot:
  *
- *   node repair-main.js <state dir>            report only (nothing written)
- *   node repair-main.js <state dir> --apply    copy to *.pre-repair, then drop the torn last record
+ *   node sim-journal-repair.mjs <state dir>            report only (nothing written)
+ *   node sim-journal-repair.mjs <state dir> --apply    copy to *.pre-repair, then drop the torn last record
+ *
+ * Packaged (s3d-7) as one self-contained bundle: `npm run simrepair:build` ->
+ * runtime/plans/dist/sim-journal-repair.mjs, installed beside session-host.mjs (staging checklist §5).
  *
  * One JSON line on stdout (counts, byte offsets, the copy's file name; never journal content).
  * Exit: 0 clean or repaired, 2 torn tail found (report only), 3 corrupt (refused, never repaired),
