@@ -12,6 +12,8 @@ import {
   canResend,
   focusAfterRemoval,
   isAutoApproved,
+  signupSource,
+  autoStateClass,
   isOpenSignup,
   signupRowKind,
   signupCountKey,
@@ -33,6 +35,8 @@ const rec = (status: string, accountAdded = false): SignupRecord => ({
   lastError: null,
   emailSendAfter: null,
   autoApprovedAt: null,
+  heardFrom: null,
+  origin: null,
   createdAt: '2026-11-01T10:00:00Z',
 });
 
@@ -252,5 +256,43 @@ describe('autoApproveView', () => {
   it('has HE and EN texts for every key', () => {
     for (const l of LOCALES)
       for (const k of AUTO_KEYS) expect(l.messages[k as never], k).toBeTruthy();
+  });
+});
+
+describe('web intake source (BETA-G1 s10)', () => {
+  const body = { id: 'a1', status: 'pending', accountAdded: false };
+  const parse = (extra: object) => {
+    const o = interpretSignup(200, { record: { ...body, ...extra }, note: null });
+    return o.kind === 'done' ? o.record : null;
+  };
+  it('the client keeps heardFrom (trimmed text, <= 80) and origin web, else null', () => {
+    const r = parse({ heardFrom: ' a friend ', origin: 'web' });
+    expect(r?.heardFrom).toBe('a friend');
+    expect(r?.origin).toBe('web');
+    for (const bad of [undefined, null, '', '   ', 5, true, {}, 'x'.repeat(81)])
+      expect(parse({ heardFrom: bad })?.heardFrom, String(bad)).toBeNull();
+    for (const bad of [undefined, null, 'mail', 'WEB', 1, true])
+      expect(parse({ origin: bad })?.origin, String(bad)).toBeNull();
+  });
+  it('signupSource: nothing for an old record, text only for heardFrom', () => {
+    expect(signupSource(rec('pending'))).toEqual({ heardFrom: null, web: false });
+    expect(
+      signupSource({ ...rec('pending'), heardFrom: '<a href="x">x</a>', origin: 'web' }),
+    ).toEqual({ heardFrom: '<a href="x">x</a>', web: true });
+  });
+  it('texts exist in both locales with the same keys', () => {
+    for (const k of ['console.signups.heardFrom', 'console.signups.origin.web'])
+      for (const l of LOCALES)
+        expect(isMessageKey(k) && l.messages[k as never], l.code + k).toBeTruthy();
+  });
+  it('the unknown auto state has its own neutral class, not the off (danger) one', () => {
+    expect(autoStateClass('unknown')).toBe('badge-unknown');
+    expect(autoStateClass('notRunning')).toBe('badge-off');
+    expect(autoStateClass('running')).toBe('badge-auto');
+    expect(autoStateClass('paused')).toBe('badge-pending');
+  });
+  it('the Hebrew auto-approve count has no plural verb that disagrees with the number', () => {
+    const he = LOCALES.find((l) => l.code === 'he')!;
+    expect(he.messages['console.signups.auto.today' as never]).not.toMatch(/אושרו/);
   });
 });

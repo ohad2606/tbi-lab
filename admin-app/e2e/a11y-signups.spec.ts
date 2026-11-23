@@ -152,6 +152,39 @@ for (const lang of ['he', 'en'] as const) {
 }
 
 for (const lang of ['he', 'en'] as const) {
+  test(`signups (${lang}): web-form badge and "how they heard" are plain text; absent shows nothing`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list');
+    await page.unroute('**/admin-api/signups/**');
+    const web = {
+      ...row('r1', 'Dana Levi', 'dana@example.com', '2026-11-01T10:00:00Z'),
+      origin: 'web',
+      heardFrom: '<a href="https://evil.example">a friend</a> שלום',
+    };
+    const old = row('r2', 'Omer Cohen', 'omer@example.com', '2026-11-02T10:00:00Z');
+    await page.route('**/admin-api/signups/open', (route) =>
+      route.fulfill({ json: { signups: [web, old] } }),
+    );
+    await open(page, context, baseURL!, lang);
+    const r1 = page.locator('[data-signup-id="r1"]');
+    await expect(r1.getByTestId('signup-origin-web')).toHaveText(
+      lang === 'he' ? 'טופס אינטרנט' : 'Web form',
+    );
+    const heard = r1.getByTestId('signup-heard-from');
+    await expect(heard).toContainText(lang === 'he' ? 'איך שמעו עלינו' : 'How they heard about us');
+    await expect(heard).toContainText('<a href="https://evil.example">a friend</a>');
+    await expect(heard.locator('a')).toHaveCount(0);
+    const r2 = page.locator('[data-signup-id="r2"]');
+    await expect(r2.getByTestId('signup-origin-web')).toHaveCount(0);
+    await expect(r2.getByTestId('signup-heard-from')).toHaveCount(0);
+    expect(await r2.evaluate((e) => (e as HTMLElement).innerText)).not.toContain('undefined');
+  });
+}
+
+for (const lang of ['he', 'en'] as const) {
   test(`signups (${lang}): "approved automatically" badge is text in the row, with enough contrast`, async ({
     page,
     context,
@@ -212,7 +245,7 @@ const T = {
   en: {
     heading: 'Auto-approve status',
     off: 'Auto-approve is off.',
-    today: (n: string, c: string) => `Today: ${n} of ${c} auto-approved`,
+    today: (n: string, c: string) => `Auto-approved today: ${n} of ${c}`,
     running: 'Running',
     paused: 'Paused (kill switch)',
     notRunning: 'Not running',
@@ -224,7 +257,7 @@ const T = {
   he: {
     heading: 'סטטוס אישור אוטומטי',
     off: 'האישור האוטומטי כבוי.',
-    today: (n: string, c: string) => `היום: ${n} מתוך ${c} אושרו אוטומטית`,
+    today: (n: string, c: string) => `אישורים אוטומטיים היום: ${n} מתוך ${c}`,
     running: 'פעיל',
     paused: 'מושהה (מתג עצירה)',
     notRunning: 'לא פועל',

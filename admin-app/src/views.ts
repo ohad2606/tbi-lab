@@ -299,6 +299,22 @@ export function signupRowKind(r: SignupRecord): SignupRowKind {
   return 'decide';
 }
 
+/** What the web form added to a request: the free-text answer (plain text) and the web mark. */
+export const signupSource = (r: SignupRecord): { heardFrom: string | null; web: boolean } => ({
+  heardFrom: r.heardFrom ?? null,
+  web: r.origin === 'web',
+});
+
+/** Badge class of the auto-approve state: unknown is neutral (dashed), not the danger style. */
+export const autoStateClass = (s: AutoApproveState): string =>
+  s === 'running'
+    ? 'badge-auto'
+    : s === 'paused'
+      ? 'badge-pending'
+      : s === 'unknown'
+        ? 'badge-unknown'
+        : 'badge-off';
+
 /** True when the record carries the automatic approver's mark (BETA-G1). */
 export const isAutoApproved = (r: SignupRecord): boolean => r.autoApprovedAt !== null;
 
