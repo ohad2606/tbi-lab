@@ -101,6 +101,13 @@ for (const { lang, dir } of LANGS) {
       if (alt === '')
         expect(await img.evaluate((e) => !!e.closest('a')?.textContent?.trim())).toBe(true);
     }
+    // default build links the owner-supplied https form; pending build links the how-to-apply section
+    const primary = page.locator('a.btn-primary').first();
+    if (await primary.count()) {
+      await expect(primary).toHaveAttribute('href', /^https:\/\/forms\.gle\//);
+      await expect(primary).toHaveAttribute('rel', 'noopener');
+      return;
+    }
     await page.locator('a.btn-pending').first().click();
     await expect(page).toHaveURL(new RegExp(`/${lang}/alpha/#how-to-apply$`));
     await expect(page.locator('#how-to-apply')).toBeVisible();
