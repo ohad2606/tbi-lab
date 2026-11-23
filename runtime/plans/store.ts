@@ -73,7 +73,7 @@ export class JournalStore<E = PlanEvent> implements Store<E> {
   async append(events: E[]): Promise<void> {
     if (events.length === 0) return;
     const data = Buffer.from(events.map(encodeLine).join(''), 'utf8');
-    const fd = openSync(this.path, 'a');
+    const fd = openSync(this.path, 'a', 0o600);
     try {
       let off = 0;
       while (off < data.length) off += writeSync(fd, data, off);

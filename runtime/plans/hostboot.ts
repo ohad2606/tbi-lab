@@ -16,14 +16,18 @@
  */
 import {
   closeSync,
+  constants as fsc,
+  fstatSync,
   lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
+  readSync,
+  realpathSync,
   unlinkSync,
   writeSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { parseConfig, PLAN_IDS, type PlanId, type PlansConfig } from './config.js';
 import { HOST_SIM_FLAGS } from './hostflags.js';
 import type { SimEvent } from './simminutes.js';
@@ -35,6 +39,10 @@ export class HostSimBootError extends Error {}
 
 export const SIM_JOURNAL_FILE = 'sim-journal.log';
 export const SIM_LOCK_FILE = 'host.lock';
+/** O_EXCL mutex serialising a stale-lock takeover and release (never removed by a non-holder) */
+export const SIM_LOCK_TAKEOVER_FILE = 'host.lock.takeover';
+/** the plans config is a small JSON file; anything larger is refused unread */
+export const MAX_SIM_CONFIG_BYTES = 1024 * 1024;
 export const DEFAULT_SIM_HOUSEKEEPING_MS = 5000;
 export const DEFAULT_SIM_POLL_S = 15;
 
@@ -52,6 +60,13 @@ export interface HostSimBootDeps {
   alive?: (pid: number) => boolean;
   /** effective uid the state directory must belong to; default `process.getuid()` */
   uid?: number;
+  /** test hooks into the lock protocol (interleaving simulation) */
+  lockHooks?: StateLockHooks;
+}
+
+export interface StateLockHooks {
+  /** runs after a dead-pid lock was read and before the takeover mutex is taken */
+  beforeTakeover?: () => void;
 }
 
 export interface HostSimLock {
@@ -113,65 +128,129 @@ function defaultAlive(pid: number): boolean {
   }
 }
 
+/** O_EXCL-creates `path` holding `content`; false on EEXIST, HostSimBootError on anything else. */
+function createExclusive(path: string, content: string): boolean {
+  let fd: number;
+  try {
+    fd = openSync(path, 'wx', 0o600);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw new HostSimBootError('sim state lock unusable; refusing to start');
+  }
+  try {
+    writeSync(fd, content);
+  } catch {
+    closeSync(fd);
+    try {
+      unlinkSync(path);
+    } catch {
+      /* best effort; an empty file reads as malformed and refuses */
+    }
+    throw new HostSimBootError('sim state lock unusable; refusing to start');
+  }
+  closeSync(fd);
+  return true;
+}
+
+/** lock file content, or null when it does not exist; HostSimBootError when unreadable */
+function readLock(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf8').trim();
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw new HostSimBootError('sim state lock unreadable; refusing to start');
+  }
+}
+
 /**
  * Exclusive lock on the state directory: `host.lock` created with O_EXCL holding this pid.
- * An existing lock refuses, unless its pid is provably gone (stale after a crash): then it is
- * removed and taken once. Unreadable or malformed lock content refuses (an operator removes it).
+ * An existing lock refuses, unless its pid is provably gone (stale after a crash). The takeover
+ * (re-read, unlink, create) runs under a second O_EXCL mutex `host.lock.takeover`, so two hosts
+ * that both saw the same dead pid cannot both own the lock: the second one re-reads under the
+ * mutex, finds the first one's pid and refuses. The mutex is only ever removed by its holder; a
+ * mutex left by a crashed holder refuses with an operator message (never taken over automatically).
+ * Unreadable or malformed lock content refuses (an operator removes it).
  */
 export function acquireStateLock(
   dir: string,
   alive: (pid: number) => boolean = defaultAlive,
+  hooks: StateLockHooks = {},
 ): HostSimLock {
   const path = join(dir, SIM_LOCK_FILE);
+  const mutex = join(dir, SIM_LOCK_TAKEOVER_FILE);
   const mine = String(process.pid);
-  const create = (): boolean => {
-    let fd: number;
-    try {
-      fd = openSync(path, 'wx', 0o600);
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'EEXIST') return false;
-      throw new HostSimBootError('sim state lock unusable; refusing to start');
+  const locked = () =>
+    new HostSimBootError('sim state directory is locked by another host; refusing to start');
+
+  /** runs fn holding the takeover mutex; HostSimBootError when another holder has it */
+  const withMutex = <T>(fn: () => T): T => {
+    if (!createExclusive(mutex, `${mine}\n`)) {
+      const holder = readLock(mutex);
+      // gone again or still empty: its holder is between create/write and unlink right now
+      if (
+        holder === null ||
+        holder === '' ||
+        (isPid(holder) && holder !== mine && alive(Number(holder)))
+      )
+        throw new HostSimBootError(
+          `sim state lock takeover in progress by another host (if it persists, remove ${SIM_LOCK_TAKEOVER_FILE} by hand); refusing`,
+        );
+      throw new HostSimBootError(
+        `sim state lock takeover mutex is stale or malformed; remove ${SIM_LOCK_TAKEOVER_FILE} by hand; refusing to start`,
+      );
     }
     try {
-      writeSync(fd, `${mine}\n`);
+      return fn();
     } finally {
-      closeSync(fd);
+      try {
+        unlinkSync(mutex);
+      } catch {
+        /* gone already: nothing else removes a mutex it does not hold */
+      }
     }
-    return true;
   };
-  if (!create()) {
-    let held: string;
-    try {
-      held = readFileSync(path, 'utf8').trim();
-    } catch {
-      throw new HostSimBootError('sim state lock unreadable; refusing to start');
+
+  if (!createExclusive(path, `${mine}\n`)) {
+    const held = readLock(path);
+    if (held !== null) {
+      if (!isPid(held))
+        throw new HostSimBootError(
+          'sim state lock malformed; remove it by hand; refusing to start',
+        );
+      if (held === mine || alive(Number(held))) throw locked();
     }
-    if (!isPid(held))
-      throw new HostSimBootError('sim state lock malformed; remove it by hand; refusing to start');
-    if (held === mine || alive(Number(held)))
-      throw new HostSimBootError(
-        'sim state directory is locked by another host; refusing to start',
-      );
-    try {
-      unlinkSync(path);
-    } catch {
-      throw new HostSimBootError('sim state lock stale but not removable; refusing to start');
-    }
-    if (!create())
-      throw new HostSimBootError(
-        'sim state directory is locked by another host; refusing to start',
-      );
+    hooks.beforeTakeover?.();
+    withMutex(() => {
+      const now = readLock(path);
+      if (now !== null) {
+        // someone else took over (or locked) since we looked: never remove their lock
+        if (now !== held) throw locked();
+        try {
+          unlinkSync(path);
+        } catch {
+          throw new HostSimBootError('sim state lock stale but not removable; refusing to start');
+        }
+      }
+      if (!createExclusive(path, `${mine}\n`)) throw locked();
+    });
   }
   let released = false;
   return {
     path,
+    /**
+     * Removes the lock under the takeover mutex if it still holds our pid. When the mutex is held
+     * by someone else the lock is left in place: our pid is gone after exit, so it is a stale lock
+     * the next host takes over. Idempotent; never throws.
+     */
     release() {
       if (released) return;
       released = true;
       try {
-        if (readFileSync(path, 'utf8').trim() === mine) unlinkSync(path);
+        withMutex(() => {
+          if (readLock(path) === mine) unlinkSync(path);
+        });
       } catch {
-        /* already gone */
+        /* mutex busy, or already gone */
       }
     },
   };
@@ -179,18 +258,59 @@ export function acquireStateLock(
 
 /** The state directory must exist (created 0700 if absent), be a real directory, ours, mode 0700. */
 function checkStateDir(dir: string, uid: number | undefined): void {
+  // `link/` and `link/.` make lstat follow a symlink: only the exact absolute normalised path is taken.
+  if (!isAbsolute(dir) || resolve(dir) !== dir)
+    throw new HostSimBootError(
+      'TBI_HOST_SIM_PLANS_STATE must be an absolute normalised path; refusing to start',
+    );
+  let st: ReturnType<typeof lstatSync>;
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
+    st = lstatSync(dir);
   } catch {
     throw new HostSimBootError('TBI_HOST_SIM_PLANS_STATE unusable; refusing to start');
   }
-  const st = lstatSync(dir);
   if (!st.isDirectory())
     throw new HostSimBootError('TBI_HOST_SIM_PLANS_STATE is not a directory; refusing to start');
   if (uid !== undefined && st.uid !== uid)
     throw new HostSimBootError('TBI_HOST_SIM_PLANS_STATE not owned by the host user; refusing');
   if ((st.mode & 0o777) !== 0o700)
     throw new HostSimBootError('TBI_HOST_SIM_PLANS_STATE mode must be 0700; refusing to start');
+  let real: string;
+  try {
+    real = realpathSync(dir);
+  } catch {
+    throw new HostSimBootError('TBI_HOST_SIM_PLANS_STATE unusable; refusing to start');
+  }
+  if (real !== dir)
+    throw new HostSimBootError(
+      'TBI_HOST_SIM_PLANS_STATE has a symlinked parent; refusing to start',
+    );
+}
+
+/**
+ * Reads the plans config: must be a regular file (checked on the open fd, so no FIFO/device read
+ * and no swap after the check) of at most MAX_SIM_CONFIG_BYTES. O_NONBLOCK keeps a FIFO from
+ * blocking the open.
+ */
+function readConfigFile(file: string): string {
+  const fd = openSync(file, fsc.O_RDONLY | fsc.O_NONBLOCK);
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) throw new HostSimBootError('sim plans config is not a regular file');
+    if (st.size > MAX_SIM_CONFIG_BYTES) throw new HostSimBootError('sim plans config too large');
+    const buf = Buffer.alloc(MAX_SIM_CONFIG_BYTES + 1);
+    let n = 0;
+    for (;;) {
+      const r = readSync(fd, buf, n, buf.length - n, null);
+      if (r === 0) break;
+      n += r;
+      if (n > MAX_SIM_CONFIG_BYTES) throw new HostSimBootError('sim plans config too large');
+    }
+    return buf.subarray(0, n).toString('utf8');
+  } finally {
+    closeSync(fd);
+  }
 }
 
 const hasMinuteCaps = (cfg: PlansConfig) =>
@@ -221,9 +341,14 @@ export async function bootSimPlans(
   }
   let cfg: PlansConfig;
   try {
-    cfg = parseConfig(JSON.parse(readFileSync(file, 'utf8')));
+    cfg = parseConfig(JSON.parse(readConfigFile(file)));
   } catch (e) {
-    const why = e instanceof Error ? e.constructor.name : 'error';
+    const why =
+      e instanceof HostSimBootError
+        ? e.message.replace(/^sim plans config /, '')
+        : e instanceof Error
+          ? e.constructor.name
+          : 'error';
     throw new HostSimBootError(`sim plans config unusable (${why}); refusing to start`);
   }
   if (!cfg.metering.enabled)
@@ -264,7 +389,7 @@ export async function bootSimPlans(
   if (dir === undefined || dir === '')
     throw new HostSimBootError('TBI_HOST_SIM_PLANS_STATE is required');
   checkStateDir(dir, deps.uid ?? process.getuid?.());
-  const lock = acquireStateLock(dir, deps.alive);
+  const lock = acquireStateLock(dir, deps.alive, deps.lockHooks);
   try {
     const adapter = await SimHostAdapter.open(
       new JournalStore<SimEvent>(join(dir, SIM_JOURNAL_FILE)),
