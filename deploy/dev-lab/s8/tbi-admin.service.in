@@ -34,9 +34,10 @@ RuntimeDirectory=@N@-admin
 RuntimeDirectoryMode=0755
 # BETA-G1 auto-approve control state (docs/plans/BETA-G1-AUTO-APPROVE.md §2, runbook
 # docs/alpha/SIGNUP-AUTO-APPROVE-RUNBOOK.md): the pause file and the state file (daily count,
-# claims, cut-off). systemd creates /var/lib/@N@-admin-auto owned by User=/Group= and sets mode 0700
-# at EVERY start (a wrong owner is chowned back), so the internet-facing intake user can neither
-# write nor list it. Its parents (/var/lib, /var, /) are the host's root-owned 0755 directories, as
+# claims, cut-off). systemd creates /var/lib/@N@-admin-auto owned by User=/Group= with mode 0700 and
+# puts a wrong owner back at start. It may NOT correct a loosened mode (verify with stat, see the
+# runbook; autoStateDirCheck refuses only group/world-WRITABLE), so the internet-facing intake user
+# is kept out by the 0700 mode as created plus that check. Its parents (/var/lib, /var, /) are the host's root-owned 0755 directories, as
 # autoStateDirCheck requires. A sibling of the helper's /var/lib/tbi-admin, never inside it (systemd
 # would chown that tree) and never inside the sign-up store (owned by the intake user). This is the
 # only writable path added; ProtectSystem=strict makes a StateDirectory writable by itself.
