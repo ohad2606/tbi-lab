@@ -33,8 +33,10 @@ const mailer = new Mailer(c, {
 try {
   await mailer.init();
 } catch (e) {
-  log(`refusing to start: ${errorClass(e)}`);
-  process.exit(1);
+  const cls = errorClass(e);
+  log(`refusing to start: ${cls}`);
+  // 78 (EX_CONFIG) with RestartPreventExitStatus=78 in the unit: no 10 s restart loop.
+  process.exit(cls === 'status_dir_over_cap' ? 78 : 1);
 }
 let running: Promise<void> | null = null;
 const tick = () => {

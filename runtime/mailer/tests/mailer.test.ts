@@ -29,6 +29,7 @@ import {
   MAX_ATTEMPTS,
   MAX_ITEM_AGE_MS,
   QUEUE_SCAN_MAX,
+  STATUS_SCAN_MAX,
   STUCK_MAX_AGE_MS,
   STUCK_WARN_THRESHOLD,
   type Ledger,
@@ -482,6 +483,26 @@ describe('mailer: retry and dead letters', () => {
     expect(t.queued()).toHaveLength(1);
   });
 
+  it('a failed dead-letter ledger write keeps the queue file and logs a WARNING (no key, no PII); the next run dead-letters it', async () => {
+    const t = setup();
+    await enqueueMail(t.queueDir, item({ createdAt: DAY - MAX_ITEM_AGE_MS - 1 }));
+    chmodSync(t.statusDir, 0o550); // ledger writes fail (EACCES)
+    try {
+      expect(await t.mailer.runOnce()).toMatchObject({ dead: 0, skipped: 1, sent: 0 });
+      expect(t.queued()).toHaveLength(1);
+      expect(t.logs.filter((l) => l.includes('WARNING'))).toEqual([
+        'mailer: WARNING: dead-letter ledger write failed (stale); queue entry kept, will retry',
+      ]);
+      expect(t.logs.some((l) => l.startsWith('mailer: dead '))).toBe(false);
+      expectCleanLogs(t.logs.filter((l) => l.includes('WARNING')));
+    } finally {
+      chmodSync(t.statusDir, 0o750);
+    }
+    expect(await t.mailer.runOnce()).toMatchObject({ dead: 1 });
+    expect(t.queued()).toHaveLength(0);
+    expect(t.ledger()).toMatchObject({ status: 'dead', lastError: 'stale' });
+  });
+
   it('a stale entry (never attempted, older than the max age) is not sent', async () => {
     const t = setup();
     await enqueueMail(t.queueDir, item({ createdAt: DAY - MAX_ITEM_AGE_MS - 1 }));
@@ -688,6 +709,14 @@ describe('mailer: rate counters survive a restart', () => {
     expect(await t.mailer.runOnce()).toMatchObject({ sent: 0, deferred: 1 });
     expectCleanLogs(t.logs);
   });
+});
+
+describe('mailer: status directory cap', () => {
+  it('init() refuses a status directory with more than STATUS_SCAN_MAX names (status_dir_over_cap)', async () => {
+    const t = setup();
+    for (let i = 0; i <= STATUS_SCAN_MAX; i++) writeFileSync(join(t.statusDir, `x${i}`), '');
+    await expect(t.mailer.init()).rejects.toThrow('status_dir_over_cap');
+  }, 120_000);
 });
 
 describe('mailer: start checks', () => {

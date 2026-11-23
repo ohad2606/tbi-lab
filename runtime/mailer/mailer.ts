@@ -15,7 +15,7 @@
  *   An entry the mailer cannot read (EACCES, EMFILE, EIO ...: an operator or host problem, not a
  *   content fault) is kept and retried next run, and dead-lettered (`stuck_unreadable`) once this
  *   process has seen it unreadable for 24 h and its file is older than 24 h; an entry with an
- *   unreadable ledger likewise (`stuck_ledger`, by the ledger's mtime); a directory with a key name is removed when empty, else left alone. Stuck
+ *   unreadable ledger likewise (`stuck_ledger`, by the ledger's mtime; the unreadable ledger may have been a `sent` one, so replacing it by `dead` means "outcome unknown": the mail may or may not have gone out, and it is never re-sent); a directory with a key name is removed when empty, else left alone. Stuck
  *   entries do not use the listing cap (only handled entries do; at most QUEUE_SCAN_MAX names
  *   are examined per run), and many of them raise one loud warning per run.
  * - The only queue value that reaches the mail body is the recipient's first name, and only as a
@@ -279,10 +279,11 @@ export class Mailer {
         // is older than STUCK_MAX_AGE_MS any attempt on it is outside the idempotency window, so
         // it can never be retried safely: dead-letter it (replaces the unreadable ledger).
         if (await stuckLongEnough(key, join(this.c.statusDir, `${key}.json`))) {
-          await this.giveUp(name, key, null, 'stuck_ledger', now);
-          seenStuck.delete(key);
-          s.dead++;
-          stuckDead++;
+          if (await this.giveUp(name, key, null, 'stuck_ledger', now)) {
+            seenStuck.delete(key);
+            s.dead++;
+            stuckDead++;
+          } else s.skipped++;
           continue;
         }
         ledgersCorrupt++;
@@ -309,10 +310,11 @@ export class Mailer {
         // STUCK_MAX_AGE_MS it is dead-lettered. It can never be sent without being read, so
         // removing it cannot cause a duplicate.
         if (await stuckLongEnough(key, join(this.c.queueDir, name))) {
-          await this.giveUp(name, key, ledger, 'stuck_unreadable', now);
-          seenStuck.delete(key);
-          s.dead++;
-          stuckDead++;
+          if (await this.giveUp(name, key, ledger, 'stuck_unreadable', now)) {
+            seenStuck.delete(key);
+            s.dead++;
+            stuckDead++;
+          } else s.skipped++;
           continue;
         }
         unreadable.set(r.code, (unreadable.get(r.code) ?? 0) + 1);
@@ -348,13 +350,13 @@ export class Mailer {
       }
       const first = ledger?.firstAttemptAt ?? null;
       if (first === null && now - item.createdAt > MAX_ITEM_AGE_MS) {
-        await this.giveUp(name, key, ledger, 'stale', now);
-        s.dead++;
+        if (await this.giveUp(name, key, ledger, 'stale', now)) s.dead++;
+        else s.skipped++;
         continue;
       }
       if (first !== null && now - first > IDEMPOTENCY_WINDOW_MS) {
-        await this.giveUp(name, key, ledger, 'window_expired', now);
-        s.dead++;
+        if (await this.giveUp(name, key, ledger, 'window_expired', now)) s.dead++;
+        else s.skipped++;
         continue;
       }
       if (!this.mayAttempt(now, attemptsThisRun)) {
@@ -411,14 +413,15 @@ export class Mailer {
           );
           s.retrying++;
         } else {
-          await this.giveUp(
+          const ok = await this.giveUp(
             name,
             key,
             { attempts, firstAttemptAt: firstAt, lastAttemptAt: now },
             code,
             now,
           );
-          s.dead++;
+          if (ok) s.dead++;
+          else s.skipped++;
         }
         continue;
       }
@@ -580,8 +583,11 @@ export class Mailer {
     prev: Pick<Ledger, 'attempts' | 'firstAttemptAt' | 'lastAttemptAt'> | null,
     code: string,
     now: number,
-  ) {
-    await this.writeLedgerLogged({
+  ): Promise<boolean> {
+    // The queue file is removed ONLY once the dead ledger is on disk: without it a re-queued
+    // entry (or this one, next run) would not be a no-op. On failure the entry stays and the next
+    // run tries again. Counts only in the warning (no key, no address).
+    const written = await this.writeLedgerLogged({
       v: 1,
       key,
       status: 'dead',
@@ -592,8 +598,13 @@ export class Mailer {
       lastError: code,
       updatedAt: now,
     });
+    if (!written) {
+      this.log(`WARNING: dead-letter ledger write failed (${code}); queue entry kept, will retry`);
+      return false;
+    }
     await this.unlinkEntry(name);
     this.log(`dead ${key} (${code})`);
+    return true;
   }
 
   private async unlinkEntry(name: string): Promise<void> {

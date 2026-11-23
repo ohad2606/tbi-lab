@@ -108,7 +108,10 @@ attempt, next attempt, error class; **no personal data**).
   overwritten on first sight) and the ledger's mtime is older than 24 h, any attempt it may record is outside
   the 23 h retry window, so the entry could never be retried safely: it is dead-lettered
   (`stuck_ledger`; the unreadable ledger is replaced by a `dead` one, so a re-queue is a no-op) and the queue
-  file is removed.
+  file is removed. The unreadable ledger may have been a `sent` one nobody could read, so `dead` here means
+  "outcome unknown", not "never delivered": the mail is never re-sent. The queue file is removed only after
+  the `dead` ledger write succeeded; if that write fails, the entry stays and one `WARNING` (no key, no
+  address) is logged per failure, then the next run retries.
 - **Ledger retention (not implemented, documented):** ledgers are never deleted. Deleting old `sent` ledgers
   would be safe against the provider window (23 h retries, 24 h de-duplication) but not against the queue-key
   no-op: nothing in this design guarantees that a key is never enqueued again after N days (an admin-side retry of
@@ -116,7 +119,10 @@ attempt, next attempt, error class; **no personal data**).
   second time. Retention needs a PM/owner decision (e.g. tie it to the sign-up record retention, after which the
   request id cannot be enqueued). Until then the status directory grows by one small file per mail; the mailer
   refuses to start (`status_dir_over_cap`) when it holds more than 100000 names rather than silently skipping
-  ledgers.
+  ledgers. A restart loop is the expected failure mode: the unit has `Restart=on-failure`, `RestartSec=10`, so
+  the service would exit 1 and restart every ~10 s (until `StartLimitBurst` stops it). The unit therefore sets
+  `RestartPreventExitStatus=78`: a refusal to start that restarting cannot fix (here the over-cap status
+  directory) exits 78 and stays down for the operator to act on; the log line names the class code only.
 
 ## 6. Quiet hours and abuse limits
 
