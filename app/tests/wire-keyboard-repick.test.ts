@@ -39,7 +39,8 @@ function bench(): ProjectDocument {
   if (!w.ok) throw new Error(w.error);
   return w.doc;
 }
-const keys = (c: { pin: PinRef }[]) => c.map((x) => `${x.pin.component}.${x.pin.terminal}`);
+const keys = (c: { pin?: PinRef }[]) =>
+  c.flatMap((x) => (x.pin ? [`${x.pin.component}.${x.pin.terminal}`] : []));
 const groups = (doc: ProjectDocument) => {
   const g = connectivity(doc);
   const m = new Map<string, string[]>();
@@ -106,7 +107,7 @@ describe('reduceWireKeyboard: re-pick', () => {
     s = r.state;
     r = reduceWireKeyboard(s, { type: 'cycle', delta: 1 }, ctx(doc));
     expect(r.event).toMatchObject({ kind: 'candidate', n: 2 });
-    const target = (r.state as Extract<WireKbState, { mode: 'repick' }>).candidates[1]!.pin;
+    const target = (r.state as Extract<WireKbState, { mode: 'repick' }>).candidates[1]!.pin!;
     s = r.state;
     r = reduceWireKeyboard(s, { type: 'commit' }, ctx(doc));
     expect(r.state).toEqual({ mode: 'idle' });
@@ -155,7 +156,7 @@ describe('reduceWireKeyboard: re-pick', () => {
       { type: 'repickChoose', side: 'to' },
     ]);
     // The document changed under the mode: the chosen target now duplicates another wire.
-    const cand = (r.state as Extract<WireKbState, { mode: 'repick' }>).candidates[0]!.pin;
+    const cand = (r.state as Extract<WireKbState, { mode: 'repick' }>).candidates[0]!.pin!;
     const dup = addWire(doc, term(pin('D1', 'anode')), term(cand));
     if (!dup.ok) throw new Error(dup.error);
     r = reduceWireKeyboard(r.state, { type: 'commit' }, ctx(dup.doc));
