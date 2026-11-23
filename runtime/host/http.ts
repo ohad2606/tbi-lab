@@ -315,7 +315,7 @@ async function handle(
 
   if (parts.length === 1 && method === 'POST') {
     const body = await readBody(req, host.config.maxRequestBytes);
-    const r = host.create(body, principal, decision.emailTag);
+    const r = await host.admitCreate(body, principal, decision.emailTag);
     if (!r.ok && r.refusal) {
       admissionEvent('runtime', 'session-create', r.refusal.code, principal);
       return sendRefusal(res, r.refusal);

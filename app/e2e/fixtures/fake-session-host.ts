@@ -381,6 +381,11 @@ const host = {
     sessions.set(s.id, s);
     return { ok: true, value: { session: s } };
   },
+  // TBI-018 s3d-2: `POST /sessions` awaits `admitCreate`. Like the real host without an enabled
+  // sim adapter (the e2e configuration has none), it is exactly `create`.
+  async admitCreate(body: unknown, principal: Principal) {
+    return this.create(body, principal);
+  },
   get(id: string, token: string | null, principal: Principal) {
     const s = sessions.get(id);
     if (!s || token === null || s.owner !== principal)
