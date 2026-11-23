@@ -31,6 +31,7 @@ import {
   AutoApprover,
   type AutoApproveStatus,
   autoApproveConfigFromEnv,
+  type AutoWebSignups,
   autoStateDirCheck,
 } from './autoApprove.js';
 import { errorClass } from './errors.js';
@@ -61,7 +62,13 @@ export interface AdminSignupConfig {
   /** Retention of the store (unset: DEFAULT_RETENTION, 90 d not approved / 365 d at most). */
   retention?: Retention;
   /** BETA-G1: auto-approve with a daily cap; unset = off (today's manual flow, unchanged). */
-  autoApprove?: { dailyCap: number; stateDir?: string; since?: number };
+  autoApprove?: {
+    dailyCap: number;
+    stateDir?: string;
+    since?: number;
+    /** BETA-G1 s8: unset = `excluded` (web-origin requests are never auto-approved). */
+    webSignups?: AutoWebSignups;
+  };
 }
 
 export type AdminSignupConfigResult =
@@ -230,6 +237,7 @@ export async function wireSignupAdmin(
         store,
         dailyCap: c.autoApprove.dailyCap,
         ...(c.autoApprove.since !== undefined ? { since: c.autoApprove.since } : {}),
+        ...(c.autoApprove.webSignups ? { webSignups: c.autoApprove.webSignups } : {}),
         now: io.now,
         log: io.log,
         approver: (hooks) => {
@@ -361,6 +369,7 @@ export async function signupWiringFromEnv(
           dailyCap: auto.dailyCap,
           ...(auto.stateDir !== undefined ? { stateDir: auto.stateDir } : {}),
           ...(auto.since !== undefined ? { since: auto.since } : {}),
+          webSignups: auto.webSignups,
         },
       }
     : cfg.config;

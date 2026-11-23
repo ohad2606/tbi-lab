@@ -68,6 +68,13 @@ export interface SignupRecord extends SignupInput {
    * cap. Absent on every record while auto-approve is off (records are then unchanged).
    */
   autoApprovedAt?: string;
+  /**
+   * BETA-G1 s8: `'web'` on a request that came through the browser route (`POST /signup/web`);
+   * absent on every `/signup` (Apps Script) request. Additive, no schema bump (`v` stays 1).
+   * Counted against the web sub-cap (`maxWebRecords`, via the `<id>.web` marker) and excluded
+   * from auto-approval by default (autoApprove.ts).
+   */
+  origin?: 'web';
 }
 
 /**
@@ -123,7 +130,15 @@ export class StoreError extends Error {
 export class PendingStore {
   constructor(
     private readonly dir: string,
-    private readonly opts: { now?: () => number; maxRecords?: number } = {},
+    private readonly opts: {
+      now?: () => number;
+      maxRecords?: number;
+      /**
+       * BETA-G1 s8: at most this many web-origin records in the store at once (a sub-cap of
+       * `maxRecords`), so the browser route can never fill the store shared with `/signup`.
+       */
+      maxWebRecords?: number;
+    } = {},
   ) {}
 
   private now(): number {
@@ -182,9 +197,27 @@ export class PendingStore {
     return run;
   }
 
-  /** Number of record files, without reading them. */
-  private async count(): Promise<number> {
-    return (await readdir(this.dir)).filter((f) => /^[0-9A-HJKMNP-TV-Z]{26}\.json$/.test(f)).length;
+  /**
+   * Number of record files, and of those with a `<id>.web` marker (web origin), without reading
+   * them. A marker without its record (a crash between the two writes) is not counted.
+   */
+  private async count(): Promise<{ all: number; web: number }> {
+    const files = await readdir(this.dir);
+    const ids = new Set<string>();
+    for (const f of files) {
+      const m = /^([0-9A-HJKMNP-TV-Z]{26})\.json$/.exec(f);
+      if (m) ids.add(m[1]!);
+    }
+    let web = 0;
+    for (const f of files) {
+      const m = /^([0-9A-HJKMNP-TV-Z]{26})\.web$/.exec(f);
+      if (m && ids.has(m[1]!)) web++;
+    }
+    return { all: ids.size, web };
+  }
+
+  private webMarkPath(id: string): string {
+    return join(this.dir, `${this.idOnly(id)}.web`);
   }
 
   /**
@@ -192,9 +225,28 @@ export class PendingStore {
    * sha256 in `<hash>.mark` (created exclusively, holds the record id), so concurrent posts, in
    * this process (mutex) or another one (O_EXCL), yield exactly one record. A marker whose record
    * is gone or rejected is stale and is taken over.
+   *
+   * BETA-G1 s8, `origin: 'web'`: the record carries `origin: 'web'` and a `<id>.web` marker
+   * (written before the record, so a stored web record is always counted). The caps are checked
+   * BEFORE the dedupe for web: at the web sub-cap a known and an unknown address both get `full`
+   * (no address oracle for the unauthenticated route).
    */
-  createIfNew(input: SignupInput): Promise<{ created: boolean; record: SignupRecord }> {
+  createIfNew(
+    input: SignupInput,
+    o: { origin?: 'web' } = {},
+  ): Promise<{ created: boolean; record: SignupRecord }> {
     return this.exclusive(async () => {
+      const web = o.origin === 'web';
+      const max = this.opts.maxRecords;
+      const maxWeb = this.opts.maxWebRecords;
+      const capped = async (): Promise<boolean> => {
+        if (max === undefined && (!web || maxWeb === undefined)) return false;
+        const n = await this.count();
+        return (
+          (max !== undefined && n.all >= max) || (web && maxWeb !== undefined && n.web >= maxWeb)
+        );
+      };
+      if (web && (await capped())) throw new StoreError('full');
       const mark = this.markPath(input.email);
       const claim = async (id: string): Promise<boolean> => {
         try {
@@ -211,9 +263,9 @@ export class PendingStore {
         const cur = await this.get(existing).catch(() => null);
         if (cur && cur.status !== 'rejected') return { created: false, record: cur };
       }
-      const max = this.opts.maxRecords;
-      if (max !== undefined && (await this.count()) >= max) throw new StoreError('full');
+      if (!web && (await capped())) throw new StoreError('full');
       const rec = this.build(input);
+      if (web) rec.origin = 'web';
       if (!(await claim(rec.id))) {
         const holder = (await readFile(mark, 'utf8').catch(() => '')).trim();
         const cur = REQUEST_ID_RE.test(holder) ? await this.get(holder).catch(() => null) : null;
@@ -222,8 +274,10 @@ export class PendingStore {
         if (!(await claim(rec.id))) throw new StoreError('corrupt');
       }
       try {
+        if (web) await writeFile(this.webMarkPath(rec.id), '', { flag: 'wx', mode: 0o600 });
         await this.write(rec.id, rec, true);
       } catch (e) {
+        if (web) await unlink(this.webMarkPath(rec.id)).catch(() => undefined);
         await unlink(mark).catch(() => undefined);
         throw e;
       }
@@ -372,6 +426,7 @@ export class PendingStore {
         await unlink(this.path(id)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.notified`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.notifyq`)).catch(() => undefined);
+        await unlink(join(this.dir, `${id}.web`)).catch(() => undefined);
         return true;
       });
       if (gone) removed.push(id);
@@ -395,6 +450,7 @@ export class PendingStore {
         await unlink(this.path(id)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.notified`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.notifyq`)).catch(() => undefined);
+        await unlink(join(this.dir, `${id}.web`)).catch(() => undefined);
         return true;
       });
       if (gone) this.corruptPurged++;
@@ -411,6 +467,18 @@ export class PendingStore {
             () => false,
           ));
         if (!live && s && t - s.mtimeMs > 3600_000)
+          await unlink(join(this.dir, f)).catch(() => undefined);
+        continue;
+      }
+      // Web markers whose record is gone (a crash between marker and record); not counted anyway.
+      const wm = /^([0-9A-HJKMNP-TV-Z]{26})\.web$/.exec(f);
+      if (wm) {
+        const gone = await stat(this.path(wm[1]!)).then(
+          () => false,
+          () => true,
+        );
+        const s = await stat(join(this.dir, f)).catch(() => null);
+        if (gone && s && t - s.mtimeMs > 3600_000)
           await unlink(join(this.dir, f)).catch(() => undefined);
         continue;
       }

@@ -75,6 +75,13 @@ export const INTAKE_DRAIN_MS = 60_000;
 export const INTAKE_SOURCE_LIMIT = { count: 30, windowMs: 60_000 } as const;
 export const INTAKE_GLOBAL_LIMIT = { count: 200, windowMs: 3_600_000 } as const;
 export const INTAKE_MAX_RECORDS = 5_000;
+/**
+ * BETA-G1 s8: at most this many web-origin records in the store at once (a sub-cap of
+ * INTAKE_MAX_RECORDS). Past it the web route answers 503 `unavailable` while `/signup` (Apps
+ * Script) keeps the remaining 3,500 slots, so a flood through the unauthenticated browser route
+ * cannot stop the existing form. Slots free up when records are purged (retention).
+ */
+export const WEB_MAX_RECORDS = 1_500;
 
 /**
  * BETA-G1 s8, the browser route (docs/plans/BETA-G1-WEB-INTAKE.md). Here the source key IS a
@@ -191,7 +198,11 @@ export async function startIntake(
   );
   if (token.length === 0) throw new Error('token_empty');
   if (!TELEGRAM_TOKEN_RE.test(token)) throw new Error('token_malformed');
-  const store = new PendingStore(c.dir, { now: io.now, maxRecords: INTAKE_MAX_RECORDS });
+  const store = new PendingStore(c.dir, {
+    now: io.now,
+    maxRecords: INTAKE_MAX_RECORDS,
+    maxWebRecords: WEB_MAX_RECORDS,
+  });
   await store.init();
   const now = io.now ?? Date.now;
   const intake = new SignupIntake({

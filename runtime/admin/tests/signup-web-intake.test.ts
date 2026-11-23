@@ -294,13 +294,15 @@ describe('SignupIntake.submitWeb', () => {
     const u = unitIntake(tmp());
     await u.init();
     const tok = u.token();
+    // Honeypot hits burn their token (fix round M1), so each gets its own.
+    const hp = [u.token(), u.token(), u.token()];
     u.advance(5_000);
     const cases: [Record<string, unknown> | string, number, string][] = [
       [{ ...FIELDS, website: '' }, 401, 'unauthorized'],
       [{ ...FIELDS, token: issueToken(Buffer.alloc(32, 1), T0), website: '' }, 401, 'unauthorized'],
-      [{ ...FIELDS, token: tok, website: 'http://spam.example' }, 400, 'invalid'],
-      [{ ...FIELDS, token: tok }, 400, 'invalid'], // honeypot must be present and empty
-      [{ ...FIELDS, token: tok, website: 0 }, 400, 'invalid'],
+      [{ ...FIELDS, token: hp[0], website: 'http://spam.example' }, 400, 'invalid'],
+      [{ ...FIELDS, token: hp[1] }, 400, 'invalid'], // honeypot must be present and empty
+      [{ ...FIELDS, token: hp[2], website: 0 }, 400, 'invalid'],
       [{ ...FIELDS, consent: false, token: tok, website: '' }, 400, 'invalid'],
       [{ ...FIELDS, email: 'nope', token: tok, website: '' }, 400, 'invalid'],
       [{ ...FIELDS, extra: 1, token: tok, website: '' }, 400, 'invalid'],
@@ -312,7 +314,7 @@ describe('SignupIntake.submitWeb', () => {
         await u.intake.submitWeb('src', typeof b === 'string' ? Buffer.from(b) : body(b)),
       ).toEqual({ status, error });
     expect(await u.store.list()).toHaveLength(0);
-    // Invalid answers did not consume the token: the corrected form goes through with it.
+    // Invalid fields did not consume the token: the corrected form goes through with it.
     expect(await u.intake.submitWeb('src', body({ ...FIELDS, token: tok, website: '' }))).toEqual({
       status: 200,
     });
