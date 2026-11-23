@@ -49,6 +49,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      # Landing site (static build + a11y/layout e2e); fixed port 4391, runs alone.
+      - run: npm run site:test:e2e
       # Product: editor, persistence incl. full browser restart, localization, keyboard.
       - run: npm run test:e2e
       # Accessibility gate: app/e2e/a11y-*.spec.ts (above) plus the admin app's
