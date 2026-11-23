@@ -126,10 +126,10 @@ describe('candidateTargets (keyboard wiring, pure logic)', () => {
     const g = connectivity(doc);
     expect(g.nodes.map((n) => n.kind).sort()).toEqual(['ground', 'supply']);
     const fromGround = candidateTargets(doc, pin('GND1', 'ref'));
-    const risky = fromGround.find((c) => c.pin.component === 'D1' && c.pin.terminal === 'anode');
+    const risky = fromGround.find((c) => c.pin?.component === 'D1' && c.pin.terminal === 'anode');
     // D1.anode is on the supply node, GND1.gnd on ground, not yet the same node.
     expect(risky?.hint).toBe('ground_supply');
-    const safe = fromGround.find((c) => c.pin.component === 'R1');
+    const safe = fromGround.find((c) => c.pin?.component === 'R1');
     expect(safe?.hint).toBeUndefined();
   });
 

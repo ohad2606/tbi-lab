@@ -2343,6 +2343,9 @@ export const en = {
   'kbwire.wireCleared': 'Wire selection cleared',
   'kbwire.noWires': 'There are no wires.',
   'kbwire.endJunction': 'junction {id}',
+  // Slice 5: T-connection targets in the candidate cycle (and in "Connected ... to ...").
+  'kbwire.target.junction': 'existing junction {id}',
+  'kbwire.target.wire': 'a point on wire W{n} ({from} to {to})',
   'kbwire.list.title': 'Wires',
   'kbwire.list.empty': 'No wires yet. Connect two pins to add one.',
   'kbwire.list.item': 'W{n}: {from} to {to}',

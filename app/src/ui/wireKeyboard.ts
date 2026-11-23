@@ -1,7 +1,8 @@
 /**
- * Keyboard wiring (A11Y-002, TBI-001 slice 1): pure logic, no DOM.
+ * Keyboard wiring (A11Y-002, TBI-001 slices 1-5): pure logic, no DOM.
  *
- * `candidateTargets` orders the pins a wire can be drawn to from a source pin; `reduceWireKeyboard`
+ * `candidateTargets` orders the targets a wire can be drawn to from a source pin (pins, and since
+ * slice 5 existing junctions and points on other wires); `reduceWireKeyboard`
  * is the small state machine idle -> pins -> wiring(candidate) -> commit/cancel. A commit calls the
  * SAME domain edit as the pointer (`addWire`), so the netlist is identical for both input methods.
  * Presentation (announcements, focus) lives in Canvas and the i18n keys `kbwire.*`.
@@ -9,13 +10,19 @@
 import {
   CATALOG,
   GRID,
+  GROUND_NODE,
   addWire,
   connectivity,
   endPosition,
+  locateOnWire,
   nodeKey,
+  nodeNets,
   pinKey,
   reconnectWire,
+  snap,
   terminalPosition,
+  wireGroups,
+  wireRoute,
   type EditError,
   type PinRef,
   type Point,
@@ -26,8 +33,22 @@ import {
 /** Why a candidate deserves a warning; presentation localises it. Never hides the candidate. */
 export type CandidateHint = 'ground_supply' | 'supply_supply';
 
+/**
+ * Where a keyboard wire can end (slice 5 adds the T-connection kinds). Exactly the domain's
+ * `WireTarget`: a pin, an existing junction, or a grid point strictly inside another wire's
+ * route (`addWire` splits that wire there and creates the junction, as for a pointer click).
+ */
+export type CandidateTarget =
+  | { kind: 'terminal'; component: string; terminal: string }
+  | { kind: 'junction'; junction: string }
+  | { kind: 'wire'; wire: string; at: Point };
+
 export interface Candidate {
-  pin: PinRef;
+  target: CandidateTarget;
+  /** Set when the target is a pin (same object shape as before slice 5). */
+  pin?: PinRef;
+  /** Canvas position of the target (the split point for a wire). */
+  pos: Point;
   /** Distance from the source pin on the canvas, in world units. */
   distance: number;
   hint?: CandidateHint;
@@ -36,6 +57,8 @@ export interface Candidate {
 export interface CandidateOptions {
   /** Cap on the list (default: all). */
   limit?: number;
+  /** Pins only, no junction / wire-body targets (re-pick, slice 4, stays pin-only). */
+  pinsOnly?: boolean;
 }
 
 const samePin = (a: PinRef, b: PinRef) => a.component === b.component && a.terminal === b.terminal;
@@ -57,6 +80,55 @@ export function candidateTargets(
   return rankPins(doc, origin, from, opts);
 }
 
+const KIND_RANK = { terminal: 0, junction: 1, wire: 2 } as const;
+const targetId = (t: CandidateTarget): [string, string] =>
+  t.kind === 'terminal'
+    ? [t.component, t.terminal]
+    : t.kind === 'junction'
+      ? [t.junction, '']
+      : [t.wire, ''];
+const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * The grid point of `route` nearest to `origin` that lies strictly inside it (never on either
+ * end: that is the end's own pin or junction, offered separately). Undefined for a route with no
+ * interior grid point or one drawn off the grid (`addWire` snaps the point, so it would miss).
+ */
+export function interiorPointNear(route: readonly Point[], origin: Point): Point | undefined {
+  if (route.length < 2) return undefined;
+  const first = route[0]!;
+  const last = route[route.length - 1]!;
+  const isEnd = (p: Point) =>
+    (p.x === first.x && p.y === first.y) || (p.x === last.x && p.y === last.y);
+  let best: Point | undefined;
+  let bestD = Infinity;
+  for (let i = 0; i < route.length - 1; i++) {
+    const a = route[i]!;
+    const b = route[i + 1]!;
+    const horizontal = a.y === b.y;
+    const fixed = horizontal ? a.y : a.x;
+    if (snap(fixed) !== fixed) continue;
+    const lo = Math.ceil(Math.min(horizontal ? a.x : a.y, horizontal ? b.x : b.y) / GRID) * GRID;
+    const hi = Math.floor(Math.max(horizontal ? a.x : a.y, horizontal ? b.x : b.y) / GRID) * GRID;
+    if (lo > hi) continue;
+    const want = clampN(snap(horizontal ? origin.x : origin.y), lo, hi);
+    // The nearest grid value, or the next one inwards when that is a route end.
+    for (const v of [want, want + GRID, want - GRID]) {
+      if (v < lo || v > hi) continue;
+      const q = horizontal ? { x: v + 0, y: fixed } : { x: fixed, y: v + 0 };
+      if (isEnd(q)) continue;
+      const d = Math.hypot(q.x - origin.x, q.y - origin.y);
+      if (d < bestD) {
+        bestD = d;
+        best = q;
+      }
+      break;
+    }
+  }
+  return best;
+}
+const clampN = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
 /** `from` is the source pin (excluded with everything joined to it); undefined for a junction
  *  source, where only the position orders the pins. */
 function rankPins(
@@ -68,6 +140,15 @@ function rankPins(
   const g = connectivity(doc);
   const fromNode = from ? g.nodeOf.get(pinKey(from.component, from.terminal)) : undefined;
   const kindOf = new Map(g.nodes.map((n) => [n.id, n.kind]));
+  const hintFor = (node: string | undefined): CandidateHint | undefined => {
+    const a = fromNode ? kindOf.get(fromNode) : undefined;
+    const b = node ? kindOf.get(node) : undefined;
+    if (!a || !b) return undefined;
+    if ((a === 'ground' && b === 'supply') || (a === 'supply' && b === 'ground'))
+      return 'ground_supply';
+    if (a === 'supply' && b === 'supply') return 'supply_supply';
+    return undefined;
+  };
 
   // Pins already joined to the source: directly by a wire, or on its electrical node.
   const joined = new Set<string>();
@@ -81,6 +162,7 @@ function rankPins(
   }
 
   const out: Candidate[] = [];
+  const dist = (p: Point) => Math.hypot(p.x - origin.x, p.y - origin.y);
   for (const c of doc.components) {
     for (const t of CATALOG[c.type].terminals) {
       const pin = { component: c.id, terminal: t.id };
@@ -91,23 +173,74 @@ function rankPins(
       if (fromNode && node === fromNode) continue;
       const p = terminalPosition(doc, c.id, t.id);
       if (!p) continue;
-      const cand: Candidate = { pin, distance: Math.hypot(p.x - origin.x, p.y - origin.y) };
-      const a = fromNode ? kindOf.get(fromNode) : undefined;
-      const b = node ? kindOf.get(node) : undefined;
-      if (a && b) {
-        if ((a === 'ground' && b === 'supply') || (a === 'supply' && b === 'ground'))
-          cand.hint = 'ground_supply';
-        else if (a === 'supply' && b === 'supply') cand.hint = 'supply_supply';
-      }
+      const cand: Candidate = {
+        target: { kind: 'terminal', ...pin },
+        pin,
+        pos: p,
+        distance: dist(p),
+      };
+      const hint = hintFor(node);
+      if (hint) cand.hint = hint;
       out.push(cand);
     }
   }
-  out.sort(
-    (x, y) =>
+
+  if (from && !opts.pinsOnly) {
+    // Slice 5: T-connections. Wire-graph group (same wires) and electrical node of every end;
+    // a junction or wire on the source's group or node is already joined to it.
+    const groupOf = new Map<string, number>();
+    wireGroups(doc).forEach((grp, i) => grp.forEach((k) => groupOf.set(k, i)));
+    const netOf = nodeNets(doc);
+    const groundNets = new Set(doc.nets.filter((n) => n.role === 'ground').map((n) => n.id));
+    const nodeOfEnd = (end: WireEnd) => {
+      const net = netOf.get(nodeKey(end));
+      return net === undefined ? undefined : groundNets.has(net) ? GROUND_NODE : net;
+    };
+    const fromEnd: WireEnd = { kind: 'terminal', ...from };
+    const fromGroup = groupOf.get(nodeKey(fromEnd));
+    const onSource = (end: WireEnd) => {
+      const grp = groupOf.get(nodeKey(end));
+      if (fromGroup !== undefined && grp === fromGroup) return true;
+      const node = nodeOfEnd(end);
+      return fromNode !== undefined && node === fromNode;
+    };
+    for (const j of doc.layout.junctions) {
+      const end: WireEnd = { kind: 'junction', junction: j.id };
+      if (onSource(end)) continue;
+      const pos = { x: j.x, y: j.y };
+      const cand: Candidate = {
+        target: { kind: 'junction', junction: j.id },
+        pos,
+        distance: dist(pos),
+      };
+      const hint = hintFor(nodeOfEnd(end));
+      if (hint) cand.hint = hint;
+      out.push(cand);
+    }
+    for (const w of doc.layout.wires) {
+      if (onSource(w.from)) continue;
+      const route = wireRoute(doc, w);
+      const at = route && interiorPointNear(route, origin);
+      if (!at || !locateOnWire(doc, w, at)) continue;
+      const d = dist(at);
+      if (d === 0) continue;
+      const cand: Candidate = { target: { kind: 'wire', wire: w.id, at }, pos: at, distance: d };
+      const hint = hintFor(nodeOfEnd(w.from));
+      if (hint) cand.hint = hint;
+      out.push(cand);
+    }
+  }
+
+  out.sort((x, y) => {
+    const [xa, xb] = targetId(x.target);
+    const [ya, yb] = targetId(y.target);
+    return (
       x.distance - y.distance ||
-      (x.pin.component < y.pin.component ? -1 : x.pin.component > y.pin.component ? 1 : 0) ||
-      (x.pin.terminal < y.pin.terminal ? -1 : x.pin.terminal > y.pin.terminal ? 1 : 0),
-  );
+      KIND_RANK[x.target.kind] - KIND_RANK[y.target.kind] ||
+      cmp(xa, ya) ||
+      cmp(xb, yb)
+    );
+  });
   return opts.limit === undefined ? out : out.slice(0, opts.limit);
 }
 
@@ -140,7 +273,11 @@ export function reconnectCandidates(
   };
   let list: Candidate[];
   if (fixed.kind === 'terminal') {
-    list = candidateTargets(without, { component: fixed.component, terminal: fixed.terminal });
+    list = candidateTargets(
+      without,
+      { component: fixed.component, terminal: fixed.terminal },
+      { pinsOnly: true },
+    );
   } else {
     const origin = endPosition(without, fixed);
     list = origin ? rankPins(without, origin, undefined, {}) : [];
@@ -156,7 +293,8 @@ export function reconnectCandidates(
     ),
   );
   return list.filter((c) => {
-    const k = nodeKey({ kind: 'terminal', ...c.pin });
+    if (c.target.kind !== 'terminal') return false;
+    const k = nodeKey(c.target);
     return !twins.has(k) && !(moving.kind === 'terminal' && nodeKey(moving) === k);
   });
 }
@@ -199,7 +337,7 @@ export type WireKbEvent =
   | { kind: 'pin'; pin: PinRef }
   | { kind: 'start'; pin: PinRef }
   | { kind: 'candidate'; candidate: Candidate; n: number; total: number }
-  | { kind: 'done'; from: PinRef; to: PinRef }
+  | { kind: 'done'; from: PinRef; to: CandidateTarget }
   | { kind: 'cancel' }
   | { kind: 'refused'; reason: EditError }
   | { kind: 'running' }
@@ -271,16 +409,16 @@ export function reduceWireKeyboard(
         if (ctx.running) return { state, event: { kind: 'running' } };
         const w = ctx.doc.layout.wires.find((x) => x.id === state.wire);
         if (!w) return { state: { mode: 'idle' } };
-        const to = state.candidates[state.index]!.pin;
+        const cand = state.candidates[state.index]!;
         const fixed = state.side === 'from' ? w.to : w.from;
         const a = endPosition(ctx.doc, fixed);
-        const b = terminalPosition(ctx.doc, to.component, to.terminal);
+        const b = cand.pos;
         const vertices = a && b && ctx.route ? ctx.route(a, b).vertices : [];
         const r = reconnectWire(
           ctx.doc,
           w.id,
           state.side,
-          { kind: 'terminal', ...to },
+          cand.target,
           // The router's route runs from the fixed end to the new one; stored order is from->to.
           state.side === 'from' ? [...vertices].reverse() : vertices,
         );
@@ -294,14 +432,15 @@ export function reduceWireKeyboard(
       }
       if (state.mode !== 'wiring') return { state };
       if (ctx.running) return { state, event: { kind: 'running' } };
-      const to = state.candidates[state.index]!.pin;
+      // Slice 5: `to` may be a junction or a point on a wire; `addWire` is the pointer's call.
+      const to = state.candidates[state.index]!.target;
       const a = terminalPosition(ctx.doc, state.from.component, state.from.terminal);
-      const b = terminalPosition(ctx.doc, to.component, to.terminal);
-      const vertices = a && b && ctx.route ? ctx.route(a, b).vertices : [];
+      const b = state.candidates[state.index]!.pos;
+      const vertices = a && ctx.route ? ctx.route(a, b).vertices : [];
       const r = addWire(
         ctx.doc,
         { kind: 'terminal', ...state.from },
-        { kind: 'terminal', ...to },
+        to,
         vertices,
         ctx.route ? { waypoints: [] } : undefined,
       );

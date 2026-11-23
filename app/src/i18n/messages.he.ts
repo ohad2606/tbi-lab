@@ -2221,6 +2221,8 @@ export const he: Record<MessageKey, string> = {
   'kbwire.wireCleared': 'בחירת החוט בוטלה',
   'kbwire.noWires': 'אין חוטים.',
   'kbwire.endJunction': 'צומת {id}',
+  'kbwire.target.junction': 'צומת קיים {id}',
+  'kbwire.target.wire': 'נקודה על חוט {n} ({from} אל {to})',
   'kbwire.list.title': 'חוטים',
   'kbwire.list.empty': 'עדיין אין חוטים. חברו שני פינים כדי להוסיף חוט.',
   'kbwire.list.item': 'חוט {n}: {from} אל {to}',
