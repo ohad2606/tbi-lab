@@ -82,6 +82,7 @@ interface Rig {
       stateDir: string;
       /** Cut-off (ms); default: one day before the test clock. `null` = unset (persisted default). */
       since: number | null;
+      webSignups: 'excluded' | 'included';
     }>,
   ) => AutoApprover;
   manual: () => SignupApprover;
@@ -135,6 +136,7 @@ async function rig(opts: { quiet?: string } = {}): Promise<Rig> {
       log,
       ...(o.since === null ? {} : { since: o.since ?? NOON_IL - DAY_MS }),
       ...(o.stat ? { stat: o.stat } : {}),
+      ...(o.webSignups ? { webSignups: o.webSignups } : {}),
       approver: () =>
         o.noOwner
           ? null
@@ -178,7 +180,7 @@ describe('config (off by default)', () => {
     expect(autoApproveConfigFromEnv({ TBI_SIGNUP_AUTO_APPROVE: '' })).not.toHaveProperty('error');
     expect(
       autoApproveConfigFromEnv({ TBI_SIGNUP_AUTO_APPROVE: '1', TBI_SIGNUP_AUTO_DAILY_CAP: '50' }),
-    ).toEqual({ enabled: true, dailyCap: 50 });
+    ).toEqual({ enabled: true, dailyCap: 50, webSignups: 'excluded' });
     for (const [flag, cap] of [
       ['true', '50'],
       ['yes', '50'],
@@ -199,7 +201,7 @@ describe('config (off by default)', () => {
     }
     expect(
       autoApproveConfigFromEnv({ TBI_SIGNUP_AUTO_APPROVE: '1', TBI_SIGNUP_AUTO_DAILY_CAP: '1000' }),
-    ).toEqual({ enabled: true, dailyCap: 1000 });
+    ).toEqual({ enabled: true, dailyCap: 1000, webSignups: 'excluded' });
   });
 });
 
@@ -875,6 +877,7 @@ describe('ops review follow-up (slice 2)', () => {
       dailyCap: 5,
       stateDir: '/var/lib/x',
       since: Date.parse('2026-12-12T06:00:00Z'),
+      webSignups: 'excluded',
     });
     for (const bad of [
       { TBI_SIGNUP_AUTO_STATE_DIR: 'rel/dir' },
@@ -1096,5 +1099,91 @@ describe('review follow-up (slice 3)', () => {
     await a.sweep();
     expect(lines(/counter unreadable \(corrupt\)/)).toBe(2);
     expect(r.added).toEqual([]);
+  });
+});
+
+describe('BETA-G1 s8 fix round: web-origin requests are not auto-approved by default', () => {
+  it('TBI_SIGNUP_AUTO_WEB: unset/empty/excluded = excluded, included = included, else error', () => {
+    const on = { TBI_SIGNUP_AUTO_APPROVE: '1', TBI_SIGNUP_AUTO_DAILY_CAP: '5' };
+    for (const v of [undefined, '', 'excluded'])
+      expect(
+        autoApproveConfigFromEnv(v === undefined ? on : { ...on, TBI_SIGNUP_AUTO_WEB: v }),
+      ).toMatchObject({ enabled: true, webSignups: 'excluded' });
+    expect(autoApproveConfigFromEnv({ ...on, TBI_SIGNUP_AUTO_WEB: 'included' })).toMatchObject({
+      enabled: true,
+      webSignups: 'included',
+    });
+    for (const v of ['1', 'yes', 'Included', 'include'])
+      expect(autoApproveConfigFromEnv({ ...on, TBI_SIGNUP_AUTO_WEB: v })).toMatchObject({
+        enabled: false,
+        error: true,
+      });
+  });
+
+  it('default: a web request stays pending for the owner and spends no slot; signed ones go', async () => {
+    const r = await rig();
+    const base = r.clock.t;
+    r.clock.t = base - 3000;
+    const web = (await r.store.createIfNew(person(1), { origin: 'web' })).record.id;
+    r.clock.t = base - 2000;
+    const signed = (await r.store.createIfNew(person(2))).record.id;
+    r.clock.t = base;
+    const out = await r.auto({ cap: 1 }).sweep();
+    expect(out).toEqual({ claimed: 1, attempted: 1 });
+    expect(r.added).toEqual(['tester2@example.com']);
+    expect((await r.store.get(web)).status).toBe('pending');
+    expect((await r.store.get(web)).autoApprovedAt).toBeUndefined();
+    expect((await r.store.get(signed)).status).toBe('email_sent');
+    // A later day: still not taken.
+    r.clock.t += DAY_MS;
+    expect((await r.auto({ cap: 1 }).sweep()).claimed).toBe(0);
+    expect((await r.store.get(web)).status).toBe('pending');
+    // The owner can still approve it by hand.
+    expect((await r.manual().approve(web)).ok).toBe(true);
+  });
+
+  it('included: a web request is auto-approved like any other', async () => {
+    const r = await rig();
+    r.clock.t -= 1000;
+    const web = (await r.store.createIfNew(person(1), { origin: 'web' })).record.id;
+    r.clock.t += 1000;
+    expect(await r.auto({ webSignups: 'included' }).sweep()).toEqual({ claimed: 1, attempted: 1 });
+    expect((await r.store.get(web)).status).toBe('email_sent');
+  });
+
+  it('wiring: without webSignups the admin unit leaves web requests to the owner', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'tbi-g1-wire-')));
+    roots.push(root);
+    const submitted: string[] = [];
+    const spool = {
+      submit: async (_actor: string, a: { email: string }) => {
+        submitted.push(a.email);
+        return '01JAAAAAAAAAAAAAAAAAAAAAAA';
+      },
+      wait: async () => ({ ok: true }),
+    } as unknown as AdminSpool;
+    const w = await wireSignupAdmin(
+      {
+        dir: join(root, 'p'),
+        keyFile: join(root, 'k'),
+        from: 'x',
+        labUrl: 'https://l.example.invalid/',
+        quiet: null,
+        autoApprove: { dailyCap: 5, since: NOON_IL - DAY_MS },
+      },
+      spool,
+      {
+        fetch: (async () => ({ ok: true, status: 200 })) as FetchLike,
+        log: (l) => void allLogs.push(l),
+        email: { sendApproval: async () => undefined },
+        autoActor: () => 'p_ownerownerownerownerowner' as Principal,
+        now: () => NOON_IL,
+      },
+    );
+    await w.store.createIfNew(person(4), { origin: 'web' });
+    await w.store.createIfNew(person(5));
+    const stop = w.startAutoApprove();
+    await stop();
+    expect(submitted).toEqual(['tester5@example.com']);
   });
 });

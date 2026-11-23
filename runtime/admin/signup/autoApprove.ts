@@ -37,7 +37,11 @@
  *                  so `touch` / `rm` takes effect without a restart.
  *   Who is eligible  `pending`, created after the cut-off, not in the claim set and never marked
  *                  (`autoApprovedAt` unset), and without an error from an earlier approve attempt
- *                  (`lastError` null: those need the owner).
+ *                  (`lastError` null: those need the owner). Web-origin requests (`origin: 'web'`,
+ *                  BETA-G1 s8 browser route) are NOT eligible unless TBI_SIGNUP_AUTO_WEB=included
+ *                  (default `excluded`, until the owner decides O1 of BETA-G1-WEB-INTAKE.md): an
+ *                  unauthenticated route must not be able to spend the daily cap and starve the
+ *                  Apps Script requests, nor get accounts without the owner looking.
  *   Retries        only ids in the admin-owned claim set (never on record fields alone: the intake
  *                  can write records) whose account step answered `account_pending` (status
  *                  `approved`, nothing sent yet). At most one per record per
@@ -72,7 +76,16 @@ export const AUTO_UNREADABLE_LOG_MS = 60 * 60_000;
 export type AutoApproveConfigResult =
   | { enabled: false; error?: false; reason: string }
   | { enabled: false; error: true; reason: string }
-  | { enabled: true; dailyCap: number; stateDir?: string; since?: number };
+  | {
+      enabled: true;
+      dailyCap: number;
+      stateDir?: string;
+      since?: number;
+      webSignups: AutoWebSignups;
+    };
+
+/** Whether web-origin requests may be auto-approved (default: excluded). */
+export type AutoWebSignups = 'excluded' | 'included';
 
 const ISO_ZONED = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/;
 
@@ -81,6 +94,8 @@ const ISO_ZONED = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:
  *   TBI_SIGNUP_AUTO_DAILY_CAP   required when enabled: whole number 1..1000
  *   TBI_SIGNUP_AUTO_STATE_DIR   optional absolute, normalized path (default: the store dir)
  *   TBI_SIGNUP_AUTO_SINCE       optional ISO time with zone; only newer requests are taken
+ *   TBI_SIGNUP_AUTO_WEB         optional `excluded` (default when unset/empty) or `included`:
+ *                               whether browser-route (`origin: 'web'`) requests are eligible
  * Any other value is an error: auto-approve stays OFF (manual approval keeps working).
  */
 export function autoApproveConfigFromEnv(env: NodeJS.ProcessEnv): AutoApproveConfigResult {
@@ -96,9 +111,19 @@ export function autoApproveConfigFromEnv(env: NodeJS.ProcessEnv): AutoApproveCon
   const cap = env.TBI_SIGNUP_AUTO_DAILY_CAP;
   if (cap === undefined || !/^\d{1,4}$/.test(cap) || Number(cap) < 1 || Number(cap) > AUTO_CAP_MAX)
     return bad(`TBI_SIGNUP_AUTO_DAILY_CAP must be a whole number from 1 to ${AUTO_CAP_MAX}`);
-  const out: { enabled: true; dailyCap: number; stateDir?: string; since?: number } = {
+  const web = env.TBI_SIGNUP_AUTO_WEB;
+  if (web !== undefined && web !== '' && web !== 'excluded' && web !== 'included')
+    return bad('TBI_SIGNUP_AUTO_WEB must be excluded, included or unset');
+  const out: {
+    enabled: true;
+    dailyCap: number;
+    stateDir?: string;
+    since?: number;
+    webSignups: AutoWebSignups;
+  } = {
     enabled: true,
     dailyCap: Number(cap),
+    webSignups: web === 'included' ? 'included' : 'excluded',
   };
   const sd = env.TBI_SIGNUP_AUTO_STATE_DIR;
   if (sd !== undefined && sd !== '') {
@@ -269,6 +294,8 @@ export interface AutoApproverDeps {
   dailyCap: number;
   /** TBI_SIGNUP_AUTO_SINCE (ms); unset: the persisted first-run time. */
   since?: number;
+  /** TBI_SIGNUP_AUTO_WEB; unset = `excluded` (web-origin requests stay for the owner). */
+  webSignups?: AutoWebSignups;
   /**
    * The approver for one sweep (built with the owner's principal as the spool actor, because the
    * root helper accepts account requests from the owner only), or null when the owner principal
@@ -513,7 +540,7 @@ export class AutoApprover {
       if (s.count >= this.d.dailyCap) return 'cap';
       return serialById(id, async () => {
         const cur = await this.d.store.get(id).catch(() => null);
-        if (!cur || !eligible(cur, s, since)) return 'ineligible' as const;
+        if (!cur || !eligible(cur, s, since, this.d.webSignups)) return 'ineligible' as const;
         const at = new Date(this.now()).toISOString();
         const taken: AutoState = {
           ...s,
@@ -687,7 +714,7 @@ export class AutoApprover {
     }
     // 2. New claims.
     for (const r of records) {
-      if (!eligible(r, state, since)) continue;
+      if (!eligible(r, state, since, this.d.webSignups)) continue;
       if (await this.paused()) return { ...out, stopped: 'paused' };
       const c = await this.claim(r.id, since);
       if (c === 'cap') {
@@ -710,9 +737,15 @@ export class AutoApprover {
   }
 }
 
-function eligible(r: SignupRecord, s: AutoState, since: number): boolean {
+function eligible(
+  r: SignupRecord,
+  s: AutoState,
+  since: number,
+  web: AutoWebSignups = 'excluded',
+): boolean {
   return (
     r.status === 'pending' &&
+    (web === 'included' || r.origin !== 'web') &&
     !r.autoApprovedAt &&
     r.lastError === null &&
     !Object.hasOwn(s.claims, r.id) &&

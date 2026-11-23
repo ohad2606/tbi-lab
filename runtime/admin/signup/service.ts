@@ -139,10 +139,15 @@ export class SignupIntake {
   }
 
   /**
-   * `POST /signup/web` after the HTTP checks (method, origin, content type, size cap). Order: the
-   * per-source limit (before any crypto), the token (MAC, age, minimum fill time; not consumed),
-   * the GLOBAL limit (only tokens this intake issued can spend it), honeypot, field validation,
-   * then the token is consumed (single use) and the request takes the same path as `/signup`.
+   * `POST /signup/web` after the HTTP checks (method, origin, content type, size cap, source key).
+   * Order: the per-source limit (before any crypto), the token (MAC, age, minimum fill time; not
+   * consumed), the honeypot (a hit CONSUMES the token: a bot cannot reuse it), field validation
+   * (not consumed: the person fixes a typo and retries), the GLOBAL limit (taken only by requests
+   * that would be stored, so honeypot hits and junk cannot drain it; a 429 does not consume the
+   * token), then the token is consumed (single use) and the request takes the same path as
+   * `/signup`, marked `origin: 'web'` (web sub-cap). If the store refuses (503, nothing stored)
+   * the token is released again, so the page may retry with it; it was reserved during the store
+   * call, so a concurrent post with the same token gets 401 and never a second record.
    * A duplicate address answers exactly like a new one (200), see `accept`.
    */
   async submitWeb(source: string, body: Buffer): Promise<WebOutcome> {
@@ -178,12 +183,9 @@ export class SignupIntake {
         ? { status: 400, error: 'too_fast' }
         : { status: 401, error: webAuthError(t.reason) };
     }
-    const g = w.globalRate.take('all');
-    if (!g.ok) {
-      refuse('global_limit');
-      return { status: 429, error: 'rate_limited', retryAfterMs: g.retryAfterMs };
-    }
     if (honey !== '') {
+      // Burn the token (best effort: an already used one stays used); same answer as a typo.
+      w.nonces.take(t.nonce, now);
       refuse('honeypot');
       return { status: 400, error: 'invalid' };
     }
@@ -192,12 +194,27 @@ export class SignupIntake {
       refuse(`invalid_${val.field}`);
       return { status: 400, error: 'invalid' };
     }
+    // An already used token is refused before it can spend the global budget.
+    if (w.nonces.has(t.nonce, now)) {
+      refuse('replayed');
+      return { status: 401, error: 'unauthorized' };
+    }
+    const g = w.globalRate.take('all');
+    if (!g.ok) {
+      refuse('global_limit');
+      return { status: 429, error: 'rate_limited', retryAfterMs: g.retryAfterMs };
+    }
     if (!w.nonces.take(t.nonce, now)) {
       refuse('replayed');
       return { status: 401, error: 'unauthorized' };
     }
-    const a = await this.accept(val.value, now, false);
-    return a === 'unavailable' ? { status: 503, error: 'unavailable' } : { status: 200 };
+    const a = await this.accept(val.value, now, false, 'web');
+    if (a === 'unavailable') {
+      // Nothing was stored: give the token back so the page can retry with it.
+      w.nonces.release(t.nonce);
+      return { status: 503, error: 'unavailable' };
+    }
+    return { status: 200 };
   }
 
   /** Alerts the web route started without waiting (tests and shutdown can await them). */
@@ -216,12 +233,15 @@ export class SignupIntake {
     input: SignupInput,
     now: number,
     awaitNotify: boolean,
+    origin?: 'web',
   ): Promise<'stored' | 'unavailable'> {
     // Duplicate address already waiting or accepted: answer as success, store and notify nothing.
     // Atomic (mutex + hash-keyed O_EXCL marker in the store), so concurrent posts give one record.
     let rec: SignupRecord;
     try {
-      const r = await this.d.store.createIfNew(input);
+      const r = await (origin
+        ? this.d.store.createIfNew(input, { origin })
+        : this.d.store.createIfNew(input));
       if (!r.created) {
         this.d.log?.('signup: duplicate ignored');
         return 'stored';
