@@ -19,7 +19,11 @@
  *                                this many days of creation (default 90, 1..365)
  *   TBI_SIGNUP_RETENTION_MAX_DAYS      every other request is deleted at the latest this many days
  *                                after creation (default 365, 1..365; not below the first)
+ *   TBI_SIGNUP_AUTO_APPROVE      BETA-G1, OFF by default: `1` approves pending requests automatically
+ *   TBI_SIGNUP_AUTO_DAILY_CAP    required with it: 1..1000 per Israel day (see autoApprove.ts). A bad
+ *                                value leaves auto-approve off (one log line); manual approval stays.
  */
+import { AUTO_APPROVE_INTERVAL_MS, AutoApprover, autoApproveConfigFromEnv } from './autoApprove.js';
 import { errorClass } from './errors.js';
 import { RESEND_KEY_RE, ResendSender, type EmailSender } from './email.js';
 import type { FetchLike } from './notify.js';
@@ -47,6 +51,8 @@ export interface AdminSignupConfig {
   quiet?: QuietWindow | null;
   /** Retention of the store (unset: DEFAULT_RETENTION, 90 d not approved / 365 d at most). */
   retention?: Retention;
+  /** BETA-G1: auto-approve with a daily cap; unset = off (today's manual flow, unchanged). */
+  autoApprove?: { dailyCap: number };
 }
 
 export type AdminSignupConfigResult =
@@ -118,6 +124,13 @@ export interface SignupAdminWiring {
    * stop, which resolves once a drain in progress has finished.
    */
   startDrain(): () => Promise<void>;
+  /**
+   * BETA-G1: runs the auto-approve sweep now and every minute; returns stop (resolves once a
+   * sweep in progress has finished). Without `config.autoApprove` it does nothing at all.
+   */
+  startAutoApprove(): () => Promise<void>;
+  /** The sweeper, when auto-approve is configured (tests, operator checks); else null. */
+  auto: AutoApprover | null;
 }
 
 export const DRAIN_INTERVAL_MS = 60_000;
@@ -131,6 +144,11 @@ export async function wireSignupAdmin(
     email?: EmailSender;
     now?: () => number;
     retention?: Retention;
+    /**
+     * BETA-G1: the principal auto-approve submits account requests as (the root helper accepts
+     * them from the owner only), read at every sweep; null = not known yet (sweep waits).
+     */
+    autoActor?: () => Principal | null;
   },
 ): Promise<SignupAdminWiring> {
   const store = new PendingStore(c.dir, { now: io.now });
@@ -186,8 +204,56 @@ export async function wireSignupAdmin(
     }
   };
   let draining: Promise<void> | null = null;
+  const auto = c.autoApprove
+    ? new AutoApprover({
+        dir: c.dir,
+        store,
+        dailyCap: c.autoApprove.dailyCap,
+        now: io.now,
+        log: io.log,
+        approver: () => {
+          const actor = io.autoActor?.() ?? null;
+          return actor
+            ? new SignupApprover({
+                store,
+                accounts: spoolAccountAdder(spool, actor),
+                email,
+                quiet,
+                now: io.now,
+                log: io.log,
+                actor: 'auto',
+              })
+            : null;
+        },
+      })
+    : null;
+  let sweeping: Promise<void> | null = null;
   return {
     store,
+    auto,
+    startAutoApprove() {
+      if (!auto) return async () => undefined;
+      io.log(`signup: auto-approve on (daily cap ${c.autoApprove!.dailyCap})`);
+      const tick = () => {
+        if (sweeping) return;
+        sweeping = auto
+          .sweep()
+          .then((r) => {
+            if (r.attempted > 0) io.log(`signup: auto-approve processed ${r.attempted}`);
+          })
+          .catch((e: unknown) => io.log(`signup: auto-approve sweep failed (${errorClass(e)})`))
+          .finally(() => {
+            sweeping = null;
+          });
+      };
+      tick();
+      const t = setInterval(tick, AUTO_APPROVE_INTERVAL_MS);
+      t.unref();
+      return async () => {
+        clearInterval(t);
+        await sweeping;
+      };
+    },
     signups: {
       approver: (actor) =>
         new SignupApprover({
@@ -239,8 +305,14 @@ export async function signupWiringFromEnv(
     if (cfg.error) io.log(`signup: admin routes disabled (config: ${cfg.reason})`);
     return null;
   }
+  const auto = autoApproveConfigFromEnv(env);
+  if (auto.enabled === false && auto.error)
+    io.log(`signup: auto-approve off (config: ${auto.reason})`);
+  const config = auto.enabled
+    ? { ...cfg.config, autoApprove: { dailyCap: auto.dailyCap } }
+    : cfg.config;
   try {
-    return await wireSignupAdmin(cfg.config, spool, io);
+    return await wireSignupAdmin(config, spool, io);
   } catch (e) {
     const code =
       e instanceof StoreError ? e.code : `store_${errorClass(e).replace(/^secret_/, '')}`;

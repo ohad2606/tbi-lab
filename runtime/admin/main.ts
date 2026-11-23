@@ -47,9 +47,12 @@ const spool = new AdminSpool(config);
 const signupWiring = await signupWiringFromEnv(process.env, spool, {
   fetch: (u, i) => fetch(u, i),
   log: (l) => process.stdout.write(`tbi-admin: ${l}\n`),
+  // BETA-G1 (off unless TBI_SIGNUP_AUTO_APPROVE=1): auto-approve submits as the recorded owner.
+  autoActor: () => access.current?.owner.principal ?? null,
 });
 const stopPurge = signupWiring?.startPurge();
 const stopDrain = signupWiring?.startDrain();
+const stopAuto = signupWiring?.startAutoApprove();
 
 const server = createAdminServer(identity, {
   access,
@@ -68,7 +71,7 @@ const stop = () => {
   stopPurge?.();
   // An approval email being sent now is allowed to finish and be saved (bounded: 5 s).
   const drained = Promise.race([
-    stopDrain?.(),
+    Promise.all([stopDrain?.(), stopAuto?.()]),
     new Promise<void>((r) => setTimeout(r, DRAIN_STOP_WAIT_MS).unref()),
   ]);
   server.close(() => void drained.then(() => process.exit(0)));
