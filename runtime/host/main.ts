@@ -46,6 +46,15 @@ import { ReportStore, reportsConfigFromEnv } from './reports.js';
 import { accessViewFromEnv } from '../identity/access.js';
 import { IdentityObserver, adminEnvFromEnv } from './admin.js';
 import { OwnerReference } from './owner.js';
+import { HOST_SIM_REFUSED_EXIT, hostSimStartRefusal } from '../plans/hostflags.js';
+
+// TBI-018 s3d-1: sim metering (TBI_HOST_SIM_*) is not wired yet. Any of its flags set = refuse to
+// start before anything else runs (no unit is stopped, nothing is read or created). Unset: no change.
+const simRefusal = hostSimStartRefusal(process.env);
+if (simRefusal !== null) {
+  process.stderr.write(`${simRefusal}\n`);
+  process.exit(HOST_SIM_REFUSED_EXIT);
+}
 
 // Same locations as runtime/provision/provision.sh (and harness/env.ts).
 const RUNTIME_HOME =
