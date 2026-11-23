@@ -29,13 +29,14 @@ With the mouse:
 3. To wire, click a terminal. Click another terminal, a junction or a wire to finish. Click empty space to add a bend. `Esc` cancels.
 4. Wiring and editing are not possible while the simulation runs. Stop it first.
 
-With the keyboard:
+With the keyboard (wiring with the keyboard):
 
 1. Use `Tab` to move focus to a part in the circuit view.
 2. Press `W` to enter pin mode. The arrow keys move between the part's pins.
-3. Press `Enter` on a pin to start a wire. The arrow keys or `Tab` move between possible targets.
-4. Press `Enter` to connect, or `Esc` to cancel.
-5. `[` and `]` select the previous or next wire.
+3. Press `Enter` on a pin to start a wire. The arrow keys or `Tab` and `Shift + Tab` move between possible targets: pins, junctions and points on wires, nearest first. The current target is outlined on the canvas (a dashed ring; a target wire gets a dashed outline) and the view moves so it stays visible. Each target is also read out by a screen reader.
+4. Press `Enter` to connect, or `Esc` to cancel. Pressing `Esc` in pin mode returns to the part.
+5. `[` and `]` select the previous or next wire. With a wire selected, `E` re-picks one of its ends (`1` or `2`, or the arrow keys, then `Enter`; then choose the new pin as above). `Delete` removes the selected wire.
+6. Wiring is not possible while the simulation runs.
 
 ## Code
 
@@ -95,7 +96,7 @@ This list is copied from the shortcuts registry in the app (`app/src/ui/shortcut
 - <!-- shortcut:pinPrev -->`Arrow Up` or `Arrow Left` or `Shift + Tab`: Previous pin of the part (Pin mode)
 - <!-- shortcut:wireStart -->`Enter`: Start a wire from this pin (Pin mode)
 - <!-- shortcut:repickEnd -->`1` or `2`: Choose which end of the wire to move: 1 is the first end, 2 the second; or switch ends with the arrow keys or Tab and Shift + Tab, and press Enter to choose (After E, while choosing the end)
-- <!-- shortcut:targetCycle -->`Arrow keys` or `Tab`: Move between possible targets (Tab is kept inside on purpose) (While choosing where the wire ends)
+- <!-- shortcut:targetCycle -->`Arrow keys` or `Tab`: Move between possible targets: pins, junctions and points on wires (Tab is kept inside on purpose) (While choosing where the wire ends)
 - <!-- shortcut:wireConnect -->`Enter`: Connect the wire to the chosen target (While choosing where the wire ends)
 - <!-- shortcut:wireCancel -->`Esc`: Cancel; focus returns to the part (during a re-pick it stays on the canvas) (Pin mode or wiring)
 

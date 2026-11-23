@@ -69,6 +69,7 @@ import {
 import { bodyOverlaps } from '../geometry/overlap.js';
 import {
   distanceCells,
+  panIntoView,
   pinsOf,
   reduceWireKeyboard,
   stepWireSelection,
@@ -1054,21 +1055,12 @@ export function Canvas({
   const kbWirePoint = kbCandidate?.target.kind === 'wire' ? kbCandidate.target : undefined;
   useEffect(() => {
     if (!kbCandidatePos || size.w <= 0) return;
-    const w = size.w / camera.scale;
-    const h = size.h / camera.scale;
-    const m = 40;
-    const dx =
-      kbCandidatePos.x < camera.x + m
-        ? kbCandidatePos.x - camera.x - m
-        : kbCandidatePos.x > camera.x + w - m
-          ? kbCandidatePos.x - camera.x - w + m
-          : 0;
-    const dy =
-      kbCandidatePos.y < camera.y + m
-        ? kbCandidatePos.y - camera.y - m
-        : kbCandidatePos.y > camera.y + h - m
-          ? kbCandidatePos.y - camera.y - h + m
-          : 0;
+    const { dx, dy } = panIntoView(
+      camera,
+      { w: size.w / camera.scale, h: size.h / camera.scale },
+      kbCandidatePos,
+      40,
+    );
     if (dx || dy) setCamera((c) => ({ ...c, x: c.x + dx, y: c.y + dy }));
   }, [kbCandidatePos?.x, kbCandidatePos?.y]);
   // Leaving the document state (simulation start, component removed) ends keyboard wiring.
@@ -1393,7 +1385,8 @@ export function Canvas({
                 data-color={wireColors.get(w.id)?.color ?? 'neutral'}
                 data-color-source={wireColors.get(w.id)?.source}
                 data-conflict={conflicted.has(w.id) ? 'true' : undefined}
-                class={selected.wires.has(w.id) ? 'wire-group selected' : 'wire-group'}
+                class={`${selected.wires.has(w.id) ? 'wire-group selected' : 'wire-group'}${kbWirePoint?.wire === w.id ? ' kb-wire-target' : ''}`}
+                data-kb-wire-target={kbWirePoint?.wire === w.id ? 'true' : undefined}
                 style={{ '--wire-color': wireColors.get(w.id)?.hex }}
               >
                 {conflicted.has(w.id) && (

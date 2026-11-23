@@ -798,7 +798,21 @@ select {
   stroke-dasharray: none;
 }
 
+/* The wire a keyboard T-connection would land on: a dashed navy halo along its whole body (3:1 or
+   more on the white canvas), in addition to the dot and ring at the exact point. */
+.wire-group.kb-wire-target .wire-hit {
+  stroke: var(--focus);
+  stroke-opacity: 0.9;
+  stroke-width: 9;
+  stroke-dasharray: 8 5;
+}
+
 @media (forced-colors: active) {
+  .wire-group.kb-wire-target .wire-hit {
+    forced-color-adjust: none;
+    stroke: Highlight;
+    stroke-opacity: 1;
+  }
   .kb-ring {
     forced-color-adjust: none;
     stroke: Highlight;
