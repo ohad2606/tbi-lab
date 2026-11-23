@@ -2546,6 +2546,12 @@ export const en = {
   'guidepanel.panel.openExample': 'Open the example',
   'guidepanel.panel.exampleOpened': 'The example is open in the Lab as a new project.',
   'guidepanel.panel.exampleFailed': 'The example could not be opened.',
+  'guidepanel.panel.copyHint':
+    'You already opened this circuit in this visit. Go back to your copy, or start a new one.',
+  'guidepanel.panel.goBack': 'Go back to my copy',
+  'guidepanel.panel.freshCopy': 'Start a fresh copy',
+  'guidepanel.panel.wentBack': 'Back in your copy of the example.',
+  'guidepanel.panel.copyMissing': 'Your copy was not found, so a new one was created.',
 
   // Admin app design §3: the administration's texts (and the report kinds and areas it shows)
   // are shared with the TBI Lab Admin app (packages/admin-client), unchanged.

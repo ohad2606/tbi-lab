@@ -9,13 +9,15 @@
  *   (no axe-core in the repo: an ad hoc axe run is reported separately).
  */
 import { expect, test, type Page } from '@playwright/test';
-import { component, goToProjects, waitSaved } from './helpers.js';
+import { component, goToProjects, storedProjects, waitSaved } from './helpers.js';
 
 const T = {
   en: {
     title: 'LED and resistor',
     card: 'Component guides',
     open: 'Open the example',
+    back: 'Go back to my copy',
+    fresh: 'Start a fresh copy',
     close: 'Close guide',
     button: 'Push button',
     pot: 'Potentiometer',
@@ -24,6 +26,8 @@ const T = {
     title: 'נורית LED ונגד',
     card: 'מדריכי רכיבים',
     open: 'פתיחת הדוגמה',
+    back: 'חזרה לעותק שלי',
+    fresh: 'יצירת עותק חדש',
     close: 'סגירת המדריך',
     button: 'לחצן',
     pot: 'פוטנציומטר',
@@ -153,6 +157,74 @@ for (const lang of ['en', 'he'] as const) {
       // A resistor has no guide: no link.
       await component(page, 'R1').click();
       await expect(page.getByTestId('inspector-guide-led-resistor')).toHaveCount(0);
+    });
+
+    test('G5 go back to my copy: reused in memory, fresh copy adds one, deleted copy falls back, nothing stored', async ({
+      page,
+    }) => {
+      await toHome(page, lang);
+      const storageKeys = () =>
+        page.evaluate(() => [
+          ...Object.keys(localStorage),
+          ...Object.keys(sessionStorage).map((k) => `session:${k}`),
+        ]);
+      const storageBefore = await storageKeys();
+      const panel = page.getByTestId('guide-panel');
+      const reopen = async () => {
+        await goToProjects(page);
+        await page.getByTestId('open-guide-led-resistor').click();
+        await expect(panel).toBeVisible();
+      };
+      await page.getByTestId('open-guide-led-resistor').click();
+      await expect(panel.getByTestId('guide-go-back')).toHaveCount(0);
+      // Keyboard only: open the circuit -> one project; the buttons swap and focus stays inside.
+      const open = panel.getByRole('button', { name: T[lang].open });
+      await open.focus();
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('canvas')).toBeVisible();
+      const back = panel.getByRole('button', { name: T[lang].back });
+      await expect(back).toBeFocused();
+      await expect(panel.getByRole('button', { name: T[lang].fresh })).toBeVisible();
+      await expect(page.getByTestId('guide-status')).toHaveText(/\S/);
+      await waitSaved(page);
+      const first = (await storedProjects(page)).map((p) => p.projectId);
+      expect(first).toHaveLength(1);
+
+      // Close, go to the Projects screen, reopen the guide: offered the copy, no second project.
+      await panel.getByTestId('guide-close').click();
+      await reopen();
+      await expect(panel.getByTestId('guide-open-example')).toHaveCount(0);
+      await expect(panel.getByTestId('guide-copy-hint')).toBeVisible();
+      await page.getByRole('button', { name: T[lang].back }).focus();
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('canvas')).toBeVisible();
+      await expect(page.getByTestId('guide-status')).toHaveText(/\S/);
+      await expect(back).toBeFocused();
+      await waitSaved(page);
+      expect((await storedProjects(page)).map((p) => p.projectId)).toEqual(first);
+
+      // A fresh copy creates exactly one more and becomes the remembered copy.
+      await panel.getByRole('button', { name: T[lang].fresh }).click();
+      await expect.poll(async () => (await storedProjects(page)).length).toBe(2);
+      await expect(back).toBeFocused();
+      const second = (await storedProjects(page))
+        .map((p) => p.projectId)
+        .find((id) => !first.includes(id))!;
+
+      // Delete the remembered copy from the library: the guide falls back to a plain open.
+      await panel.getByTestId('guide-close').click();
+      await goToProjects(page);
+      await page.getByTestId(`project-${second}`).getByTestId('delete-project').click();
+      await page.getByTestId('delete-confirm').click();
+      await expect.poll(async () => (await storedProjects(page)).length).toBe(1);
+      await page.getByTestId('open-guide-led-resistor').click();
+      await expect(panel.getByTestId('guide-open-example')).toBeVisible();
+      await expect(panel.getByTestId('guide-go-back')).toHaveCount(0);
+
+      // Nothing about guides or copies is stored in web storage.
+      // (the app's own last-project preference is not a guide record and may appear)
+      const added = (await storageKeys()).filter((k) => !storageBefore.includes(k));
+      expect(added.filter((k) => k !== 'tbi-lab.lastProject')).toEqual([]);
     });
 
     test('reflow at 320 px and no overlap of the top bar at 1024 px', async ({ page }) => {
