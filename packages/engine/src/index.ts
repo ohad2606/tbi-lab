@@ -37,7 +37,13 @@ export {
 // (runtime R1): the same physics implementation the browser uses (ADR-008).
 export { Circuit, ConvergenceError, type SolveResult } from './circuit.js';
 export { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.js';
-export { DIODE_1N4148, LED_TLHR5400, RGB_WP154A4SUREQBFZGC } from './models.js';
+export {
+  DIODE_1N4148,
+  LED_TLHR5400,
+  RED_LED_EMISSION_COEFFICIENT,
+  RGB_WP154A4SUREQBFZGC,
+  TLHR5400_ANCHOR,
+} from './models.js';
 export {
   G_INPUT_LEAKAGE_S,
   GpioPin,
