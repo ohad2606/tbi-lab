@@ -149,5 +149,28 @@ export function defaultConfig(
   return { ...base, ...overrides };
 }
 
+/** Operator-tunable engineering controls (never client-controlled): env name -> HostConfig key. */
+export const HOST_TUNABLE_ENV: Readonly<Record<string, keyof HostConfig>> = {
+  TBI_HOST_LEASE_MS: 'leaseMs',
+  TBI_HOST_MAX_SESSIONS: 'maxSessions',
+  TBI_HOST_STARTUP_TIMEOUT_MS: 'startupTimeoutMs',
+  TBI_HOST_STALL_TIMEOUT_MS: 'stallTimeoutMs',
+  TBI_HOST_RETAIN_ENDED_MS: 'retainEndedMs',
+  TBI_HOST_MAX_LIFETIME_MS: 'maxLifetimeMs',
+};
+
+/**
+ * The tunable overrides `main.ts` applies (s3d-8: shared with the offline sim config validator so both
+ * read TBI_HOST_LEASE_MS identically). A value that is not all digits is ignored (default kept).
+ */
+export function hostTunablesFromEnv(env: Record<string, string | undefined>): Partial<HostConfig> {
+  const overrides: Partial<HostConfig> = {};
+  for (const [name, key] of Object.entries(HOST_TUNABLE_ENV)) {
+    const v = env[name];
+    if (v !== undefined && /^\d+$/.test(v)) (overrides as Record<string, number>)[key] = Number(v);
+  }
+  return overrides;
+}
+
 /** The per-session directory for a session id (ids are host-generated hex, never client text). */
 export const sessionDir = (tmpRoot: string, sessionId: string) => join(tmpRoot, `s-${sessionId}`);

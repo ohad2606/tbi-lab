@@ -1,6 +1,7 @@
 # TBI-018 s3d: enabling sim metering on staging (CHECKLIST, NOT EXECUTED)
 
-Status: written in slice s3d-6. Nothing here has been run. Enabling metering anywhere is a separate
+Status: written in slice s3d-6, updated in s3d-7 (repair CLI packaging, drill on a copy, stale lock,
+clock check, owner decisions of 2026-11-23). Nothing here has been run. Enabling metering anywhere is a separate
 owner approval (design `S3D-HOST-WIRING-DESIGN.md` §10 R-3, decision O-10); this list is what that
 approval would execute on staging first. Alpha follows only after a staging pass, in a maintenance
 window. Host names, users and paths below are placeholders (`<n>` = the instance prefix of the unit
@@ -9,25 +10,51 @@ template, `<user>` = the Session Host's user).
 ## 0. Preconditions (all must be true before starting)
 
 - [ ] The owner approved enabling on staging in writing (`directives/`), naming the plan map.
-- [ ] Owner decisions answered or explicitly deferred: O-1 (plan source; initial map is every policy
-      plan -> `legacy`), O-2, O-3 (new end reasons + `queue_replaced`), O-4, O-5, O-7 (refuse to start
-      on a torn/corrupt journal), O-9 (cooldown seed: not implemented, s3c limit accepted?), O-10.
-- [ ] Journal retention decided (m11): `.pre-compact` and `.pre-repair` copies are never deleted
-      automatically; who deletes them, and when.
+- [x] Owner decisions O-1 .. O-11 (design §13) ACCEPTED by the owner on 2026-11-23, among them O-7
+      (refuse to start on a torn/corrupt journal) and O-9 = accept the s3c limit: no Free cooldown seed
+      from the journal; after a host restart the Free cooldown starts empty (memory only).
+- [ ] Journal retention (m11) is STILL AN OPEN OWNER DECISION (D-day1417-2). Proposed wording for the
+      owner: "The host and the repair tool never delete journal copies. The operator keeps the last
+      N = 3 `.pre-compact` and the last N = 3 `.pre-repair` copies per state directory and deletes older
+      ones by hand only, with the host stopped, after checking that the live journal replays (repair
+      tool report-only: exit 0); each deletion is written in the ops log (file name, size, date). The N = 3 rule is also tied to a
+      dispute/audit window: a copy younger than X days is never deleted, even when it is older than
+      the last 3 (X = owner decision)."
+      Nothing deletes automatically, and no auto-deletion will be built without a new owner decision.
 - [ ] The app with queue + limit handling (s3d-5) is deployed on staging BEFORE the host (R-2).
-- [ ] The staged Session Host bundle contains s3d-6 (boot recovery, refusal exit 78) and the
-      repair tool is available on the host as an operator command (see §5; packaging is s3d-7).
+- [ ] The staged Session Host bundle contains s3d-6 (boot recovery, refusal exit 78), and the repair
+      bundle `sim-journal-repair.mjs` built from the SAME commit is installed (mode 0644) in a
+      separate operator directory, called `<bundles>` below (preferred: the CLI needs only node and the
+      state dir). If it is put in the release directory instead (next to `session-host.mjs`): do it
+      under the pipeline lock, record it in the ops log, and repeat it after any release switch or
+      rollback. Build:
+      `npm run simrepair:build` -> `runtime/plans/dist/sim-journal-repair.mjs` (one self-contained
+      file, like `session-host.mjs`; needs no `node_modules`). The release/install scripts
+      (`deploy/release/build-package.sh` services/, `deploy/dev-lab/s8/install.sh`) do NOT ship it
+      yet (PM/owner decision): until they do, install it by hand as described above.
 - [ ] The installed unit has `RestartPreventExitStatus=78` (template change of s3d-6; re-render and
       install the unit, `systemctl daemon-reload`).
 - [ ] Pipeline lock held for the whole procedure; staging state recorded before (TEST-SAFETY).
+- [ ] Clock / time skew: every journal time (open, beat, close, the per-day split) and every bill comes
+      from the host clock, and the journal replay rejects time-inconsistent events (which makes the
+      host refuse to start). Before enabling, and again before each restart below: `timedatectl` shows
+      `System clock synchronized: yes` with an active NTP service; the host's UTC time matches a
+      reference within 1 s. (The per-day split uses the config's `meter.timezone`, default
+      `Asia/Jerusalem`, through Node's built-in ICU, not the host's local time zone.) Do not enable while the clock is unsynchronised or was just stepped; never set
+      the clock by hand while metering is on. Recovery: if the clock was stepped while metering was on
+      and the host then refuses with a corrupt journal (the replay rejects `endAt < openedAt`; repair
+      tool exit 3), use the rollback (§6) and investigate; never hand-edit the journal.
 
 ## 1. Configuration files (prepared, reviewed, not yet referenced by the unit)
 
 - [ ] Plans config JSON, owned by root, readable by `<user>` only, at most 1 MiB:
       `metering.enabled: true`; `sim.leaseMs` equal to the host's `TBI_HOST_LEASE_MS` (default 30000);
       `queue.freeCapMode: "fixed"`; `sim.maxConcurrentPerPrincipal: 1` if any plan has minute caps.
-      There is no separate validator yet (s3d-7 candidate): the host's boot checks refuse an
-      invalid file with exit 78 and a one-line reason, which is only seen at the restart in §3.
+- [ ] Before enabling (and before §3), after creating the state dir (§2), run the offline validator
+      (s3d-8; built from the same commit with `npm run simvalidate:build`, installed like the repair
+      bundle) as `<user>` with exactly the unit's environment:
+      `sudo -u <user> env TBI_HOST_SIM_PLANS_CONFIG=... TBI_HOST_SIM_PLANS_STATE=... TBI_HOST_SIM_PLAN_MAP=... TBI_POLICY_FILE=... [TBI_HOST_LEASE_MS=...] <node> <bundles>/sim-config-validate.mjs`
+      -> must exit 0 (1 = fix every listed problem; 78 = no sim flag reached it). It writes nothing.
 - [ ] Plan map: `TBI_HOST_SIM_PLAN_MAP=preview=legacy,system=legacy` (every policy plan mapped, no
       unknown names; check against the installed policy file).
 - [ ] Intervals left at defaults unless measured: beat `floor(leaseMs/3)`, adapter housekeeping
@@ -64,14 +91,56 @@ template, `<user>` = the Session Host's user).
       `sim_close` has reason `host` and is billed at most one lease past the last journaled beat.
 - [ ] Measure the beat-path latency of the fsync per append (m4) and record it.
 
-## 5. Journal problem drill (staging only, on a COPY of the state dir)
+## 5. Journal problem drill and repair
 
-- [ ] Simulate a torn tail on a copy: the host refuses (exit 78, unit stays down).
-- [ ] Operator repair with the host STOPPED, as `<user>`:
-      `repair-main <state dir>` (report only: exit 2 = torn, 3 = corrupt, 0 = clean), then
-      `repair-main <state dir> --apply` (writes `sim-journal.log.<UTC>.pre-repair` first, then drops
-      the torn last record). Corruption in the middle is never repaired: rollback (§6).
+The repair command (`<node>` = the node binary of the unit's `ExecStart`; one JSON line on stdout with
+counts and byte offsets only; exit 0 = clean or repaired, 2 = torn tail found (report only),
+3 = corrupt (never repaired), 1 = usage / unusable directory / lock held):
+
+    sudo -u <user> <node> <bundles>/sim-journal-repair.mjs <absolute state dir>           # report only
+    sudo -u <user> <node> <bundles>/sim-journal-repair.mjs <absolute state dir> --apply   # repair
+
+Drill first (dry-run on a COPY; the live state directory is never touched during the drill):
+
+- [ ] Make the copy as `<user>`: `install -d -m 0700 <drill dir>` (absolute, no symlink, outside the
+      live state dir), then `cp -p <state dir>/sim-journal.log <drill dir>/`. Copy ONLY the journal:
+      never `host.lock` / `host.lock.takeover` (a copied lock names the live host's pid, and the tool
+      would refuse with exit 1). A copy taken while the host runs may be torn (a write in flight):
+      exit 2 on such a copy is expected, so re-copy (or copy with the host stopped). The live
+      directory is never at risk.
+- [ ] Report only on the copy: exit 0 (`clean`). To compare the event count, run a report-only run on the live state dir with the
+      host stopped; otherwise drop the comparison (the `sim_boot` line has no event count).
+- [ ] Simulate a torn tail on the copy (append a few bytes without a newline, e.g.
+      `printf 'x' >> <drill dir>/sim-journal.log`): report only -> exit 2 (`torn`), the copy unchanged.
+- [ ] `--apply` on the copy -> exit 0 (`repaired`), a `sim-journal.log.<UTC>.pre-repair` file appeared
+      in the drill dir; report only again -> exit 0. Record the outputs.
+- [ ] Optional (staging only, maintenance window): point a stopped staging host at the drill dir and
+      check that it refuses with the torn copy (exit 78, unit stays down) and boots after the repair.
+      Afterwards, restore and verify: point the host back at the live state dir and check that the
+      drop-in names the live state dir (not the drill dir).
+- [ ] Remove the drill dir by hand after the record is written (it is a copy, not the journal).
+      Before removing, verify that the path equals the recorded drill dir and is not the state dir.
+
+Real repair (only after the host refused with exit 78 and the report says `torn`):
+
+- [ ] Host STOPPED (`systemctl is-active` = `inactive` or `failed`), pipeline lock held, as `<user>`.
+- [ ] Report only -> exit 2; then `--apply` -> exit 0. Exit 3 (corruption in the middle) is never
+      repaired: rollback (§6) and investigate. Exit 1 "locked": see the stale-lock step below.
 - [ ] Restart: the host boots and closes the recovered session with `host`.
+
+Stale lock (`host.lock` holds the pid of the host that owns the state dir):
+
+- [ ] A lock whose pid is gone is taken over automatically by the next host or repair run; do not
+      remove it by hand for that. Manual removal is only for a refusal that names it (lock malformed,
+      takeover mutex `host.lock.takeover` stale/malformed, or the pid now belongs to an unrelated
+      process).
+- [ ] Before removing anything, check ALL of: the unit is not active (`systemctl is-active`), no host
+      process of `<user>` exists (`pgrep -u <user> -f session-host.mjs` prints nothing), no repair run
+      is in progress (`pgrep -u <user> -f sim-journal-repair.mjs` prints nothing), and the pid in the lock (`cat <state dir>/host.lock`) is not a running Session
+      Host (`ps -p <pid> -o args=`). A reused pid shows up only as the generic "locked by another host" message, so `ps -p`
+      is what tells them apart. Record the lock content in the report.
+- [ ] NEVER remove a lock while a host runs or might start (the lock is what keeps two writers off
+      one journal). Remove only the named lock file; never the journal or its copies.
 
 ## 6. Rollback (the fast path for any problem)
 
