@@ -27,11 +27,12 @@ export function firstName(name: string): string {
 /** Longest first-name token used in a greeting; a longer one gets the generic greeting. */
 export const GREETING_NAME_MAX = 40;
 /**
- * A first name: Unicode letters (with their combining marks), optionally joined by single
+ * A first name: a Unicode letter, then letters (with their combining marks), optionally joined by single
  * hyphens (incl. the Hebrew maqaf) or apostrophes (incl. U+2019 and the Hebrew geresh). No digits,
  * dots, colons, slashes, `@` or anything else: nothing a mail client can turn into a link.
  */
-const GREETING_NAME_RE = /^[\p{L}\p{M}]+(?:[-\u2010\u2011\u05BE'\u2019\u05F3][\p{L}\p{M}]+)*$/u;
+const GREETING_NAME_RE =
+  /^\p{L}[\p{L}\p{M}]*(?:[-\u2010\u2011\u05BE'\u2019\u05F3][\p{L}\p{M}]+)*$/u;
 
 /**
  * The name the greeting may show, or null for the generic greeting. The name is sign-up input
@@ -39,7 +40,9 @@ const GREETING_NAME_RE = /^[\p{L}\p{M}]+(?:[-\u2010\u2011\u05BE'\u2019\u05F3][\p
  * `https://evil.example/login`, `evil.example` or an address never becomes a clickable link.
  */
 export function greetingName(name: string): string | null {
-  const first = firstName(name);
+  // NFKC first: fullwidth or compatibility forms (`ｗｗｗ`) are checked, and shown, as what they
+  // render as.
+  const first = firstName(name).normalize('NFKC');
   if ([...first].length > GREETING_NAME_MAX || !GREETING_NAME_RE.test(first)) return null;
   // `www` + letters is not a link by itself, but some clients linkify it loosely: refuse it.
   if (/^www/i.test(first)) return null;

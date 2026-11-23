@@ -28,10 +28,20 @@ import {
   Mailer,
   MAX_ATTEMPTS,
   MAX_ITEM_AGE_MS,
+  QUEUE_SCAN_MAX,
+  STUCK_MAX_AGE_MS,
+  STUCK_WARN_THRESHOLD,
   type Ledger,
   type MailerConfig,
 } from '../mailer.js';
-import { enqueueMail, itemKey, QUEUE_MAX_BYTES, QueueError, type QueueItem } from '../queue.js';
+import {
+  enqueueMail,
+  itemKey,
+  QUEUE_MAX_BYTES,
+  QUEUE_MAX_FILES,
+  QueueError,
+  type QueueItem,
+} from '../queue.js';
 import { isRetryable, RESEND_API_URL, ResendTransport } from '../transport.js';
 
 const FAKE_KEY = 're_FAKEtestkey_0123456789abcdef';
@@ -396,7 +406,7 @@ describe('mailer: retry and dead letters', () => {
         statusDir: t.statusDir,
         from: FROM,
         labUrl: LAB,
-        quiet: null,
+        quiet: parseQuiet(undefined),
         maxPerRun: 10,
         maxPerHour: 20,
         maxPerDay: 100,
@@ -614,7 +624,9 @@ describe('mailer: malformed queue entries are refused, never sent', () => {
     expect(await t.mailer.runOnce()).toMatchObject({ skipped: 2, rejected: 0, sent: 0 });
     expect(t.queued()).toEqual([k2]);
     expect(readdirSync(t.statusDir)).toEqual([]);
-    expect(t.logs).toEqual(['mailer: directory entries in the queue (2); empty ones removed']);
+    expect(t.logs).toEqual([
+      'mailer: directory entries in the queue (2): 1 empty removed, 1 non-empty kept',
+    ]);
     expectCleanLogs(t.logs);
   });
 
@@ -763,5 +775,356 @@ describe('mailerConfigFromEnv', () => {
       expect(r, JSON.stringify(c)).toMatchObject({ enabled: false, error: true });
       for (const v of Object.values(c)) if (v && v.length > 4) expect(r.reason).not.toContain(v);
     }
+  });
+});
+
+describe('mailer: stuck entries never starve real mail (ops review A)', () => {
+  // `01JC...` ids sort before ID (`01JD...`): the stuck entries come first in the listing.
+  const stuckId = (i: number) => `01JC${String(i).padStart(22, '0')}`;
+  const stuckKey = (i: number) => itemKey(item({ id: stuckId(i) }));
+  const stuckName = (i: number) => `${stuckKey(i)}.json`;
+  const OLD = (DAY - 25 * 3_600_000) / 1000;
+  const FRESH = (DAY - 60_000) / 1000;
+  const LATER = DAY + STUCK_MAX_AGE_MS;
+  function unreadable(q: string, i: number, mtime: number) {
+    const p = join(q, stuckName(i));
+    writeFileSync(p, JSON.stringify(item({ id: stuckId(i) })), { mode: 0o640 });
+    chmodSync(p, 0o000);
+    utimesSync(p, mtime, mtime);
+  }
+  function corruptLedger(t: ReturnType<typeof setup>, i: number, mtime: number) {
+    writeFileSync(join(t.queueDir, stuckName(i)), JSON.stringify(item({ id: stuckId(i) })), {
+      mode: 0o640,
+    });
+    writeFileSync(join(t.statusDir, stuckName(i)), '{', { mode: 0o640 });
+    utimesSync(join(t.statusDir, stuckName(i)), mtime, mtime);
+  }
+
+  it('500 stuck unreadable entries do not use the cap: the real mail is sent; after 24 h seen stuck they are dead-lettered', async () => {
+    const t = setup();
+    for (let i = 0; i < 500; i++) unreadable(t.queueDir, i, OLD);
+    await enqueueMail(t.queueDir, item());
+    // First sight: kept even though the files are old (a transient EIO/EMFILE after a downtime
+    // must not lose a valid mail); the real one is sent anyway.
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 1, dead: 0, skipped: 500 });
+    expect(t.queued()).toHaveLength(500);
+    expect(t.logs.filter((l) => l.includes('WARNING'))).toEqual([
+      'mailer: WARNING: 500 stuck queue entries (unreadable, non-empty directories or unreadable ledgers); operator action needed',
+    ]);
+    // Still unreadable 24 h later: dead-lettered, and the dead-letters do not use the cap either.
+    t.clock.now = LATER;
+    await enqueueMail(t.queueDir, item({ id: ID2, createdAt: LATER - 60_000 }));
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 1, dead: 500 });
+    expect(t.calls).toHaveLength(2);
+    expect(t.queued()).toEqual([]);
+    expect(t.ledger(stuckKey(7))).toMatchObject({ status: 'dead', lastError: 'stuck_unreadable' });
+    expectCleanLogs(t.logs);
+  });
+
+  it('an unreadable entry is dead-lettered only after 24 h seen stuck AND a file mtime older than 24 h', async () => {
+    const t = setup();
+    unreadable(t.queueDir, 1, OLD); // old file
+    unreadable(t.queueDir, 2, FRESH); // file only seen for a day, mtime refreshed later below
+    expect(await t.mailer.runOnce()).toMatchObject({ dead: 0, skipped: 2 });
+    t.clock.now = LATER - 1;
+    expect(await t.mailer.runOnce()).toMatchObject({ dead: 0, skipped: 2 });
+    // Entry 2's mtime is "now": seen stuck for 24 h but the file itself is not old.
+    const fresh = LATER / 1000;
+    utimesSync(join(t.queueDir, stuckName(2)), fresh, fresh);
+    t.clock.now = LATER;
+    expect(await t.mailer.runOnce()).toMatchObject({ dead: 1, skipped: 1 });
+    expect(t.queued()).toEqual([stuckName(2)]);
+    expect(t.ledger(stuckKey(1))).toMatchObject({ status: 'dead', lastError: 'stuck_unreadable' });
+    expect(t.logs).toContain(`mailer: dead ${stuckKey(1)} (stuck_unreadable)`);
+    expectCleanLogs(t.logs);
+  });
+
+  it('an entry that becomes readable again restarts the 24 h count and is sent', async () => {
+    const t = setup();
+    unreadable(t.queueDir, 1, OLD);
+    expect(await t.mailer.runOnce()).toMatchObject({ skipped: 1 });
+    chmodSync(join(t.queueDir, stuckName(1)), 0o640);
+    t.clock.now = DAY + 3_600_000;
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 1, dead: 0 });
+    expect(t.ledger(stuckKey(1))).toMatchObject({ status: 'sent' });
+  });
+
+  it('a restarted mailer starts the 24 h count again (never dead-letters on first sight)', async () => {
+    const t = setup();
+    unreadable(t.queueDir, 1, OLD);
+    expect(await t.mailer.runOnce()).toMatchObject({ skipped: 1 });
+    const again = new Mailer(
+      {
+        queueDir: t.queueDir,
+        statusDir: t.statusDir,
+        from: FROM,
+        labUrl: LAB,
+        quiet: parseQuiet(undefined),
+        maxPerRun: 10,
+        maxPerHour: 20,
+        maxPerDay: 100,
+      },
+      {
+        transport: new ResendTransport({ readKey: async () => FAKE_KEY, fetch: t.fetch }),
+        log: (l) => t.logs.push(l),
+        now: () => LATER,
+      },
+    );
+    expect(await again.runOnce()).toMatchObject({ dead: 0, skipped: 1 });
+    expect(t.queued()).toEqual([stuckName(1)]);
+  });
+
+  it('fresh stuck entries (unreadable, non-empty dirs, unreadable ledgers) do not use the cap; kept; one warning, counts only', async () => {
+    const t = setup();
+    for (let i = 0; i < 200; i++) unreadable(t.queueDir, i, FRESH);
+    for (let i = 200; i < 400; i++) {
+      mkdirSync(join(t.queueDir, stuckName(i)));
+      writeFileSync(join(t.queueDir, stuckName(i), 'x'), 'x');
+    }
+    for (let i = 400; i < 520; i++) corruptLedger(t, i, FRESH);
+    await enqueueMail(t.queueDir, item());
+    const s = await t.mailer.runOnce();
+    expect(s).toMatchObject({ sent: 1, dead: 0, skipped: 520 });
+    expect(t.queued()).toHaveLength(520);
+    expect(t.logs.filter((l) => l.includes('WARNING'))).toEqual([
+      'mailer: WARNING: 520 stuck queue entries (unreadable, non-empty directories or unreadable ledgers); operator action needed',
+    ]);
+    expect(t.logs.filter((l) => l.includes('with an unreadable ledger'))).toEqual([
+      'mailer: queue entries with an unreadable ledger (120); kept, not sent',
+    ]);
+    expect(t.logs).toContain(
+      'mailer: directory entries in the queue (200): 0 empty removed, 200 non-empty kept',
+    );
+    // Only the sent line names a key; the stuck ones are counted, never listed.
+    expect(t.logs.filter((l) => l.includes('01JC'))).toEqual([]);
+    expectCleanLogs(t.logs);
+  });
+
+  it('below the threshold there is no WARNING line', async () => {
+    const t = setup();
+    for (let i = 0; i < STUCK_WARN_THRESHOLD - 1; i++) unreadable(t.queueDir, i, FRESH);
+    expect(await t.mailer.runOnce()).toMatchObject({ skipped: STUCK_WARN_THRESHOLD - 1 });
+    expect(t.logs.filter((l) => l.includes('WARNING'))).toEqual([]);
+    expect(t.logs).toEqual(['mailer: queue entries unreadable (EACCES); kept, not sent']);
+  });
+
+  it('the handled-entry cap still applies to real entries (500 per run)', async () => {
+    const t = setup();
+    // 501 entries already sent (ledger `sent`): each is a handled `dropped`.
+    for (let i = 0; i < 501; i++) {
+      writeFileSync(join(t.queueDir, stuckName(i)), JSON.stringify(item({ id: stuckId(i) })), {
+        mode: 0o640,
+      });
+      writeFileSync(
+        join(t.statusDir, stuckName(i)),
+        JSON.stringify({
+          v: 1,
+          key: stuckKey(i),
+          status: 'sent',
+          attempts: 1,
+          firstAttemptAt: DAY - 3_600_000,
+          lastAttemptAt: DAY - 3_600_000,
+          nextAt: null,
+          lastError: null,
+          updatedAt: DAY - 3_600_000,
+        }),
+        { mode: 0o640 },
+      );
+    }
+    expect(await t.mailer.runOnce()).toMatchObject({ dropped: QUEUE_MAX_FILES });
+    expect(t.queued()).toEqual([stuckName(500)]);
+    expect(t.logs).toContain('mailer: queue over cap; 1 entr(y/ies) left for the next run');
+  });
+
+  it(`at most QUEUE_SCAN_MAX (${QUEUE_SCAN_MAX}) names are examined per run`, async () => {
+    const t = setup();
+    for (let i = 0; i < QUEUE_SCAN_MAX; i++) unreadable(t.queueDir, i, FRESH);
+    await enqueueMail(t.queueDir, item()); // sorts last: beyond the scan cap
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 0, skipped: QUEUE_SCAN_MAX });
+    expect(t.calls).toHaveLength(0);
+    expect(t.logs).toContain(
+      `mailer: queue over scan cap (${QUEUE_SCAN_MAX + 1}); examining the oldest ${QUEUE_SCAN_MAX}`,
+    );
+    expectCleanLogs(t.logs);
+  }, 60_000);
+
+  it('an unreadable ledger is dead-lettered (stuck_ledger) only after 24 h seen stuck and an mtime older than 24 h; an old non-empty dir is kept', async () => {
+    const t = setup();
+    corruptLedger(t, 1, OLD);
+    mkdirSync(join(t.queueDir, stuckName(2)));
+    writeFileSync(join(t.queueDir, stuckName(2), 'x'), 'x');
+    utimesSync(join(t.queueDir, stuckName(2)), OLD, OLD);
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 0, dead: 0, skipped: 2 });
+    t.clock.now = LATER;
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 0, dead: 1, skipped: 1 });
+    expect(t.calls).toHaveLength(0);
+    expect(t.queued()).toEqual([stuckName(2)]);
+    expect(t.ledger(stuckKey(1))).toMatchObject({ status: 'dead', lastError: 'stuck_ledger' });
+    // Re-queued later: a no-op (dead).
+    writeFileSync(join(t.queueDir, stuckName(1)), JSON.stringify(item({ id: stuckId(1) })), {
+      mode: 0o640,
+    });
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 0, dropped: 1 });
+    expectCleanLogs(t.logs);
+  });
+
+  it('a transiently unreadable `sent` ledger is not overwritten on first sight; once readable the re-queue is dropped', async () => {
+    const t = setup();
+    const k = stuckKey(1);
+    const sent = {
+      v: 1,
+      key: k,
+      status: 'sent',
+      attempts: 1,
+      firstAttemptAt: DAY - 30 * 3_600_000,
+      lastAttemptAt: DAY - 30 * 3_600_000,
+      nextAt: null,
+      lastError: null,
+      updatedAt: DAY - 30 * 3_600_000,
+    };
+    const lp = join(t.statusDir, stuckName(1));
+    writeFileSync(lp, JSON.stringify(sent), { mode: 0o640 });
+    utimesSync(lp, OLD, OLD);
+    chmodSync(lp, 0o000);
+    writeFileSync(join(t.queueDir, stuckName(1)), JSON.stringify(item({ id: stuckId(1) })), {
+      mode: 0o640,
+    });
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 0, dead: 0, skipped: 1 });
+    chmodSync(lp, 0o640);
+    expect(t.ledger(k)).toEqual(sent);
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 0, dropped: 1 });
+    expect(t.ledger(k)).toEqual(sent);
+    expect(t.calls).toHaveLength(0);
+  });
+});
+
+describe('mailer: rate counters over-count safely (ops review B, C)', () => {
+  const led = (id: string, o: Partial<Ledger>): Ledger => ({
+    v: 1,
+    key: itemKey(item({ id })),
+    status: 'sent',
+    attempts: 1,
+    firstAttemptAt: DAY - 2 * 3_600_000,
+    lastAttemptAt: DAY - 2 * 3_600_000,
+    nextAt: null,
+    lastError: null,
+    updatedAt: DAY - 2 * 3_600_000,
+    ...o,
+  });
+  const w = (dir: string, l: Ledger) =>
+    writeFileSync(join(dir, `${l.key}.json`), JSON.stringify(l), { mode: 0o640 });
+
+  it('all attempts of a ledger whose first attempt is in the window count; init is idempotent', async () => {
+    const t = setup({ cfg: { maxPerHour: 100, maxPerDay: 6 } });
+    w(
+      t.statusDir,
+      led('01JD0000000000000000000010', {
+        attempts: 5,
+        firstAttemptAt: DAY - 3 * 3_600_000,
+        lastAttemptAt: DAY - 2 * 3_600_000,
+      }),
+    );
+    await t.mailer.init();
+    await t.mailer.init();
+    for (const id of [ID, ID2]) await enqueueMail(t.queueDir, item({ id }));
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 1, deferred: 1 });
+  });
+
+  it('a ledger whose first attempt is outside the window counts attempts - 1 at lastAttemptAt', async () => {
+    const t = setup({ cfg: { maxPerHour: 100, maxPerDay: 4 } });
+    w(
+      t.statusDir,
+      led('01JD0000000000000000000010', {
+        status: 'retry',
+        attempts: 4,
+        firstAttemptAt: DAY - 25 * 3_600_000,
+        lastAttemptAt: DAY - 3_600_000,
+        nextAt: DAY + 3_600_000,
+      }),
+    );
+    await t.mailer.init();
+    for (const id of [ID, ID2]) await enqueueMail(t.queueDir, item({ id }));
+    // 3 of the 4 day slots are used: one more attempt, the other waits.
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 1, deferred: 1 });
+    // The 3 counted attempts sit at lastAttemptAt (DAY - 1 h): they expire at DAY + 23 h.
+    t.clock.now = DAY + 23 * 3_600_000 - 1;
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 0, deferred: 1 });
+    t.clock.now = DAY + 23 * 3_600_000 + 1;
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 1 });
+  });
+
+  it('a huge attempts count is bounded by the day cap and blocks until it expires', async () => {
+    const t = setup({ cfg: { maxPerHour: 100, maxPerDay: 6 } });
+    w(t.statusDir, led('01JD0000000000000000000010', { attempts: 1_000_000_000 }));
+    await t.mailer.init();
+    await enqueueMail(t.queueDir, item());
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 0, deferred: 1 });
+    t.clock.now = DAY + 22 * 3_600_000 + 1;
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 1 });
+  });
+
+  it('ledgers with an mtime older than 24 h and oversized ledgers are not parsed for counters', async () => {
+    const t = setup({ cfg: { maxPerHour: 1, maxPerDay: 1 } });
+    const l = led('01JD0000000000000000000010', {});
+    w(t.statusDir, l);
+    const old = (DAY - 25 * 3_600_000) / 1000;
+    utimesSync(join(t.statusDir, `${l.key}.json`), old, old);
+    const big = led('01JD0000000000000000000011', {});
+    writeFileSync(join(t.statusDir, `${big.key}.json`), JSON.stringify(big) + ' '.repeat(8192), {
+      mode: 0o640,
+    });
+    await t.mailer.init();
+    await enqueueMail(t.queueDir, item());
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 1 });
+  });
+});
+
+describe('greetingName hardening (ops review D)', () => {
+  // Built from code points so the fixture is explicit: fullwidth `ｗｗｗ`, superscript-w, fullwidth dot.
+  const FW_WWW = '\uFF57\uFF57\uFF57';
+  const unsafe = [
+    `${FW_WWW}evil`,
+    `${FW_WWW}\uFF0Eevil\uFF0Eexample`, // fullwidth dots: `www.evil.example` after NFKC
+    'Ｗｗｗ',
+    '\u02B7\u02B7\u02B7evil', // modifier letter small w: NFKC `www`
+    '\u0301Dana', // combining mark first
+    'evil\uFF0Eexample', // fullwidth dot
+    'evil\u2024example', // one dot leader: NFKC `.`
+    'Dana\uFF11', // fullwidth digit
+    '\uFF20evil', // fullwidth @
+  ];
+
+  it('NFKC-normalizes before every check and requires a letter first', () => {
+    for (const n of unsafe) expect(greetingName(n), n).toBeNull();
+    expect(greetingName('\uFF24\uFF41\uFF4E\uFF41')).toBe('Dana'); // fullwidth, shown normalized
+    expect(greetingName('José')).toBe('José');
+    expect(greetingName('Jose\u0301')).toBe('José'); // decomposed: normalized (NFKC composes)
+    expect(greetingName('דנה')).toBe('דנה');
+  });
+
+  it('the admin direct sender (approvalEmail) gives the generic greeting for fullwidth www', () => {
+    for (const n of unsafe) {
+      expect(approvalEmail('en', { name: n, email: EMAIL }, { labUrl: LAB }).text, n).toMatch(
+        /^Hi,\n/,
+      );
+      expect(approvalEmail('he', { name: n, email: EMAIL }, { labUrl: LAB }).text, n).toMatch(
+        /^שלום,\n/,
+      );
+    }
+  });
+
+  it('the mailer gives the generic greeting for a queued fullwidth-www name (same greetingName)', async () => {
+    const t = setup();
+    await enqueueMail(t.queueDir, item({}, { name: `${FW_WWW}evil Levi` }));
+    await enqueueMail(t.queueDir, item({ id: ID2 }, { name: `${FW_WWW}evil`, lang: 'he' }));
+    expect(await t.mailer.runOnce()).toMatchObject({ sent: 2 });
+    const texts = t.calls.map((c) => String(c.body.text));
+    expect(texts[0]).toMatch(/^Hi,\n/);
+    expect(texts[1]).toMatch(/^שלום,\n/);
+    for (const x of texts) {
+      expect(x).not.toContain(FW_WWW);
+      expect(x).not.toMatch(/www/i);
+    }
+    expectCleanLogs(t.logs);
   });
 });

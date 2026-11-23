@@ -13,17 +13,21 @@
  * - Malformed entries (name, size, mode, owner, link, encoding, schema) are refused: removed from
  *   the queue and, when the name is a valid key, recorded as dead with the reason. Never repaired.
  *   An entry the mailer cannot read (EACCES, EMFILE, EIO ...: an operator or host problem, not a
- *   content fault) is kept and retried next run; a directory with a key name is removed when
- *   empty, else left alone; neither gets a ledger.
+ *   content fault) is kept and retried next run, and dead-lettered (`stuck_unreadable`) once this
+ *   process has seen it unreadable for 24 h and its file is older than 24 h; an entry with an
+ *   unreadable ledger likewise (`stuck_ledger`, by the ledger's mtime); a directory with a key name is removed when empty, else left alone. Stuck
+ *   entries do not use the listing cap (only handled entries do; at most QUEUE_SCAN_MAX names
+ *   are examined per run), and many of them raise one loud warning per run.
  * - The only queue value that reaches the mail body is the recipient's first name, and only as a
  *   plain letters-only token (`greetingName`); anything else gets the generic greeting.
- * - Abuse limits: per run, per hour and per day attempt caps (rebuilt from the ledgers at start);
+ * - Abuse limits: per run, per hour and per day attempt caps (rebuilt from the ledgers at start,
+ *   over-counted, never under-counted);
  *   the queue listing is capped.
  * - Logs carry keys (a random request id) and class codes only: never an address, a name, the
  *   mail text, the key or a path.
  */
 import { constants } from 'node:fs';
-import { lstat, open, readdir, readFile, rename, rmdir, unlink } from 'node:fs/promises';
+import { lstat, open, opendir, readdir, rename, rmdir, unlink } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { approvalEmail } from '../admin/signup/email.js';
@@ -51,6 +55,23 @@ export const MAX_ITEM_AGE_MS = 7 * 24 * HOUR;
 export const CLOCK_SKEW_MS = 5 * 60_000;
 /** Writer temporary files older than this are removed. */
 export const TMP_STALE_MS = HOUR;
+/**
+ * A stuck entry (unreadable file, unreadable ledger) is dead-lettered (`stuck_unreadable` /
+ * `stuck_ledger`) once this process has seen it stuck on every run for this long AND its file (or
+ * ledger) mtime is older than this. Seen-stuck, not only mtime: a valid old entry (mailer down for
+ * days) hit by a transient error must not be lost on first sight. Longer than
+ * IDEMPOTENCY_WINDOW_MS, so a stuck entry with an attempt on record could not be retried safely
+ * anyway.
+ */
+export const STUCK_MAX_AGE_MS = 24 * HOUR;
+/** At most this many queue names are examined per run (stuck entries do not use QUEUE_MAX_FILES). */
+export const QUEUE_SCAN_MAX = 10 * QUEUE_MAX_FILES;
+/** One loud warning per run when this many entries are stuck. */
+export const STUCK_WARN_THRESHOLD = 50;
+/** A ledger is a few hundred bytes; a larger one is unreadable (fail closed). */
+export const LEDGER_MAX_BYTES = 4096;
+/** The status directory listing is bounded; over it the mailer refuses to start (fail closed). */
+export const STATUS_SCAN_MAX = 100_000;
 
 /** 1, 2, 4, ... minutes, at most 2 h. */
 export function backoffMs(attempts: number): number {
@@ -133,6 +154,8 @@ export class Mailer {
   private readonly now: () => number;
   /** Provider attempts of this process (rate limits). */
   private readonly attemptsAt: number[] = [];
+  /** Key -> first run (this process) that saw it stuck, on every run since. In memory only. */
+  private stuckSince = new Map<string, number>();
 
   constructor(
     private readonly c: MailerConfig,
@@ -154,24 +177,45 @@ export class Mailer {
   }
 
   /**
-   * A restart must not reset the hour/day caps: every ledger's first and last attempt inside the
-   * last 24 h counts. A lower bound (middle attempts of a retried entry are not recorded); invalid
-   * names and unreadable ledgers are ignored.
+   * A restart must not reset the hour/day caps. Over-counts, never under-counts: a ledger whose
+   * first attempt is inside the last 24 h counts all its attempts (the first at firstAttemptAt, the
+   * others approximated at lastAttemptAt); one whose first attempt is older counts attempts - 1 at
+   * lastAttemptAt (when that is inside the window). Each ledger counts at most maxPerDay, and only
+   * the newest maxPerDay timestamps are kept (they block longest). Idempotent: starts from zero.
+   * Ledgers whose mtime is older than 24 h are not parsed (every attempt rewrites the ledger, so its
+   * mtime is >= its last attempt); invalid names, non-files and unreadable ledgers are ignored.
    */
   private async restoreRateCounters(): Promise<void> {
+    this.attemptsAt.length = 0;
     const now = this.now();
-    const keys = (await readdir(this.c.statusDir))
-      .filter((n) => n.endsWith('.json'))
-      .map((n) => n.slice(0, -'.json'.length))
-      .filter((k) => QUEUE_KEY_RE.test(k));
+    const from = now - 24 * HOUR;
+    const inWindow = (t: unknown): t is number => typeof t === 'number' && t > from && t <= now;
+    const cap = Math.max(0, this.c.maxPerDay);
+    const keys: string[] = [];
+    let listed = 0;
+    for await (const d of await opendir(this.c.statusDir)) {
+      if (++listed > STATUS_SCAN_MAX) throw new MailerError('status_dir_over_cap');
+      if (!d.name.endsWith('.json')) continue;
+      const k = d.name.slice(0, -'.json'.length);
+      if (QUEUE_KEY_RE.test(k)) keys.push(k);
+    }
     for (const k of keys) {
+      const st = await lstat(join(this.c.statusDir, `${k}.json`)).catch(() => null);
+      if (!st || !st.isFile() || st.mtimeMs <= from) continue;
       const l = await this.readLedger(k);
       if (!l || l === 'corrupt') continue;
-      for (const t of new Set([l.firstAttemptAt, l.lastAttemptAt]))
-        if (typeof t === 'number' && t > now - 24 * HOUR && t <= now) this.attemptsAt.push(t);
+      const firstIn = inWindow(l.firstAttemptAt);
+      const n = Math.min(cap, firstIn ? l.attempts : Math.max(0, l.attempts - 1));
+      for (let i = 0; i < n; i++) {
+        const t = i === 0 && firstIn ? l.firstAttemptAt : l.lastAttemptAt;
+        // A missing or out-of-window lastAttemptAt for a first-in-window ledger: use the first.
+        if (inWindow(t)) this.attemptsAt.push(t);
+        else if (firstIn) this.attemptsAt.push(l.firstAttemptAt as number);
+      }
     }
     // mayAttempt() expires from the front: keep it oldest first.
     this.attemptsAt.sort((a, b) => a - b);
+    if (this.attemptsAt.length > cap) this.attemptsAt.splice(0, this.attemptsAt.length - cap);
   }
 
   async runOnce(): Promise<RunSummary> {
@@ -191,19 +235,36 @@ export class Mailer {
       now,
     );
     let names = all.filter((n) => !n.startsWith(QUEUE_TMP_PREFIX)).sort();
-    if (names.length > QUEUE_MAX_FILES) {
-      this.log(`queue over cap (${names.length}); processing the oldest ${QUEUE_MAX_FILES}`);
-      names = names.slice(0, QUEUE_MAX_FILES);
+    if (names.length > QUEUE_SCAN_MAX) {
+      this.log(`queue over scan cap (${names.length}); examining the oldest ${QUEUE_SCAN_MAX}`);
+      names = names.slice(0, QUEUE_SCAN_MAX);
     }
     if (isQuiet(now, this.c.quiet)) {
-      s.deferred = names.length;
+      s.deferred = Math.min(names.length, QUEUE_MAX_FILES);
       if (names.length) this.log(`quiet hours: ${names.length} entr(y/ies) waiting`);
       return s;
     }
     let attemptsThisRun = 0;
     const unreadable = new Map<string, number>();
-    let dirs = 0;
-    for (let i = 0; i < names.length; i++) {
+    let dirsRemoved = 0;
+    let dirsKept = 0;
+    let ledgersCorrupt = 0;
+    /** Stuck entries dead-lettered this run: cheap, and not counted against the listing cap. */
+    let stuckDead = 0;
+    const seenStuck = new Map<string, number>();
+    /** Seen stuck since STUCK_MAX_AGE_MS (this process, every run) and the file is that old. */
+    const stuckLongEnough = async (key: string, path: string): Promise<boolean> => {
+      const since = this.stuckSince.get(key) ?? now;
+      seenStuck.set(key, since);
+      return now - since >= STUCK_MAX_AGE_MS && (await this.olderThan(path, now));
+    };
+    let i = 0;
+    for (; i < names.length; i++) {
+      // The listing cap counts handled entries only: skipped/stuck ones never starve real mail.
+      if (s.sent + s.retrying + s.dead + s.rejected + s.dropped - stuckDead >= QUEUE_MAX_FILES) {
+        this.log(`queue over cap; ${names.length - i} entr(y/ies) left for the next run`);
+        break;
+      }
       const name = names[i]!;
       const m = QUEUE_NAME_RE.exec(name);
       if (!m) {
@@ -214,8 +275,17 @@ export class Mailer {
       const key = name.slice(0, -'.json'.length);
       const ledger = await this.readLedger(key);
       if (ledger === 'corrupt') {
-        // Fail closed: without a trustworthy record a send could be a duplicate.
-        this.log(`ledger unreadable for ${key}; entry kept, not sent`);
+        // Fail closed: without a trustworthy record a send could be a duplicate. Once the ledger
+        // is older than STUCK_MAX_AGE_MS any attempt on it is outside the idempotency window, so
+        // it can never be retried safely: dead-letter it (replaces the unreadable ledger).
+        if (await stuckLongEnough(key, join(this.c.statusDir, `${key}.json`))) {
+          await this.giveUp(name, key, null, 'stuck_ledger', now);
+          seenStuck.delete(key);
+          s.dead++;
+          stuckDead++;
+          continue;
+        }
+        ledgersCorrupt++;
         s.skipped++;
         continue;
       }
@@ -235,14 +305,28 @@ export class Mailer {
         continue;
       }
       if (r.ok === 'unreadable') {
-        // Not a content fault: keep it (no ledger) and try again next run.
+        // Not a content fault: keep it (no ledger) and try again next run; once stuck for
+        // STUCK_MAX_AGE_MS it is dead-lettered. It can never be sent without being read, so
+        // removing it cannot cause a duplicate.
+        if (await stuckLongEnough(key, join(this.c.queueDir, name))) {
+          await this.giveUp(name, key, ledger, 'stuck_unreadable', now);
+          seenStuck.delete(key);
+          s.dead++;
+          stuckDead++;
+          continue;
+        }
         unreadable.set(r.code, (unreadable.get(r.code) ?? 0) + 1);
         s.skipped++;
         continue;
       }
       if (r.ok === 'dir') {
-        await rmdir(join(this.c.queueDir, name)).catch(() => undefined);
-        dirs++;
+        // Only an empty one is removed: never a recursive delete of writer-controlled content.
+        const removed = await rmdir(join(this.c.queueDir, name)).then(
+          () => true,
+          () => false,
+        );
+        if (removed) dirsRemoved++;
+        else dirsKept++;
         s.skipped++;
         continue;
       }
@@ -355,12 +439,30 @@ export class Mailer {
       this.log(`sent ${key} (attempt ${attempts})`);
       s.sent++;
     }
+    // Entries not examined this run (cap or rate limit) keep their stuck-since time; an entry
+    // examined and not stuck (or gone) starts again from zero.
+    for (const n of names.slice(i)) {
+      const k = n.endsWith('.json') ? n.slice(0, -'.json'.length) : n;
+      const since = this.stuckSince.get(k);
+      if (since !== undefined && !seenStuck.has(k)) seenStuck.set(k, since);
+    }
+    this.stuckSince = seenStuck;
     // One line per class per run (counts, no names).
     if (unreadable.size)
       this.log(
         `queue entries unreadable (${[...unreadable.keys()].sort().join(', ')}); kept, not sent`,
       );
-    if (dirs) this.log(`directory entries in the queue (${dirs}); empty ones removed`);
+    if (ledgersCorrupt)
+      this.log(`queue entries with an unreadable ledger (${ledgersCorrupt}); kept, not sent`);
+    if (dirsRemoved + dirsKept)
+      this.log(
+        `directory entries in the queue (${dirsRemoved + dirsKept}): ${dirsRemoved} empty removed, ${dirsKept} non-empty kept`,
+      );
+    const stuck = [...unreadable.values()].reduce((a, b) => a + b, 0) + dirsKept + ledgersCorrupt;
+    if (stuck >= STUCK_WARN_THRESHOLD)
+      this.log(
+        `WARNING: ${stuck} stuck queue entries (unreadable, non-empty directories or unreadable ledgers); operator action needed`,
+      );
     return s;
   }
 
@@ -501,6 +603,12 @@ export class Mailer {
     });
   }
 
+  /** lstat mtime older than STUCK_MAX_AGE_MS (a future mtime is not old). */
+  private async olderThan(path: string, now: number): Promise<boolean> {
+    const st = await lstat(path).catch(() => null);
+    return st !== null && st.mtimeMs < now - STUCK_MAX_AGE_MS;
+  }
+
   private async removeStaleTmp(names: string[], now: number): Promise<void> {
     for (const n of names) {
       const p = join(this.c.queueDir, n);
@@ -510,11 +618,28 @@ export class Mailer {
   }
 
   private async readLedger(key: string): Promise<Ledger | null | 'corrupt'> {
+    // Bounded read, no symlink, regular file only: anything else is unreadable (fail closed).
     let text: string;
+    let fh;
     try {
-      text = await readFile(join(this.c.statusDir, `${key}.json`), 'utf8');
+      fh = await open(
+        join(this.c.statusDir, `${key}.json`),
+        constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+      );
     } catch (e) {
       return (e as { code?: unknown }).code === 'ENOENT' ? null : 'corrupt';
+    }
+    try {
+      const st = await fh.stat();
+      if (!st.isFile() || st.size > LEDGER_MAX_BYTES) return 'corrupt';
+      const buf = Buffer.alloc(LEDGER_MAX_BYTES + 1);
+      const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+      if (bytesRead > LEDGER_MAX_BYTES) return 'corrupt';
+      text = buf.subarray(0, bytesRead).toString('utf8');
+    } catch {
+      return 'corrupt';
+    } finally {
+      await fh.close();
     }
     try {
       const l = JSON.parse(text) as Ledger;
