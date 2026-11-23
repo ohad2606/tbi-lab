@@ -903,6 +903,13 @@ describe('review follow-up (slice 3)', () => {
     return { r, root, a, s };
   }
 
+  it('a trailing slash on the state dir is accepted (same directory)', async () => {
+    const { s } = await chain();
+    expect(await autoStateDirCheck(s)).toBeNull();
+    expect(await autoStateDirCheck(s + '/')).toBeNull();
+    expect(await autoStateDirCheck(s + '//')).toBeNull();
+  });
+
   it('ancestors: a group/world-writable ancestor without the sticky bit is refused; sticky (like /tmp) is fine', async () => {
     const { r, a, s } = await chain();
     await createN(r, 1);
