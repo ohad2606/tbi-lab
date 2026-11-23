@@ -22,8 +22,16 @@
  *   TBI_SIGNUP_AUTO_APPROVE      BETA-G1, OFF by default: `1` approves pending requests automatically
  *   TBI_SIGNUP_AUTO_DAILY_CAP    required with it: 1..1000 per Israel day (see autoApprove.ts). A bad
  *                                value leaves auto-approve off (one log line); manual approval stays.
+ *   TBI_SIGNUP_AUTO_STATE_DIR    optional: admin-only dir for the pause file + state (default: the
+ *                                store dir); refused when not owned by us or group/world-writable
+ *   TBI_SIGNUP_AUTO_SINCE        optional ISO cut-off; unset = the first time auto-approve ran
  */
-import { AUTO_APPROVE_INTERVAL_MS, AutoApprover, autoApproveConfigFromEnv } from './autoApprove.js';
+import {
+  AUTO_APPROVE_INTERVAL_MS,
+  AutoApprover,
+  autoApproveConfigFromEnv,
+  autoStateDirCheck,
+} from './autoApprove.js';
 import { errorClass } from './errors.js';
 import { RESEND_KEY_RE, ResendSender, type EmailSender } from './email.js';
 import type { FetchLike } from './notify.js';
@@ -52,7 +60,7 @@ export interface AdminSignupConfig {
   /** Retention of the store (unset: DEFAULT_RETENTION, 90 d not approved / 365 d at most). */
   retention?: Retention;
   /** BETA-G1: auto-approve with a daily cap; unset = off (today's manual flow, unchanged). */
-  autoApprove?: { dailyCap: number };
+  autoApprove?: { dailyCap: number; stateDir?: string; since?: number };
 }
 
 export type AdminSignupConfigResult =
@@ -206,17 +214,26 @@ export async function wireSignupAdmin(
   let draining: Promise<void> | null = null;
   const auto = c.autoApprove
     ? new AutoApprover({
-        dir: c.dir,
+        dir: c.autoApprove.stateDir ?? c.dir,
         store,
         dailyCap: c.autoApprove.dailyCap,
+        ...(c.autoApprove.since !== undefined ? { since: c.autoApprove.since } : {}),
         now: io.now,
         log: io.log,
-        approver: () => {
+        approver: (hooks) => {
           const actor = io.autoActor?.() ?? null;
+          const watched = {
+            submit: async (...a: Parameters<AdminSpool['submit']>) => {
+              const id = await spool.submit(...a);
+              hooks.onSpoolRequest(id);
+              return id;
+            },
+            wait: (id: string) => spool.wait(id),
+          };
           return actor
             ? new SignupApprover({
                 store,
-                accounts: spoolAccountAdder(spool, actor),
+                accounts: spoolAccountAdder(watched, actor),
                 email,
                 quiet,
                 now: io.now,
@@ -234,6 +251,8 @@ export async function wireSignupAdmin(
     startAutoApprove() {
       if (!auto) return async () => undefined;
       io.log(`signup: auto-approve on (daily cap ${c.autoApprove!.dailyCap})`);
+      let t: ReturnType<typeof setInterval> | undefined;
+      let stopped = false;
       const tick = () => {
         if (sweeping) return;
         sweeping = auto
@@ -246,11 +265,21 @@ export async function wireSignupAdmin(
             sweeping = null;
           });
       };
-      tick();
-      const t = setInterval(tick, AUTO_APPROVE_INTERVAL_MS);
-      t.unref();
+      // Refuse to start on an unsafe state dir (one log line); manual approval is unaffected.
+      const started = autoStateDirCheck(c.autoApprove!.stateDir ?? c.dir).then((bad) => {
+        if (bad) {
+          io.log(`signup: auto-approve not started (state dir unsafe: ${bad}); manual only`);
+          return;
+        }
+        tick();
+        if (stopped) return;
+        t = setInterval(tick, AUTO_APPROVE_INTERVAL_MS);
+        t.unref();
+      });
       return async () => {
-        clearInterval(t);
+        stopped = true;
+        await started;
+        if (t) clearInterval(t);
         await sweeping;
       };
     },
@@ -309,7 +338,14 @@ export async function signupWiringFromEnv(
   if (auto.enabled === false && auto.error)
     io.log(`signup: auto-approve off (config: ${auto.reason})`);
   const config = auto.enabled
-    ? { ...cfg.config, autoApprove: { dailyCap: auto.dailyCap } }
+    ? {
+        ...cfg.config,
+        autoApprove: {
+          dailyCap: auto.dailyCap,
+          ...(auto.stateDir !== undefined ? { stateDir: auto.stateDir } : {}),
+          ...(auto.since !== undefined ? { since: auto.since } : {}),
+        },
+      }
     : cfg.config;
   try {
     return await wireSignupAdmin(config, spool, io);

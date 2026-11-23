@@ -14,8 +14,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  AUTO_COUNTER_FILE,
+  AUTO_STATE_FILE,
   AUTO_PAUSE_FILE,
+  AUTO_RETRIES_PER_SWEEP,
+  AUTO_RETRY_BACKOFF_MS,
+  autoStateDirCheck,
   AutoApprover,
   autoApproveConfigFromEnv,
   autoPauseCheck,
@@ -31,6 +34,7 @@ import type { AdminSpool } from '../accounts.js';
 import type { Principal } from '../../identity/principal.js';
 
 const NOON_IL = Date.parse('2026-11-23T10:00:00Z'); // 12:00 Israel (winter, UTC+2)
+const DAY_MS = 86_400_000;
 const person = (i: number) => ({
   name: `Tester ${i}`,
   email: `tester${i}@example.com`,
@@ -68,7 +72,14 @@ interface Rig {
   logs: string[];
   addAnswers: AddOutcome[];
   auto: (
-    o?: Partial<{ cap: number; stat: (p: string) => Promise<unknown>; noOwner: boolean }>,
+    o?: Partial<{
+      cap: number;
+      stat: (p: string) => Promise<unknown>;
+      noOwner: boolean;
+      stateDir: string;
+      /** Cut-off (ms); default: one day before the test clock. `null` = unset (persisted default). */
+      since: number | null;
+    }>,
   ) => AutoApprover;
   manual: () => SignupApprover;
   onAdd?: () => void;
@@ -114,11 +125,12 @@ async function rig(opts: { quiet?: string } = {}): Promise<Rig> {
   r.manual = () => new SignupApprover({ store, accounts, email, quiet, now, log });
   r.auto = (o = {}) =>
     new AutoApprover({
-      dir,
+      dir: o.stateDir ?? dir,
       store,
       dailyCap: o.cap ?? 3,
       now,
       log,
+      ...(o.since === null ? {} : { since: o.since ?? NOON_IL - DAY_MS }),
       ...(o.stat ? { stat: o.stat } : {}),
       approver: () =>
         o.noOwner
@@ -129,19 +141,28 @@ async function rig(opts: { quiet?: string } = {}): Promise<Rig> {
 }
 
 const counter = (dir: string) =>
-  JSON.parse(readFileSync(join(dir, AUTO_COUNTER_FILE), 'utf8')) as { day: string; count: number };
+  JSON.parse(readFileSync(join(dir, AUTO_STATE_FILE), 'utf8')) as {
+    day: string;
+    count: number;
+    retries: number;
+    since?: string;
+    claims: Record<
+      string,
+      { at: string; attempts: number; lastAttemptAt: string; spoolId?: string }
+    >;
+  };
 const auditLines = (dir: string) =>
   existsSync(join(dir, 'audit.log'))
     ? readFileSync(join(dir, 'audit.log'), 'utf8').trim().split('\n')
     : [];
 
 /** Creates n requests one second apart, ending just before the current clock (FIFO order is by createdAt). */
-async function createN(r: Rig, n: number) {
+async function createN(r: Rig, n: number, first = 0) {
   const ids: string[] = [];
   const base = r.clock.t;
   for (let i = 0; i < n; i++) {
     r.clock.t = base - (n - i) * 1000;
-    ids.push((await r.store.createIfNew(person(i))).record.id);
+    ids.push((await r.store.createIfNew(person(first + i))).record.id);
   }
   r.clock.t = base;
   return ids;
@@ -233,7 +254,7 @@ describe('flag off: today behaviour unchanged', () => {
     const [id] = await createN(r, 1);
     expect(await r.manual().approve(id!)).toMatchObject({ ok: true });
     expect(auditLines(r.dir)).toEqual([`${new Date(NOON_IL).toISOString()} ${id} approve ok`]);
-    expect(existsSync(join(r.dir, AUTO_COUNTER_FILE))).toBe(false);
+    expect(existsSync(join(r.dir, AUTO_STATE_FILE))).toBe(false);
     expect(readFileSync(join(r.dir, `${id}.json`), 'utf8')).not.toContain('autoApprovedAt');
   });
 });
@@ -256,7 +277,7 @@ describe('happy path', () => {
     expect(auditLines(r.dir)).toEqual([
       `${new Date(NOON_IL).toISOString()} ${id} approve ok actor=auto`,
     ]);
-    expect(counter(r.dir)).toEqual({ v: 1, day: '2026-11-23', count: 1 });
+    expect(counter(r.dir)).toMatchObject({ v: 2, day: '2026-11-23', count: 1, retries: 0 });
   });
 
   it('inside quiet hours the account is added and the mail is queued (sent by the existing drain)', async () => {
@@ -281,7 +302,7 @@ describe('happy path', () => {
     const out = await r.auto().sweep();
     expect(out.claimed).toBe(0);
     expect((await r.store.get(c!)).status).toBe('pending');
-    expect(existsSync(join(r.dir, AUTO_COUNTER_FILE))).toBe(false);
+    expect(existsSync(join(r.dir, AUTO_STATE_FILE))).toBe(false);
   });
 });
 
@@ -502,6 +523,7 @@ describe('idempotency, double submit, concurrency, restart', () => {
       dir: r.dir,
       store: store2,
       dailyCap: 2,
+      since: NOON_IL - DAY_MS,
       now: () => r.clock.t,
       approver: () => r.manual(),
     });
@@ -513,10 +535,10 @@ describe('idempotency, double submit, concurrency, restart', () => {
   it('an unreadable counter fails closed (cap reached), logged, never reset', async () => {
     const r = await rig();
     await createN(r, 1);
-    writeFileSync(join(r.dir, AUTO_COUNTER_FILE), '{not json', { mode: 0o600 });
+    writeFileSync(join(r.dir, AUTO_STATE_FILE), '{not json', { mode: 0o600 });
     const out = await r.auto().sweep();
     expect(out).toMatchObject({ claimed: 0, stopped: 'counter_unreadable' });
-    expect(readFileSync(join(r.dir, AUTO_COUNTER_FILE), 'utf8')).toBe('{not json');
+    expect(readFileSync(join(r.dir, AUTO_STATE_FILE), 'utf8')).toBe('{not json');
     expect(r.logs.some((l) => /counter unreadable \(corrupt\)/.test(l))).toBe(true);
     expect(r.added).toEqual([]);
   });
@@ -528,6 +550,7 @@ describe('idempotency, double submit, concurrency, restart', () => {
     const a = r.auto({ cap: 1 });
     expect(await a.sweep()).toEqual({ claimed: 1, attempted: 1 });
     expect((await r.store.get(id!)).status).toBe('approved');
+    r.clock.t += AUTO_RETRY_BACKOFF_MS;
     expect(await a.sweep()).toEqual({ claimed: 0, attempted: 1 });
     expect((await r.store.get(id!)).status).toBe('email_sent');
     expect(counter(r.dir).count).toBe(1);
@@ -555,7 +578,7 @@ describe('idempotency, double submit, concurrency, restart', () => {
     expect((await a.sweep()).stopped).toBe('no_owner');
     expect((await a.sweep()).stopped).toBe('no_owner');
     expect(r.logs.filter((l) => /owner principal not recorded/.test(l))).toHaveLength(1);
-    expect(existsSync(join(r.dir, AUTO_COUNTER_FILE))).toBe(false);
+    expect(existsSync(join(r.dir, AUTO_STATE_FILE))).toBe(false);
   });
 });
 
@@ -581,7 +604,7 @@ describe('wiring with the flag on', () => {
         from: 'x',
         labUrl: 'https://l.example.invalid/',
         quiet: null,
-        autoApprove: { dailyCap: 2 },
+        autoApprove: { dailyCap: 2, since: NOON_IL - DAY_MS },
       },
       spool,
       {
@@ -602,5 +625,265 @@ describe('wiring with the flag on', () => {
     expect(mails).toEqual([rec.id]);
     expect(logs).toContain('signup: auto-approve on (daily cap 2)');
     expect(logs).toContain('signup: auto-approve processed 1');
+  });
+});
+
+describe('ops review follow-up (slice 2)', () => {
+  it('L1: a counter dated after today fails closed (future_day), logged, never reset', async () => {
+    const r = await rig();
+    await createN(r, 2);
+    const text = `${JSON.stringify({ v: 2, day: '2026-11-24', count: 0, retries: 0, claims: {} })}\n`;
+    writeFileSync(join(r.dir, AUTO_STATE_FILE), text, { mode: 0o600 });
+    const out = await r.auto().sweep();
+    expect(out).toMatchObject({ claimed: 0, stopped: 'counter_unreadable' });
+    expect(readFileSync(join(r.dir, AUTO_STATE_FILE), 'utf8')).toBe(text);
+    expect(r.logs.some((l) => /counter unreadable \(future_day\)/.test(l))).toBe(true);
+    expect(r.added).toEqual([]);
+  });
+
+  it('M2: a forged record (autoApprovedAt + approved, never claimed here) is not approved or mailed', async () => {
+    const r = await rig();
+    const [id] = await createN(r, 1);
+    // What a compromised intake could write into its own store.
+    await r.store.update(id!, {
+      status: 'approved',
+      autoApprovedAt: new Date(NOON_IL - 60_000).toISOString(),
+    });
+    const a = r.auto();
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    r.clock.t += AUTO_RETRY_BACKOFF_MS * 10;
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect(r.added).toEqual([]);
+    expect(r.mails).toEqual([]);
+    expect(auditLines(r.dir)).toEqual([]);
+  });
+
+  it('M2: retries count against a per-day bound (= the daily cap), logged once per day', async () => {
+    const r = await rig();
+    const [id] = await createN(r, 1);
+    r.addAnswers.push('pending', 'pending', 'pending', 'pending');
+    const a = r.auto({ cap: 1 });
+    expect(await a.sweep()).toEqual({ claimed: 1, attempted: 1 });
+    r.clock.t += AUTO_RETRY_BACKOFF_MS;
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 1 });
+    r.clock.t += AUTO_RETRY_BACKOFF_MS;
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    r.clock.t += AUTO_RETRY_BACKOFF_MS;
+    await a.sweep();
+    expect(counter(r.dir)).toMatchObject({ count: 1, retries: 1 });
+    expect(r.logs.filter((l) => /retry limit reached/.test(l))).toHaveLength(1);
+    // Next Israel day: one more retry allowed.
+    r.clock.t = NOON_IL + DAY_MS;
+    expect(await a.sweep()).toMatchObject({ claimed: 0, attempted: 1 });
+    expect(r.addAnswers).toHaveLength(1);
+    expect((await r.store.get(id!)).status).toBe('approved');
+  });
+
+  it('M3: helper outage: at most one resubmit per record per backoff window (fake clock)', async () => {
+    const r = await rig();
+    const [id] = await createN(r, 1);
+    let adds = 0;
+    r.onAdd = () => adds++;
+    r.addAnswers.push('pending', 'pending', 'pending');
+    const a = r.auto();
+    await a.sweep();
+    expect(adds).toBe(1);
+    const t0 = r.clock.t;
+    for (let m = 1; m < AUTO_RETRY_BACKOFF_MS / 60_000; m++) {
+      r.clock.t = t0 + m * 60_000;
+      expect(await a.sweep()).toMatchObject({ attempted: 0 });
+    }
+    expect(adds).toBe(1);
+    r.clock.t = t0 + AUTO_RETRY_BACKOFF_MS;
+    expect(await a.sweep()).toMatchObject({ attempted: 1 });
+    expect(adds).toBe(2);
+    expect(counter(r.dir).claims[id!]).toMatchObject({
+      attempts: 2,
+      lastAttemptAt: new Date(t0 + AUTO_RETRY_BACKOFF_MS).toISOString(),
+    });
+  });
+
+  it('M3: retries per sweep are bounded, so new claims are not starved', async () => {
+    const r = await rig();
+    await createN(r, 4);
+    r.addAnswers.push('pending', 'pending', 'pending', 'pending');
+    const a = r.auto({ cap: 8 });
+    expect(await a.sweep()).toEqual({ claimed: 4, attempted: 4 });
+    expect(r.added).toEqual([]);
+    r.clock.t += AUTO_RETRY_BACKOFF_MS;
+    const fresh = await createN(r, 2, 10);
+    const out = await a.sweep();
+    expect(out).toEqual({ claimed: 2, attempted: 2 + AUTO_RETRIES_PER_SWEEP });
+    for (const id of fresh) expect((await r.store.get(id)).status).toBe('email_sent');
+  });
+
+  it('M3: the last spool request id and time are stored on the claim (wiring)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tbi-g1-spool-'));
+    roots.push(root);
+    const spool = {
+      submit: async () => '01JBBBBBBBBBBBBBBBBBBBBBBB',
+      wait: async () => 'pending',
+    } as unknown as AdminSpool;
+    const w = await wireSignupAdmin(
+      {
+        dir: join(root, 'p'),
+        keyFile: join(root, 'k'),
+        from: 'x',
+        labUrl: 'https://l.example.invalid/',
+        quiet: null,
+        autoApprove: { dailyCap: 2, since: NOON_IL - DAY_MS },
+      },
+      spool,
+      {
+        fetch: (async () => ({ ok: true, status: 200 })) as FetchLike,
+        log: (l) => allLogs.push(l),
+        email: { sendApproval: async () => undefined },
+        autoActor: () => 'p_ownerownerownerownerowner' as Principal,
+        now: () => NOON_IL,
+      },
+    );
+    const rec = (await w.store.createIfNew(person(4))).record;
+    await w.startAutoApprove()();
+    expect(counter(join(root, 'p')).claims[rec.id]).toEqual({
+      at: new Date(NOON_IL).toISOString(),
+      attempts: 1,
+      lastAttemptAt: new Date(NOON_IL).toISOString(),
+      spoolId: '01JBBBBBBBBBBBBBBBBBBBBBBB',
+    });
+  });
+
+  it('M1: a separate state dir holds the pause file and the state; the store dir pause file is then ignored', async () => {
+    const r = await rig();
+    const sd = join(r.dir, '..', 'auto-state');
+    mkdirSync(sd, { mode: 0o700 });
+    await createN(r, 2);
+    writeFileSync(join(sd, AUTO_PAUSE_FILE), '');
+    expect((await r.auto({ stateDir: sd }).sweep()).stopped).toBe('paused');
+    rmSync(join(sd, AUTO_PAUSE_FILE));
+    writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+    expect((await r.auto({ stateDir: sd }).sweep()).claimed).toBe(2);
+    expect(counter(sd).count).toBe(2);
+    expect(existsSync(join(r.dir, AUTO_STATE_FILE))).toBe(false);
+  });
+
+  it('M1: a group/world-writable, foreign-owned, symlinked or missing state dir is refused (logged once)', async () => {
+    const r = await rig();
+    await createN(r, 1);
+    const sd = join(r.dir, '..', 'loose');
+    mkdirSync(sd, { mode: 0o700 });
+    chmodSync(sd, 0o770);
+    const a = r.auto({ stateDir: sd });
+    expect((await a.sweep()).stopped).toBe('state_dir_unsafe');
+    expect((await a.sweep()).stopped).toBe('state_dir_unsafe');
+    expect(r.logs.filter((l) => /state dir unsafe \(mode\)/.test(l))).toHaveLength(1);
+    chmodSync(sd, 0o702);
+    expect(await autoStateDirCheck(sd)).toBe('mode');
+    chmodSync(sd, 0o700);
+    expect(await autoStateDirCheck(sd)).toBeNull();
+    const link = join(r.dir, '..', 'link');
+    symlinkSync(sd, link);
+    expect(await autoStateDirCheck(link)).toBe('not_dir');
+    expect(await autoStateDirCheck(join(r.dir, '..', 'nope'))).toBe('ENOENT');
+    if (process.getuid?.() !== 0) expect(await autoStateDirCheck('/')).toBe('owner');
+    expect(r.added).toEqual([]);
+  });
+
+  it('M1: the wiring refuses to start with an unsafe state dir (one log line, manual stays)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tbi-g1-unsafe-'));
+    roots.push(root);
+    const sd = join(root, 's');
+    mkdirSync(sd, { mode: 0o700 });
+    chmodSync(sd, 0o777);
+    const submitted: string[] = [];
+    const logs: string[] = [];
+    const spool = {
+      submit: async (_a: string, x: { email: string }) => {
+        submitted.push(x.email);
+        return '01JCCCCCCCCCCCCCCCCCCCCCCC';
+      },
+      wait: async () => ({ ok: true }),
+    } as unknown as AdminSpool;
+    const w = await wireSignupAdmin(
+      {
+        dir: join(root, 'p'),
+        keyFile: join(root, 'k'),
+        from: 'x',
+        labUrl: 'https://l.example.invalid/',
+        quiet: null,
+        autoApprove: { dailyCap: 2, since: NOON_IL - DAY_MS, stateDir: sd },
+      },
+      spool,
+      {
+        fetch: (async () => ({ ok: true, status: 200 })) as FetchLike,
+        log: (l) => {
+          logs.push(l);
+          allLogs.push(l);
+        },
+        email: { sendApproval: async () => undefined },
+        autoActor: () => 'p_ownerownerownerownerowner' as Principal,
+        now: () => NOON_IL,
+      },
+    );
+    await w.store.createIfNew(person(5));
+    await w.startAutoApprove()();
+    expect(submitted).toEqual([]);
+    expect(
+      logs.filter((l) => /auto-approve not started \(state dir unsafe: mode\)/.test(l)),
+    ).toHaveLength(1);
+    expect(w.signups.approver).toBeTypeOf('function');
+  });
+
+  it('Q5: unset cut-off = first enable time, persisted; older requests stay pending, also after a restart', async () => {
+    const r = await rig();
+    const [old] = await createN(r, 1);
+    const a = r.auto({ since: null });
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect(counter(r.dir).since).toBe(new Date(NOON_IL).toISOString());
+    expect(r.logs.filter((l) => /cut-off recorded/.test(l))).toHaveLength(1);
+    r.clock.t += 5_000;
+    const [fresh] = await createN(r, 1, 10);
+    r.clock.t += 120_000;
+    // A later process (restart) keeps the first cut-off.
+    expect(await r.auto({ since: null }).sweep()).toEqual({ claimed: 1, attempted: 1 });
+    expect(counter(r.dir).since).toBe(new Date(NOON_IL).toISOString());
+    expect((await r.store.get(old!)).status).toBe('pending');
+    expect((await r.store.get(fresh!)).status).toBe('email_sent');
+  });
+
+  it('Q5: TBI_SIGNUP_AUTO_SINCE takes only requests created after it', async () => {
+    const r = await rig();
+    const ids = await createN(r, 3); // created at -3 s, -2 s, -1 s
+    await r.auto({ since: NOON_IL - 2_000 }).sweep();
+    expect((await r.store.get(ids[0]!)).status).toBe('pending');
+    expect((await r.store.get(ids[1]!)).status).toBe('pending');
+    expect((await r.store.get(ids[2]!)).status).toBe('email_sent');
+  });
+
+  it('config: state dir must be absolute, cut-off must be an ISO time with zone', () => {
+    const on = { TBI_SIGNUP_AUTO_APPROVE: '1', TBI_SIGNUP_AUTO_DAILY_CAP: '5' };
+    expect(
+      autoApproveConfigFromEnv({
+        ...on,
+        TBI_SIGNUP_AUTO_STATE_DIR: '/var/lib/x',
+        TBI_SIGNUP_AUTO_SINCE: '2026-12-12T08:00:00+02:00',
+      }),
+    ).toEqual({
+      enabled: true,
+      dailyCap: 5,
+      stateDir: '/var/lib/x',
+      since: Date.parse('2026-12-12T06:00:00Z'),
+    });
+    for (const bad of [
+      { TBI_SIGNUP_AUTO_STATE_DIR: 'rel/dir' },
+      { TBI_SIGNUP_AUTO_STATE_DIR: '/a/../b' },
+      { TBI_SIGNUP_AUTO_SINCE: '2026-12-12' },
+      { TBI_SIGNUP_AUTO_SINCE: '2026-12-12T08:00:00' },
+      { TBI_SIGNUP_AUTO_SINCE: '2026-13-40T08:00:00Z' },
+      { TBI_SIGNUP_AUTO_SINCE: 'yesterday' },
+    ])
+      expect(autoApproveConfigFromEnv({ ...on, ...bad })).toMatchObject({
+        enabled: false,
+        error: true,
+      });
   });
 });
