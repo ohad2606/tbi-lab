@@ -77,6 +77,7 @@ import {
   repickIsStale,
   repickSwallowsKey,
   type WireKbAction,
+  type CandidateTarget,
   type WireKbEvent,
   type WireKbState,
 } from './wireKeyboard.js';
@@ -768,6 +769,17 @@ export function Canvas({
     end.kind === 'terminal'
       ? pinName(end)
       : t('kbwire.endJunction', { id: isolateLtr(end.junction) });
+  /** Slice 5: a candidate / done target, which may be a junction or a point on a wire. */
+  const targetName = (to: CandidateTarget) => {
+    if (to.kind === 'terminal') return pinName(to);
+    if (to.kind === 'junction') return t('kbwire.target.junction', { id: isolateLtr(to.junction) });
+    const w = doc.layout.wires.find((x) => x.id === to.wire);
+    return t('kbwire.target.wire', {
+      n: wirePosition(doc, to.wire),
+      from: w ? wireEndName(w.from) : '',
+      to: w ? wireEndName(w.to) : '',
+    });
+  };
   /** Selects the next/previous wire (wrapping) and announces it with both endpoints. */
   const kbSelectWire = (delta: 1 | -1) => {
     const cur =
@@ -812,14 +824,14 @@ export function Canvas({
         return t('kbwire.start', { pin: pinName(ev.pin) });
       case 'candidate':
         return t('kbwire.candidate', {
-          pin: pinName(ev.candidate.pin),
+          pin: targetName(ev.candidate.target),
           n: ev.n,
           total: ev.total,
           distance: distanceCells(ev.candidate.distance),
           hint: ev.candidate.hint ? t(`kbwire.hint.${ev.candidate.hint}`) : '',
         });
       case 'done':
-        return t('kbwire.done', { from: pinName(ev.from), to: pinName(ev.to) });
+        return t('kbwire.done', { from: pinName(ev.from), to: targetName(ev.to) });
       case 'cancel':
         return t('kbwire.cancel');
       case 'refused':
@@ -1035,9 +1047,11 @@ export function Canvas({
     const end = doc.layout.wires.find((w) => w.id === kb.wire)?.[kb.side];
     return end?.kind === 'junction' ? end.junction : undefined;
   })();
-  const kbCandidatePos = kbCandidate
-    ? terminalPosition(doc, kbCandidate.pin.component, kbCandidate.pin.terminal)
-    : undefined;
+  const kbCandidatePos = kbCandidate?.pos;
+  // Slice 5: the highlighted junction / point on a wire (pins use the terminal ring).
+  const kbJunctionTarget =
+    kbCandidate?.target.kind === 'junction' ? kbCandidate.target.junction : undefined;
+  const kbWirePoint = kbCandidate?.target.kind === 'wire' ? kbCandidate.target : undefined;
   useEffect(() => {
     if (!kbCandidatePos || size.w <= 0) return;
     const w = size.w / camera.scale;
@@ -1507,7 +1521,7 @@ export function Canvas({
               const kbRepick = kbRepickEnd === `${c.id}\u0000${term.id}`;
               const kbSource = (kb.mode === 'wiring' && kbCurrent) || kbRepick;
               const kbTarget =
-                kbCandidate?.pin.component === c.id && kbCandidate.pin.terminal === term.id;
+                kbCandidate?.pin?.component === c.id && kbCandidate.pin.terminal === term.id;
               return (
                 <g key={`${c.id}.${term.id}`}>
                   {(ends >= 2 || contact) && (
@@ -1568,7 +1582,8 @@ export function Canvas({
               key={j.id}
               data-hit="junction"
               data-id={j.id}
-              class={`${selected.junctions.has(j.id) ? 'junction selected' : 'junction'}${kbRepickJunction === j.id ? ' kb-source' : ''}`}
+              class={`${selected.junctions.has(j.id) ? 'junction selected' : 'junction'}${kbRepickJunction === j.id ? ' kb-source' : ''}${kbJunctionTarget === j.id ? ' kb-target' : ''}`}
+              data-kb-candidate={kbJunctionTarget === j.id ? 'true' : undefined}
             >
               <circle class="junction-hit" cx={j.x} cy={j.y} r={8} />
               <circle
@@ -1578,9 +1593,24 @@ export function Canvas({
                 r={4.5}
                 aria-label={t('canvas.junctionLabel', { id: j.id })}
               />
-              {kbRepickJunction === j.id && <circle class="kb-ring" cx={j.x} cy={j.y} r={11} />}
+              {(kbRepickJunction === j.id || kbJunctionTarget === j.id) && (
+                <circle class="kb-ring" cx={j.x} cy={j.y} r={11} />
+              )}
             </g>
           ))}
+          {/* Slice 5: the point where a keyboard wire would split the candidate wire. */}
+          {kbWirePoint && (
+            <g
+              class="kb-target kb-wire-point"
+              data-kb-candidate="true"
+              data-kb-wire={kbWirePoint.wire}
+              data-x={kbWirePoint.at.x}
+              data-y={kbWirePoint.at.y}
+            >
+              <circle class="junction-dot" cx={kbWirePoint.at.x} cy={kbWirePoint.at.y} r={4.5} />
+              <circle class="kb-ring" cx={kbWirePoint.at.x} cy={kbWirePoint.at.y} r={11} />
+            </g>
+          )}
         </g>
 
         <g class="check-markers">
