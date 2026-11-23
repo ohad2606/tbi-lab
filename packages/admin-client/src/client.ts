@@ -567,7 +567,7 @@ function signupRecord(v: unknown): SignupRecord | null {
     heardFrom:
       typeof v.heardFrom === 'string' &&
       v.heardFrom.trim() !== '' &&
-      v.heardFrom.trim().length <= 80
+      [...v.heardFrom.trim()].length <= 80
         ? v.heardFrom.trim()
         : null,
     origin: v.origin === 'web' ? 'web' : null,
