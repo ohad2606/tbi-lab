@@ -9,7 +9,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { TEST_IDENTITY, principalFor, startTestGate, ticketFor } from '../../identity/test-gate.js';
 import { parseConfig } from '../../plans/config.js';
 import type { SimEvent } from '../../plans/simminutes.js';
@@ -239,12 +239,20 @@ describe('s3d-2: SessionHost.admitCreate', () => {
     }
   });
 
-  it('fails closed (throws, creates nothing) if an enabled adapter ever reaches it', async () => {
+  // s3d-3b: an enabled adapter is now admitted (s3d3b-admission.test.ts); one that reaches a host
+  // without policy / admission config (swapped in after construction) still creates nothing: 503.
+  it('fails closed (503 system_unavailable, creates nothing) for an enabled adapter without its config', async () => {
     const { adapter } = await disabledAdapter();
     const { host, art } = fakeHost('normal', { tmpParent: parent, simPlans: adapter });
     closers.push(() => host.shutdown());
-    (host.config as { simPlans?: { enabled: boolean } }).simPlans = { enabled: true };
-    await expect(host.admitCreate(createRequest(art.sha256), A)).rejects.toThrow(/not wired/);
+    const admit = vi.fn();
+    (host.config as { simPlans?: unknown }).simPlans = { enabled: true, admit };
+    expect(await host.admitCreate(createRequest(art.sha256), A)).toMatchObject({
+      ok: false,
+      status: 503,
+      sim: { kind: 'limit', limit: { code: 'system_unavailable' } },
+    });
+    expect(admit).not.toHaveBeenCalled();
     expect(host.size).toBe(0);
   });
 });

@@ -46,6 +46,9 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
       'תור ההרצה מלא כרגע. נסו שוב בעוד כמה דקות. משתמשי מתקדם ו-Pro מקבלים עדיפות בתור.',
     'limit.sim.concurrent':
       'כבר יש לכם הרצה פעילה. אפשר לעצור אותה או לחכות שתסתיים, ואז להתחיל הרצה חדשה.',
+    // NEEDS DOCS REVIEW (tbi-docs): queue_replaced, placeholder wording from the s3d design (section 4).
+    'limit.sim.queue_replaced':
+      'המקום שלכם בתור הועבר ללשונית אחרת. אפשר לסגור את הלשונית הזו ולחזור ללשונית השנייה.',
   },
   en: {
     'limit.ai.credits_out':
@@ -82,6 +85,9 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
       'The run queue is full right now. Please try again in a few minutes. Advanced and Pro users get queue priority.',
     'limit.sim.concurrent':
       'You already have a run in progress. Stop it or wait until it ends, then start a new run.',
+    // NEEDS DOCS REVIEW (tbi-docs): queue_replaced, placeholder wording from the s3d design (section 4).
+    'limit.sim.queue_replaced':
+      'Your place in the queue is now held by another tab. Close this tab or return to the other one.',
   },
 };
 

@@ -66,6 +66,18 @@ export interface HostAdmitRequest {
   /** the plan resolved by the host at this moment; fixed for the run once it starts */
   plan: PlanId;
   slots: HostSlots;
+  /**
+   * TBI-018 s3d-3b (design sections 3 and 4). Absent = 'join' (the s3c behaviour, unchanged).
+   *   join    a new admission: the ticket joins the queue (or takes over the principal's entry);
+   *   poll    the ticket must already wait for this principal: when it does not (dropped by max wait or
+   *           as vanished, cancelled, or never queued), the answer is refused with that drop's error
+   *           (queue_timeout when unknown) and NOTHING is enqueued, so a poll never restarts the wait;
+   *   legacy  a client without the queue protocol: it never creates, replaces or cancels an entry.
+   *           When the principal already has an entry the answer is 'queued' and the entry is left
+   *           alone; a 'queued' outcome of its own is removed in the same serial step (never visible
+   *           to another caller). Only a 'start' or a refusal has an effect.
+   */
+  mode?: 'join' | 'poll' | 'legacy';
 }
 
 type Off = { metered: false };
@@ -190,18 +202,44 @@ export class SimHostAdapter {
         !PLAN_IDS.includes(req.plan)
       )
         return refuse(limitError('invalid_request'));
+      const mode = req.mode ?? 'join';
+      if (mode !== 'join' && mode !== 'poll' && mode !== 'legacy')
+        return refuse(limitError('invalid_request'));
       if (this.live.has(req.sessionId)) return refuse(limitError('invalid_state'));
       if (this.meter.storeProblem) return refuse(limitError('system_unavailable'));
+      // s3d-3b poll: expire stale entries first (this poll is the principal's sign of life, as in
+      // enqueue); a ticket that no longer waits is answered with its drop, never re-enqueued
+      const early: Dropped[] = [];
+      if (mode === 'poll') {
+        early.push(...this.queue.tick(req.principal));
+        if (!this.owns(req.ticket, req.principal)) {
+          const own = early.find((d) => d.ticket === req.ticket && d.principal === req.principal);
+          return refuse(own?.error ?? limitError('queue_timeout'), early);
+        }
+      }
+      // s3d-3b legacy: an existing entry of this principal (another tab's place) is never touched
+      if (mode === 'legacy') {
+        early.push(...this.queue.tick());
+        const theirs = this.queue.snapshot().findIndex((e) => e.principal === req.principal);
+        if (theirs !== -1)
+          return {
+            metered: true,
+            decision: 'queued',
+            position: theirs + 1,
+            status: limitError('queue', { n: theirs + 1 }),
+            dropped: early,
+          };
+      }
       // s3b follow-up (host must apply the Free cooldown to direct starts): every start, also into an
       // idle slot, goes through enqueue, which refuses a new Free entry with sim_cooldown.
       const ok = this.meter.admissible(req.principal, req.plan);
       if (!ok.ok) {
         if (this.owns(req.ticket, req.principal)) this.queue.drop(req.ticket);
-        return refuse(ok.error);
+        return refuse(ok.error, early);
       }
-      if (!ok.metered) return refuse(limitError('invalid_state')); // metering changed under us
+      if (!ok.metered) return refuse(limitError('invalid_state'), early); // metering changed under us
       const used = this.meter.usedTodayMs(req.principal);
-      if (!used.ok || !used.metered) return refuse(limitError('system_unavailable'));
+      if (!used.ok || !used.metered) return refuse(limitError('system_unavailable'), early);
       // no tick() of our own here: enqueue ticks with req.principal as alive, so this poll is the
       // waiter's sign of life and its entry is not dropped as vanished first (ops review fable11 L3)
       const q = this.queue.enqueue({
@@ -210,18 +248,23 @@ export class SimHostAdapter {
         plan: req.plan,
         simMsToday: used.ms,
       });
-      const dropped: Dropped[] = [...(q.dropped ?? [])];
+      const dropped: Dropped[] = [...early, ...(q.dropped ?? [])];
       if (!q.ok) return refuse(q.error, dropped);
       const running = Math.max(s.running, this.live.size);
       const runningFree = [...this.live.values()].filter((x) => x.plan === 'free').length;
       const slots = { capacity: s.capacity, running, runningFree, anyPaidUser: s.anyPaidUser };
-      const queuedResult = (): HostAdmit => ({
-        metered: true,
-        decision: 'queued',
-        position: this.queue.position(req.ticket) as number,
-        status: limitError('queue', { n: this.queue.position(req.ticket) as number }),
-        dropped,
-      });
+      const queuedResult = (): HostAdmit => {
+        const position = this.queue.position(req.ticket) as number;
+        // s3d-3b legacy: its own entry never stays (same serial step, nobody else saw it)
+        if (mode === 'legacy') this.queue.drop(req.ticket);
+        return {
+          metered: true,
+          decision: 'queued',
+          position,
+          status: limitError('queue', { n: position }),
+          dropped,
+        };
+      };
       if (running >= s.capacity) return queuedResult();
       // one atomic step (one clock reading): take our entry only if it is the first eligible one, so
       // another waiter is never removed on our behalf (L1)

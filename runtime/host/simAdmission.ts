@@ -1,7 +1,7 @@
 /**
  * TBI-018 pre-s3d: how the Session Host answers a SimHostAdapter admission result (runtime/plans/simhost.ts).
- * NOT WIRED into POST /sessions yet (that is s3d); the host still refuses an enabled adapter at
- * construction. This is the one place the wiring will turn a HostAdmit into an HTTP answer:
+ * s3d-3b: used by SessionHost.admitCreate (POST /sessions with an enabled adapter). This is the one place
+ * a HostAdmit becomes an HTTP answer:
  *
  *   - exhaustive over HostAdmit.decision and over every LimitCode (a `never` check makes a new decision
  *     or a new code a compile error here, never a silent fall-through);
@@ -57,6 +57,9 @@ export function simRefusal(code: LimitCode): Mapping {
     // the waiter was dropped for not polling: for the user it is a queue timeout, try again
     case 'queue_vanished':
       return limit('queue_timeout');
+    // TBI-018 s3d-3b: a poll with a ticket a newer tab of the same principal took over (design section 3)
+    case 'queue_replaced':
+      return { status: 409, code: 'queue_replaced' };
     case 'system_unavailable':
       return SYSTEM;
     // contract errors: shown as a generic, uncharged failure; never which session or why
@@ -128,6 +131,30 @@ function refuse(cause: LimitCode | 'malformed', err?: LimitError): SimAdmissionR
     body,
     cause,
   };
+}
+
+/**
+ * TBI-018 s3d-3b: the public answer for a LimitError the adapter reported outside an admit decision (a
+ * dropped waiter, a stored drop). Same mapping and the same fail-closed rules as a 'refused' admit.
+ */
+export function simLimitAnswer(err: LimitError | null | undefined): {
+  status: RefusalStatus;
+  body: PublicLimit;
+} {
+  const r = simAdmissionResponse({
+    metered: true,
+    decision: 'refused',
+    error: err as LimitError,
+    dropped: [],
+  });
+  return r.kind === 'refused'
+    ? { status: r.status, body: r.body }
+    : { status: 503, body: SYSTEM_BODY };
+}
+
+/** The HTTP status of a stored public limit (a dropped ticket's answer on a later poll). */
+export function statusOfLimit(l: PublicLimit): RefusalStatus {
+  return l.code === 'system_unavailable' ? 503 : simRefusal(l.code).status;
 }
 
 /** Turn a SimHostAdapter.admit() result into the host's answer. Only a well-formed 'start' starts a run. */

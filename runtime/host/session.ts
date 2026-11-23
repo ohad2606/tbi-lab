@@ -48,6 +48,7 @@ import {
 } from '../harness/protocol.js';
 import { runSession, type Outcome, type PwmEvent, type SessionResult } from '../harness/session.js';
 import type { Principal } from '../identity/principal.js';
+import type { PlanId } from '../plans/config.js';
 import type { TicketFeatures } from '../identity/ticket.js';
 import type { HostConfig } from './config.js';
 import { sessionDir } from './config.js';
@@ -192,6 +193,11 @@ export class HostSession {
    * enforcement is off or the gate sent no address). Revocation matches on it as on the owner.
    */
   emailTag: string | null = null;
+  /**
+   * TBI-018 s3d-3b: what the sim adapter admitted this run with (the 201 body's additive `sim` field);
+   * null = not metered (flag-off), so the answer is exactly today's.
+   */
+  simAdmitted: { plan: PlanId; remainingMs: number | null } | null = null;
   /** Sprint 23B: closers of the attached event streams (revocation ends them). */
   readonly streamClosers = new Set<() => void>();
 

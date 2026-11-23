@@ -1,6 +1,7 @@
 /**
  * TBI-018 s3c: the Session Host's flag-off hook for sim metering. Absent or disabled = the host is
- * unchanged; an enabled adapter is refused at construction (not wired yet: fail closed).
+ * unchanged; an enabled adapter without a policy and the s3d-3b admission config is refused at
+ * construction (fail closed). Deployments still cannot enable it: main.ts refuses the flags.
  */
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -48,11 +49,13 @@ describe('Session Host sim metering hook', () => {
     }
   });
 
-  it('an enabled adapter is refused before the host creates anything', async () => {
+  // s3d-3b: the "not wired" guard moved to boot (main.ts, sim-plans-boot-guard.test.ts); the
+  // constructor still refuses an enabled adapter it could not admit with (no policy / no config).
+  it('an enabled adapter without policy and admission config is refused before the host creates anything', async () => {
     const before = readdirSync(parent).length;
     const on = await adapter(true);
     expect(() => fakeHost('normal', { tmpParent: parent, simPlans: on })).toThrow(
-      /not wired into the Session Host/,
+      /needs a policy and the sim admission config/,
     );
     expect(readdirSync(parent).length).toBe(before);
   });

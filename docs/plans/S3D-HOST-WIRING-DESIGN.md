@@ -385,6 +385,25 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
    section 11 admission cases green; flag-off tests green; ops review (public endpoint). Between 3b and
    s3d-4 a failed `HostSession` start still calls `ended` (step 9), but ended-on-every-terminal-path
    arrives only in s3d-4: running without it is acceptable only flag-off (nothing enabled until s3d-6).
+   *Implemented (2026-11-23):* `SessionHost.admitCreate` -> `admitMetered` (runtime/host/host.ts),
+   `sendSim` (runtime/host/http.ts), tests `runtime/host/tests/s3d3b-admission.test.ts` and
+   `runtime/plans/tests/s3d3b-admit-modes.test.ts`. The constructor no longer refuses an enabled
+   adapter (only one without `policy` / `simAdmission`); `main.ts` still refuses every `TBI_HOST_SIM_*`
+   flag, so no deployment can enable it. Still missing until s3d-4: beats, `remainingMs` stops and
+   `ended` on every terminal path (today `ended` is called only when a started run never becomes a
+   host session: construction failure, client gone, host closing); the slice is acceptable flag-off only.
+   Deviations / additions, for review:
+   - a poll with a `started` ticket is answered (same 201, O-5) BEFORE the `session_quota` check,
+     which would otherwise count the replayed session against itself;
+   - `SimHostAdapter.admit` takes `mode: 'join' | 'poll' | 'legacy'` (absent = `join`, s3c unchanged):
+     `poll` never re-enqueues a ticket that no longer waits; `legacy` never touches an existing entry
+     and drops its own `queued` entry inside the same serial step (section 3 M3);
+   - `DELETE /sessions/queue` also marks the registry ticket dropped; a later poll of it answers 429
+     `queue_timeout` (no dedicated "cancelled" key exists) and never re-enqueues;
+   - a registry eviction (cap / per-principal cap / expiry at the cap) of a WAITING ticket cancels its
+     adapter entry; the registry sweeps only when at its cap (no full pass per issue);
+   - new `LimitCode` `queue_replaced` (409, `limit.sim.queue_replaced`, HE + EN placeholder texts in
+     `runtime/plans/messages.ts`, NEEDS DOCS REVIEW).
 4. **s3d-4 run lifecycle.** Beat timer, `remainingMs` stop, new end reasons, `ended` on every terminal
    path, adapter housekeeping, shutdown awaits `ended`. Acceptance: section 11 lifecycle, failure and
    billing cases green; exactly one `sim_close` per session.
