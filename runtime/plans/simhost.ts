@@ -46,7 +46,7 @@ import { PLAN_IDS } from './config.js';
 import { limitError, validPrincipal, type LimitError } from './limits.js';
 import { FairQueue, type Dropped } from './queue.js';
 import { SimMeter, type CloseReason, type SimEvent } from './simminutes.js';
-import type { Store } from './store.js';
+import type { Store, StoreProblem } from './store.js';
 import type { Clock } from './time.js';
 
 /** The host's slot picture at the moment of the call. The capacity is the host's, never assumed. */
@@ -143,6 +143,10 @@ export class SimHostAdapter {
 
   get enabled(): boolean {
     return this.cfg.metering.enabled;
+  }
+  /** the meter's journal problem, if any (read-only; s3d-1: the host refuses to boot on one) */
+  get storeProblem(): StoreProblem | undefined {
+    return this.meter.storeProblem;
   }
   /** sessions admitted and not yet reported ended */
   get tracked(): number {
