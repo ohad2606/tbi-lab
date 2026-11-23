@@ -13,7 +13,7 @@
  *     POST /__test/fail-next-create?status=N   answer the next create with HTTP N
  *     POST /__test/queue?steps=3,2,replaced   TBI-018 s3d-5: script the next creates of a queue-capable
  *                                     client: a number = 202 with that place, `replaced` = 409
- *                                     queue_replaced, `timeout` = 429 queue_timeout; once the script is
+ *                                     queue_replaced, `timeout` = 429 queue_timeout, `free_paused` | `queue_full` = 429 with that limit; once the script is
  *                                     used up, creates start as usual. Empty/absent steps: queue off
  *     GET  /__test/queue-state           { polls, cancels, ticketHeaders } of the queue script
  *     POST /__test/capacity?n=N          event-log capacity for new sessions
@@ -416,6 +416,13 @@ const host = {
         status: 409,
         error: 'queue_replaced',
         sim: { kind: 'limit', status: 409, limit: limit('queue_replaced') },
+      };
+    if (step === 'free_paused' || step === 'queue_full')
+      return {
+        ok: false,
+        status: 429,
+        error: step,
+        sim: { kind: 'limit', status: 429, limit: limit(step) },
       };
     if (step === 'timeout')
       return {

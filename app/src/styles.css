@@ -346,6 +346,14 @@ select {
   flex: 1 1 14rem;
   min-inline-size: 0;
 }
+.limit-notice {
+  flex-wrap: wrap;
+}
+.limit-notice [role='status'] {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+}
+.limit-notice .button,
 .queue-status .button {
   min-block-size: 24px;
   min-inline-size: 24px;

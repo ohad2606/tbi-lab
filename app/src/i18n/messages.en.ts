@@ -1472,7 +1472,9 @@ export const en = {
     'The service is temporarily unavailable and you were not charged. Please try again shortly.',
   // BETA-G2 (NEEDS DOCS REVIEW, tbi-docs): the Free kill switch; copy of server key limit.sim.free_paused.
   'sim.limit.free_paused':
-    'Free runs are paused right now. Please try again later. You can keep editing and wiring parts meanwhile.',
+    'New runs are paused right now. Please try again later. You can keep editing and wiring parts meanwhile.',
+  'sim.limit.retry': 'Try again',
+  'sim.limit.region_label': 'Run status message',
   'sim.queue.cancel': 'Cancel',
   'sim.queue.waiting_label': 'Run queue status',
   'sim.error.runtime.sim_limit':
