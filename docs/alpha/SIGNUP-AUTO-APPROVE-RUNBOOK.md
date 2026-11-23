@@ -1,8 +1,8 @@
 # Sign-up auto-approve (BETA-G1): owner runbook
 
 Design and behaviour: `docs/plans/BETA-G1-AUTO-APPROVE.md`. This page lists what the owner does. **Nothing here has
-been done on any host.** Every step changes a live service, so each one runs only in an interactive session with
-the owner's approval.
+been done on any host.** Every step changes a live service (manual DEV-Lab/Alpha change: RED zone), so each one runs only in an
+interactive session with the owner's approval.
 
 `<N>` is the instance name (`tbi` for the dev-lab instance of `deploy/dev-lab/s8/install.sh`), so the unit is
 `<N>-admin.service` and the control-state directory is `/var/lib/<N>-admin-auto`. Host names, addresses and
@@ -11,8 +11,9 @@ other private details are kept in the private ops repository, not here.
 ## What installing the unit does (and does not do)
 
 - `tbi-admin.service.in` creates the control-state directory through systemd (`StateDirectory=<N>-admin-auto`,
-  `StateDirectoryMode=0700`). At every start systemd makes it owned by the admin service user (`tbi-admin`,
-  group `tbi-adminio`) with mode 0700, and puts back the owner if it was changed. The intake user cannot write it or
+  `StateDirectoryMode=0700`). systemd creates it owned by the admin service user (`tbi-admin`,
+  group `tbi-adminio`) with mode 0700 and puts back the owner if it was changed at start. It may not correct a
+  loosened mode: check `stat` shows 0700 after every restart (the code refuses only group/world-writable). The intake user cannot write it or
   list it. The admin service can write only there and in the spool (ProtectSystem=strict; no network:
   PrivateNetwork=yes).
 - It sets `TBI_SIGNUP_AUTO_STATE_DIR=/var/lib/<N>-admin-auto`. This setting does nothing until the flag is on.
@@ -51,7 +52,9 @@ sudo stat -c '%U:%G %a %F' /var/lib/<N>-admin-auto
    #Environment=TBI_SIGNUP_AUTO_SINCE=2026-12-12T08:00:00+02:00
    ```
 
-   A drop-in survives a reinstall of the unit (`install.sh` rewrites the unit file only). Keep these lines out of
+   A drop-in survives a reinstall of the unit (`install.sh` rewrites the unit file only). **Uninstalling or
+   reinstalling the admin unit does NOT turn auto-approve off:** remove the drop-in first (see Roll back), or a later
+   install brings it back with the old cap. Keep these lines out of
    the unit file itself.
 2. `sudo systemctl daemon-reload && sudo systemctl restart <N>-admin.service`
 3. Check the log (next section). Expect `auto-approve on (daily cap N)`. On the first sweep, without
@@ -96,7 +99,7 @@ Alert on (owner action needed or capacity reached):
 | `auto-approve pause check failed (<ERRNO>); treated as paused` | The directory cannot be read. Check the owner and mode. |
 | `auto-approve state dir unsafe (<reason>); manual only` | The owner, mode, symlink or parent of the directory is wrong. It resumes by itself once fixed. |
 | `auto-approve not started (state dir unsafe: <reason>); manual only` | Same problem at start. Fix it, then restart. |
-| `auto-approve counter unreadable (<class>); treated as cap reached` | The state file is corrupt, or (`future_day`) the clock went back. Inspect it before you remove it (removing it resets today's count and the cut-off). |
+| `auto-approve counter unreadable (<class>); treated as cap reached` | The state file is corrupt, or (`future_day`) the clock went back. Inspect it before you remove it (removing it resets today's count and the cut-off); create the pause file first and back the file up (`cp -p`) before any removal. |
 | `auto-approve retry limit reached (N today); the rest wait` | The account helper keeps failing. Check the helper. |
 | `auto-approve could not mark a claimed request (<ERRNO>); ...` | The store write failed. Check the store's disk and permissions. |
 | `auto-approve sweep failed (<class>)` | An unexpected sweep error. Read the lines around it. |

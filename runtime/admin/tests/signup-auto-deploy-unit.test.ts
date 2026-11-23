@@ -255,6 +255,7 @@ describe('BETA-G1 deploy: tbi-admin.service.in auto-approve wiring', () => {
   });
 
   it("the state dir's parents pass the autoStateDirCheck ancestor rules on this host", () => {
+    // NOTE: checks THIS host (CI runner), not the target; the runbook `stat` covers the real host.
     // Same rules as autoStateDirCheck: a real directory (no symlink), owned by root (the admin
     // uid does not own /var/lib), not group/world-writable unless sticky. systemd creates only
     // the last component; its parents are the host's.
