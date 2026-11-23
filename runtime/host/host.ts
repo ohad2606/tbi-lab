@@ -144,6 +144,52 @@ export class SessionHost {
     return this.create(body, principal, emailTag);
   }
 
+  /** TBI-018 s3d-3a: the sim adapter's queue surface, only when the adapter is enabled. */
+  private get queueAdapter(): NonNullable<HostConfig['simPlans']> | null {
+    const a = this.config.simPlans;
+    return a?.enabled === true ? a : null;
+  }
+
+  /**
+   * TBI-018 s3d-3a: does the queue exist on this host (an enabled sim adapter)? False = flag-off:
+   * `DELETE /sessions/queue` and the `Tbi-Queue*` headers are not served (design section 10 R-1).
+   */
+  get queueEnabled(): boolean {
+    return this.queueAdapter !== null;
+  }
+
+  /**
+   * TBI-018 s3d-3a (design section 3, M3): read-only peek whether `principal` waits in the queue.
+   * Flag-off: false. A throwing adapter answers true (fail closed: a legacy request then gets
+   * runtime_capacity and never touches the queue) with one log line (no principal, no ticket).
+   */
+  hasWaiting(principal: Principal): boolean {
+    const a = this.queueAdapter;
+    if (!a) return false;
+    try {
+      return a.hasWaiting(principal) !== false;
+    } catch {
+      logQueueFault('peek');
+      return true;
+    }
+  }
+
+  /**
+   * TBI-018 s3d-3a: cancel `principal`'s waiting entry for `ticket` (`DELETE /sessions/queue`). The
+   * adapter acts only on the caller's own entry; nothing is returned, so an own, foreign, unknown or
+   * missing ticket cannot be told apart. Flag-off or no ticket: no adapter call. A throw or rejection
+   * is logged (one line, no principal, no ticket) and swallowed (ops review M1).
+   */
+  async cancelQueued(ticket: string | null, principal: Principal): Promise<void> {
+    const a = this.queueAdapter;
+    if (!a || ticket === null) return;
+    try {
+      await a.cancel(ticket, principal);
+    } catch {
+      logQueueFault('cancel');
+    }
+  }
+
   /**
    * The session for an id, only for its owner and with its own token (constant-time
    * comparison). Another principal's session is indistinguishable from none (Sprint 8).
@@ -251,6 +297,15 @@ export class SessionHost {
   /** Test support: sessions currently registered (terminal ones until retention expires). */
   get size(): number {
     return this.sessions.size;
+  }
+}
+
+/** One operator line for a failed queue call: the operation only (never a principal, ticket or error text). */
+function logQueueFault(op: 'peek' | 'cancel'): void {
+  try {
+    process.stderr.write(`${JSON.stringify({ event: 'sim_queue_fault', op })}\n`);
+  } catch {
+    // logging never changes the outcome
   }
 }
 
