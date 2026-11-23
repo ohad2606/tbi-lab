@@ -7,6 +7,10 @@
  *   GET    /sessions/:id                    status
  *   POST   /sessions/:id/run                ready -> running
  *   POST   /sessions/:id/stop               orderly stop (idempotent)
+ *   DELETE /sessions/queue                  TBI-018 s3d-3a: cancel the caller's waiting queue entry
+ *                                           (`Tbi-Queue-Ticket` header) -> 204 whatever the ticket
+ *                                           (own, foreign, unknown, missing, malformed). Served only
+ *                                           with an enabled sim adapter; flag-off it is 404 as before
  *   DELETE /sessions/:id                    terminate; responds once resources are released
  *   POST   /sessions/:id/commands           one SessionCommand (mirror | transient)
  *   GET    /sessions/:id/events             Server-Sent Events, ordered; resume with
@@ -43,6 +47,7 @@ import { isTerminal } from './stateMachine.js';
 import { runtimeIdentity } from './identity.js';
 import { MAX_REPORT_BYTES } from './reportProtocol.js';
 import type { ReportStore } from './reports.js';
+import { queueTicketOf } from './queueTickets.js';
 
 /** Largest amount of unsent SSE data kept for a slow client before its stream is closed. */
 const STREAM_BACKLOG_BYTES = 1024 * 1024;
@@ -74,6 +79,12 @@ function send(res: ServerResponse, status: number, body: unknown): void {
     'x-content-type-options': 'nosniff',
   });
   res.end(text);
+}
+
+/** A bodiless answer with the same safety headers as `send`. */
+function sendNoContent(res: ServerResponse): void {
+  res.writeHead(204, { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+  res.end();
 }
 
 function readBody(req: IncomingMessage, limit: number): Promise<unknown> {
@@ -324,6 +335,15 @@ async function handle(
     if (host.config.policy) admissionEvent('runtime', 'session-create', 'admitted', principal);
     const s = r.value.session;
     return send(res, 201, { sessionId: s.id, token: s.token, status: s.status() });
+  }
+
+  // TBI-018 s3d-3a: queue cancel, before host.get (whose 32-hex id check would 404 it). Same caller
+  // checks as every session route above (gate identity, access, request rate); the capability is the
+  // ticket plus the caller's principal. One answer for every ticket, so nothing about another
+  // principal's entry (or whether one exists) is revealed. Flag-off: falls through to today's 404.
+  if (parts.length === 2 && parts[1] === 'queue' && method === 'DELETE' && host.queueEnabled) {
+    await host.cancelQueued(queueTicketOf(req), principal);
+    return sendNoContent(res);
   }
 
   const found = host.get(parts[1] ?? '', tokenOf(req), principal);

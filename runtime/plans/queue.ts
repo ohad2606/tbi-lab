@@ -249,6 +249,23 @@ export class FairQueue {
     return out;
   }
 
+  /**
+   * TBI-018 s3d-3a (design section 3, ops review M3): does `principal` have a waiting entry that tick()
+   * would not drop right now? READ-ONLY: changes no entry, lease or cooldown (a legacy request peeks
+   * with it and must leave the waiting tab's place alone). Same expiry rule as tick(), so an entry
+   * is never reported waiting once it has provably timed out or vanished.
+   */
+  hasWaiting(principal: string): boolean {
+    const now = this.clock.now();
+    const q = this.cfg.queue;
+    return this.entries.some(
+      (e) =>
+        e.principal === principal &&
+        !(now - e.enqueuedAt >= q.maxWaitMs) &&
+        !(now - e.leaseAt >= q.vanishMs),
+    );
+  }
+
   /** Most slots Free may hold right now. Never more than the capacity. */
   freeCap(slots: Slots): number {
     const q = this.cfg.queue;

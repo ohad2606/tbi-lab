@@ -325,6 +325,16 @@ export class SimHostAdapter {
     return { metered: true, cancelled: this.queue.drop(ticket) !== null };
   }
 
+  /**
+   * TBI-018 s3d-3a: read-only peek, has `principal` a live waiting entry (FairQueue.hasWaiting)? Used for
+   * legacy clients (no `Tbi-Queue: 1`), which must never create, replace or cancel an entry (M3).
+   * Disabled metering: false (there is no queue). Synchronous and mutation-free, so it needs no mutex.
+   */
+  hasWaiting(principal: string): boolean {
+    if (!this.enabled) return false;
+    return this.queue.hasWaiting(principal);
+  }
+
   /** A waiting client of `principal` is still there (between polls). Someone else's ticket: no-op. */
   touch(ticket: string, principal: string): Off | { metered: true; queued: boolean } {
     if (!this.enabled) return OFF;

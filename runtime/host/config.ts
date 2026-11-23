@@ -34,9 +34,10 @@ export interface HostConfig {
    * TBI-018 s3c: sim-minute metering and the fair queue (runtime/plans/simhost.ts). NOT WIRED yet:
    * absent or disabled (metering.enabled=false) = the host behaves exactly as without it. An ENABLED
    * adapter makes the SessionHost constructor throw: metering must never look on while the host does
-   * not enforce it (docs/runtime/TBI-018-sim-host-integration.md).
+   * not enforce it (docs/runtime/TBI-018-sim-host-integration.md). s3d-3a: the queue surface
+   * (`hasWaiting` peek, `cancel` behind `DELETE /sessions/queue`) is used only when it is enabled.
    */
-  simPlans?: Pick<SimHostAdapter, 'enabled'>;
+  simPlans?: Pick<SimHostAdapter, 'enabled' | 'hasWaiting' | 'cancel'>;
   /** Persistent per-principal rate windows (session creation). */
   rates?: RateLimiter;
   /** Host resources (disk, memory); tests substitute. */
