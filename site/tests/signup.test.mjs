@@ -81,6 +81,47 @@ describe('sign-up page build', () => {
     const css = readFileSync(join(out, 'assets', 'site.css'), 'utf8');
     expect(css).toMatch(/\.hp(?:,\s*\.hp input)?\s*{[^}]*inset-inline-start:\s*-10000px/);
   });
+  it.each(['he', 'en'])('%s honeypot wrapper is inert', (l) => {
+    expect(page(out, l)).toMatch(/<div class="hp"[^>]*\sinert[\s>]/);
+  });
+  it.each(['he', 'en'])(
+    '%s visible no-JS fallback with the support address; script hides it',
+    (l) => {
+      const h = page(out, l);
+      const p = h.match(/<p[^>]*id="su-nojs"[^>]*>[\s\S]*?<\/p>/)[0];
+      expect(p).not.toContain('hidden');
+      expect(p).toContain('mailto:support@tbi-tech.net');
+      expect(p).toContain(content[l].signup.nojs.slice(0, 12));
+      expect(h).toContain('<noscript>');
+      const js = readFileSync(join(out, 'assets', 'signup.mjs'), 'utf8');
+      expect(js).toMatch(/getElementById\('su-nojs'\)\?\.setAttribute\('hidden'/);
+    },
+  );
+  it.each(['he', 'en'])('%s consent link opens in a new tab and says so', (l) => {
+    const h = page(out, l);
+    const a = h
+      .match(/<a href="\/[a-z]+\/privacy\/"[^>]*>[\s\S]*?<\/a>/g)
+      .find((x) => x.includes('target'));
+    expect(a).toContain('target="_blank"');
+    expect(a).toContain('rel="noopener"');
+    expect(a).toContain(`<span class="visually-hidden"> ${content[l].signup.newTab}</span>`);
+  });
+  it('Hebrew sign-up strings isolate Latin tokens in bdi-like LTR spans', () => {
+    const h = page(out, 'he');
+    for (const tok of ['TBI', 'Alpha', 'Arduino', 'Chrome', 'Edge'])
+      expect(h).toContain(`<span dir="ltr" lang="en">${tok}`);
+    const body = h
+      .match(/<main[\s\S]*<\/main>/)[0]
+      .replace(/<span dir="ltr"[^>]*>[^<]*<\/span>/g, '');
+    const visible = body.replace(/<[^>]+>/g, ' ').replace(/support@tbi-tech\.net/g, '');
+    expect(visible).not.toMatch(/[A-Za-z]{2,}/);
+  });
+  it('no leftover sending label / success announcement strings', () => {
+    for (const l of ['he', 'en']) {
+      expect(content[l].signup.sending).toBeUndefined();
+      expect(content[l].signup.statusSuccess).toBeUndefined();
+    }
+  });
   it('role/heard option counts match labels in both languages', () => {
     for (const l of ['he', 'en']) {
       expect(content[l].signup.roles).toHaveLength(SIGNUP_ROLE_VALUES.length);
