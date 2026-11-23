@@ -312,6 +312,22 @@ describe('approval email', () => {
     expect(body.text).toContain('אינה חשבון Google');
     expect(body.subject).toBe('ההרשמה שלך ל-TBI Lab אושרה');
   });
+  it('direct sender: a fullwidth `www` first name (NFKC) gets the generic greeting', async () => {
+    const f = fakeFetch();
+    const s = new ResendSender({
+      from: 'TBI Lab <support@example.invalid>',
+      labUrl: 'https://lab.example.invalid/',
+      readKey: async () => RESEND_KEY,
+      fetch: f.fetch,
+    });
+    const fw = 'ｗｗｗevil'; // fullwidth `www` + letters
+    await s.sendApproval({ email: 'dana@example.com', name: `${fw} Levi`, lang: 'en', id: 'ID1' });
+    await s.sendApproval({ email: 'dana@example.com', name: fw, lang: 'he', id: 'ID2' });
+    const texts = f.sent.map((x) => String(JSON.parse(x.init.body).text));
+    expect(texts[0]).toMatch(/^Hi,\n/);
+    expect(texts[1]).toMatch(/^שלום,\n/);
+    for (const t of texts) expect(t).not.toMatch(/www|ｗ/i);
+  });
   it('Resend request: key from reader, from address from config, idempotency key, error class only', async () => {
     const f = fakeFetch();
     const s = new ResendSender({
