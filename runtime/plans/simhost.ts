@@ -40,6 +40,11 @@
  * Running count: the larger of the host's count and the sessions this adapter admitted and the host has
  * not reported ended (the host's picture may lag a concurrent admit). One serial mutex.
  * Fail closed: any meter problem refuses (admit) or stops (heartbeat) with system_unavailable.
+ *
+ * BETA-G2 kill switch (optional `freePaused` probe, absent = never paused): while it answers anything but
+ * `false` (a throw counts as paused, fail closed) every NEW Free admission and every Free poll is refused
+ * with free_paused, and waiting Free entries are dropped (at any admit and at housekeeping). Running runs
+ * are never stopped by it; paid / legacy admissions are unaffected. Checked on every call: no restart.
  */
 import type { PlanId, PlansConfig } from './config.js';
 import { PLAN_IDS } from './config.js';
@@ -130,6 +135,8 @@ const minLeft = (r: { monthMs: number | null; dayMs: number | null }): number | 
 export interface SimHostOptions {
   config: PlansConfig;
   clock: Clock;
+  /** BETA-G2: operator kill switch for new Free admissions; true (or a throw) = paused */
+  freePaused?: () => boolean;
 }
 
 export class SimHostAdapter {
@@ -141,6 +148,7 @@ export class SimHostAdapter {
     private readonly queue: FairQueue,
     private readonly cfg: PlansConfig,
     private readonly clock: Clock,
+    private readonly freePausedProbe?: () => boolean,
   ) {}
 
   static async open(store: Store<SimEvent>, opts: SimHostOptions): Promise<SimHostAdapter> {
@@ -150,7 +158,19 @@ export class SimHostAdapter {
       new FairQueue(opts.config, opts.clock),
       opts.config,
       opts.clock,
+      opts.freePaused,
     );
+  }
+
+  /** BETA-G2: is the Free kill switch on? Only an explicit `false` means no; a probe failure means yes. */
+  get freePaused(): boolean {
+    const probe = this.freePausedProbe;
+    if (!probe) return false;
+    try {
+      return probe() !== false;
+    } catch {
+      return true;
+    }
   }
 
   get enabled(): boolean {
@@ -257,9 +277,14 @@ export class SimHostAdapter {
         return refuse(limitError('invalid_request'));
       if (this.live.has(req.sessionId)) return refuse(limitError('invalid_state'));
       if (this.meter.storeProblem) return refuse(limitError('system_unavailable'));
+      const early: Dropped[] = [];
+      // BETA-G2 kill switch: waiting Free entries go (also this caller's own), a Free caller is refused
+      if (this.freePaused) {
+        early.push(...this.queue.dropFree());
+        if (req.plan === 'free') return refuse(limitError('free_paused'), early);
+      }
       // s3d-3b poll: expire stale entries first (this poll is the principal's sign of life, as in
       // enqueue); a ticket that no longer waits is answered with its drop, never re-enqueued
-      const early: Dropped[] = [];
       if (mode === 'poll') {
         early.push(...this.queue.tick(req.principal));
         if (!this.owns(req.ticket, req.principal)) {
@@ -382,6 +407,7 @@ export class SimHostAdapter {
     if (!this.enabled) return Promise.resolve(OFF);
     return this.run(async () => {
       const dropped = this.queue.tick();
+      if (this.freePaused) dropped.push(...this.queue.dropFree());
       const r = await this.meter.sweep();
       // prune also when the sweep failed: a run whose lease ran out is dead either way
       const pruned = this.prune();

@@ -37,7 +37,7 @@ export interface EnqueueRequest {
   simMsToday: number;
 }
 
-export type DropReason = 'timeout' | 'vanished' | 'lease_lost' | 'cancelled';
+export type DropReason = 'timeout' | 'vanished' | 'lease_lost' | 'cancelled' | 'paused';
 
 export interface Dropped {
   ticket: string;
@@ -208,6 +208,25 @@ export class FairQueue {
       reason,
       error: reason === 'lease_lost' ? limitError('lease_lost') : null,
     };
+  }
+
+  /**
+   * BETA-G2 kill switch: remove every waiting Free entry (reason 'paused', error free_paused). Paid and
+   * legacy entries stay. Starts no cooldown and touches no running session.
+   */
+  dropFree(): Dropped[] {
+    const out: Dropped[] = [];
+    this.entries = this.entries.filter((e) => {
+      if (e.plan !== 'free') return true;
+      out.push({
+        ticket: e.ticket,
+        principal: e.principal,
+        reason: 'paused',
+        error: limitError('free_paused'),
+      });
+      return false;
+    });
+    return out;
   }
 
   /** A run of `principal` ended: a Free plan starts its re-queue cooldown. */

@@ -53,6 +53,7 @@ export function simRefusal(code: LimitCode): Mapping {
     case 'sim_cooldown':
     case 'queue_full':
     case 'queue_timeout':
+    case 'free_paused': // BETA-G2: Free kill switch; 429 so an older app degrades to "busy"
       return limit(code);
     // the waiter was dropped for not polling: for the user it is a queue timeout, try again
     case 'queue_vanished':

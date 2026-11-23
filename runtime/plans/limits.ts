@@ -20,6 +20,7 @@ export type LimitCode =
   | 'sim_cooldown'
   | 'queue_vanished'
   | 'queue_replaced'
+  | 'free_paused'
   | 'lease_lost'
   | 'invalid_principal'
   | 'invalid_state'
@@ -45,6 +46,8 @@ export const MESSAGE_KEY: Record<LimitCode, string | null> = {
   sim_cooldown: 'limit.sim.cooldown',
   // TBI-018 s3d-3b: a poll with a queue ticket that a newer tab of the same principal took over.
   queue_replaced: 'limit.sim.queue_replaced',
+  // BETA-G2: the operator kill switch stopped NEW Free admissions (try again later; running runs go on).
+  free_paused: 'limit.sim.free_paused',
   // The client is gone (vanished / lease lost): nobody to show a message to.
   queue_vanished: null,
   lease_lost: null,

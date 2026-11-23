@@ -19,6 +19,8 @@ const KEY = {
   minutes_out_free: 'sim.limit.minutes_out_free',
   sim_daily: 'sim.limit.daily',
   system_unavailable: 'sim.limit.system_unavailable',
+  // BETA-G2: the operator paused new Free runs (try again later)
+  free_paused: 'sim.limit.free_paused',
 } as const satisfies Record<string, MessageKey>;
 
 /** The variant without the parameter, when the host did not give a usable one. */

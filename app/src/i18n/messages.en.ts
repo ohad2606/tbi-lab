@@ -1470,6 +1470,9 @@ export const en = {
     'You have reached the daily limit of simulation minutes. It resets tomorrow. You can still edit and wire parts.',
   'sim.limit.system_unavailable':
     'The service is temporarily unavailable and you were not charged. Please try again shortly.',
+  // BETA-G2 (NEEDS DOCS REVIEW, tbi-docs): the Free kill switch; copy of server key limit.sim.free_paused.
+  'sim.limit.free_paused':
+    'Free runs are paused right now. Please try again later. You can keep editing and wiring parts meanwhile.',
   'sim.queue.cancel': 'Cancel',
   'sim.queue.waiting_label': 'Run queue status',
   'sim.error.runtime.sim_limit':

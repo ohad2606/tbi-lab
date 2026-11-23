@@ -13,6 +13,12 @@
  *   TBI_HOST_SIM_HOUSEKEEPING_MS  adapter housekeeping, default 5000; >= host housekeepingMs
  *   TBI_HOST_SIM_POLL_S           pollAfterS for a 202, default 15; v * 1000 < queue.vanishMs
  *
+ * BETA-G2 kill switch: while `${TBI_HOST_SIM_PLANS_STATE}/free-admission.paused` exists, new Free
+ * admissions are refused with free_paused (SimHostAdapter `freePaused`), checked on every admission, so an
+ * operator switches it on (`touch`) and off (`rm`) without a restart. A path that cannot be checked
+ * counts as paused (fail closed). No file = off (the default). Slice 2: each distinct check error code
+ * and each on/off transition is one stderr line (code only, no path; see `freePauseProbe`).
+ *
  * Every refusal throws HostSimBootError (fail closed). Messages carry flag names only: never file
  * content, paths, values or principals.
  */
@@ -43,6 +49,83 @@ export class HostSimBootError extends Error {}
 
 export const SIM_JOURNAL_FILE = 'sim-journal.log';
 export const SIM_LOCK_FILE = 'host.lock';
+/** BETA-G2: operator kill switch for new Free admissions (in the state directory; content ignored) */
+export const FREE_PAUSE_FILE = 'free-admission.paused';
+
+/**
+ * BETA-G2: is the Free kill switch on? Any entry at `path` (file, directory, symlink, even dangling)
+ * = paused; ENOENT = not paused; any other error (EACCES, ENOTDIR, ...) = paused (fail closed).
+ */
+export function freePausedAt(path: string): boolean {
+  return freePauseCheck(path, lstatSync).paused;
+}
+
+/** one lstat of the pause path: paused, and the error code of a failure other than ENOENT */
+function freePauseCheck(
+  path: string,
+  stat: (p: string) => unknown,
+): { paused: boolean; error?: string } {
+  try {
+    stat(path);
+    return { paused: true };
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException | null)?.code;
+    if (code === 'ENOENT') return { paused: false };
+    // only a plain errno name reaches the log: never the error text (it carries the path)
+    return {
+      paused: true,
+      error: typeof code === 'string' && ERRNO_NAME.test(code) ? code : 'unknown',
+    };
+  }
+}
+
+const ERRNO_NAME = /^E[A-Z0-9]{1,15}$/;
+/** distinct error codes one probe logs at most (then it stays silent; the state lines go on) */
+const FREE_PAUSE_MAX_ERROR_CODES = 16;
+
+export interface FreePauseProbeOptions {
+  /** one operator line (JSON, no newline); default: stderr */
+  log?: (line: string) => void;
+  /** test hook: replaces lstatSync */
+  stat?: (path: string) => unknown;
+}
+
+/**
+ * BETA-G2 slice 2 (ops review): the kill switch probe the booted adapter uses. Same answer as
+ * `freePausedAt`, plus operator lines so an accidental pause can be told from an intended one:
+ *   {"event":"sim_free_pause_error","code":"EACCES"}  once per distinct error code per probe (process);
+ *   {"event":"sim_free_pause","paused":true|false}    once per transition (initial state: off, unlogged).
+ * The lines carry an errno name or "unknown" only: never the path or the error text.
+ */
+export function freePauseProbe(path: string, opts: FreePauseProbeOptions = {}): () => boolean {
+  const log = opts.log ?? stderrLine;
+  const stat = opts.stat ?? lstatSync;
+  const seen = new Set<string>();
+  let last = false;
+  const emit = (o: object) => {
+    try {
+      log(JSON.stringify(o));
+    } catch {
+      // logging never changes the answer
+    }
+  };
+  return () => {
+    const r = freePauseCheck(path, stat);
+    if (r.error !== undefined && !seen.has(r.error) && seen.size < FREE_PAUSE_MAX_ERROR_CODES) {
+      seen.add(r.error);
+      emit({ event: 'sim_free_pause_error', code: r.error });
+    }
+    if (r.paused !== last) {
+      last = r.paused;
+      emit({ event: 'sim_free_pause', paused: r.paused });
+    }
+    return r.paused;
+  };
+}
+
+function stderrLine(line: string): void {
+  process.stderr.write(`${line}\n`);
+}
 /** O_EXCL mutex serialising a stale-lock takeover and release (never removed by a non-holder) */
 export const SIM_LOCK_TAKEOVER_FILE = 'host.lock.takeover';
 /** the plans config is a small JSON file; anything larger is refused unread */
@@ -77,6 +160,8 @@ export interface HostSimBootDeps {
   compactAfterEvents?: number;
   /** s3d-6 test hook: replaces the pre-compaction copy (to simulate a failing copy) */
   copyJournal?: (from: string, to: string) => void;
+  /** BETA-G2 slice 2 test hook: the kill switch probe's log and stat */
+  freePause?: FreePauseProbeOptions;
 }
 
 export interface StateLockHooks {
@@ -671,6 +756,7 @@ export async function bootSimPlans(
       {
         config: cfg,
         clock: clockOf(deps),
+        freePaused: freePauseProbe(join(dir, FREE_PAUSE_FILE), deps.freePause),
       },
     );
     // A torn or corrupt journal: refuse (design §7, O-7); never repaired automatically.

@@ -43,11 +43,12 @@ const listen0 = async (server: Server) => {
   return (server.address() as AddressInfo).port;
 };
 
-async function world(enabled: boolean) {
+async function world(enabled: boolean, freePaused?: () => boolean) {
   const clock = new FakeClock(Date.parse('2026-11-23T10:00:00Z'));
   const adapter = await SimHostAdapter.open(new MemoryStore<SimEvent>(), {
     config: parseConfig({ metering: { enabled } }),
     clock,
+    ...(freePaused ? { freePaused } : {}),
   });
   const c = structuredClone(DEFAULT_POLICY);
   c.global.runtime.maxLiveSessions = 4;
@@ -106,6 +107,35 @@ describe('s3d-6: /health capacity counts', () => {
     const h = await w.healthBody();
     expect(h.status).toBe(200);
     expect((JSON.parse(h.text) as { capacity: unknown }).capacity).toEqual({ live: 0, max: 1 });
+    // BETA-G2 slice 2: byte-identical flag-off (no freePaused key, same key order), even with a probe
+    expect(h.text).toContain('"capacity":{"live":0,"max":1}}');
+    expect(h.text).not.toContain('freePaused');
+    const probed = await world(false, () => true);
+    expect((await probed.healthBody()).text).toBe(h.text);
+  });
+
+  it('BETA-G2: enabled, the kill switch state is a boolean `freePaused` (fail closed on a throwing probe)', async () => {
+    for (const [probe, want] of [
+      [() => false, false],
+      [() => true, true],
+      [
+        () => {
+          throw new Error('/secret/path EACCES');
+        },
+        true,
+      ],
+    ] as const) {
+      const w = await world(true, probe);
+      const h = await w.healthBody();
+      expect((JSON.parse(h.text) as { capacity: unknown }).capacity).toEqual({
+        live: 0,
+        max: 1,
+        waiting: 0,
+        metered: 0,
+        freePaused: want,
+      });
+      expect(h.text).not.toContain('secret');
+    }
   });
 
   it('enabled: waiting and metered counts follow starts and the queue; no identifier in the body', async () => {
@@ -114,16 +144,28 @@ describe('s3d-6: /health capacity counts', () => {
       const h = await w.healthBody();
       return { text: h.text, capacity: (JSON.parse(h.text) as { capacity: unknown }).capacity };
     };
-    expect((await cap()).capacity).toEqual({ live: 0, max: 1, waiting: 0, metered: 0 });
+    expect((await cap()).capacity).toEqual({
+      live: 0,
+      max: 1,
+      waiting: 0,
+      metered: 0,
+      freePaused: false,
+    });
 
     const a = await w.post(0);
     expect(a.status).toBe(201);
-    expect((await cap()).capacity).toEqual({ live: 1, max: 1, waiting: 0, metered: 1 });
+    expect((await cap()).capacity).toEqual({
+      live: 1,
+      max: 1,
+      waiting: 0,
+      metered: 1,
+      freePaused: false,
+    });
 
     const b = await w.post(1);
     expect(b.status).toBe(202);
     const after = await cap();
-    expect(after.capacity).toEqual({ live: 1, max: 1, waiting: 1, metered: 1 });
+    expect(after.capacity).toEqual({ live: 1, max: 1, waiting: 1, metered: 1, freePaused: false });
 
     const { sessionId, token } = JSON.parse(a.text) as { sessionId: string; token: string };
     const { queued } = JSON.parse(b.text) as { queued: { ticket: string } };
