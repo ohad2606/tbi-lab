@@ -19,7 +19,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { HostConfig } from './config.js';
 import { validateCommand, validateCreate, type EndReason } from './protocol.js';
-import { HostSession, type SessionStatus } from './session.js';
+import { HostSession, SESSION_ID_RE, type SessionStatus } from './session.js';
 import { isTerminal } from './stateMachine.js';
 
 export type HostResult<T> =
@@ -70,7 +70,15 @@ export class SessionHost {
     body: unknown,
     principal: Principal,
     emailTag: string | null = null,
+    opts: { sessionId?: string } = {},
   ): HostResult<{ session: HostSession }> {
+    // TBI-018 s3d-2: a pre-generated id is host-internal (never client text); a malformed or
+    // already registered one is a host bug and throws before anything is admitted or consumed.
+    if (opts.sessionId !== undefined) {
+      if (typeof opts.sessionId !== 'string' || !SESSION_ID_RE.test(opts.sessionId))
+        throw new Error('malformed session id');
+      if (this.sessions.has(opts.sessionId)) throw new Error('duplicate session id');
+    }
     if (this.closing) return { ok: false, status: 503, error: 'host shutting down' };
     const v = validateCreate(body);
     if (!v.ok) return { ok: false, status: 400, error: v.error };
@@ -105,11 +113,35 @@ export class SessionHost {
       request = { ...request, limits: { ...request.limits, maxLifetimeMs: lifetime } };
     } else if (live.length >= this.config.maxSessions)
       return { ok: false, status: 429, error: 'session limit' };
-    const session = new HostSession(this.config, this.tmpRoot, request, principal, ticket.features);
+    const session = new HostSession(
+      this.config,
+      this.tmpRoot,
+      request,
+      principal,
+      ticket.features,
+      opts.sessionId === undefined ? {} : { id: opts.sessionId },
+    );
     session.emailTag = emailTag;
     this.sessions.set(session.id, session);
     session.prepare();
     return { ok: true, value: { session } };
+  }
+
+  /**
+   * TBI-018 s3d-2: the async admission path of `POST /sessions` (docs/plans/S3D-HOST-WIRING-DESIGN.md
+   * section 2). Without an enabled sim adapter (absent or `metering.enabled=false`) it is exactly
+   * `create`: same result, same refusals, same order of checks. The metered path arrives in s3d-3b;
+   * until then an enabled adapter is refused (the constructor already refuses one; this guard keeps
+   * the method fail closed should that ever change without the wiring).
+   */
+  async admitCreate(
+    body: unknown,
+    principal: Principal,
+    emailTag: string | null = null,
+  ): Promise<HostResult<{ session: HostSession }>> {
+    if (this.config.simPlans?.enabled)
+      throw new Error('sim metering is not wired into the Session Host yet; refusing to admit');
+    return this.create(body, principal, emailTag);
   }
 
   /**
