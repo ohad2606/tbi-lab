@@ -1,6 +1,6 @@
 # Keyboard wiring: design note (TBI-001 / A11Y-002)
 
-Status: design only, no UI implemented. Criteria: WCAG 2.1.1 Keyboard, 2.5.7 Dragging Movements (single-pointer alternative; the keyboard path also covers it), 4.1.3 Status Messages.
+Status (2026-11-23, read from code on co/main): slices 1 to 4 of section 7 are implemented and merged (pin mode with `W`, roving pins and candidate cycling, announcer EN/HE; wire select, `Delete` and `Esc`; Wires list panel; `E` re-pick endpoint via `reconnectWire`). Slice 5 (junction and wire-body targets) and slice 6 (highlight/pan-into-view polish, help text, HE review, user-guide section) are NOT done. Manual screen-reader and native-Hebrew review are still owed; this note makes no conformance claim. The sections below keep the original design text; where section 1 describes "no keyboard way", it describes the state before slices 1 to 4. Criteria: WCAG 2.1.1 Keyboard, 2.5.7 Dragging Movements (single-pointer alternative; the keyboard path also covers it), 4.1.3 Status Messages.
 
 ## 1. Current state (read from code)
 
@@ -50,12 +50,12 @@ Taken: Space (pan/switch), arrows (move/pan), `+ - = F R`, `Delete/Backspace`, `
 - Golden/routing fixtures must be unchanged (no route code is touched).
 
 ## 7. Slices and estimates
-1. Smallest vertical slice (about 1.5 days): `candidateTargets` pure fn + tests; focusable pins (roving tabindex, labels) on a focused component with `W`; Enter starts, Tab/Shift+Tab cycles, Enter commits via `addWire`, Esc cancels; announcer with `start/candidate/done/cancel/refused` EN+HE; Playwright create-by-keyboard.
-2. Wire selection via `[`/`]` + announcements + Delete test (0.5 day).
-3. Wires list panel (accessible alternative, screen-reader browse) (1 day).
-4. Re-pick endpoint / reconnect edit incl. undo and tests (1 to 1.5 days).
-5. Junction and wire-body targets (T-connections) in candidates (1 day).
-6. Visual highlight/pan-into-view polish, shortcut help entries, HE review, docs (0.5 to 1 day).
+1. [done] Smallest vertical slice (about 1.5 days): `candidateTargets` pure fn + tests; focusable pins (roving tabindex, labels) on a focused component with `W`; Enter starts, Tab/Shift+Tab cycles, Enter commits via `addWire`, Esc cancels; announcer with `start/candidate/done/cancel/refused` EN+HE; Playwright create-by-keyboard.
+2. [done] Wire selection via `[`/`]` + announcements + Delete test (0.5 day).
+3. [done] Wires list panel (accessible alternative, screen-reader browse) (1 day).
+4. [done] Re-pick endpoint / reconnect edit incl. undo and tests (1 to 1.5 days).
+5. [not done] Junction and wire-body targets (T-connections) in candidates (1 day).
+6. [not done] Visual highlight/pan-into-view polish, shortcut help entries, HE review, docs (0.5 to 1 day).
 Total about 5 to 6 days.
 
 ## 8. Open questions
