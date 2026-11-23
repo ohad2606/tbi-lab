@@ -306,7 +306,7 @@ export function acquireStateLock(
 }
 
 /** The state directory must exist (created 0700 if absent), be a real directory, ours, mode 0700. */
-function checkStateDir(dir: string, uid: number | undefined): void {
+export function checkStateDir(dir: string, uid: number | undefined): void {
   // `link/` and `link/.` make lstat follow a symlink: only the exact absolute normalised path is taken.
   if (!isAbsolute(dir) || resolve(dir) !== dir)
     throw new HostSimBootError(
