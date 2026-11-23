@@ -707,13 +707,53 @@ export class SimMeter {
   }
 
   /**
+   * TBI-018 s3d-6 boot recovery (design §7): close EVERY session that is still open, whatever its lease,
+   * with `reason` (the host passes 'host'). Only safe when no run of a previous process can still be alive
+   * (the Session Host calls it once at boot, after the old runtimes were stopped and before it listens).
+   * Billing is the usual formula min(now, lastBeat + leaseMs), so a crash bills at most one lease past
+   * the last JOURNALED beat and never more. One journal append for all of them; a second call closes
+   * nothing and writes nothing (idempotent). Returns how many were closed.
+   */
+  closeAllOpen(reason: CloseReason): Promise<SimResult<{ closed: number }>> {
+    return this.run(async () => {
+      if (!this.cfg.metering.enabled) return { ok: true, metered: false };
+      if (!CLOSE_REASONS.includes(reason)) return bad('invalid_request');
+      if (this.problem) return unavailable();
+      const now = this.now();
+      if (now === null) return unavailable();
+      const open = Object.values(this.state.sessions).filter((ss) => ss.closedAt === undefined);
+      const bodies = open.flatMap((ss) => [
+        ...this.flushBeat(ss),
+        this.closeBody(this.eff(ss), now, reason),
+      ]);
+      if (!(await this.commit(bodies))) return unavailable();
+      this.prune();
+      return { ok: true, metered: true, closed: open.length };
+    });
+  }
+
+  /** Sessions not closed yet (journaled state; boot compaction runs only when this is 0). */
+  get openCount(): number {
+    return Object.values(this.state.sessions).filter((ss) => ss.closedAt === undefined).length;
+  }
+
+  /**
+   * Events since the journal began or was last compacted (the sequence number of the newest event; a
+   * compaction restarts it at 1). The boot compaction threshold is compared with it.
+   */
+  get journalSeq(): number {
+    return this.state.seq;
+  }
+
+  /**
    * Compaction (ops review fable11 LOW4): replace the journal by ONE sim_snapshot of the pruned state.
    * The snapshot carries every tombstone, so a pruned id stays refused after the old events are gone.
    * Only journaled facts go in (an in-memory beat stays in memory and is journaled later, as before).
    * The snapshot is validated by replaying it before it is written; the store must replace the journal
    * atomically (JournalStore: temp file, fsync, rename). A store without replace, or a failed replace,
    * answers system_unavailable; after a failed replace the meter fails closed until it is reopened.
-   * Not called by anything yet (the host wiring decides when to compact).
+   * s3d-6: called by the Session Host boot only (hostboot.ts compactAtBoot), after recovery, when no
+   * session is open and the journal is past a threshold; the host copies the journal first.
    */
   compact(): Promise<SimResult<{ events: number }>> {
     return this.run(async () => {
