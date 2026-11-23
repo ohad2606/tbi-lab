@@ -140,10 +140,11 @@ const en = {
     consentAfter:
       ', and I agree that TBI may use my details to handle my request and give me access.',
     submit: 'Send my request',
-    sending: 'Sending…',
+    newTab: '(opens in a new tab)',
+    nojs: 'The sign-up form could not load. It needs [[JavaScript]]. Please turn it on in your browser and reload the page, or write to us at support@tbi-tech.net.',
     honeypot: 'Leave this field empty',
     noscript:
-      'This form needs JavaScript. Please turn it on in your browser and reload the page, or write to us at support@tbi-tech.net.',
+      'This form needs [[JavaScript]]. Please turn it on in your browser and reload the page, or write to us at support@tbi-tech.net.',
     privacyH: 'What we do with your details',
     privacy: [
       'We use the details in this form to review your request, give you access to the Alpha and update you about it. We will not sell your details or pass them on to others.',
@@ -177,7 +178,6 @@ const en = {
       'Places in the Alpha are limited, so we approve requests gradually. When we approve yours, we will email you the link to the lab.',
       'If you have a question, write to us at support@tbi-tech.net.',
     ],
-    statusSuccess: 'Thank you. We received your request.',
   },
   pages: {
     home: {
@@ -488,12 +488,13 @@ const he = {
     age: 'אני בן/בת 18 ומעלה, או שהורה אישר לי להירשם.',
     consentBefore: 'קראתי את ',
     consentLink: 'הודעת הפרטיות',
-    consentAfter: ', ואני מסכים/ה ש-TBI תשתמש בפרטים כדי לטפל בבקשה ולתת גישה.',
+    consentAfter: ', ואני מסכים/ה ש-[[TBI]] תשתמש בפרטים כדי לטפל בבקשה ולתת גישה.',
     submit: 'שליחת הבקשה',
-    sending: 'שולחים…',
+    newTab: '(נפתח בלשונית חדשה)',
+    nojs: 'טופס ההרשמה לא נטען. הוא דורש [[JavaScript]]. הפעילו אותו בדפדפן וטענו את הדף מחדש, או כתבו לנו ל-support@tbi-tech.net.',
     honeypot: 'השאירו שדה זה ריק',
     noscript:
-      'הטופס הזה דורש JavaScript. הפעילו אותו בדפדפן וטענו את הדף מחדש, או כתבו לנו ל-support@tbi-tech.net.',
+      'הטופס הזה דורש [[JavaScript]]. הפעילו אותו בדפדפן וטענו את הדף מחדש, או כתבו לנו ל-support@tbi-tech.net.',
     privacyH: 'מה אנחנו עושים עם הפרטים',
     privacy: [
       'אנחנו משתמשים בפרטים בטופס כדי לבחון את הבקשה, לתת גישה לאלפא ולעדכן אתכם לגביה. לא נמכור את הפרטים ולא נעביר אותם לאחרים.',
@@ -522,7 +523,6 @@ const he = {
       'מספר המקומות באלפא מוגבל, ולכן אנחנו מאשרים בקשות בהדרגה. כשנאשר את הבקשה שלכם, נשלח אליכם במייל את הקישור למעבדה.',
       'יש שאלה? כתבו לנו ל-support@tbi-tech.net.',
     ],
-    statusSuccess: 'תודה. קיבלנו את הבקשה.',
   },
   pages: {
     home: {
@@ -703,8 +703,8 @@ const he = {
       title: 'הרשמה לגישה מוקדמת — TBI Lab',
       description:
         'בקשה למקום באלפא החינמית של TBI Lab: מעבדת אלקטרוניקה ו-[[ESP32]] קלאסי בדפדפן. מספר המקומות מוגבל.',
-      h1: 'הרשמה לגישה מוקדמת (Alpha)',
-      lead: 'TBI Lab היא מעבדת אלקטרוניקה בדפדפן. בונים מעגל, כותבים קוד Arduino ומריצים אותו על [[ESP32]] קלאסי מדומה. ה-Alpha חינמי, ומספר המקומות מוגבל. אנחנו מאשרים בקשות בהדרגה ונשלח הודעה במייל. דרוש מחשב עם דפדפן Chrome או Edge, ומסך ברוחב 1024 פיקסלים לפחות. המעבדה לא מיועדת לטלפון.',
+      h1: 'הרשמה לגישה מוקדמת ([[Alpha]])',
+      lead: '[[TBI Lab]] היא מעבדת אלקטרוניקה בדפדפן. בונים מעגל, כותבים קוד [[Arduino]] ומריצים אותו על [[ESP32]] קלאסי מדומה. ה-[[Alpha]] חינמי, ומספר המקומות מוגבל. אנחנו מאשרים בקשות בהדרגה ונשלח הודעה במייל. דרוש מחשב עם דפדפן [[Chrome]] או [[Edge]], ומסך ברוחב 1024 פיקסלים לפחות. המעבדה לא מיועדת לטלפון.',
       sections: [],
     },
     privacy: {

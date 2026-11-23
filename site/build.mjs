@@ -123,21 +123,22 @@ ${errP(key)}
     'summaryFailH',
     'statusErrors',
     'statusSending',
-    'statusSuccess',
   ];
-  const msgs = [...msgKeys.map((k) => [k, f[k]]), ['sendingLabel', f.sending]]
+  const msgs = msgKeys
+    .map((k) => [k, f[k]])
     .map(([k, v]) => `<span data-msg="${k}">${esc(v)}</span>`)
     .join('\n');
   return `<div class="wrap prose signup">
 <h1>${rich(pg.h1, lang)}</h1>
 <p class="lead" id="su-intro-extra">${rich(pg.lead, lang)}</p>
 <noscript><p class="notice" role="note">${rich2(f.noscript, lang)}</p></noscript>
+<p class="notice" id="su-nojs">${rich2(f.nojs, lang)}</p>
 <div hidden>
 ${msgs}
 </div>
 <div id="su-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 <form id="signup-form" method="post" action="${esc(SIGNUP_API_BASE)}/web" novalidate hidden data-api="${esc(SIGNUP_API_BASE)}" data-lang="${lang}" aria-labelledby="su-form-h">
-<h2 id="su-form-h" class="visually-hidden">${esc(pg.h1)}</h2>
+<h2 id="su-form-h" class="visually-hidden">${rich(pg.h1, lang)}</h2>
 <div id="su-summary" class="summary" role="group" aria-labelledby="su-summary-h" tabindex="-1" hidden>
 <h2 id="su-summary-h"></h2>
 <p id="su-summary-msg" hidden></p>
@@ -148,14 +149,14 @@ ${field('name', f.name, '<input type="text" id="su-name" name="name" autocomplet
 ${field('email', f.email, '<input type="email" id="su-email" name="email" autocomplete="email" inputmode="email" dir="ltr" maxlength="254" spellcheck="false" autocapitalize="off" aria-required="true" aria-describedby="su-hint-email">', f.emailHint)}
 ${field('role', f.role, `<select id="su-role" name="role" aria-required="true">\n${opts(SIGNUP_ROLE_VALUES, f.roles, f.rolePick)}\n</select>`)}
 ${field('heard', f.heard, `<select id="su-heard" name="heardFrom" aria-required="true">\n${opts(SIGNUP_HEARD_VALUES, f.heards, f.heardPick)}\n</select>`)}
-<div class="hp" aria-hidden="true">
+<div class="hp" aria-hidden="true" inert>
 <label for="su-website">${esc(f.honeypot)}</label>
 <input type="text" id="su-website" name="website" value="" tabindex="-1" autocomplete="off" aria-hidden="true" data-lpignore="true" data-1p-ignore="true">
 </div>
 <h2 class="small-h">${esc(f.privacyH)}</h2>
 ${f.privacy.map((x) => `<p>${rich2(x, lang)}</p>`).join('\n')}
 ${check('age', esc(f.age))}
-${check('consent', `${esc(f.consentBefore)}<a href="${privacyHref}">${esc(f.consentLink)}</a>${esc(f.consentAfter)}`)}
+${check('consent', `${esc(f.consentBefore)}<a href="${privacyHref}" target="_blank" rel="noopener">${esc(f.consentLink)}<span class="visually-hidden"> ${esc(f.newTab)}</span></a>${rich(f.consentAfter, lang)}`)}
 <p><button type="submit" class="btn btn-primary" id="su-submit" aria-disabled="false"><span data-label>${esc(f.submit)}</span></button></p>
 </form>
 <section id="su-success" hidden>

@@ -197,8 +197,6 @@ export function initSignup(doc = document, fetchFn = (...a) => fetch(...a)) {
   const summaryMsg = $('su-summary-msg');
   const status = $('su-status');
   const btn = $('su-submit');
-  const btnLabel = btn.querySelector('[data-label]');
-  const idleLabel = btnLabel.textContent;
   const text = (sel) => doc.querySelector(sel)?.textContent ?? '';
   const msg = (key) => text(`[data-msg="${key}"]`);
 
@@ -221,13 +219,23 @@ export function initSignup(doc = document, fetchFn = (...a) => fetch(...a)) {
     consent: $(FIELD_IDS.consent).checked,
   });
 
+  /** A fixed field leaves the summary list; an empty summary (no failure message) disappears. */
+  function dropSummaryItem(key) {
+    for (const li of summaryList.children) if (li.dataset.key === key) li.remove();
+    if (summaryList.children.length === 0) summaryList.hidden = true;
+    if (summaryList.children.length === 0 && summaryMsg.hidden) summary.hidden = true;
+  }
+
   function setFieldError(key, on) {
     const el = $(FIELD_IDS[key]);
     const err = $(`su-err-${key}`);
     const hint = $(`su-hint-${key}`);
     err.hidden = !on;
     if (on) el.setAttribute('aria-invalid', 'true');
-    else el.removeAttribute('aria-invalid');
+    else {
+      el.removeAttribute('aria-invalid');
+      dropSummaryItem(key);
+    }
     el.setAttribute('aria-describedby', [hint && hint.id, on && err.id].filter(Boolean).join(' '));
     if (!el.getAttribute('aria-describedby')) el.removeAttribute('aria-describedby');
   }
@@ -242,6 +250,7 @@ export function initSignup(doc = document, fetchFn = (...a) => fetch(...a)) {
       : text('[data-msg="summaryFieldsH"]');
     for (const k of fieldKeys) {
       const li = doc.createElement('li');
+      li.dataset.key = k;
       const a = doc.createElement('a');
       a.href = `#${FIELD_IDS[k]}`;
       a.textContent = $(`su-err-${k}`).textContent;
@@ -261,10 +270,10 @@ export function initSignup(doc = document, fetchFn = (...a) => fetch(...a)) {
   };
 
   function setBusy(on) {
-    // aria-disabled (not disabled) so keyboard focus stays on the button while sending
+    // aria-disabled (not disabled) so keyboard focus stays on the button while sending. The label stays the same:
+    // the polite status region is the single announcement channel for "sending".
     btn.setAttribute('aria-disabled', on ? 'true' : 'false');
     btn.setAttribute('aria-busy', on ? 'true' : 'false');
-    btnLabel.textContent = on ? text('[data-msg="sendingLabel"]') : idleLabel;
     form.classList.toggle('is-sending', on);
   }
 
@@ -273,7 +282,9 @@ export function initSignup(doc = document, fetchFn = (...a) => fetch(...a)) {
     $('su-intro-extra')?.setAttribute('hidden', '');
     const ok = $('su-success');
     ok.hidden = false;
-    announce(text('[data-msg="statusSuccess"]'));
+    // The focused heading is the announcement; clear the stale "sending" text so nothing is read twice.
+    announceSeq++;
+    status.textContent = '';
     $('su-success-h').focus();
   }
 

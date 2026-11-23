@@ -105,6 +105,30 @@ for (const { lang, dir } of LANGS) {
       await name.fill('Dana');
       await expect(name).not.toHaveAttribute('aria-invalid', 'true');
       await expect(page.locator('#su-err-name')).toBeHidden();
+      // the fixed field leaves the summary; an empty summary disappears
+      await expect(page.locator('#su-summary li')).toHaveCount(5);
+      await page.locator('#su-email').fill('dana@example.com');
+      await page.locator('#su-role').selectOption({ index: 1 });
+      await page.locator('#su-heard').selectOption({ index: 1 });
+      await page.locator('#su-age').check();
+      await expect(page.locator('#su-summary li')).toHaveCount(1);
+      await expect(page.locator('#su-summary')).toBeVisible();
+      await page.locator('#su-consent').check();
+      await expect(page.locator('#su-summary li')).toHaveCount(0);
+      await expect(page.locator('#su-summary')).toBeHidden();
+    });
+
+    test('no-JS fallback paragraph is hidden once the script runs; honeypot is inert; consent link opens a new tab', async ({
+      page,
+    }) => {
+      await stub(page);
+      await page.goto(`/${lang}/signup/`);
+      await expect(page.locator('#su-nojs')).toBeHidden();
+      await expect(page.locator('.hp')).toHaveAttribute('inert', '');
+      const a = page.locator('label[for=su-consent] a');
+      await expect(a).toHaveAttribute('target', '_blank');
+      await expect(a).toHaveAttribute('rel', 'noopener');
+      await expect(a).toContainText(/\(.+\)/);
     });
 
     test('keyboard-only submit sends the contract body and shows the thank-you', async ({
@@ -116,7 +140,8 @@ for (const { lang, dir } of LANGS) {
       await fillByKeyboard(page);
       await page.keyboard.press('Enter');
       await expect(page.locator('#su-success-h')).toBeFocused();
-      await expect(page.locator('#su-status')).toHaveText(/\S/);
+      // the focused heading is the announcement: the live region is not used a second time
+      await expect(page.locator('#su-status')).toHaveText('');
       await expect(page.locator('#signup-form')).toBeHidden();
       expect(s.posts).toHaveLength(1);
       expect(s.posts[0]).toMatchObject({
@@ -179,7 +204,9 @@ for (const { lang, dir } of LANGS) {
       const btn = page.locator('#su-submit');
       await expect(btn).toHaveAttribute('aria-disabled', 'true');
       await expect(btn).toBeFocused();
+      const label = await btn.textContent();
       await expect(page.locator('#su-status')).toHaveText(/\S/);
+      expect(await btn.textContent()).toBe(label); // label is stable while sending
       release();
       await expect(page.locator('#su-summary')).toBeFocused();
       await expect(btn).toHaveAttribute('aria-disabled', 'false');
@@ -239,7 +266,9 @@ test('no-JavaScript visitors get the noscript message and no usable form', async
   const ctx = await browser.newContext({ javaScriptEnabled: false });
   const page = await ctx.newPage();
   await page.goto('/en/signup/');
-  await expect(page.locator('.notice')).toContainText('JavaScript');
+  await expect(page.locator('#su-nojs')).toBeVisible();
+  await expect(page.locator('#su-nojs')).toContainText('support@tbi-tech.net');
+  await expect(page.locator('noscript + .notice, .notice').first()).toContainText('JavaScript');
   await expect(page.locator('#signup-form')).toBeHidden();
   await ctx.close();
 });
