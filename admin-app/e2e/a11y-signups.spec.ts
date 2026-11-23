@@ -132,6 +132,61 @@ for (const lang of ['he', 'en'] as const) {
   });
 }
 
+for (const lang of ['he', 'en'] as const) {
+  test(`signups (${lang}): "approved automatically" badge is text in the row, with enough contrast`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list');
+    // Replace the first mocked list: r1 was approved by the automatic approver, r2 by nobody yet.
+    await page.unroute('**/admin-api/signups/**');
+    const auto = {
+      ...row('r1', 'Dana Levi', 'dana@example.com', '2026-11-01T10:00:00Z'),
+      status: 'approved',
+      accountAdded: true,
+      autoApprovedAt: '2026-11-23T10:00:00.000Z',
+    };
+    const manual = row('r2', 'Omer Cohen', 'omer@example.com', '2026-11-02T10:00:00Z');
+    await page.route('**/admin-api/signups/open', (route) =>
+      route.fulfill({ json: { signups: [auto, manual] } }),
+    );
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('signup-row')).toHaveCount(2);
+    const text = lang === 'he' ? 'אושרה אוטומטית' : 'Approved automatically';
+    const r1 = page.locator('[data-signup-id="r1"]');
+    const badge = r1.getByTestId('signup-auto-approved');
+    await expect(badge).toHaveText(text);
+    await expect(badge).toBeVisible();
+    // Part of the row's own text (so a screen reader reads it with the row), not an icon or colour.
+    expect(await r1.evaluate((e) => (e as HTMLElement).innerText)).toContain(text);
+    await expect(
+      page.locator('[data-signup-id="r2"]').getByTestId('signup-auto-approved'),
+    ).toHaveCount(0);
+    // Contrast of the badge text on its background: at least 4.5:1 (WCAG 1.4.3).
+    const ratio = await badge.evaluate((e) => {
+      const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+      const lum = ([r, g, b]: number[]) => {
+        const f = (v: number) => {
+          const x = v / 255;
+          return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * f(r!) + 0.7152 * f(g!) + 0.0722 * f(b!);
+      };
+      const cs = getComputedStyle(e);
+      const a = lum(rgb(cs.color));
+      const b = lum(rgb(cs.backgroundColor));
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    });
+    expect(ratio).toBeGreaterThanOrEqual(4.5);
+    // It stays inside the viewport at 320 px (reflow), in both directions.
+    await page.setViewportSize({ width: 320, height: 700 });
+    const box = await badge.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+  });
+}
+
 test('signups: keyboard only, Approve then the outcome, focus goes to the next row', async ({
   page,
   context,

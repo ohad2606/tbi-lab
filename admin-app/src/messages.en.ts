@@ -136,6 +136,7 @@ export const consoleEn = {
     'Approved, but the account is not ready yet. Approve again to finish.',
   'console.signups.status.emailQueued':
     'Account added. The email is scheduled and will be sent when quiet hours end.',
+  'console.signups.autoApproved': 'Approved automatically',
   'console.signups.sendAfter': 'Email scheduled for {time}',
   'console.signups.status.working': 'Working on it…',
   'console.signups.approve': 'Approve',

@@ -5,6 +5,7 @@ import { LOCALES, isMessageKey } from '../src/i18n.js';
 import {
   canResend,
   focusAfterRemoval,
+  isAutoApproved,
   isOpenSignup,
   signupRowKind,
   signupCountKey,
@@ -25,7 +26,34 @@ const rec = (status: string, accountAdded = false): SignupRecord => ({
   emailAttempts: 0,
   lastError: null,
   emailSendAfter: null,
+  autoApprovedAt: null,
   createdAt: '2026-11-01T10:00:00Z',
+});
+
+describe('automatic approval flag', () => {
+  const body = { id: 'a1', status: 'approved', accountAdded: true };
+  const parse = (extra: object) => {
+    const o = interpretSignup(200, { record: { ...body, ...extra }, note: null });
+    return o.kind === 'done' ? o.record : null;
+  };
+  it('the client keeps autoApprovedAt when it is a non-empty string, else null', () => {
+    expect(parse({ autoApprovedAt: '2026-11-23T10:00:00.000Z' })?.autoApprovedAt).toBe(
+      '2026-11-23T10:00:00.000Z',
+    );
+    for (const bad of [undefined, null, '', 5, true, {}])
+      expect(parse({ autoApprovedAt: bad })?.autoApprovedAt, String(bad)).toBeNull();
+  });
+  it('isAutoApproved is true only for a record that carries the mark', () => {
+    expect(
+      isAutoApproved({ ...rec('approved', true), autoApprovedAt: '2026-11-23T10:00:00Z' }),
+    ).toBe(true);
+    expect(isAutoApproved(rec('approved', true))).toBe(false);
+    expect(isAutoApproved(rec('pending'))).toBe(false);
+  });
+  it('the badge text exists in both locales', () => {
+    for (const l of LOCALES)
+      expect(l.messages['console.signups.autoApproved'], l.code).toBeTruthy();
+  });
 });
 
 describe('sign-up requests view logic', () => {

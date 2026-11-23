@@ -513,6 +513,8 @@ export interface SignupRecord {
   lastError: string | null;
   /** While `email_queued`: when the email may go out (quiet hours end); else null. */
   emailSendAfter: string | null;
+  /** When the automatic approver approved this request (BETA-G1); null when a person did or it is undecided. */
+  autoApprovedAt: string | null;
   createdAt: string;
 }
 
@@ -556,6 +558,8 @@ function signupRecord(v: unknown): SignupRecord | null {
     emailAttempts: typeof v.emailAttempts === 'number' ? v.emailAttempts : 0,
     lastError: typeof v.lastError === 'string' ? v.lastError : null,
     emailSendAfter: typeof v.emailSendAfter === 'string' ? v.emailSendAfter : null,
+    autoApprovedAt:
+      typeof v.autoApprovedAt === 'string' && v.autoApprovedAt !== '' ? v.autoApprovedAt : null,
     createdAt: str(v.createdAt),
   };
 }
