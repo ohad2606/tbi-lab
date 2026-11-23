@@ -74,7 +74,7 @@ Taken: Space (pan/switch), arrows (move/pan), `+ - = F R`, `Delete/Backspace`, `
 3. Wires list panel (accessible alternative, screen-reader browse) (1 day).
 4. Re-pick endpoint / reconnect edit incl. undo and tests (1 to 1.5 days).
 5. Junction and wire-body targets (T-connections) in candidates (1 day). Done 2026-11-23 (see 2.2).
-6. Visual highlight/pan-into-view polish, shortcut help entries, HE review, docs (0.5 to 1 day).
+6. Visual highlight/pan-into-view polish, shortcut help entries, HE review, docs (0.5 to 1 day). Done 2026-11-23: dashed outline on the whole target wire (`.wire-group.kb-wire-target`, forced-colors: Highlight), pan via pure `panIntoView`, shortcut/guide text for T-targets and a fuller keyboard walkthrough; HE guide text still needs native review. The app has no dark theme, so contrast was checked on the light palette only.
 Total about 5 to 6 days.
 
 ## 8. Open questions

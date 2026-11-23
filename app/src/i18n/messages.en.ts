@@ -2481,7 +2481,8 @@ export const en = {
   'shortcut.pinPrev.when': 'Pin mode',
   'shortcut.wireStart.action': 'Start a wire from this pin',
   'shortcut.wireStart.when': 'Pin mode',
-  'shortcut.targetCycle.action': 'Move between possible targets (Tab is kept inside on purpose)',
+  'shortcut.targetCycle.action':
+    'Move between possible targets: pins, junctions and points on wires (Tab is kept inside on purpose)',
   'shortcut.targetCycle.when': 'While choosing where the wire ends',
   'shortcut.repickEnd.action':
     'Choose which end of the wire to move: 1 is the first end, 2 the second; or switch ends with the arrow keys or Tab and Shift + Tab, and press Enter to choose',

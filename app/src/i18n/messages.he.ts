@@ -2352,7 +2352,8 @@ export const he: Record<MessageKey, string> = {
   'shortcut.pinPrev.when': 'מצב פינים',
   'shortcut.wireStart.action': 'התחלת חוט מהפין הזה',
   'shortcut.wireStart.when': 'מצב פינים',
-  'shortcut.targetCycle.action': 'מעבר בין יעדים אפשריים (Tab נשאר כאן בכוונה)',
+  'shortcut.targetCycle.action':
+    'מעבר בין יעדים אפשריים: פינים, צמתים ונקודות על חוטים (Tab נשאר כאן בכוונה)',
   'shortcut.targetCycle.when': 'בזמן בחירת סוף החוט',
   'shortcut.repickEnd.action':
     'בחירת הקצה להזזה: 1 הקצה הראשון, 2 השני; או מעבר בין הקצוות במקשי החצים או ב-Tab וב-Shift + Tab, ו-Enter בוחר',

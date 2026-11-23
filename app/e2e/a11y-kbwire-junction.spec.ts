@@ -117,6 +117,9 @@ for (const lang of ['en', 'he'] as const) {
     await expect(point).toHaveCount(1);
     await expect(page.locator('[data-kb-candidate="true"]')).toHaveCount(1);
     const splitWire = (await point.getAttribute('data-kb-wire'))!;
+    // Slice 6: the whole target wire is outlined (dashed), and nothing else is.
+    await expect(page.locator('.wire-group.kb-wire-target')).toHaveCount(1);
+    await expect(page.locator('.wire-group.kb-wire-target')).toHaveAttribute('data-id', splitWire);
     const original = before.layout.wires.find((w) => w.id === splitWire)!;
     expect(original).toBeTruthy();
     await page.keyboard.press('Enter');
