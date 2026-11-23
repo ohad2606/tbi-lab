@@ -72,6 +72,7 @@ import {
   pinsOf,
   reduceWireKeyboard,
   stepWireSelection,
+  wirePosition,
   wireBracketStep,
   type WireKbAction,
   type WireKbEvent,
@@ -821,13 +822,52 @@ export function Canvas({
       case 'refused':
         return t('kbwire.refused', {
           reason: t(
-            ev.reason === 'same_endpoint' ? 'kbwire.reason.same_endpoint' : 'kbwire.reason.other',
+            ev.reason === 'same_endpoint' ||
+              ev.reason === 'wire_unchanged' ||
+              ev.reason === 'duplicate_wire'
+              ? `kbwire.reason.${ev.reason}`
+              : 'kbwire.reason.other',
           ),
         });
       case 'running':
         return t('kbwire.running');
       case 'noTargets':
         return t('kbwire.noTargets', { pin: pinName(ev.pin) });
+      case 'repickEnds':
+        return t('kbwire.repick.ends', {
+          n: wirePosition(doc, ev.wire),
+          from: wireEndName(ev.from),
+          to: wireEndName(ev.to),
+          k1: isolateLtr('1'),
+          k2: isolateLtr('2'),
+          tab: isolateLtr('Tab'),
+          enter: isolateLtr('Enter'),
+          escape: isolateLtr('Escape'),
+        });
+      case 'repickSide':
+        return t('kbwire.repick.end', {
+          k: isolateLtr(ev.side === 'from' ? '1' : '2'),
+          end: wireEndName(ev.end),
+          enter: isolateLtr('Enter'),
+        });
+      case 'repickStart':
+        return t('kbwire.repick.start', {
+          k: isolateLtr(ev.side === 'from' ? '1' : '2'),
+          end: wireEndName(ev.end),
+          tab: isolateLtr('Tab'),
+          enter: isolateLtr('Enter'),
+          escape: isolateLtr('Escape'),
+        });
+      case 'repickNoTargets':
+        return t('kbwire.repick.noTargets', { k: isolateLtr(ev.side === 'from' ? '1' : '2') });
+      case 'repickDone':
+        return t('kbwire.repick.done', {
+          n: wirePosition(doc, ev.wire),
+          from: wireEndName(ev.from),
+          to: wireEndName(ev.to),
+        });
+      case 'repickCancel':
+        return t('kbwire.repick.cancel', { n: wirePosition(doc, ev.wire) });
     }
   };
   const kbDispatch = (action: WireKbAction) => {
@@ -836,7 +876,14 @@ export function Canvas({
       running: simActive,
       route: (a, b) => ({ vertices: autoRouteVertices([a, b], routeObs) }),
     });
-    if (r.doc) store.apply({ ok: true, doc: r.doc }, emptySelection());
+    if (r.doc)
+      store.apply(
+        { ok: true, doc: r.doc },
+        // A re-picked wire stays selected (same id), so E can be pressed again.
+        r.event?.kind === 'repickDone'
+          ? { ...emptySelection(), wires: [r.event.wire] }
+          : emptySelection(),
+      );
     setKb(r.state);
     if (r.event) kbAnnounce(kbText(r.event));
     return r;
@@ -846,9 +893,57 @@ export function Canvas({
     (el as SVGElement | null)?.focus({ preventScroll: true });
   };
 
+  /** Re-pick (slice 4): keys while choosing the end / the new target. Focus stays on the canvas. */
+  const onRepickKey = (e: KeyboardEvent): boolean => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      kbDispatch({ type: 'cancel' });
+      return true;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    const next =
+      e.key === 'ArrowDown' || e.key === 'ArrowRight' || (e.key === 'Tab' && !e.shiftKey);
+    const prev = e.key === 'ArrowUp' || e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey);
+    // Tab is trapped on purpose while choosing (Escape always leaves).
+    if (kb.mode === 'ends') {
+      if (next || prev) kbDispatch({ type: 'repickToggle' });
+      else if (e.key === '1') kbDispatch({ type: 'repickChoose', side: 'from' });
+      else if (e.key === '2') kbDispatch({ type: 'repickChoose', side: 'to' });
+      else if (e.key === 'Enter') kbDispatch({ type: 'repickChoose' });
+      else if (e.key !== ' ') return false;
+    } else if (next || prev) kbDispatch({ type: 'cycle', delta: next ? 1 : -1 });
+    else if (e.key === 'Enter') kbDispatch({ type: 'commit' });
+    else if (e.key !== ' ') return false;
+    e.preventDefault();
+    return true;
+  };
+
   /** Returns true when the key was consumed by keyboard wiring. */
   const onKbKey = (e: KeyboardEvent): boolean => {
+    if (kb.mode === 'ends' || kb.mode === 'repick') return onRepickKey(e);
     if (kb.mode === 'idle') {
+      if (e.code === 'KeyE' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !readOnly) {
+        const only =
+          selection.wires.length === 1 &&
+          !selection.components.length &&
+          !selection.junctions.length
+            ? selection.wires[0]
+            : undefined;
+        e.preventDefault();
+        if (!only) {
+          kbAnnounce(
+            t('kbwire.repick.noWire', {
+              prev: isolateLtr('['),
+              next: isolateLtr(']'),
+              key: isolateLtr('E'),
+            }),
+          );
+          return true;
+        }
+        if (simActive) kbAnnounce(t('kbwire.running'));
+        else kbDispatch({ type: 'repickStart', wire: only });
+        return true;
+      }
       if (e.code !== 'KeyW' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || readOnly)
         return false;
       const el = (e.target as Element | null)?.closest?.(
@@ -918,7 +1013,14 @@ export function Canvas({
     ) as SVGElement | null;
     el?.focus({ preventScroll: true });
   }, [kbPinKey]);
-  const kbCandidate = kb.mode === 'wiring' ? kb.candidates[kb.index] : undefined;
+  const kbCandidate =
+    kb.mode === 'wiring' || kb.mode === 'repick' ? kb.candidates[kb.index] : undefined;
+  // The end of the wire being re-picked that the user is on (ring only; focus stays on the canvas).
+  const kbRepickEnd = (() => {
+    if (kb.mode !== 'ends' && kb.mode !== 'repick') return undefined;
+    const end = doc.layout.wires.find((w) => w.id === kb.wire)?.[kb.side];
+    return end?.kind === 'terminal' ? `${end.component}\u0000${end.terminal}` : undefined;
+  })();
   const kbCandidatePos = kbCandidate
     ? terminalPosition(doc, kbCandidate.pin.component, kbCandidate.pin.terminal)
     : undefined;
@@ -944,6 +1046,14 @@ export function Canvas({
   // Leaving the document state (simulation start, component removed) ends keyboard wiring.
   useEffect(() => {
     if (kb.mode === 'idle') return;
+    if (kb.mode === 'ends' || kb.mode === 'repick') {
+      const gone = !doc.layout.wires.some((w) => w.id === kb.wire);
+      if (simActive || gone) {
+        setKb({ mode: 'idle' });
+        kbAnnounce('');
+      }
+      return;
+    }
     const comp = kb.mode === 'pins' ? kb.component : kb.from.component;
     if (simActive || !doc.components.some((c) => c.id === comp)) setKb({ mode: 'idle' });
   }, [simActive, doc]);
@@ -1374,7 +1484,8 @@ export function Canvas({
               const kbPin = kbComponent === c.id;
               const kbCurrentKey = kbPinKey === `${c.id}\u0000${term.id}`;
               const kbCurrent = kbPin && kbCurrentKey;
-              const kbSource = kb.mode === 'wiring' && kbCurrent;
+              const kbRepick = kbRepickEnd === `${c.id}\u0000${term.id}`;
+              const kbSource = (kb.mode === 'wiring' && kbCurrent) || kbRepick;
               const kbTarget =
                 kbCandidate?.pin.component === c.id && kbCandidate.pin.terminal === term.id;
               return (
@@ -1403,7 +1514,9 @@ export function Canvas({
                   >
                     <circle class="terminal-hit" cx={p.x} cy={p.y} r={9} />
                     <circle class="terminal-mark" cx={p.x} cy={p.y} r={3.5} />
-                    {(kbPin || kbTarget) && <circle class="kb-ring" cx={p.x} cy={p.y} r={11} />}
+                    {(kbPin || kbTarget || kbRepick) && (
+                      <circle class="kb-ring" cx={p.x} cy={p.y} r={11} />
+                    )}
                   </g>
                 </g>
               );

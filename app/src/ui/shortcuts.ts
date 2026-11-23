@@ -44,6 +44,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
 
   { id: 'pinMode', scope: 'circuit', keys: ['W'], file: 'Canvas.tsx' },
   { id: 'wireSelect', scope: 'circuit', keys: [']', '['], file: 'Canvas.tsx' },
+  { id: 'wireRepick', scope: 'circuit', keys: ['E'], file: 'Canvas.tsx' },
   { id: 'escStep', scope: 'circuit', keys: ['Esc'], file: 'Canvas.tsx' },
   { id: 'delete', scope: 'circuit', keys: ['Delete', 'Backspace'], file: 'Canvas.tsx' },
   { id: 'rotate', scope: 'circuit', keys: ['R'], file: 'Canvas.tsx' },
@@ -64,6 +65,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   { id: 'wireStart', scope: 'wiring', keys: ['Enter'], file: 'Canvas.tsx' },
   { id: 'targetCycle', scope: 'wiring', keys: ['Arrow keys', 'Tab'], file: 'Canvas.tsx' },
   { id: 'wireConnect', scope: 'wiring', keys: ['Enter'], file: 'Canvas.tsx' },
+  { id: 'repickEnd', scope: 'wiring', keys: ['1', '2'], file: 'Canvas.tsx' },
   { id: 'wireCancel', scope: 'wiring', keys: ['Esc'], file: 'Canvas.tsx' },
 
   {

@@ -8,6 +8,7 @@ import {
   addComponent,
   addWire,
   moveSelection,
+  reconnectWire,
   emptySelection,
   rotateComponents,
   setParam,
@@ -204,5 +205,22 @@ describe('history exclusions and running rules (A11)', () => {
     expect(doc(app)).toBe(before);
     app.stop();
     expect(app.undo()).toBe(true);
+  });
+});
+
+describe('reconnect (TBI-001 s4)', () => {
+  it('is ONE undo step and restores the previous wire exactly', async () => {
+    const { app } = await setup();
+    app.apply(addComponent(doc(app), 'component.resistor', { x: 60, y: -20 }));
+    app.apply(addComponent(doc(app), 'component.resistor', { x: 60, y: 60 }));
+    app.apply(addWire(doc(app), t('PSU1', 'positive'), t('R1', 'a')));
+    const before = JSON.stringify({ ...doc(app), revision: null, idCounters: null });
+    const undoDepth = app.state.history.undo;
+    expect(app.apply(reconnectWire(doc(app), 'W1', 'to', t('R2', 'a')))).toBe(true);
+    expect(app.state.history.undo).toBe(undoDepth + 1);
+    expect(doc(app).layout.wires[0]!.to).toEqual(t('R2', 'a'));
+    expect(app.undo()).toBe(true);
+    expect(JSON.stringify({ ...doc(app), revision: null, idCounters: null })).toBe(before);
+    expect(app.state.history.undo).toBe(undoDepth);
   });
 });

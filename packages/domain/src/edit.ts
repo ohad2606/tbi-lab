@@ -64,6 +64,10 @@ export type EditError =
   | 'not_standard'
   | 'not_on_wire'
   | 'same_endpoint'
+  /** TBI-001 s4 reconnectWire: the new end is the end the wire already has (nothing to do). */
+  | 'wire_unchanged'
+  /** TBI-001 s4 reconnectWire: another wire already joins exactly these two ends. */
+  | 'duplicate_wire'
   | 'name_empty'
   | 'no_program'
   | 'source_too_large'
@@ -551,6 +555,42 @@ export function addWire(
     });
   });
   return r.ok ? { ...r, id } : r;
+}
+
+/**
+ * TBI-001 slice 4: re-pick ONE end of an existing wire, atomically (a single transact, so one undo
+ * step). Same wire id, colour and other end; the electrical result equals deleting the wire and
+ * adding one between the other end and `target`. Refused, with the document unchanged, when:
+ * the target does not exist (`unknown_*`), it is the wire's other end (`same_endpoint`), it is the
+ * end the wire already has (`wire_unchanged`), or another wire already joins the same two ends
+ * (`duplicate_wire`). An automatic wire stays automatic and drops its waypoints (they belonged to
+ * the old route); `vertices` is the router's route for the new ends.
+ */
+export function reconnectWire(
+  doc: ProjectDocument,
+  wireId: string,
+  end: 'from' | 'to',
+  target: WireTarget,
+  vertices: Point[] = [],
+): EditResult {
+  return transact(doc, (draft) => {
+    const wire = draft.layout.wires.find((w) => w.id === wireId);
+    if (!wire) return 'unknown_wire';
+    const other = end === 'from' ? wire.to : wire.from;
+    if (target.kind === 'wire' && target.wire === wireId) return 'not_on_wire';
+    const next = resolveTarget(draft, target);
+    if (typeof next === 'string') return next;
+    if (nodeKey(next) === nodeKey(other)) return 'same_endpoint';
+    if (nodeKey(next) === nodeKey(end === 'from' ? wire.from : wire.to)) return 'wire_unchanged';
+    const pair = [nodeKey(next), nodeKey(other)].sort().join('|');
+    const twin = draft.layout.wires.some(
+      (w) => w.id !== wire.id && [nodeKey(w.from), nodeKey(w.to)].sort().join('|') === pair,
+    );
+    if (twin) return 'duplicate_wire';
+    wire[end] = next;
+    wire.vertices = vertices.map(snapPoint);
+    if (wire.auto) wire.auto = { waypoints: [] };
+  });
 }
 
 /**
