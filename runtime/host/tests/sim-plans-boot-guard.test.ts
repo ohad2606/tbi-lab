@@ -9,7 +9,7 @@
  * The process gets a minimal environment and its own TMPDIR; no unit is stopped (TBI_HOST_RUNTIME_UNIT
  * unset), no QEMU starts (no session is created), the port is 0 on 127.0.0.1.
  */
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import {
   chmodSync,
@@ -22,7 +22,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { parseConfig } from '../../plans/config.js';
 import { HOST_SIM_FLAGS, HOST_SIM_REFUSED_EXIT } from '../../plans/hostflags.js';
 import { SIM_JOURNAL_FILE, SIM_LOCK_FILE } from '../../plans/hostboot.js';
@@ -36,6 +36,13 @@ const LEASE = 600_000; // long, so a slow process start never lets the lease run
 
 const parent = mkdtempSync(join(tmpdir(), 'host-simboot-'));
 afterAll(() => rmSync(parent, { recursive: true, force: true }));
+
+/** async children of this file; afterEach kills any still alive (also after a test timeout) */
+const live = new Set<ChildProcess>();
+afterEach(() => {
+  for (const c of live) if (c.exitCode === null && c.signalCode === null) c.kill('SIGKILL');
+  live.clear();
+});
 
 const keyFile = (name: string) => {
   const f = join(parent, name);
@@ -73,7 +80,13 @@ const simEnv = (cfg: unknown = { metering: { enabled: true }, sim: { leaseMs: LE
 };
 
 const runMain = (env: Record<string, string>) =>
-  spawnSync(VITE_NODE, [MAIN], { cwd: ROOT, encoding: 'utf8', timeout: 90_000, env });
+  spawnSync(VITE_NODE, [MAIN], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    timeout: 90_000,
+    killSignal: 'SIGKILL', // a hung host never outlives its test
+    env,
+  });
 
 describe('Session Host main: sim-plans flags (s3d-6 boot)', () => {
   it("no flag: today's path (first required setting refuses, exit 1, no sim line)", () => {
@@ -123,27 +136,37 @@ describe('Session Host main: sim-plans flags (s3d-6 boot)', () => {
     expect((await prev.open('d'.repeat(32), 'p_previous0001', 'legacy')).ok).toBe(true);
 
     const child = spawn(VITE_NODE, [MAIN], { cwd: ROOT, env: { ...baseEnv(), ...env } });
-    let out = '';
-    let err = '';
-    child.stdout.on('data', (b: Buffer) => (out += b.toString()));
-    child.stderr.on('data', (b: Buffer) => (err += b.toString()));
-    const exited = new Promise<number | null>((r) => child.on('exit', (c) => r(c)));
-    const deadline = Date.now() + 90_000;
-    while (!/listening/.test(out) && Date.now() < deadline && child.exitCode === null)
-      await new Promise((r) => setTimeout(r, 200));
-    expect(out).toMatch(/listening/);
-    expect(existsSync(join(state, SIM_LOCK_FILE))).toBe(true);
-    const line = err.split('\n').find((l) => l.includes('sim_boot'));
-    expect(JSON.parse(line ?? '{}')).toEqual({ event: 'sim_boot', recovered: 1, compaction: 'no' });
-    expect(err).not.toContain('p_previous0001');
+    live.add(child);
+    try {
+      let out = '';
+      let err = '';
+      child.stdout.on('data', (b: Buffer) => (out += b.toString()));
+      child.stderr.on('data', (b: Buffer) => (err += b.toString()));
+      const exited = new Promise<number | null>((r) => child.on('exit', (c) => r(c)));
+      const deadline = Date.now() + 90_000;
+      while (!/listening/.test(out) && Date.now() < deadline && child.exitCode === null)
+        await new Promise((r) => setTimeout(r, 200));
+      expect(out).toMatch(/listening/);
+      expect(existsSync(join(state, SIM_LOCK_FILE))).toBe(true);
+      const line = err.split('\n').find((l) => l.includes('sim_boot'));
+      expect(JSON.parse(line ?? '{}')).toEqual({
+        event: 'sim_boot',
+        recovered: 1,
+        compaction: 'no',
+      });
+      expect(err).not.toContain('p_previous0001');
 
-    const events = (await store.load()).events;
-    const close = events.find((e) => e.t === 'sim_close');
-    expect(close).toMatchObject({ reason: 'host' });
+      const events = (await store.load()).events;
+      const close = events.find((e) => e.t === 'sim_close');
+      expect(close).toMatchObject({ reason: 'host' });
 
-    child.kill('SIGTERM');
-    expect(await exited).toBe(0);
-    expect(existsSync(join(state, SIM_LOCK_FILE))).toBe(false);
+      child.kill('SIGTERM');
+      expect(await exited).toBe(0);
+      expect(existsSync(join(state, SIM_LOCK_FILE))).toBe(false);
+    } finally {
+      // a failed expectation must not leave a listening host behind
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    }
   }, 120_000);
 
   it("the refusal exit code is distinct from the host's other exits (0, 1)", () => {

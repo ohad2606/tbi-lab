@@ -178,6 +178,7 @@ describe('repair CLI exit codes', () => {
       cwd: ROOT,
       encoding: 'utf8',
       timeout: 60_000,
+      killSignal: 'SIGKILL',
       env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: process.env.HOME ?? '/tmp' },
     });
   it('report 2 -> apply 0 -> clean 0; usage 1; content never printed', async () => {

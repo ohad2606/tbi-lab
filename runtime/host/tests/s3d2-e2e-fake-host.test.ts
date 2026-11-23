@@ -69,10 +69,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!child || child.exitCode !== null) return;
-  const exited = new Promise((r) => child!.once('exit', r));
-  child.kill('SIGTERM'); // the fixture removes its temporary stores on SIGTERM
+  const c = child;
+  const exited = new Promise((r) => c.once('exit', r));
+  c.kill('SIGTERM'); // the fixture removes its temporary stores on SIGTERM
+  // never leave a stray process: SIGKILL if it has not exited after 10 s
+  const t = setTimeout(() => c.kill('SIGKILL'), 10_000);
   await exited;
-});
+  clearTimeout(t);
+}, 20_000);
 
 const createSession = (body: string) =>
   fetch(`${base}/sessions`, {
