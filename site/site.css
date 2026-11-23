@@ -30,6 +30,7 @@
   --hero-muted: #d3e0f4;
   --accent: #ffc83d;
   --on-accent: #0a1a33;
+  --error: #a30d25;
   --focus: #0a1a33;
   --focus-dark: #ffffff;
   --space: 1rem;
@@ -363,4 +364,115 @@ footer {
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Sign-up form (BETA-G1 s9) */
+.signup form {
+  max-inline-size: 36rem;
+}
+.field {
+  margin-block: 1rem;
+}
+.field label {
+  display: block;
+  font-weight: 700;
+  margin-block-end: 0.25rem;
+}
+.hint-text {
+  margin-block: 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.field input[type='text'],
+.field input[type='email'],
+.field select {
+  display: block;
+  inline-size: 100%;
+  min-block-size: 44px;
+  padding-inline: 0.75rem;
+  padding-block: 0.4rem;
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 0.5rem;
+}
+.field [aria-invalid='true'] {
+  border-color: var(--error);
+}
+.field-error {
+  margin-block: 0.35rem 0;
+  color: var(--error);
+  font-weight: 700;
+}
+.field-error::before {
+  content: '\26A0\FE0E ' / '';
+}
+.field.check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.75rem;
+  align-items: start;
+}
+.field.check input {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  margin: 0.1rem 0 0;
+  accent-color: var(--link);
+}
+.field.check label {
+  font-weight: 400;
+  margin: 0;
+}
+.field.check .field-error {
+  grid-column: 2;
+}
+.summary {
+  border: 2px solid var(--error);
+  border-radius: var(--radius);
+  padding: 0.5rem 1rem 0.75rem;
+  margin-block: 1rem;
+}
+.summary h2 {
+  margin-block: 0.25rem 0.5rem;
+  font-size: 1.15rem;
+}
+.summary ul {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+}
+.summary a {
+  display: inline-block;
+  min-block-size: 24px;
+  color: var(--error);
+}
+.small-h {
+  font-size: 1.1rem;
+}
+.notice {
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-weight: 700;
+}
+.btn[aria-disabled='true'] {
+  opacity: 0.75;
+  cursor: progress;
+}
+button.btn {
+  font-family: inherit;
+  cursor: pointer;
+}
+/* Honeypot: off-screen and out of the accessibility tree (aria-hidden, tabindex -1), not display:none. */
+.hp,
+.hp input {
+  position: absolute;
+  inset-inline-start: -10000px;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+}
+.hp input {
+  padding: 0;
+  border: 0;
 }

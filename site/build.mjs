@@ -18,6 +18,10 @@ import {
   LAB_URL,
   CONTACT_EMAIL,
   SCREENSHOTS,
+  SIGNUP_PAGE_ENABLED,
+  SIGNUP_API_BASE,
+  SIGNUP_ROLE_VALUES,
+  SIGNUP_HEARD_VALUES,
 } from './content.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -83,15 +87,97 @@ function ogTags({ url, title, description, locale, altLocale }) {
 }
 const OG_LOCALE = { he: 'he_IL', en: 'en_US' };
 
+/** Sign-up form body (BETA-G1 s9). All text comes from content.mjs; the client script only toggles it. */
+function renderSignupBody(lang, t, pg) {
+  const f = t.signup;
+  const privacyHref = pagePath(lang, 'privacy');
+  const errKey = (key) => 'err' + key[0].toUpperCase() + key.slice(1);
+  const errP = (key) =>
+    `<p class="field-error" id="su-err-${key}" hidden>${esc(f[errKey(key)])}</p>`;
+  const field = (key, label, control, hint = '') =>
+    `<div class="field">
+<label for="su-${key}">${esc(label)}</label>
+${hint ? `<p class="hint-text" id="su-hint-${key}">${esc(hint)}</p>` : ''}
+${control}
+${errP(key)}
+</div>`;
+  const opts = (values, labels, pick) =>
+    `<option value="">${esc(pick)}</option>\n` +
+    values.map((v, i) => `<option value="${esc(v)}">${esc(labels[i])}</option>`).join('\n');
+  const check = (key, inner) =>
+    `<div class="field check">
+<input type="checkbox" id="su-${key}" name="${key}" aria-required="true">
+<label for="su-${key}">${inner}</label>
+${errP(key)}
+</div>`;
+  const msgKeys = [
+    'msgInvalid',
+    'msgTooFast',
+    'msgRate',
+    'msgUnavailable',
+    'msgNetwork',
+    'msgForbidden',
+    'msgGeneric',
+    'msgSession',
+    'summaryFieldsH',
+    'summaryFailH',
+    'statusErrors',
+    'statusSending',
+    'statusSuccess',
+  ];
+  const msgs = [...msgKeys.map((k) => [k, f[k]]), ['sendingLabel', f.sending]]
+    .map(([k, v]) => `<span data-msg="${k}">${esc(v)}</span>`)
+    .join('\n');
+  return `<div class="wrap prose signup">
+<h1>${rich(pg.h1, lang)}</h1>
+<p class="lead" id="su-intro-extra">${rich(pg.lead, lang)}</p>
+<noscript><p class="notice" role="note">${rich2(f.noscript, lang)}</p></noscript>
+<div hidden>
+${msgs}
+</div>
+<div id="su-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+<form id="signup-form" method="post" action="${esc(SIGNUP_API_BASE)}/web" novalidate hidden data-api="${esc(SIGNUP_API_BASE)}" data-lang="${lang}" aria-labelledby="su-form-h">
+<h2 id="su-form-h" class="visually-hidden">${esc(pg.h1)}</h2>
+<div id="su-summary" class="summary" role="group" aria-labelledby="su-summary-h" tabindex="-1" hidden>
+<h2 id="su-summary-h"></h2>
+<p id="su-summary-msg" hidden></p>
+<ul id="su-summary-list"></ul>
+</div>
+<p>${esc(f.required)}</p>
+${field('name', f.name, '<input type="text" id="su-name" name="name" autocomplete="name" maxlength="80" aria-required="true">')}
+${field('email', f.email, '<input type="email" id="su-email" name="email" autocomplete="email" inputmode="email" dir="ltr" maxlength="254" spellcheck="false" autocapitalize="off" aria-required="true" aria-describedby="su-hint-email">', f.emailHint)}
+${field('role', f.role, `<select id="su-role" name="role" aria-required="true">\n${opts(SIGNUP_ROLE_VALUES, f.roles, f.rolePick)}\n</select>`)}
+${field('heard', f.heard, `<select id="su-heard" name="heardFrom" aria-required="true">\n${opts(SIGNUP_HEARD_VALUES, f.heards, f.heardPick)}\n</select>`)}
+<div class="hp" aria-hidden="true">
+<label for="su-website">${esc(f.honeypot)}</label>
+<input type="text" id="su-website" name="website" value="" tabindex="-1" autocomplete="off" aria-hidden="true" data-lpignore="true" data-1p-ignore="true">
+</div>
+<h2 class="small-h">${esc(f.privacyH)}</h2>
+${f.privacy.map((x) => `<p>${rich2(x, lang)}</p>`).join('\n')}
+${check('age', esc(f.age))}
+${check('consent', `${esc(f.consentBefore)}<a href="${privacyHref}">${esc(f.consentLink)}</a>${esc(f.consentAfter)}`)}
+<p><button type="submit" class="btn btn-primary" id="su-submit" aria-disabled="false"><span data-label>${esc(f.submit)}</span></button></p>
+</form>
+<section id="su-success" hidden>
+<h2 id="su-success-h" tabindex="-1">${esc(f.successH)}</h2>
+${f.successP.map((x) => `<p>${rich2(x, lang)}</p>`).join('\n')}
+</section>
+<script type="module" src="/assets/signup.mjs"></script>
+</div>`;
+}
+
 function renderPage(lang, page, opts) {
   const applyUrl = checkApplyUrl(opts.applyUrl);
+  const signupOn = opts.signupEnabled;
   const t = content[lang];
   const other = content[t.switchToLang];
   const pg = t.pages[page];
-  const nav = NAV_PAGES.map((n) => {
-    const cur = n === page ? ' aria-current="page"' : '';
-    return `<li><a href="${pagePath(lang, n)}"${cur}>${esc(t.navNames[n])}</a></li>`;
-  }).join('\n');
+  const nav = (signupOn ? [...NAV_PAGES, 'signup'] : NAV_PAGES)
+    .map((n) => {
+      const cur = n === page ? ' aria-current="page"' : '';
+      return `<li><a href="${pagePath(lang, n)}"${cur}>${esc(t.navNames[n])}</a></li>`;
+    })
+    .join('\n');
   const foot = FOOTER_PAGES.map((n) => {
     const cur = n === page ? ' aria-current="page"' : '';
     return `<li><a href="${pagePath(lang, n)}"${cur}>${esc(t.footerNames[n])}</a></li>`;
@@ -102,9 +188,11 @@ function renderPage(lang, page, opts) {
   const signIn = (cls) =>
     `<a class="${cls}" href="${LAB_URL}" rel="noopener">${esc(t.signIn)}<span class="hint"> (${esc(t.signInHint)})</span></a>`;
   const cta = (where) =>
-    applyUrl
-      ? `<a class="btn btn-primary" href="${applyUrl}" rel="noopener">${esc(t.applyOpen)}</a>`
-      : `<a class="btn btn-pending" href="${pagePath(lang, 'alpha')}#how-to-apply" aria-describedby="apply-hint-${where}"><span>${esc(t.applyPending)}</span><span class="visually-hidden">. </span><span class="btn-sub">${esc(t.applyPendingNote)}</span></a>
+    signupOn
+      ? `<a class="btn btn-primary" href="${pagePath(lang, 'signup')}">${esc(t.applyOpen)}</a>`
+      : applyUrl
+        ? `<a class="btn btn-primary" href="${applyUrl}" rel="noopener">${esc(t.applyOpen)}</a>`
+        : `<a class="btn btn-pending" href="${pagePath(lang, 'alpha')}#how-to-apply" aria-describedby="apply-hint-${where}"><span>${esc(t.applyPending)}</span><span class="visually-hidden">. </span><span class="btn-sub">${esc(t.applyPendingNote)}</span></a>
 <span class="visually-hidden" id="apply-hint-${where}">${esc(t.applyHint)}</span>`;
 
   let body;
@@ -142,6 +230,8 @@ ${pg.sections.map((s) => `<div class="wrap prose">${renderSection(s, 2, lang)}</
 <p class="cta-row">${cta('band')}</p>
 <p>${signIn('signin')}</p>
 </div>`;
+  } else if (page === 'signup') {
+    body = renderSignupBody(lang, t, pg);
   } else if (LEGAL_PAGES.includes(page)) {
     body = `<div class="wrap prose">
 <h1>${esc(pg.h1)}</h1>
@@ -160,7 +250,7 @@ ${pg.sections
   .map((s) => {
     const r = renderSection(how(s), 2, lang);
     if (s.id === 'how-to-apply')
-      return applyUrl
+      return applyUrl || signupOn
         ? r.replace('</section>', `<p class="cta-row">${cta('alpha')}</p>\n</section>`)
         : r;
     if (s.id === 'tester-sign-in')
@@ -180,7 +270,7 @@ ${pg.sections
 <meta name="description" content="${esc(plain(pg.description))}">
 ${ogTags({ url: pagePath(lang, page), title: plain(pg.title), description: plain(pg.description), locale: OG_LOCALE[lang] ?? lang, altLocale: OG_LOCALE[t.switchToLang] })}
 ${alts}
-<link rel="icon" href="/assets/favicon.ico" sizes="any">
+${page === 'signup' && !signupOn ? '<meta name="robots" content="noindex">\n' : ''}<link rel="icon" href="/assets/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" href="/assets/favicon-32.png" sizes="32x32">
 <link rel="stylesheet" href="/assets/site.css">
 </head>
@@ -255,7 +345,7 @@ ${links}
 }
 
 export function buildSite(outDir = join(here, 'dist'), opts = {}) {
-  const o = { applyUrl: APPLY_URL, ...opts };
+  const o = { applyUrl: APPLY_URL, signupEnabled: SIGNUP_PAGE_ENABLED, ...opts };
   const out = resolve(outDir);
   rmSync(out, { recursive: true, force: true });
   const write = (rel, data) => {
@@ -265,11 +355,12 @@ export function buildSite(outDir = join(here, 'dist'), opts = {}) {
   };
   write('index.html', renderRoot());
   for (const lang of LANGS)
-    for (const page of PAGES)
+    for (const page of [...PAGES, 'signup'])
       write(`${lang}${pagePath(lang, page).slice(3)}index.html`, renderPage(lang, page, o));
   mkdirSync(join(out, 'assets'), { recursive: true });
   copyFileSync(join(here, 'site.css'), join(out, 'assets', 'site.css'));
   // Self-hosted Heebo (SIL OFL 1.1, see site/fonts/OFL-Heebo.txt): consistent look, no third-party requests.
+  copyFileSync(join(here, 'signup.mjs'), join(out, 'assets', 'signup.mjs'));
   mkdirSync(join(out, 'assets', 'fonts'), { recursive: true });
   for (const f of [
     'heebo-hebrew-wght-normal.woff2',
