@@ -13,7 +13,7 @@ import { wireBracketStep, type BracketKeyEvent } from '../src/ui/wireKeyboard.js
 import { en } from '../src/i18n/messages.en.js';
 import { he } from '../src/i18n/messages.he.js';
 import {
-  candidateTargets,
+  candidateTargets as candidateTargetsAll,
   reduceWireKeyboard,
   stepWireSelection,
   wireListEntries,
@@ -41,7 +41,12 @@ const wire = (doc: ProjectDocument, a: PinRef, b: PinRef) => {
   if (!r.ok) throw new Error(r.error);
   return r.doc;
 };
-const keys = (c: { pin: PinRef }[]) => c.map((x) => `${x.pin.component}.${x.pin.terminal}`);
+// Pin-only view of the candidate list (junction / wire-point targets are covered in wire-keyboard-junction.test.ts).
+type PinCand = Omit<ReturnType<typeof candidateTargetsAll>[number], 'pin'> & { pin: PinRef };
+const candidateTargets = (...a: Parameters<typeof candidateTargetsAll>): PinCand[] =>
+  candidateTargetsAll(...a).filter((c): c is PinCand => c.pin !== undefined);
+const keys = (c: { pin?: PinRef }[]) =>
+  c.flatMap((x) => (x.pin ? [`${x.pin.component}.${x.pin.terminal}`] : []));
 const netlist = (doc: ProjectDocument) => JSON.stringify(connectivity(doc).nodes);
 
 describe('candidateTargets (keyboard wiring, pure logic)', () => {
