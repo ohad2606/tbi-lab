@@ -56,14 +56,25 @@ The pause file and the state file (count, retries, claim set, cut-off) decide wh
 be writable by the internet-facing intake. In the TBI-022 layout `<STORE_DIR>` is owned by the intake user, so a
 compromised intake could delete the pause file or rewrite the counter.
 
-- **Alpha requirement (deploy item, not done in this slice):** `TBI_SIGNUP_AUTO_STATE_DIR` points to an
-  admin-only directory (owned by the admin service user, mode 0700), **not** writable by the intake user. The
-  operator pauses with `touch <STATE_DIR>/auto-approve.paused` as root or as the admin service user.
-- Enforced at start and before every sweep: the directory must be a real directory (`lstat`; a symlink is
-  refused), owned by the admin service's uid, and not group- or world-writable. Otherwise auto-approve does not
-  start (`auto-approve not started (state dir unsafe: <reason>); manual only`, once) or the sweep stops
-  (`auto-approve state dir unsafe (<reason>); manual only`, once per distinct reason). Reasons:
-  `not_dir`, `owner`, `mode`, or an errno name. Manual approval is never affected.
+- **Alpha requirement (deploy item, not done in this slice):** `TBI_SIGNUP_AUTO_STATE_DIR` must be an
+  admin-only 0700 directory on Alpha (owned by the admin service user, mode 0700), **not** writable by the
+  intake user, under parents that are root- or admin-owned. The operator pauses with
+  `touch <STATE_DIR>/auto-approve.paused` as root or as the admin service user.
+- Enforced at start and before every sweep (slice 3 adds the ancestor rules):
+  1. the directory itself is a real directory (`lstat`; a symlink is refused: `not_dir`), owned by the admin
+     service's uid (`owner`), and not group- or world-writable (`mode`);
+  2. the configured path is its own `realpath`: no component is a symlink (`symlink`). A symlink in a parent
+     could be swapped by whoever can write the directory that holds it, so it is refused rather than resolved;
+  3. every parent up to `/` is owned by the admin service's uid or by root (`ancestor_owner`), and is not
+     group- or world-writable unless it has the sticky bit (`ancestor_mode`). A sticky 1777 directory such as
+     `/tmp` is accepted, because others cannot rename or remove entries they do not own there.
+  Any `lstat`/`realpath` error gives its errno name. Otherwise auto-approve does not start (`auto-approve not
+  started (state dir unsafe: <reason>); manual only`, once) or the sweep stops (`auto-approve state dir unsafe
+  (<reason>); manual only`, once per distinct reason). Manual approval is never affected. The check is by path
+  (check, then use); with the rules above only this uid or root can swap a component in between.
+- **Runbook:** an unsafe state dir at start needs a restart of the admin service after the fix. The timer is
+  never created in that case (fail closed), so fixing the directory alone does not turn auto-approve on. (An
+  unsafe dir found by a later sweep is re-checked every sweep and resumes by itself once fixed.)
 - Side effect, intended: with the default (`<STORE_DIR>`) and the Alpha layout where the store is owned by the
   intake user, auto-approve refuses to start until a separate state dir is configured.
 
@@ -103,11 +114,14 @@ added. This is tested.
 - **Cut-off (Q5, L2).** Only requests created after `TBI_SIGNUP_AUTO_SINCE` are taken. Unset, the first sweep
   writes the current time as `since` into the state file (one log line `auto-approve cut-off recorded`), so the
   existing backlog is **not** approved when the flag is first turned on; it stays for the owner. Deleting the state
-  file moves the cut-off to the next sweep's time (fail closed: fewer, never more, requests).
+  file moves the cut-off to the next sweep's time (fewer requests from the backlog).
+- **Deleting the state file resets today's count** (and clears the claim set): the cap is only as strong as the
+  integrity of the admin-only state dir. Only root or the admin service user can do it; the runbook must say so.
 - An unreadable or corrupt state file, or one whose `day` is **after** today (a clock stepped back across
-  midnight, L1: `future_day`), counts as cap reached (fail closed). Each sweep stops at the first read and logs
-  one line, so with sweeps every minute that is **one log line per minute** while it lasts (not once in total).
-  It is never reset automatically: the operator inspects it and fixes or removes it.
+  midnight, L1: `future_day`), counts as cap reached (fail closed). Each sweep stops at the first read. The log
+  line is written at most **once per hour per reason** (`AUTO_UNREADABLE_LOG_MS`; a new reason logs at once; a
+  clock stepped back logs again). It is never reset automatically: the operator inspects it and fixes or
+  removes it.
 - **Decision: no new "waitlist" status.** Over the cap a request stays `pending`. It is never lost, it shows in the
   owner's open list as today, and the next days' sweeps take the backlog oldest first. A new status would touch the
   store schema, the admin client, the UI and both translations for no behavioural gain. The open list could later
@@ -129,6 +143,8 @@ pause file in the store dir has no effect). Same semantics as BETA-G2's `free-ad
   distinct error code is logged once, as the errno name only.
 - Checked at the start of every sweep and again before **every** claim and retry, so `touch` stops the sweep
   within the current request and `rm` resumes it at the next tick. No restart is needed.
+- The pause check is outside the claim mutex, so one in-flight request may complete after `touch` (the one
+  whose check already passed); the next check stops the sweep.
 - Paused means manual mode, not "closed": signups are still stored and alerted, and the owner approves them by hand.
 - Transitions are logged (`auto-approve paused` / `resumed`).
 
@@ -171,20 +187,26 @@ cap and the kill switch are the controls that replace that human.
 `auto-approve on (daily cap N)`, `auto-approve off (config: <fixed reason>)`, `auto-approve processed N`,
 `auto-approve daily cap reached (N); the rest stay pending` (once per Israel day per process), `auto-approve
 paused` / `resumed`, `auto-approve pause check failed (<ERRNO>); treated as paused`, `auto-approve counter
-unreadable (<class>); treated as cap reached` (`<class>` includes `corrupt` and `future_day`; once per sweep, so
-once a minute while it lasts), `auto-approve waiting (owner principal not recorded; manual only)`, `auto-approve
+unreadable (<class>); treated as cap reached` (`<class>` includes `corrupt` and `future_day`; at most once an
+hour per class), `auto-approve could not mark a claimed request (<ERRNO>); claim released, slot stays used` (or
+`claim left for the next sweep`; once per errno name), `auto-approve waiting (owner principal not recorded; manual only)`, `auto-approve
 sweep failed (<class>)`, `auto-approve state dir unsafe (<reason>); manual only`, `auto-approve not started (state
 dir unsafe: <reason>); manual only`, `auto-approve cut-off recorded (only requests created from now on)`,
 `auto-approve retry limit reached (N today); the rest wait`.
 
 ### Failure modes that are safe (L5)
 
-- If `store.update`, `approve` or the state write throws after the claim, the record stays `pending` (with
-  `autoApprovedAt` set only if the failure came after that update; if `store.update` itself failed it is not set
-  and the claim entry stays in the claim set). It is never retried or re-claimed automatically, and the slot is spent. The owner approves
-  it by hand.
-- If the state file is unreadable, the sweep stops (cap reached) and logs once per sweep: one line a minute, not
-  one line in total.
+- If the state write of the claim throws, nothing else happens (the record is not touched).
+- If marking the record (`store.update` of `autoApprovedAt`) throws after the claim was persisted, approve has
+  not been called. The claim is released (removed from the claim set) but the **slot stays used**: the count
+  never goes down, so the cap still holds (a store that keeps failing wastes at most `dailyCap` slots a day). The
+  sweep stops (`mark_failed`) and logs once per errno name. The request is eligible again and may be claimed by a
+  later sweep with a new slot. If the release write fails too, `prune` drops the orphan at the next sweep: a claim
+  whose record is still `pending` and unmarked (re-read first) is an orphan, because outside the mutex a live
+  claim is always marked. The same covers a crash between the claim and the mark.
+- If `approve` throws after the mark, the record stays `pending` with `autoApprovedAt` set; it is never retried or
+  re-claimed automatically, and the slot is spent. The owner approves it by hand.
+- If the state file is unreadable, the sweep stops (cap reached) and logs at most once an hour per reason.
 
 ## 6. Tests (`runtime/admin/tests/signup-auto-approve.test.ts`, real temp store, fake account path and mail)
 
@@ -202,6 +224,12 @@ backoff with a fake clock; retries per sweep bounded (new claims still run); spo
 separate state dir (pause and state there, store-dir pause ignored); unsafe state dir (mode, symlink, missing,
 foreign owner) refused, and the wiring refusing to start; persisted default cut-off across a restart; configured
 cut-off; config parsing of the two new variables.
+Slice 3: group/world-writable ancestor refused, sticky ancestor accepted, sweep refuses then resumes once fixed;
+symlinked ancestor refused (`symlink`); foreign-owned ancestor refused and root-owned accepted (stat hook, so it
+runs as root and non-root; a real `chown` case runs only as root); wiring refuses to start on an unsafe ancestor;
+mark failure after the claim releases the claim, keeps the slot used, logs once per errno, and the cap still
+holds; an orphan claim is pruned and re-claimed; a marked claim is kept; the unreadable-counter line is limited to
+once an hour per reason (fake clock).
 
 ## 7. Not done in this slice
 
@@ -233,8 +261,9 @@ cut-off; config parsing of the two new variables.
 
 ### Known follow-ups from the slice-2 reviews (not blockers; before enabling anywhere)
 
-- Parent directories of the state dir are not checked: the deploy must make every parent root-owned and not
-  writable by the intake user (never put the state dir under the store dir).
-- Orphan claim entries (see L5) are never pruned; drop them in a catch or in `prune`.
-- Stop during startup can still run one sweep; the cut-off is written before the pause check.
-- Deleting the state file also resets today's count and clears the claim set: say so in the runbook.
+- Done in slice 3: parent directories are checked (section 2); orphan claims are released or pruned (L5); the
+  unreadable-counter line is rate-limited; the doc now says that deleting the state file resets today's count,
+  that one in-flight request may complete after `touch`, and that an unsafe dir at start needs a restart.
+- Open: stop during startup can still run one sweep; the cut-off is written before the pause check.
+- Open (out of scope here): no cross-process lock (one admin service process per store is assumed).
+- Deploy item: never put the state dir under the store dir; create it 0700, owned by the admin service user.
