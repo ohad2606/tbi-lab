@@ -1,4 +1,4 @@
-import { useRef } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 import { simLimitText, simLimitUi } from '../runtime/limits.js';
 import { LearnMore, sectionForFailure } from './Capabilities.js';
 import { PREVIEW_NAME } from '../deployment.js';
@@ -227,17 +227,11 @@ function focusRunSoon() {
   requestAnimationFrame(focusRun);
 }
 
-/** After Try again: focus the Stop control once the run is starting (Run and Stop are different
- *  elements); if it never comes (the start was blocked), settle on Run. Never leave focus on <body>. */
-function focusSimControlSoon() {
-  const until = Date.now() + 600;
-  const tick = () => {
-    const stop = document.querySelector<HTMLElement>('[data-testid="sim-stop"]');
-    if (stop) return stop.focus();
-    if (Date.now() < until) return void requestAnimationFrame(tick);
-    document.querySelector<HTMLElement>('[data-testid="sim-run"]')?.focus();
-  };
-  requestAnimationFrame(tick);
+/** Where focus should land once the restarted run has an outcome. */
+function retryOutcomeTarget(status: string, retryAgain: boolean): string {
+  if (status === 'running') return 'sim-stop';
+  if (status === 'failed' && retryAgain) return 'limit-retry';
+  return 'sim-run';
 }
 
 /** The refused-start limit of a failed run when it is a calm "try again later" (not a hard refusal). */
@@ -250,10 +244,10 @@ function softLimit(sim: ReturnType<typeof useAppState>['sim']) {
 /**
  * BETA-G2 s3: the host answered a start with "try again later" (paused, queue full, no slot in time,
  * unavailable, cooldown). One polite status region (always in the DOM so the text is announced when it
- * appears; a repeat of the same message is re-announced through an invisible counter suffix), calm
+ * appears; a repeat is the natural empty -> text change: store.run() clears it while starting), calm
  * info styling with the text carrying the meaning (never colour only), and a Try again button OUTSIDE
  * the region that restarts the same start. Nothing moves focus when it appears; when Try again
- * unmounts it, focus goes to Run. Hard refusals (minutes used up, ...) stay the role=alert error.
+ * unmounts it, focus follows the outcome (Stop, the new Try again, or Run). Hard refusals (minutes used up, ...) stay the role=alert error.
  */
 export function LimitNotice() {
   const { sim, locale } = useAppState();
@@ -261,14 +255,19 @@ export function LimitNotice() {
   const t = useT();
   const soft = softLimit(sim);
   const text = soft ? simLimitText(locale, soft.limit) : null;
-  // Same message twice in a row: toggling a zero-width mark makes the region change again.
-  const seq = useRef(0);
-  const last = useRef<{ f: unknown; text: string | null }>({ f: null, text: null });
-  const failure = sim.status === 'failed' ? sim.failure : null;
-  if (failure !== last.current.f) {
-    if (failure && text && text === last.current.text) seq.current += 1;
-    last.current = { f: failure, text };
-  }
+  // A restart in flight: ignores further clicks; focus is settled once the outcome is known.
+  const pending = useRef(false);
+  useEffect(() => {
+    if (!pending.current || sim.status === 'starting') return;
+    pending.current = false;
+    const target = retryOutcomeTarget(sim.status, !!soft?.ui.retry);
+    requestAnimationFrame(() => {
+      // Only act when focus was lost (on <body> or on the removed button); never steal it.
+      const a = document.activeElement;
+      if (a && a !== document.body && a.isConnected) return;
+      document.querySelector<HTMLElement>(`[data-testid="${target}"]`)?.focus();
+    });
+  }, [sim]);
   return (
     <div
       class={soft ? 'banner banner-info limit-notice' : 'limit-notice-idle'}
@@ -277,7 +276,6 @@ export function LimitNotice() {
     >
       <div role="status" aria-label={t('sim.limit.region_label')} data-testid="limit-status">
         {text}
-        {text && seq.current % 2 === 1 ? '\u200b' : ''}
       </div>
       {soft?.ui.retry && (
         <button
@@ -285,8 +283,11 @@ export function LimitNotice() {
           class="button"
           data-testid="limit-retry"
           onClick={() => {
+            if (pending.current) return; // a start is already in flight
+            pending.current = true;
             store.run();
-            focusSimControlSoon();
+            // Blocked before starting (a notice instead): nothing will change, keep focus here.
+            if (store.state.sim.status !== 'starting') pending.current = false;
           }}
         >
           {t('sim.limit.retry')}

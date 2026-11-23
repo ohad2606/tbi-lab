@@ -106,6 +106,63 @@ for (const locale of ['en', 'he'] as const) {
   });
 }
 
+test('fail-again: focus lands on the new Try again, and the repeat is announced as a new message', async ({
+  page,
+  request,
+}) => {
+  await open(page, 'en');
+  await request.post(`${FAKE}/__test/queue?steps=free_paused,free_paused`);
+  await page.getByTestId('sim-run').click();
+  const region = page.getByTestId('limit-status');
+  await expect(region).toContainText(TEXT.en.paused, { timeout: 10_000 });
+  // Record every text the region takes: an identical repeat must pass through empty.
+  await page.evaluate(() => {
+    const w = window as any;
+    w.__texts = [];
+    new MutationObserver(() =>
+      w.__texts.push(document.querySelector('[data-testid="limit-status"]')!.textContent),
+    ).observe(document.querySelector('[data-testid="limit-status"]')!, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+  });
+  await page.getByTestId('limit-retry').focus();
+  await page.keyboard.press('Enter');
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__texts.join('|')), { timeout: 10_000 })
+    .toMatch(/^\|?.*paused/);
+  await expect(page.getByTestId('limit-retry')).toBeFocused({ timeout: 10_000 });
+  const texts: string[] = await page.evaluate(() => (window as any).__texts);
+  expect(texts.some((x) => x === '')).toBe(true);
+  expect(texts.at(-1)).toContain(TEXT.en.paused);
+  expect(await page.getByTestId('limit-status').textContent()).not.toContain('\u200b');
+});
+
+test('a double activation of Try again starts once', async ({ page, request }) => {
+  await open(page, 'en');
+  await request.post(`${FAKE}/__test/queue?steps=free_paused,free_paused,free_paused`);
+  await page.getByTestId('sim-run').click();
+  await expect(page.getByTestId('limit-status')).toContainText(TEXT.en.paused, {
+    timeout: 10_000,
+  });
+  // Two clicks in one task, before the UI can re-render: the second must be ignored.
+  await page.getByTestId('limit-retry').evaluate((el: HTMLElement) => {
+    el.focus();
+    el.click();
+    el.click();
+  });
+  await expect(page.getByTestId('limit-retry')).toBeFocused({ timeout: 10_000 });
+  await expect(page.getByTestId('limit-status')).toContainText(TEXT.en.paused);
+  // One step is still scripted for a third start: it would be consumed only by a second start.
+  await page.getByTestId('limit-retry').click();
+  await expect(page.getByTestId('limit-status')).toContainText(TEXT.en.paused, {
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId('limit-retry')).toBeFocused({ timeout: 10_000 });
+  await expect(page.getByTestId('sim-status')).not.toHaveAttribute('data-status', 'running');
+});
+
 test('the limit notice wraps at 320 CSS px', async ({ page, request }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await open(page, 'he');
