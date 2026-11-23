@@ -219,6 +219,7 @@ export function createHealthServer(host: SessionHost): Server {
   return createServer((req, res) => {
     const path = new URL(req.url ?? '/', 'http://host.invalid').pathname;
     // Sprint 23C: plus the live-session capacity, counts only, for the admin service's owner view.
+    // TBI-018 s3d-6: with metering enabled, plus `waiting` and `metered` (counts only).
     if (req.method === 'GET' && path === '/health')
       return send(res, 200, { ...healthBody(host), capacity: host.capacity() });
     send(res, 404, { error: 'not found' });
