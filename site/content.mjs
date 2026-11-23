@@ -317,6 +317,11 @@ const en = {
             'Fill in the sign-up form with the button below. It is hosted on Google Forms, outside this site.',
             'Applying does not give access. Approved applicants are notified by email.',
           ],
+          /** Used instead of pOpen when the own sign-up page is enabled (SIGNUP_PAGE_ENABLED). */
+          pOpenOwn: [
+            'Fill in the sign-up form on this site with the button below.',
+            'Applying does not give access. Approved applicants are notified by email.',
+          ],
         },
         {
           id: 'tester-sign-in',
@@ -383,6 +388,13 @@ const en = {
           h: 'Signing up for the Alpha',
           p: [
             'To apply you fill in a form hosted on Google Forms. TBI collects the details in the form to review your request, give you access to the Alpha and update you about it. The form is run by Google and is also subject to Google’s own terms.',
+            'We will not sell your details or pass them on to others.',
+          ],
+          /** Used instead of p when the own sign-up page is enabled (SIGNUP_PAGE_ENABLED). Draft, lawyer review required. */
+          pOwn: [
+            'To apply, you fill in the sign-up form on this website. We collect your name, email address, role, the language of the page, your answer to “How did you hear about us?”, and your confirmation that you have read this notice. The details are stored on our own server. We use them only to review your request and to send you the email about it.',
+            'The sign-up form does not use cookies, analytics or advertising trackers, and loads no third-party scripts. Your browser sends the form directly to us. To limit abuse, we briefly use your network address to count requests. We keep that count in memory only and do not store it with your request.',
+            'We use two service providers to run the process. When a request arrives, we send ourselves a [[Telegram]] message with your name and role only. If we approve your request, we send you an email through [[Resend]]. Those providers handle the data they receive under their own terms.',
             'We will not sell your details or pass them on to others.',
           ],
         },
@@ -662,6 +674,11 @@ const he = {
             'ממלאים את טופס ההרשמה בכפתור שלמטה. הטופס מנוהל ב-Google Forms, מחוץ לאתר הזה.',
             'הגשת מועמדות אינה מקנה גישה. מי שיאושר יקבל הודעה במייל.',
           ],
+          /** Used instead of pOpen when the own sign-up page is enabled. */
+          pOpenOwn: [
+            'ממלאים את טופס ההרשמה באתר הזה בכפתור שלמטה.',
+            'הגשת מועמדות אינה מקנה גישה. מי שיאושר יקבל הודעה במייל.',
+          ],
         },
         {
           id: 'tester-sign-in',
@@ -724,6 +741,13 @@ const he = {
           h: 'הרשמה לאלפא',
           p: [
             'להגשת מועמדות ממלאים טופס שמנוהל ב-Google Forms. TBI אוספת את הפרטים בטופס כדי לבחון את הבקשה, לתת גישה לאלפא ולעדכן אותך לגביה. הטופס מופעל על ידי גוגל וכפוף גם לתנאים של גוגל.',
+            'לא נמכור את הפרטים ולא נעביר אותם לאחרים.',
+          ],
+          /** Used instead of p when the own sign-up page is enabled. Draft, lawyer review required. */
+          pOwn: [
+            'להגשת מועמדות ממלאים את טופס ההרשמה באתר הזה. אנחנו אוספים את השם, כתובת האימייל, התפקיד, שפת הדף, התשובה לשאלה "איך שמעת עלינו?" ואת האישור שקראתם את ההודעה הזאת. הפרטים נשמרים בשרת שלנו. אנחנו משתמשים בהם רק כדי לבחון את הבקשה ולשלוח לכם את המייל בעניינה.',
+            'בטופס ההרשמה אין עוגיות, אין כלי ניתוח או מעקב פרסומי, ואין סקריפטים של צד שלישי. הדפדפן שולח את הטופס ישירות אלינו. כדי להגביל ניצול לרעה אנחנו משתמשים לזמן קצר בכתובת הרשת שלכם כדי לספור בקשות. הספירה נשמרת בזיכרון בלבד ואינה נשמרת יחד עם הבקשה.',
+            'אנחנו נעזרים בשני נותני שירות להפעלת התהליך. כשמגיעה בקשה אנחנו שולחים לעצמנו הודעה ב-[[Telegram]] עם השם והתפקיד בלבד. אם נאשר את הבקשה, נשלח לכם מייל באמצעות [[Resend]]. נותני השירות האלה מטפלים במידע שהם מקבלים לפי התנאים שלהם.',
             'לא נמכור את הפרטים ולא נעביר אותם לאחרים.',
           ],
         },

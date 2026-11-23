@@ -237,11 +237,12 @@ ${pg.sections.map((s) => `<div class="wrap prose">${renderSection(s, 2, lang)}</
     body = `<div class="wrap prose">
 <h1>${esc(pg.h1)}</h1>
 ${page === 'privacy' ? `<p class="draft">${esc(t.interimNote)}</p>` : ''}
-${pg.sections.map((s) => renderSection(s, 2, lang)).join('\n')}
+${pg.sections.map((s) => renderSection(signupOn && s.pOwn ? { ...s, p: s.pOwn } : s, 2, lang)).join('\n')}
 </div>`;
   } else {
     const how = (s) => {
       if (s.id !== 'how-to-apply') return s;
+      if (signupOn) return { ...s, p: s.pOpenOwn };
       return { ...s, p: applyUrl ? s.pOpen : s.pPending };
     };
     body = `<div class="wrap prose">
@@ -386,6 +387,10 @@ export function buildSite(outDir = join(here, 'dist'), opts = {}) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const out = buildSite(process.argv[2]);
+  // SITE_SIGNUP_ENABLED=1 builds the flag-true variant (for e2e checks); unset keeps the content.mjs default.
+  const out = buildSite(
+    process.argv[2],
+    process.env.SITE_SIGNUP_ENABLED === '1' ? { signupEnabled: true } : {},
+  );
   console.log(`site built: ${out} (default language ${DEFAULT_LANG})`);
 }

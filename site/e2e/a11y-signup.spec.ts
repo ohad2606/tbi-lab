@@ -66,7 +66,9 @@ for (const { lang, dir } of LANGS) {
       await stub(page);
       await page.goto(`/${lang}/signup/`);
       await expect(page.locator('html')).toHaveAttribute('dir', dir);
-      await expect(page.locator('meta[name=robots]')).toHaveAttribute('content', 'noindex');
+      if (process.env.SITE_SIGNUP_ENABLED === '1')
+        await expect(page.locator('meta[name=robots]')).toHaveCount(0);
+      else await expect(page.locator('meta[name=robots]')).toHaveAttribute('content', 'noindex');
       await expect(page.locator('h1')).toHaveCount(1);
       await expect(page.locator('#signup-form')).toBeVisible();
       expect(await axe(page)).toEqual([]);
