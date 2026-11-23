@@ -407,6 +407,26 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
 4. **s3d-4 run lifecycle.** Beat timer, `remainingMs` stop, new end reasons, `ended` on every terminal
    path, adapter housekeeping, shutdown awaits `ended`. Acceptance: section 11 lifecycle, failure and
    billing cases green; exactly one `sim_close` per session.
+   *Implemented (2026-11-23):* `SessionHost.track` / `beat` / `settle` / `simHousekeeping` /
+   `awaitPendingEnds` (runtime/host/host.ts), `HostSession.terminate(reason, detail)`, protocol
+   `EndReason` `sim_minutes` / `sim_unavailable` (diagnostics rows added), config
+   `SimAdmissionConfig.beatMs` / `housekeepingMs` / `endWaitMs` (defaults `floor(leaseMs/3)`, 5000,
+   8000 < `TimeoutStopSec=20`; env flags still refused by `main.ts` until s3d-6). Tests
+   `runtime/host/tests/s3d4-lifecycle.test.ts`. Notes for review:
+   - meter stop codes `minutes_out` / `minutes_out_free` / `sim_daily` -> `sim_minutes` (detail = the
+     public limit); every other stop (`system_unavailable`, `lease_lost`, `invalid_state`, malformed or
+     throwing beat, unmetered answer) -> `sim_unavailable` (detail = `limit.system.unavailable`);
+   - `ended` goes through one promise per meter session id (`settle`); the session subscribes BEFORE
+     `prepare`, so a synchronous prepare failure is billed/closed too;
+   - 3b review (a): the per-principal `session_quota` is re-checked after the awaited `admit`; a
+     violation ends the run (`ended`) and answers 429 `session_quota`; (b) ticket bookkeeping moved
+     into the guarded block; (c) `applyDropped` typed over `Dropped[]`;
+   - ops review (2026-11-23): a heartbeat is raced against `max(1, leaseMs - beatMs)` (the previous
+     answered beat was at most `beatMs` earlier, so a hung adapter leaves a run unmetered for at most
+     one host lease); on timeout one line `sim_beat_fault {op:'timeout'}` and the run stops
+     `sim_unavailable`; a late answer is ignored. `HostSession.terminate`: the first request wins for
+     reason and detail together. `shutdown` calls `settle(..., 'host')` for metered sessions still
+     `creating`, so their `ended` is inside the bounded wait.
 5. **s3d-5 app client.** `RuntimeClient` sends `Tbi-Queue: 1`, handles 202 polling / cancel / limit
    bodies, new end reasons; HE + EN keys of section 4 (including `sim.limit.queue_replaced`, 409 handling: stop polling, show the message); `role="status"` UI. Acceptance: unit + e2e against
    a stub host; a11y-reviewer no blocker; tbi-docs texts reviewed. Harmless against today's host.

@@ -1,3 +1,4 @@
+import { simLimitText } from '../runtime/limits.js';
 import { LearnMore, sectionForFailure } from './Capabilities.js';
 import { PREVIEW_NAME } from '../deployment.js';
 import { isolateLtr } from '../i18n/i18n.js';
@@ -34,6 +35,7 @@ export function NoticeBar() {
           <span>{t('deployment.previewNote')}</span>
         </div>
       )}
+      <QueueStatus />
       {sim.status === 'failed' && (
         <div
           class="banner banner-error"
@@ -209,6 +211,52 @@ function EngineErrorText({ parts }: { parts: ReturnType<typeof engineErrorParts>
       <span>{parts.body}</span>
       {parts.hint && <span class="banner-hint">{parts.hint}</span>}
     </span>
+  );
+}
+
+/**
+ * TBI-018 s3d-5: the run waits in the host's fair queue. One polite status region (always in the
+ * DOM, so a change is announced; the text changes only when the place changes, never on a poll) and
+ * one Cancel button OUTSIDE the region. Nothing here moves focus; when Cancel removes itself, focus
+ * goes to the Run control (never to <body>). Against a host without metering this renders nothing.
+ */
+export function QueueStatus() {
+  const { sim, locale } = useAppState();
+  const store = useStore();
+  const t = useT();
+  const position = sim.status === 'starting' ? sim.runtime?.queue?.position : undefined;
+  const queued = position !== undefined;
+  const text = queued ? simLimitText(locale, { code: 'queue', params: { n: position } }) : null;
+  const cancel = () => {
+    store.stop();
+    // The button unmounts with the queue: keep focus on a control (the Run button).
+    const until = Date.now() + 1000;
+    const focusRun = () => {
+      const run = document.querySelector<HTMLElement>('[data-testid="sim-run"]');
+      if (run) run.focus();
+      else if (Date.now() < until) requestAnimationFrame(focusRun);
+    };
+    requestAnimationFrame(focusRun);
+  };
+  return (
+    <div
+      class={queued ? 'banner banner-info queue-status' : 'queue-status-idle'}
+      data-testid="queue-banner"
+    >
+      <div
+        role="status"
+        aria-label={t('sim.queue.waiting_label')}
+        data-testid="queue-status"
+        data-position={queued ? String(position) : undefined}
+      >
+        {text}
+      </div>
+      {queued && (
+        <button type="button" class="button" data-testid="queue-cancel" onClick={cancel}>
+          {t('sim.queue.cancel')}
+        </button>
+      )}
+    </div>
   );
 }
 

@@ -60,6 +60,11 @@ export interface RuntimeView {
    * host associates it only with the same user's own session.
    */
   sessionId?: string;
+  /**
+   * TBI-018 s3d-5: while the host holds this Run in its fair queue (202), the place in it. Absent
+   * otherwise (and always against a host without metering).
+   */
+  queue?: { position: number };
 }
 
 export function emptyView(board: string, firmware: string): RuntimeView {
@@ -85,6 +90,11 @@ export type RuntimeFailCode =
   | 'session_create_failed'
   | 'runtime_busy'
   | 'session_quota'
+  /** TBI-018 s3d-5: a metered refusal; the failure carries the host's public `limit`. */
+  | 'sim_limit'
+  /** s3d-5: the meter stopped the run (host end reasons sim_minutes / sim_unavailable). */
+  | 'sim_minutes'
+  | 'sim_unavailable'
   | 'rate_limited'
   | 'firmware_unavailable'
   | 'unsupported_feature'

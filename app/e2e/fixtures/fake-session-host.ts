@@ -11,6 +11,11 @@
  *     POST /__test/drop-streams          close every connection (clients reconnect)
  *     POST /__test/end-all?reason=R      end every live session with R (e.g. lease_expired)
  *     POST /__test/fail-next-create?status=N   answer the next create with HTTP N
+ *     POST /__test/queue?steps=3,2,replaced   TBI-018 s3d-5: script the next creates of a queue-capable
+ *                                     client: a number = 202 with that place, `replaced` = 409
+ *                                     queue_replaced, `timeout` = 429 queue_timeout; once the script is
+ *                                     used up, creates start as usual. Empty/absent steps: queue off
+ *     GET  /__test/queue-state           { polls, cancels, ticketHeaders } of the queue script
  *     POST /__test/capacity?n=N          event-log capacity for new sessions
  *     POST /__test/pause?ms=N            stop emitting for N ms (events pile up server-side)
  *     GET  /__test/sessions              live/terminal counts
@@ -98,6 +103,10 @@ const SCRIPT: Record<string, 'gpio-proof' | 'blink' | 'banks' | 'logic-quad' | '
 
 let capacity = 4096;
 let failNextCreate: number | null = null;
+// TBI-018 s3d-5: scripted queue answers (see /__test/queue); off by default = today's host.
+let queueSteps: string[] = [];
+let queueOn = false;
+const queueState = { polls: 0, cancels: 0, ticketHeaders: [] as string[] };
 let pausedUntil = 0;
 /** Alpha (Phase D): the maximum lifetime of new sessions (ms), like the real host; null: none. */
 let lifetimeMs: number | null = null;
@@ -383,8 +392,54 @@ const host = {
   },
   // TBI-018 s3d-2: `POST /sessions` awaits `admitCreate`. Like the real host without an enabled
   // sim adapter (the e2e configuration has none), it is exactly `create`.
-  async admitCreate(body: unknown, principal: Principal) {
-    return this.create(body, principal);
+  get queueEnabled() {
+    return queueOn;
+  },
+  async admitCreate(
+    body: unknown,
+    principal: Principal,
+    _tag?: unknown,
+    opts: { queueCapable?: boolean; ticket?: string | null } = {},
+  ) {
+    const step = queueOn && opts.queueCapable ? queueSteps.shift() : undefined;
+    if (step === undefined) return this.create(body, principal);
+    queueState.polls++;
+    queueState.ticketHeaders.push(opts.ticket ?? '');
+    const limit = (code: string, params = {}) => ({
+      code,
+      messageKey: `limit.sim.${code}`,
+      params,
+    });
+    if (step === 'replaced')
+      return {
+        ok: false,
+        status: 409,
+        error: 'queue_replaced',
+        sim: { kind: 'limit', status: 409, limit: limit('queue_replaced') },
+      };
+    if (step === 'timeout')
+      return {
+        ok: false,
+        status: 429,
+        error: 'queue_timeout',
+        sim: { kind: 'limit', status: 429, limit: limit('queue_timeout') },
+      };
+    const position = Number(step);
+    return {
+      ok: false,
+      status: 202,
+      error: 'queued',
+      sim: {
+        kind: 'queued',
+        ticket: 'AAAAAAAAAAAAAAAAAAAAAA',
+        position,
+        pollAfterS: 1,
+        limit: limit('queue', { n: position }),
+      },
+    };
+  },
+  async cancelQueued() {
+    queueState.cancels++;
   },
   get(id: string, token: string | null, principal: Principal) {
     const s = sessions.get(id);
@@ -496,6 +551,17 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       for (const s of sessions.values())
         s.terminate(url.searchParams.get('reason') ?? 'terminated');
       return reply({ ok: true });
+    case '/__test/queue': {
+      const steps = (url.searchParams.get('steps') ?? '').split(',').filter(Boolean);
+      queueSteps = steps;
+      queueOn = steps.length > 0;
+      queueState.polls = 0;
+      queueState.cancels = 0;
+      queueState.ticketHeaders = [];
+      return reply({ ok: true });
+    }
+    case '/__test/queue-state':
+      return reply(queueState);
     case '/__test/fail-next-create':
       failNextCreate = Number(url.searchParams.get('status') ?? 500);
       return reply({ ok: true });

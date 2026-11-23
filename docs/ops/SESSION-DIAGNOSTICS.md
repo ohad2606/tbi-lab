@@ -64,6 +64,8 @@ swallowed. A throwing sink is tested to leave state, events and cleanup identica
 | `lifetime_exceeded` | ended | `timeout` | info | Harness `timeout`: the session's enforced lifetime (host, plan, client limit) expired; the harness killed the runtime (`signal: SIGKILL` is the host's own kill). |
 | `host_shutdown` | ended | `host_shutdown` | info | `SessionHost.shutdown()` (service stop/restart). |
 | `account_disabled` | ended | `client_release` | info | Sprint 23B: the access view no longer authorizes the session's account (`SessionHost.revokeUnauthorized`); see `docs/alpha/ADMIN-AND-FEEDBACK.md`. |
+| `sim_minutes` | ended | `timeout` | info | TBI-018 s3d-4: the sim meter's beat found the plan's sim minutes (month or day) used up; the run is billed up to that beat (`cap`). State event `detail` = the public limit. |
+| `sim_unavailable` | ended | `internal` | warning | TBI-018 s3d-4: the sim meter cannot bill (journal fault, lost meter lease, adapter fault): the run stops, fail closed (decision O-4). |
 | `unsupported_feature` | failed | `user_content` | info | Firmware features from the build ticket, a capability the runtime does not announce, or a peripheral routed to a circuit pad. The user's firmware, not a host fault. |
 | `invalid_attachment` | failed | `user_content` | info | A pad the board/simulator does not support, or the engine's `invalid_attachment`. |
 | `electrical_error` | failed | `user_content` | info | The engine found no valid operating point, or the circuit has parts the runtime does not simulate / an I2C address conflict. `code` is attached. |

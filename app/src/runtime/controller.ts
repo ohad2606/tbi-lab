@@ -27,6 +27,7 @@ import type {
   SimState,
   SimulationHost,
 } from '../sim/controller.js';
+import { isSimLimitCode } from './limits.js';
 import {
   RuntimeTransportError,
   type RuntimeClient,
@@ -156,6 +157,8 @@ export class McuSimulation implements SimulationHost {
   private mirrorsInFlight = new Set<string>();
   private pendingMirrors = new Map<string, { control: LiveControl; projectRevision: number }>();
   private stopRequested = false;
+  /** s3d-5: aborts a create that is waiting in the host's queue (Stop, new Run, unmount). */
+  private createAbort: AbortController | null = null;
   private stopTimer: ReturnType<typeof setTimeout> | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private startedAt = 0;
@@ -237,11 +240,29 @@ export class McuSimulation implements SimulationHost {
       ticket = leased;
     }
     let session: RuntimeSession;
+    const abort = new AbortController();
+    this.createAbort = abort;
     try {
-      session = await this.deps.client.create({ ...plan.request, ticket });
+      session = await this.deps.client.create(
+        { ...plan.request, ticket },
+        {
+          signal: abort.signal,
+          onQueue: (q) => {
+            if (runId !== this.runId || !this.view) return;
+            this.view.queue = { position: q.position };
+            this.publish();
+          },
+        },
+      );
     } catch (e) {
+      if (this.createAbort === abort) this.createAbort = null;
       if (runId === this.runId) this.fail(transportFailure(e));
       return;
+    }
+    if (this.createAbort === abort) this.createAbort = null;
+    if (this.view?.queue) {
+      delete this.view.queue;
+      this.publish();
     }
     if (runId !== this.runId) {
       // Stopped (or re-run) while the session was being created: release it at once.
@@ -345,7 +366,10 @@ export class McuSimulation implements SimulationHost {
       return;
     }
     if (!session) {
-      // Still creating: invalidate the run; a session created after this is terminated.
+      // Still creating (or waiting in the host's queue): invalidate the run, cancel the queue
+      // entry; a session created after this is terminated.
+      this.createAbort?.abort();
+      this.createAbort = null;
       this.runId++;
       this.set({ status: 'stopped' });
       return;
@@ -373,6 +397,8 @@ export class McuSimulation implements SimulationHost {
   // ---------------------------------------------------------------------------------------
 
   private release(): void {
+    this.createAbort?.abort();
+    this.createAbort = null;
     if (this.stopTimer) clearTimeout(this.stopTimer);
     this.stopTimer = null;
     if (this.expiryTimer) clearTimeout(this.expiryTimer);
@@ -463,6 +489,8 @@ export class McuSimulation implements SimulationHost {
         v.sessionState = e.state;
         if (e.state === 'ended') {
           if (this.stopRequested) return this.finishStopped();
+          const metered = meterStop(e.reason, e.detail);
+          if (metered) return this.fail(metered);
           const code =
             e.reason === 'lifetime_exceeded'
               ? 'session_expired'
@@ -589,8 +617,34 @@ function commandFailure(e: unknown): SimFailure {
   return transportFailure(e);
 }
 
+/**
+ * TBI-018 s3d-5: the meter stopped the run (host end reasons `sim_minutes` / `sim_unavailable`).
+ * `detail` is the host's public limit; an unknown shape still gives the generic message.
+ */
+function meterStop(reason: unknown, detail: unknown): SimFailure | null {
+  if (reason !== 'sim_minutes' && reason !== 'sim_unavailable') return null;
+  const d = detail as { code?: unknown; params?: unknown } | null;
+  const limit =
+    d && isSimLimitCode(d.code)
+      ? { code: d.code as string, params: limitParams(d.params) }
+      : undefined;
+  return { kind: 'runtime', code: reason, detail: reason, ...(limit ? { limit } : {}) };
+}
+
+function limitParams(p: unknown): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  if (typeof p === 'object' && p !== null)
+    for (const [k, v] of Object.entries(p))
+      if (typeof v === 'string' || typeof v === 'number') out[k] = v;
+  return out;
+}
+
 function transportFailure(e: unknown): SimFailure {
   if (e instanceof RuntimeTransportError) {
+    if (e.code === 'limit' && e.limit && isSimLimitCode(e.limit.code))
+      return { kind: 'runtime', code: 'sim_limit', detail: e.limit.code, limit: e.limit };
+    if (e.code === 'cancelled')
+      return { kind: 'runtime', code: 'session_create_failed', detail: 'cancelled' };
     if (e.code === 'busy' || e.code === 'shutting_down')
       return { kind: 'runtime', code: 'runtime_busy' };
     if (e.code === 'session_quota') return { kind: 'runtime', code: 'session_quota' };

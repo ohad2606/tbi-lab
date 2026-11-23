@@ -32,6 +32,8 @@ export type TransportErrorCode =
   | 'refused' // 400/415/413: the host refused the request (protocol/validation)
   | 'not_found' // 404: unknown session (ended and forgotten, or never existed)
   | 'conflict' // 409 on run: the session is not in a runnable state
+  | 'limit' // TBI-018 s3d-5: a metered refusal with a public limit body (`error.limit`)
+  | 'cancelled' // the caller aborted create (Stop / unmount); the queue ticket is cancelled
   | 'protocol'; // malformed response or event stream
 
 export class RuntimeTransportError extends Error {
@@ -39,10 +41,49 @@ export class RuntimeTransportError extends Error {
     readonly code: TransportErrorCode,
     readonly status?: number,
     detail?: string,
+    /** TBI-018 s3d-5: the host's public limit (code + params), never server text. */
+    readonly limit?: PublicLimit,
   ) {
     super(`${code}${status ? ` (${status})` : ''}${detail ? `: ${detail}` : ''}`);
     this.name = 'RuntimeTransportError';
   }
+}
+
+/** The host's `limit` body (runtime/host/simAdmission.ts PublicLimit); the app renders its own text. */
+export interface PublicLimit {
+  code: string;
+  params: Record<string, string | number>;
+}
+
+/** Where a waiting create stands (design section 4); `null` = no longer queued. */
+export interface QueueInfo {
+  position: number;
+  pollAfterS: number;
+}
+
+export interface CreateOptions {
+  /** Abort = Stop / unmount: polling stops, the queue entry is cancelled (best effort). */
+  signal?: AbortSignal;
+  /** Called when the queue position is first known or changes; never on an unchanged poll. */
+  onQueue?: (q: QueueInfo) => void;
+}
+
+/** Poll interval bounds (ms) around the host's `pollAfterS` (default 15 s). */
+const POLL_DEFAULT_S = 15;
+const POLL_MIN_MS = 1000;
+const POLL_MAX_MS = 60_000;
+
+const record = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+
+/** A well-formed `limit` body, or undefined (anything else is not a limit). */
+export function parseLimit(body: unknown): PublicLimit | undefined {
+  const l = record(body) ? body.limit : undefined;
+  if (!record(l) || typeof l.code !== 'string') return undefined;
+  const params: Record<string, string | number> = {};
+  if (record(l.params))
+    for (const [k, v] of Object.entries(l.params))
+      if (typeof v === 'string' || typeof v === 'number') params[k] = v;
+  return { code: l.code, params };
 }
 
 export interface SessionStatusBody {
@@ -119,6 +160,7 @@ export class RuntimeClient {
     token?: string,
     body?: unknown,
     keepalive = false,
+    extra: { headers?: Record<string, string>; signal?: AbortSignal } = {},
   ): Promise<{ status: number; body: unknown }> {
     let res: Response;
     try {
@@ -127,13 +169,16 @@ export class RuntimeClient {
         headers: {
           ...(token ? { authorization: `Bearer ${token}` } : {}),
           ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+          ...extra.headers,
         },
+        ...(extra.signal ? { signal: extra.signal } : {}),
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
         ...(keepalive ? { keepalive: true } : {}),
         cache: 'no-store',
         credentials: 'same-origin',
       });
     } catch (e) {
+      if ((e as Error).name === 'AbortError') throw new RuntimeTransportError('cancelled');
       throw new RuntimeTransportError('unreachable', undefined, (e as Error).message);
     }
     let parsed: unknown = null;
@@ -146,28 +191,101 @@ export class RuntimeClient {
     return { status: res.status, body: parsed };
   }
 
-  /** Create a session from an execution snapshot. */
-  async create(req: CreateSessionRequest): Promise<RuntimeSession> {
-    const r = await this.request('POST', '/sessions', undefined, req);
-    if (r.status !== 201) {
-      const error = (r.body as { error?: string } | null)?.error;
-      const code: TransportErrorCode =
-        error === 'session_quota'
-          ? 'session_quota'
-          : error === 'rate_limited'
-            ? 'rate_limited'
-            : error === 'runtime_capacity' ||
-                error === 'memory_pressure' ||
-                error === 'storage_pressure'
-              ? 'busy'
-              : statusCode(r.status);
-      throw new RuntimeTransportError(code, r.status, error);
+  /**
+   * Create a session from an execution snapshot.
+   *
+   * TBI-018 s3d-5: sends `Tbi-Queue: 1` (the client understands 202). A host without metering
+   * ignores it and answers 201 or an error as before. On 202 the same request is repeated every
+   * `pollAfterS` with `Tbi-Queue-Ticket` until 201 or a refusal; abort stops the polling timer and
+   * cancels the entry (`DELETE /sessions/queue`). A 409/429/503 with a limit body becomes a
+   * `limit` error carrying the public limit (409 `queue_replaced` included: polling stops).
+   */
+  async create(req: CreateSessionRequest, opts: CreateOptions = {}): Promise<RuntimeSession> {
+    const { signal } = opts;
+    let ticket: string | undefined;
+    let last = -1;
+    const cancel = () => {
+      if (ticket) void this.cancelQueue(ticket);
+    };
+    for (;;) {
+      if (signal?.aborted) {
+        cancel();
+        throw new RuntimeTransportError('cancelled');
+      }
+      let r: { status: number; body: unknown };
+      try {
+        r = await this.request('POST', '/sessions', undefined, req, false, {
+          headers: { 'tbi-queue': '1', ...(ticket ? { 'tbi-queue-ticket': ticket } : {}) },
+          ...(signal ? { signal } : {}),
+        });
+      } catch (e) {
+        if (e instanceof RuntimeTransportError && e.code === 'cancelled') cancel();
+        throw e;
+      }
+      if (r.status === 202) {
+        const q = record(r.body) && record(r.body.queued) ? r.body.queued : null;
+        const position = q?.position;
+        if (!q || !Number.isInteger(position) || (position as number) < 1)
+          throw new RuntimeTransportError('protocol', 202, 'queue ticket');
+        if (typeof q.ticket === 'string' && q.ticket) ticket = q.ticket;
+        else if (!ticket) throw new RuntimeTransportError('protocol', 202, 'queue ticket');
+        const pollS =
+          typeof q.pollAfterS === 'number' && q.pollAfterS > 0 ? q.pollAfterS : POLL_DEFAULT_S;
+        if (position !== last) {
+          last = position as number;
+          opts.onQueue?.({ position: last, pollAfterS: pollS });
+        }
+        await sleep(Math.min(POLL_MAX_MS, Math.max(POLL_MIN_MS, pollS * 1000)), signal);
+        continue;
+      }
+      if (r.status !== 201) {
+        const error = (r.body as { error?: string } | null)?.error;
+        const limit =
+          r.status === 409 || r.status === 429 || r.status === 503 ? parseLimit(r.body) : undefined;
+        if (limit) throw new RuntimeTransportError('limit', r.status, limit.code, limit);
+        const code: TransportErrorCode =
+          error === 'session_quota'
+            ? 'session_quota'
+            : error === 'rate_limited'
+              ? 'rate_limited'
+              : error === 'runtime_capacity' ||
+                  error === 'memory_pressure' ||
+                  error === 'storage_pressure'
+                ? 'busy'
+                : statusCode(r.status);
+        throw new RuntimeTransportError(code, r.status, error);
+      }
+      const b = r.body as { sessionId?: unknown; token?: unknown; status?: unknown };
+      if (typeof b?.sessionId !== 'string' || typeof b.token !== 'string' || !b.status)
+        throw new RuntimeTransportError('protocol', r.status, 'create response');
+      return new RuntimeSession(this, b.sessionId, b.token, b.status as SessionStatusBody);
     }
-    const b = r.body as { sessionId?: unknown; token?: unknown; status?: unknown };
-    if (typeof b?.sessionId !== 'string' || typeof b.token !== 'string' || !b.status)
-      throw new RuntimeTransportError('protocol', r.status, 'create response');
-    return new RuntimeSession(this, b.sessionId, b.token, b.status as SessionStatusBody);
   }
+
+  /** Best effort: the host answers 204 for every ticket; the vanish timeout covers a failure. */
+  private async cancelQueue(ticket: string): Promise<void> {
+    try {
+      await this.request('DELETE', '/sessions/queue', undefined, undefined, true, {
+        headers: { 'tbi-queue-ticket': ticket },
+      });
+    } catch {
+      // nothing to do
+    }
+  }
+}
+
+/** A timer that an abort clears at once (no timer outlives a stopped or unmounted run). */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const done = () => {
+      clearTimeout(t);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const t = setTimeout(done, ms);
+    signal?.addEventListener('abort', done, { once: true });
+  });
 }
 
 export class RuntimeSession {

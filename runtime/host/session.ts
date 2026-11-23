@@ -226,6 +226,8 @@ export class HostSession {
   private quitRequested = false;
   private pendingFailure: { reason: FailReason; detail?: unknown } | null = null;
   private endRequest: EndReason | null = null;
+  /** TBI-018 s3d-4: `detail` of the terminal state event of a host-requested end (a sim limit), or undefined */
+  private endDetail: unknown = undefined;
   private inputLevels = new Map<number, DigitalLevel>();
   /** Sprint 25 closure: whether the firmware may read `pad` (Runtime v5 input-read watch). */
   private readonly watchedPad = (pad: number): boolean =>
@@ -385,7 +387,7 @@ export class HostSession {
     this.sm.to('ended', reason);
     this.endedAt = new Date();
     this.discardFiles();
-    this.emitState();
+    this.emitState(this.endDetail);
     this.diagnoseEnd();
   }
 
@@ -581,19 +583,23 @@ export class HostSession {
     this.quitRequested = true;
   }
 
-  /** Immediate termination for any reason; resources are released before it reports ended. */
-  terminate(reason: EndReason): Promise<void> {
+  /**
+   * Immediate termination for any reason; resources are released before it reports ended. `detail`
+   * (TBI-018 s3d-4: the public sim limit) goes on the terminal state event. The first request wins
+   * for reason AND detail together, so they never disagree (s3d-4 ops review LOW-2).
+   */
+  terminate(reason: EndReason, detail?: unknown): Promise<void> {
     const s = this.sm.state;
     if (isTerminal(s)) return Promise.resolve();
-    if (s === 'creating') {
+    if (this.endRequest === null) {
       this.endRequest = reason;
-      return Promise.resolve();
+      this.endDetail = detail;
     }
+    if (s === 'creating') return Promise.resolve();
     if (s === 'ready') {
-      this.end(reason);
+      this.end(this.endRequest ?? reason);
       return Promise.resolve();
     }
-    this.endRequest = reason;
     if (s === 'running') {
       this.sm.to('stopping');
       this.emitState();

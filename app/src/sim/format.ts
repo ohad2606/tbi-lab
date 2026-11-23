@@ -17,6 +17,7 @@ import {
   type MessageKey,
 } from '../i18n/i18n.js';
 import type { SimFailure } from './controller.js';
+import { simLimitText } from '../runtime/limits.js';
 
 /** Below this magnitude a solved value is displayed as 0 (display resolution, not physics). */
 const DISPLAY_FLOOR = 1e-12;
@@ -149,7 +150,10 @@ export function simFailureMessage(
       features: (failure.features ?? []).map((f) => featureName(locale, f)).join(', '),
     });
   }
-  if (failure.kind === 'runtime') return t(`sim.error.runtime.${failure.code}`);
+  if (failure.kind === 'runtime') {
+    const limit = failure.limit ? simLimitText(locale, failure.limit) : null;
+    return limit ?? t(`sim.error.runtime.${failure.code}`);
+  }
   if (failure.kind === 'unmodelled')
     return t('sim.error.unmodelled', { feature: featureName(locale, failure.facility) });
   if (failure.kind === 'pwm') {
