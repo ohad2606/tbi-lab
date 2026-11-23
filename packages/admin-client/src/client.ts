@@ -515,6 +515,10 @@ export interface SignupRecord {
   emailSendAfter: string | null;
   /** When the automatic approver approved this request (BETA-G1); null when a person did or it is undecided. */
   autoApprovedAt: string | null;
+  /** BETA-G1: how the person heard about us (free text, <= 80 chars, shown as plain text only); null when absent. */
+  heardFrom: string | null;
+  /** BETA-G1: 'web' when the request came from the public web form; null otherwise. */
+  origin: 'web' | null;
   createdAt: string;
 }
 
@@ -560,6 +564,13 @@ function signupRecord(v: unknown): SignupRecord | null {
     emailSendAfter: typeof v.emailSendAfter === 'string' ? v.emailSendAfter : null,
     autoApprovedAt:
       typeof v.autoApprovedAt === 'string' && v.autoApprovedAt !== '' ? v.autoApprovedAt : null,
+    heardFrom:
+      typeof v.heardFrom === 'string' &&
+      v.heardFrom.trim() !== '' &&
+      v.heardFrom.trim().length <= 80
+        ? v.heardFrom.trim()
+        : null,
+    origin: v.origin === 'web' ? 'web' : null,
     createdAt: str(v.createdAt),
   };
 }

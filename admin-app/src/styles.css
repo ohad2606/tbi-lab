@@ -524,6 +524,12 @@ fieldset {
   border-color: var(--danger);
   border-width: 2px;
 }
+.badge-unknown {
+  color: var(--text);
+  border-color: var(--muted);
+  border-style: dashed;
+  border-width: 2px;
+}
 .badge-new {
   background: var(--accent);
   border-color: var(--accent);

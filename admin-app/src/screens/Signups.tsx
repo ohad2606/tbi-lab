@@ -13,9 +13,11 @@ import { api, useConsole, useT } from '../context.js';
 import type { MessageKey } from '../i18n.js';
 import {
   autoApproveView,
+  autoStateClass,
   focusAfterRemoval,
   isAutoApproved,
   signupCountKey,
+  signupSource,
   signupOutcomeView,
   signupRowKind,
   type SignupRowKind,
@@ -86,8 +88,7 @@ function AutoApproveBlock({ status }: { status: Loaded<AutoApproveStatus> | null
         </p>
       );
     else {
-      const cls =
-        v.state === 'running' ? 'badge-auto' : v.state === 'paused' ? 'badge-pending' : 'badge-off';
+      const cls = autoStateClass(v.state);
       body = (
         <>
           <p data-testid="auto-today">
@@ -307,6 +308,7 @@ export function Signups() {
               const msg = messages[r.id];
               const kind = signupRowKind(r);
               const name = isolate(r.name);
+              const src = signupSource(r);
               const langKey = `console.signups.lang.${r.lang}` as MessageKey;
               return (
                 <li
@@ -324,6 +326,11 @@ export function Signups() {
                     <span class="badge" data-testid="signup-status">
                       {t(working ? 'console.signups.status.working' : STATUS_KEY[kind])}
                     </span>
+                    {src.web && (
+                      <span class="badge" data-testid="signup-origin-web">
+                        {t('console.signups.origin.web')}
+                      </span>
+                    )}
                     {isAutoApproved(r) && (
                       <span class="badge badge-auto" data-testid="signup-auto-approved">
                         {t('console.signups.autoApproved')}
@@ -341,6 +348,11 @@ export function Signups() {
                     {t('console.signups.language')}:{' '}
                     {t(r.lang === 'he' || r.lang === 'en' ? langKey : 'console.signups.lang.other')}
                   </div>
+                  {src.heardFrom && (
+                    <div class="small" data-testid="signup-heard-from">
+                      {t('console.signups.heardFrom')}: <bdi dir="auto">{src.heardFrom}</bdi>
+                    </div>
+                  )}
                   <div class="muted small">
                     {t('console.signups.requested', { time: date(r.createdAt) ?? '' })}
                   </div>
