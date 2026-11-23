@@ -261,12 +261,17 @@ export function LimitNotice() {
     if (!pending.current || sim.status === 'starting') return;
     pending.current = false;
     const target = retryOutcomeTarget(sim.status, !!soft?.ui.retry);
-    requestAnimationFrame(() => {
-      // Only act when focus was lost (on <body> or on the removed button); never steal it.
+    // Only act when focus was lost (on <body> or on the removed button); never steal it. Try now (the
+    // DOM is committed), then per frame for up to a second if the target is not rendered yet.
+    const until = Date.now() + 1000;
+    const settle = () => {
       const a = document.activeElement;
       if (a && a !== document.body && a.isConnected) return;
-      document.querySelector<HTMLElement>(`[data-testid="${target}"]`)?.focus();
-    });
+      const el = document.querySelector<HTMLElement>(`[data-testid="${target}"]`);
+      if (el) el.focus();
+      else if (Date.now() < until) requestAnimationFrame(settle);
+    };
+    settle();
   }, [sim]);
   return (
     <div

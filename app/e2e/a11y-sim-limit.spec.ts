@@ -90,7 +90,8 @@ for (const locale of ['en', 'he'] as const) {
       timeout: 20_000,
     });
     await expect(region).toHaveText('');
-    expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe('BODY');
+    // Focus follows the outcome to Stop (never left on <body>).
+    await expect(page.getByTestId('sim-stop')).toBeFocused();
     await page.getByTestId('sim-stop').click();
     await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', 'stopped', {
       timeout: 20_000,
