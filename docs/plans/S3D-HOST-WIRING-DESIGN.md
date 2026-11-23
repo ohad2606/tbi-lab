@@ -500,9 +500,9 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
 
      | Exit | Meaning |
      |---|---|
-     | 0 | flags set and valid: the host would boot metered |
-     | 1 | at least one problem (each one a host refusal with exit 78, except `state_dir_missing`), or an internal error |
-     | 78 | refused to validate (EX_CONFIG, = `HOST_SIM_REFUSED_EXIT`): no `TBI_HOST_SIM_*` flag set (the environment is not the unit's), or an argument given |
+     | 0 | the sim flags, config, state dir, lock and journal replay (replayed with metering off) are valid; host prerequisites outside the sim checks (`TBI_TICKET_KEY_FILE`, `TBI_HOST_PACE`) and the metered-boot sweep/recovery/compaction are NOT checked |
+     | 1 | at least one problem (each one a host refusal with exit 78, except `state_dir_missing`, `state_dir_not_writable`, `state_locked` (stricter than the host) and `policy_unusable` (the host exits 1 there, outside the sim boot, so a unit may restart-loop)), or an internal error |
+     | 78 | refused to validate (EX_CONFIG, = `HOST_SIM_REFUSED_EXIT`): no `TBI_HOST_SIM_*` flag set (the environment is not the unit's), or an argument given. NOTE: 78 here means "nothing to validate / bad usage", not "config bad" as for the host; wrappers must treat only exit 0 as go |
 
    *Not done:* shipping the bundle in `build-package.sh` / `install.sh` (owner decision pending, as for
    the repair CLI); reading the unit's drop-in directly (the operator passes the environment).
