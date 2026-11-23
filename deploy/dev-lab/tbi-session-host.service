@@ -24,6 +24,9 @@ SupplementaryGroups=tbi-artifacts
 ExecStart=/home/ubuntu/.nvm/versions/node/v24.21.0/bin/node /srv/tbi-lab/session-host/current/session-host.mjs
 Restart=on-failure
 RestartSec=2
+# Exit 78 = refused to start (TBI-018 sim metering config or journal, runtime/plans/hostflags.ts):
+# restarting cannot fix it; stay down for the operator, never a 2 s restart loop.
+RestartPreventExitStatus=78
 # SIGTERM: the host terminates every session and releases every QEMU and temp directory.
 KillSignal=SIGTERM
 TimeoutStopSec=20
