@@ -54,7 +54,8 @@ Order (each step answers before the next runs; nothing is metered before step 7)
 4. `checkResources` -> legacy 503 `storage_pressure` / `memory_pressure` (a starved host does not
    queue).
 5. Queue ticket resolution (section 4): known ticket of this principal = poll; anything else = a new
-   admission with a fresh server ticket.
+   admission with a fresh server ticket. A poll can end here with 409 `queue_replaced` (ticket dropped
+   with reason `replaced`) or the stored `queue_timeout`; the rate step 6 and `admit` do not run.
 6. Creation rate `rates.take(principal, 'session-create', ...)`: taken ONCE per new admission (step 5
    "new"), never on a poll. Deviation from today's "rate last" rule: a meter refusal after the rate was
    taken consumes one creation unit (decision O-6).
@@ -94,6 +95,7 @@ Body shape for every metered refusal mirrors assist (`runtime/assist/service.ts`
 | `queued` | 202 `{ queued: { ticket, position, pollAfterS }, limit: <limit.sim.queue, n> }` + `Retry-After` | 503 `runtime_capacity` + `Retry-After` (today's code; app shows `busy`); the legacy request never creates or changes a queue entry (see below) |
 | refused `minutes_out`, `minutes_out_free`, `sim_daily`, `sim_concurrent`, `sim_cooldown`, `queue_full`, `queue_timeout` (also `queue_vanished` shown as `queue_timeout`) | 429 + limit body; `sim_cooldown` also `Retry-After: n` | same 429 body; old app maps unknown 429 to `busy` (wrong reason, but no start; rollout gate R-2) |
 | refused `system_unavailable`, malformed, enabled-but-`unmetered` | 503 `limit.system.unavailable` | same 503; old app shows `shutting_down` |
+| `queue_replaced` (poll with a ticket dropped with reason `replaced`; answered at step 5, before the rate step) | 409 + limit body (`limit.sim.queue_replaced`); no queue change | not reachable: a legacy request carries no ticket (a legacy request with a waiting principal gets 503 `runtime_capacity`, see below) |
 | refused `invalid_principal` / `invalid_request` / `invalid_state` / `lease_lost` | 403 / 400 / 409 / 409 with `limit.system.unavailable` (status from `simRefusal`) | same |
 
 Legacy requests must not touch the queue (ops review M3): a request without `Tbi-Queue: 1` first peeks
@@ -131,7 +133,9 @@ Opt-in by request header, so an old browser tab never receives a 202 it would tr
   `queue.maxWaitMs`). Tickets: `randomBytes(16)` base64url, server-generated only.
   - Entries are created only after the creation-rate step (section 2 step 6) succeeded and only for a
     `queued` or `start` result; a refused admission or a rate refusal creates none.
-  - At most one `waiting` ticket per principal: a new one replaces the old (old becomes `dropped` with reason `replaced`; a poll with such a ticket gets 409 `queue_replaced` and never re-enqueues; new key `queue_replaced` is added to the s3d-5 message list).
+  - At most one `waiting` ticket per principal: a new one replaces the old. The old ticket becomes
+    `dropped` with reason `replaced`. A poll with such a ticket gets 409 `queue_replaced` and never
+    re-enqueues. The new key `queue_replaced` is added to the s3d-5 message list (below).
   - TTL per entry: `queue.maxWaitMs + queue.vanishMs`; a global cap on entries with oldest-first eviction
     (cap is a host config value; an evicted ticket behaves as unknown). Tests: a flood of ticketless
     requests from many principals and from one principal never grows the registry past the cap.
@@ -139,8 +143,10 @@ Opt-in by request header, so an old browser tab never receives a 202 it would tr
   - Re-sending a `started` ticket works only inside the `retainEndedMs` window and only for the same
     principal (O-5).
   - poll with a `waiting` ticket of this principal -> `admit` with that ticket;
-  - poll with a `dropped` ticket -> its error (`queue_timeout`), the entry is NOT recreated (otherwise
-    the max wait would restart on every poll);
+  - poll with a `dropped` ticket -> its error: `queue_timeout` (also `queue_vanished`, shown as
+    `queue_timeout`), except reason `replaced`, which answers 409 `queue_replaced`. The entry is NOT
+    recreated (otherwise the max wait would restart on every poll), and a `replaced` poll does not take
+    the entry back from the newer tab;
   - poll with a `started` ticket whose session is not terminal -> the same 201 again, with the same
     `sessionId` and token (idempotent answer for a lost response; decision O-5);
   - unknown ticket, foreign ticket, or no ticket -> a new admission with a fresh ticket (after a host
@@ -157,14 +163,18 @@ Opt-in by request header, so an old browser tab never receives a 202 it would tr
 
 Server keys that already exist in `runtime/plans/messages.ts` and are only rendered by the app:
 `limit.sim.queue` (`{n}`), `limit.sim.queue_timeout`, `limit.sim.queue_full`, `limit.sim.cooldown`
-(`{n}`), `limit.sim.concurrent`, `limit.sim.minutes_out` (`{date}`), `limit.sim.minutes_out_free`
+(`{n}`), `limit.sim.concurrent`, `limit.sim.queue_replaced` (NEW server key: must be added to
+`runtime/plans/messages.ts` and the public limit codes in s3d-3b), `limit.sim.minutes_out` (`{date}`), `limit.sim.minutes_out_free`
 (`{date}`), `limit.sim.daily`, `limit.system.unavailable`.
 
 App keys to add (proposed names, following `assist.limit.*` and `sim.error.runtime.*`):
 
-- `sim.limit.queue` / `sim.limit.queue_timeout` / `sim.limit.queue_full` / `sim.limit.cooldown` /
+- `sim.limit.queue` / `sim.limit.queue_timeout` / `sim.limit.queue_full` / `sim.limit.queue_replaced` / `sim.limit.cooldown` /
   `sim.limit.concurrent` / `sim.limit.minutes_out` / `sim.limit.minutes_out_free` / `sim.limit.daily` /
-  `sim.limit.system_unavailable` (app copies of the server keys above);
+  `sim.limit.system_unavailable` (app copies of the server keys above). Placeholder wording for
+  `queue_replaced`, for tbi-docs review: EN "Your place in the queue is now held by another tab. Close
+  this tab or return to the other one."; HE "המקום שלך בתור הועבר ללשונית אחרת. אפשר לסגור את הלשונית הזו
+  ולחזור ללשונית השנייה.";
 - `sim.limit.minutes_out.nodate`, `sim.limit.minutes_out_free.nodate` (fallback when `{date}` is
   missing, as `assist.limit.ai.credits_out.nodate`);
 - `sim.queue.cancel` (button), `sim.queue.waiting_label` (accessible name of the status region);
@@ -271,8 +281,8 @@ at `start` for the whole run (adapter rule).
 
 | Case | Behaviour |
 |---|---|
-| Double click / two tabs, same principal, both new | host `session_quota` check sees neither (both await admit); the adapter mutex serialises; queue holds one entry per principal; the second start is refused `sim_concurrent` by `SimMeter.open` |
-| Two tabs both waiting | the newer ticket takes over the principal's single entry (`FairQueue.enqueueFresh`), keeping its place, and the older ticket is `dropped` in the registry; the older tab's next poll answers 409 `queue_replaced` (dropped reason `replaced`: it is waiting in another tab; no new admission, the entry is NOT taken back, so two tabs never swap it); at most one start, a second concurrent create is `sim_concurrent` / `session_quota` |
+| Double click / two tabs, same principal, both new | host `session_quota` check sees neither (both await admit); the adapter mutex serialises; queue holds one entry per principal; the second start is refused `sim_concurrent` by `SimMeter.open` (waiting tabs: next row) |
+| Two tabs both waiting | the newer ticket takes over the principal's single entry (`FairQueue.enqueueFresh`), keeping its place, and the older ticket is `dropped` in the registry; the older tab's next poll answers 409 `queue_replaced` (dropped reason `replaced`: it is waiting in another tab; no new admission, the entry is NOT taken back, so two tabs never swap it); at most one start. `queue_replaced` is only for a poll with a replaced ticket; a new create (no ticket) while a session is live or starting is still `session_quota` (host) / `sim_concurrent` (meter) |
 | Start answer lost, client polls again | `started` ticket -> same 201 (O-5); without it the orphan session ends by lease (bills at most one lease) |
 | Client gone while admit is pending | session terminated before answering (section 2 step 9) |
 | `ended` and a beat race | beat after `ended` answers `stop invalid_state` for a terminal session: ignored |
@@ -325,7 +335,7 @@ Unit (vitest, `runtime/plans/tests`, `runtime/host/tests`, FakeClock, MemoryStor
   intervals, unusable or torn journal) exits with a message that carries no file content or principal;
 - plan map parse; `closeAllOpen('host')` bills `min(now, lastBeat+lease)` and is idempotent;
 - answer table of section 3, row by row, for both client kinds (extends `sim-admission.test.ts`);
-- ticket registry state machine (waiting / started / dropped / unknown / foreign).
+- ticket registry state machine (waiting / started / dropped / dropped-`replaced` / unknown / foreign).
 
 Host integration (`fakeHost` from `runtime/host/tests/support.ts`, fake runtime, real `createHttpServer`):
 
@@ -333,6 +343,10 @@ Host integration (`fakeHost` from `runtime/host/tests/support.ts`, fake runtime,
 - capacity full -> 202 + position; slot freed -> poll starts; max wait (FakeClock) -> `queue_timeout`
   and no re-entry; vanished waiter dropped; cancel 204 for own, foreign and unknown tickets;
 - legacy client: 503 `runtime_capacity`, nothing left in the queue;
+- two tabs waiting (same principal): the newer tab's ticket takes the entry; the older tab's poll gets
+  409 `queue_replaced` (limit key `limit.sim.queue_replaced`), is not re-enqueued and does not take the
+  entry back (the newer tab's next poll still answers 202/201); `queue_replaced` is distinct from
+  `queue_timeout` (429, after max wait) and the rate unit is not taken on that poll;
 - minutes used up during a run: stop at the beat that saw 0, end reason `sim_minutes`, billed = run
   time up to that beat; `remainingMs` timer fires without client traffic;
 - lease expiry without client: billed at most `lastBeat + leaseMs`;
@@ -375,7 +389,7 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
    path, adapter housekeeping, shutdown awaits `ended`. Acceptance: section 11 lifecycle, failure and
    billing cases green; exactly one `sim_close` per session.
 5. **s3d-5 app client.** `RuntimeClient` sends `Tbi-Queue: 1`, handles 202 polling / cancel / limit
-   bodies, new end reasons; HE + EN keys of section 4; `role="status"` UI. Acceptance: unit + e2e against
+   bodies, new end reasons; HE + EN keys of section 4 (including `sim.limit.queue_replaced`, 409 handling: stop polling, show the message); `role="status"` UI. Acceptance: unit + e2e against
    a stub host; a11y-reviewer no blocker; tbi-docs texts reviewed. Harmless against today's host.
 6. **s3d-6 recovery and readiness.** `closeAllOpen('host')` at boot, torn-journal refusal, compaction
    at boot, optional cooldown seed (O-9), counts only in `/health` capacity (`waiting`, `metered`),
