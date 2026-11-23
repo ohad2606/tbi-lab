@@ -421,8 +421,12 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
    - 3b review (a): the per-principal `session_quota` is re-checked after the awaited `admit`; a
      violation ends the run (`ended`) and answers 429 `session_quota`; (b) ticket bookkeeping moved
      into the guarded block; (c) `applyDropped` typed over `Dropped[]`;
-   - a session still `creating` at shutdown ends after the bounded wait snapshot (its `ended` may
-     be left to the meter sweep / boot recovery).
+   - ops review (2026-11-23): a heartbeat is raced against `max(1, leaseMs - beatMs)` (the previous
+     answered beat was at most `beatMs` earlier, so a hung adapter leaves a run unmetered for at most
+     one host lease); on timeout one line `sim_beat_fault {op:'timeout'}` and the run stops
+     `sim_unavailable`; a late answer is ignored. `HostSession.terminate`: the first request wins for
+     reason and detail together. `shutdown` calls `settle(..., 'host')` for metered sessions still
+     `creating`, so their `ended` is inside the bounded wait.
 5. **s3d-5 app client.** `RuntimeClient` sends `Tbi-Queue: 1`, handles 202 polling / cancel / limit
    bodies, new end reasons; HE + EN keys of section 4 (including `sim.limit.queue_replaced`, 409 handling: stop polling, show the message); `role="status"` UI. Acceptance: unit + e2e against
    a stub host; a11y-reviewer no blocker; tbi-docs texts reviewed. Harmless against today's host.

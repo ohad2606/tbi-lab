@@ -585,21 +585,21 @@ export class HostSession {
 
   /**
    * Immediate termination for any reason; resources are released before it reports ended. `detail`
-   * (TBI-018 s3d-4: the public sim limit) goes on the terminal state event; the first request wins.
+   * (TBI-018 s3d-4: the public sim limit) goes on the terminal state event. The first request wins
+   * for reason AND detail together, so they never disagree (s3d-4 ops review LOW-2).
    */
   terminate(reason: EndReason, detail?: unknown): Promise<void> {
     const s = this.sm.state;
     if (isTerminal(s)) return Promise.resolve();
-    if (this.endRequest === null && detail !== undefined) this.endDetail = detail;
-    if (s === 'creating') {
+    if (this.endRequest === null) {
       this.endRequest = reason;
-      return Promise.resolve();
+      this.endDetail = detail;
     }
+    if (s === 'creating') return Promise.resolve();
     if (s === 'ready') {
-      this.end(reason);
+      this.end(this.endRequest ?? reason);
       return Promise.resolve();
     }
-    this.endRequest = reason;
     if (s === 'running') {
       this.sm.to('stopping');
       this.emitState();
