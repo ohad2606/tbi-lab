@@ -41,6 +41,8 @@ BindReadOnlyPaths=@BUNDLES@:/opt/tbi-build
 ExecStart=/opt/tbi-node/bin/node /opt/tbi-build/mailer-service.mjs
 Restart=on-failure
 RestartSec=10
+# Exit 78 = refused to start, restarting cannot fix it (status_dir_over_cap): stay down, no 10 s loop.
+RestartPreventExitStatus=78
 
 # Filesystem: read-only everywhere except its two directories.
 ProtectSystem=strict
