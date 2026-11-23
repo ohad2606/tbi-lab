@@ -270,12 +270,15 @@ at `start` for the whole run (adapter rule).
   must exist and be tested BEFORE metering is enabled anywhere (acceptance of s3d-6).
 - Lost on restart (memory only, accepted in s3c): waiting list (clients re-join, section 4), ticket
   registry, Free cooldown. Optional: seed Free cooldowns from the journal (`closedAt` of the last Free
-  session + `queue.freeCooldownMs`), decision O-9.
+  session + `queue.freeCooldownMs`), decision O-9. *Owner 2026-11-23: O-9 = accept the s3c limit; no
+  seed is built.*
 - Compaction: `SimMeter.compact()` is not called anywhere yet. Proposed: at boot after recovery when
   the journal exceeds a configured event count, never while sessions are open. It replaces the journal
   atomically and keeps no old copy itself, so the host first writes a timestamped `.pre-compact` copy
   that is never deleted automatically (M5). Journal retention (how long copies and old events are kept)
-  is an owner decision (m11).
+  is an owner decision (m11), still OPEN (D-day1417-2); proposed wording (operator keeps the last N = 3
+  `.pre-compact` / `.pre-repair` copies, deletes older ones by hand only, logged; no auto-deletion) is in
+  `S3D-STAGING-ENABLE-CHECKLIST.md` §0.
 
 ## 8. Races and idempotency
 
@@ -447,10 +450,67 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
    constructor, tests use out-of-bound beats); repair tool `runtime/plans/repairjournal.ts` + CLI
    `repair-main.ts`; checklist `docs/plans/S3D-STAGING-ENABLE-CHECKLIST.md`. The heartbeat timeout
    `max(1, leaseMs - beatMs)` uses the host lease, which boot forces equal to `sim.leaseMs`.
-   Not done (s3d-7): cooldown seed (O-9, owner decision), packaging of the repair CLI in the release
+   Not done in s3d-6: cooldown seed (O-9, owner decision), packaging of the repair CLI in the release
    bundle, a config validator, unit re-install on any host.
+7. **s3d-7 money/metering hardening (flag-off).** *Implemented (2026-11-23):* the repair CLI is
+   packaged as one self-contained bundle: `npm run simrepair:build` ->
+   `runtime/plans/dist/sim-journal-repair.mjs` (esbuild node ESM like `session-host.mjs`; runs with no
+   `node_modules`); a test builds it, runs it alone from an empty directory and pins exit 0 / 2 / 3 / 1
+   report-only with nothing written. Checklist: the real command, a drill on a COPY of the journal,
+   stale-lock handling, a clock/time-skew check, owner decisions of 2026-11-23. Test hygiene: host and
+   plans tests kill their children (SIGKILL after a sync timeout, `afterEach` for async spawns; a static
+   test pins both). O-9 accepted as the s3c limit: no cooldown seed.
+   *What remains:* shipping the bundle in `deploy/release/build-package.sh` (services/) and
+   `deploy/dev-lab/s8/install.sh` (release/install tooling, not changed here: PM/owner decision); a
+   separate config validator; retention m11 (owner, D-day1417-2); unit re-install on a host. Enabling
+   metering on staging or anywhere stays a SEPARATE owner approval (O-10), executed with
+   `S3D-STAGING-ENABLE-CHECKLIST.md`.
+8. **s3d-8 offline sim config validator (flag-off).** *Implemented (2026-11-23):*
+   `runtime/plans/validateconfig.ts` (`validateSimConfig(env)`) + CLI `runtime/plans/validate-main.ts`,
+   bundled by `npm run simvalidate:build` -> `runtime/plans/dist/sim-config-validate.mjs` (one
+   self-contained file like the repair CLI; no `node_modules`). Run as the host's user with the unit's
+   environment (`TBI_HOST_SIM_*`, `TBI_POLICY_FILE`, `TBI_HOST_LEASE_MS`); it takes no arguments. It
+   answers "would the host boot metered with this?" and reports EVERY problem at once (the host stops
+   at the first). It never starts a host and never creates, writes, locks or repairs anything (the
+   state directory is lstat/access-checked, the lock files and the journal only read).
+   - *One rule set, no drift:* `bootSimPlans` now calls `checkSimFlags` (collects; the host throws the
+     first problem, same order and text as before), `checkStateDir` calls `stateDirProblems`, and
+     `acquireStateLock` and the validator's read-only `inspectStateLock` share `classifyLock`
+     (all `runtime/plans/hostboot.ts`). Interval bounds go through `checkSimBounds` (host.ts) as in
+     simboot.ts. `main.ts` reads its tunables through `hostTunablesFromEnv` (host/config.ts), which the
+     validator uses too (pure refactor, no host behaviour change). A parity test boots the real
+     `hostSimFromEnv` on the same bad environments and requires the host's refusal text to equal the
+     validator's first problem.
+   - *Problem codes:* `flags_partial`, `flag_not_integer`, `config_missing`, `config_unusable`,
+     `metering_disabled`, `host_lease_invalid`, `lease_mismatch`, `lift_until_first_paid` (O-11),
+     `max_concurrent`, `no_policy`, `policy_unusable`, `plan_map_invalid` (incl. unknown plan id),
+     `plan_map_unmapped`, `plan_map_unknown_policy_plan`, `bound_beat`, `bound_housekeeping`,
+     `bound_poll`, `sim_bounds` (`endWaitMs <= 12000`; no flag sets it today), `state_dir_path`,
+     `state_dir_missing`, `state_dir_unusable`, `state_dir_not_dir`, `state_dir_owner`,
+     `state_dir_mode` (anything but 0700, e.g. world-readable), `state_dir_symlink`,
+     `state_dir_not_writable`, `state_lock` (malformed lock, stale lock + leftover takeover mutex),
+     `state_locked` (a live process holds `host.lock`), `journal_torn`, `journal_corrupt`.
+   - *Stricter than the host, by design:* a missing state directory is a problem (the host would create
+     it 0700; create it beforehand with `install -d -m 0700`); a live lock is a problem (run with the
+     host stopped, or expect `state_locked`).
+   - *Output:* stdout one JSON line `{status, problems:[{code, message, detail?}], notes}`; stderr one
+     line per problem. `message` is the host's own refusal text; nothing printed carries a value, a
+     path, file content or a principal (an unknown config key is not named).
+   - *Exit codes:*
 
-## 13. Open owner / PM decisions
+     | Exit | Meaning |
+     |---|---|
+     | 0 | the sim flags, config, state dir, lock and journal replay (replayed with metering off) are valid; host prerequisites outside the sim checks (`TBI_TICKET_KEY_FILE`, `TBI_HOST_PACE`) and the metered-boot sweep/recovery/compaction are NOT checked |
+     | 1 | at least one problem (each one a host refusal with exit 78, except `state_dir_missing`, `state_dir_not_writable`, `state_locked` (stricter than the host) and `policy_unusable` (the host exits 1 there, outside the sim boot, so a unit may restart-loop)), or an internal error |
+     | 78 | refused to validate (EX_CONFIG, = `HOST_SIM_REFUSED_EXIT`): no `TBI_HOST_SIM_*` flag set (the environment is not the unit's), or an argument given. NOTE: 78 here means "nothing to validate / bad usage", not "config bad" as for the host; wrappers must treat only exit 0 as go |
+
+   *Not done:* shipping the bundle in `build-package.sh` / `install.sh` (owner decision pending, as for
+   the repair CLI); reading the unit's drop-in directly (the operator passes the environment).
+
+## 13. Owner / PM decisions
+
+*Owner 2026-11-23: O-1 .. O-11 below are ACCEPTED as proposed; O-9 = accept the s3c limit (no Free
+cooldown seed). Still open: m11 journal retention (D-day1417-2) and the enabling approval itself (O-10).*
 
 - O-1 Plan source for the host: policy-name map now (`preview`/`system` -> `legacy`), entitlements
   later? Which plan do principals without an assignment get once metering is on?

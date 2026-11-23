@@ -37,7 +37,7 @@ import {
   writeSync,
 } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
-import { parseConfig, PLAN_IDS, type PlanId, type PlansConfig } from './config.js';
+import { ConfigError, parseConfig, PLAN_IDS, type PlanId, type PlansConfig } from './config.js';
 import { HOST_SIM_FLAGS } from './hostflags.js';
 import type { SimEvent } from './simminutes.js';
 import { SimHostAdapter } from './simhost.js';
@@ -231,6 +231,58 @@ function readLock(path: string): string | null {
   }
 }
 
+const LOCK_HELD = 'sim state directory is locked by another host; refusing to start';
+const LOCK_MALFORMED = 'sim state lock malformed; remove it by hand; refusing to start';
+
+/** How an existing lock's content is judged (shared by acquireStateLock and inspectStateLock). */
+function classifyLock(
+  held: string,
+  mine: string,
+  alive: (pid: number) => boolean,
+): 'malformed' | 'held' | 'stale' {
+  if (!isPid(held)) return 'malformed';
+  if (held === mine || alive(Number(held))) return 'held';
+  return 'stale';
+}
+
+/**
+ * s3d-8 (offline validator): what acquireStateLock would decide about the existing lock, READ ONLY
+ * (nothing created, removed or locked). A problem is returned only where acquireStateLock would refuse:
+ * a malformed or unreadable lock, a lock of a live process, a stale lock with a takeover mutex left
+ * behind. No lock, or a stale one without a mutex (taken over at boot), is not a problem.
+ */
+export function inspectStateLock(
+  dir: string,
+  alive: (pid: number) => boolean = defaultAlive,
+): SimProblem[] {
+  let held: string | null;
+  try {
+    held = readLock(join(dir, SIM_LOCK_FILE));
+  } catch (e) {
+    return [{ code: 'state_lock', message: (e as Error).message }];
+  }
+  if (held === null) return [];
+  const kind = classifyLock(held, String(process.pid), alive);
+  if (kind === 'malformed') return [{ code: 'state_lock', message: LOCK_MALFORMED }];
+  if (kind === 'held')
+    return [{ code: 'state_locked', message: LOCK_HELD, detail: 'a live process holds host.lock' }];
+  let mutex: string | null;
+  try {
+    mutex = readLock(join(dir, SIM_LOCK_TAKEOVER_FILE));
+  } catch {
+    mutex = '';
+  }
+  if (mutex !== null)
+    return [
+      {
+        code: 'state_lock',
+        message: `sim state lock takeover mutex is stale or malformed; remove ${SIM_LOCK_TAKEOVER_FILE} by hand; refusing to start`,
+        detail: `stale host.lock and a leftover ${SIM_LOCK_TAKEOVER_FILE}`,
+      },
+    ];
+  return [];
+}
+
 /**
  * Exclusive lock on the state directory: `host.lock` created with O_EXCL holding this pid.
  * An existing lock refuses, unless its pid is provably gone (stale after a crash). The takeover
@@ -248,8 +300,7 @@ export function acquireStateLock(
   const path = join(dir, SIM_LOCK_FILE);
   const mutex = join(dir, SIM_LOCK_TAKEOVER_FILE);
   const mine = String(process.pid);
-  const locked = () =>
-    new HostSimBootError('sim state directory is locked by another host; refusing to start');
+  const locked = () => new HostSimBootError(LOCK_HELD);
 
   /** runs fn holding the takeover mutex; HostSimBootError when another holder has it */
   const withMutex = <T>(fn: () => T): T => {
@@ -282,11 +333,9 @@ export function acquireStateLock(
   if (!createExclusive(path, `${mine}\n`)) {
     const held = readLock(path);
     if (held !== null) {
-      if (!isPid(held))
-        throw new HostSimBootError(
-          'sim state lock malformed; remove it by hand; refusing to start',
-        );
-      if (held === mine || alive(Number(held))) throw locked();
+      const kind = classifyLock(held, mine, alive);
+      if (kind === 'malformed') throw new HostSimBootError(LOCK_MALFORMED);
+      if (kind === 'held') throw locked();
     }
     hooks.beforeTakeover?.();
     withMutex(() => {
@@ -327,34 +376,79 @@ export function acquireStateLock(
 
 /** The state directory must exist (created 0700 if absent), be a real directory, ours, mode 0700. */
 export function checkStateDir(dir: string, uid: number | undefined): void {
+  const first = stateDirProblems(dir, uid, { create: true })[0];
+  if (first) throw new HostSimBootError(first.message);
+}
+
+/**
+ * The state-directory rules of checkStateDir as a list (s3d-8: the offline validator reports them all
+ * at once; checkStateDir throws the first, so host and validator share one rule set). `create: false`
+ * never creates anything: a missing directory is the problem `state_dir_missing` (the host would
+ * create it 0700). Order is the host's refusal order.
+ */
+export function stateDirProblems(
+  dir: string,
+  uid: number | undefined,
+  opts: { create: boolean },
+): SimProblem[] {
   // `link/` and `link/.` make lstat follow a symlink: only the exact absolute normalised path is taken.
   if (!isAbsolute(dir) || resolve(dir) !== dir)
-    throw new HostSimBootError(
-      'TBI_HOST_SIM_PLANS_STATE must be an absolute normalised path; refusing to start',
-    );
+    return [
+      {
+        code: 'state_dir_path',
+        message: 'TBI_HOST_SIM_PLANS_STATE must be an absolute normalised path; refusing to start',
+      },
+    ];
+  const unusable: SimProblem = {
+    code: 'state_dir_unusable',
+    message: 'TBI_HOST_SIM_PLANS_STATE unusable; refusing to start',
+  };
   let st: ReturnType<typeof lstatSync>;
   try {
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (opts.create) mkdirSync(dir, { recursive: true, mode: 0o700 });
     st = lstatSync(dir);
-  } catch {
-    throw new HostSimBootError('TBI_HOST_SIM_PLANS_STATE unusable; refusing to start');
+  } catch (e) {
+    if (!opts.create && (e as NodeJS.ErrnoException).code === 'ENOENT')
+      return [
+        {
+          code: 'state_dir_missing',
+          message:
+            'TBI_HOST_SIM_PLANS_STATE does not exist (the host would create it 0700; create it beforehand)',
+        },
+      ];
+    return [unusable];
   }
   if (!st.isDirectory())
-    throw new HostSimBootError('TBI_HOST_SIM_PLANS_STATE is not a directory; refusing to start');
+    return [
+      {
+        code: 'state_dir_not_dir',
+        message: 'TBI_HOST_SIM_PLANS_STATE is not a directory; refusing to start',
+      },
+    ];
+  const out: SimProblem[] = [];
   if (uid !== undefined && st.uid !== uid)
-    throw new HostSimBootError('TBI_HOST_SIM_PLANS_STATE not owned by the host user; refusing');
+    out.push({
+      code: 'state_dir_owner',
+      message: 'TBI_HOST_SIM_PLANS_STATE not owned by the host user; refusing',
+    });
   if ((st.mode & 0o777) !== 0o700)
-    throw new HostSimBootError('TBI_HOST_SIM_PLANS_STATE mode must be 0700; refusing to start');
+    out.push({
+      code: 'state_dir_mode',
+      message: 'TBI_HOST_SIM_PLANS_STATE mode must be 0700; refusing to start',
+      detail: (st.mode & 0o077) !== 0 ? 'group/world can access it' : 'owner bits are not rwx',
+    });
   let real: string;
   try {
     real = realpathSync(dir);
   } catch {
-    throw new HostSimBootError('TBI_HOST_SIM_PLANS_STATE unusable; refusing to start');
+    return [...out, unusable];
   }
   if (real !== dir)
-    throw new HostSimBootError(
-      'TBI_HOST_SIM_PLANS_STATE has a symlinked parent; refusing to start',
-    );
+    out.push({
+      code: 'state_dir_symlink',
+      message: 'TBI_HOST_SIM_PLANS_STATE has a symlinked parent; refusing to start',
+    });
+  return out;
 }
 
 /**
@@ -387,6 +481,191 @@ const hasMinuteCaps = (cfg: PlansConfig) =>
     (p) => cfg.sim.plans[p].monthlyMinutes !== null || cfg.sim.plans[p].dailyMinutes !== null,
   );
 
+/** s3d-8: problem classes shared by the host boot and the offline validator (validateconfig.ts). */
+export type SimProblemCode =
+  | 'flags_partial'
+  | 'flag_not_integer'
+  | 'config_missing'
+  | 'config_unusable'
+  | 'metering_disabled'
+  | 'host_lease_invalid'
+  | 'lease_mismatch'
+  | 'lift_until_first_paid'
+  | 'max_concurrent'
+  | 'no_policy'
+  | 'policy_unusable'
+  | 'plan_map_invalid'
+  | 'plan_map_unmapped'
+  | 'plan_map_unknown_policy_plan'
+  | 'bound_beat'
+  | 'bound_housekeeping'
+  | 'bound_poll'
+  | 'sim_bounds'
+  | 'state_dir_path'
+  | 'state_dir_missing'
+  | 'state_dir_unusable'
+  | 'state_dir_not_dir'
+  | 'state_dir_owner'
+  | 'state_dir_mode'
+  | 'state_dir_symlink'
+  | 'state_dir_not_writable'
+  | 'state_lock'
+  | 'state_locked'
+  | 'journal_torn'
+  | 'journal_corrupt';
+
+/**
+ * One problem. `message` is the host's refusal text (flag names only, never a value or path);
+ * `detail` is an optional validator-only hint under the same rule (never file content or a value).
+ */
+export interface SimProblem {
+  code: SimProblemCode;
+  message: string;
+  detail?: string;
+}
+
+export interface SimFlagCheck {
+  /** every problem found, in the host's refusal order (the host refuses with the first) */
+  problems: SimProblem[];
+  /** the checked values, present only when there is no problem */
+  ok?: {
+    cfg: PlansConfig;
+    planMap: Map<string, PlanId>;
+    beatMs: number;
+    housekeepingMs: number;
+    pollAfterS: number;
+    dir: string;
+  };
+}
+
+/** A safe hint for a config read/parse failure: an errno code, "not valid JSON", or a key path. */
+function configDetail(e: unknown): string | undefined {
+  if (e instanceof HostSimBootError) return undefined;
+  if (e instanceof SyntaxError) return 'not valid JSON';
+  if (e instanceof ConfigError)
+    // the key path is built from known keys, except an unknown key (file content): name none
+    return / unknown config key$/.test(e.message) ? 'an unknown config key' : e.message;
+  const code = (e as NodeJS.ErrnoException | undefined)?.code;
+  return typeof code === 'string' && /^E[A-Z]+$/.test(code) ? code : undefined;
+}
+
+/**
+ * s3d-8: the flag and config checks of bootSimPlans, collected instead of thrown (bootSimPlans throws
+ * the first, in the same order and with the same text as before; the offline validator reports all).
+ * Reads only the config file; never touches the state directory. Undefined = no sim flag set.
+ * A check that depends on an earlier failed value (e.g. the config) is skipped, never guessed.
+ */
+export function checkSimFlags(
+  env: Record<string, string | undefined>,
+  hostLeaseMs: number,
+  host: HostSimBootHost,
+): SimFlagCheck | undefined {
+  const problems: SimProblem[] = [];
+  const add = (code: SimProblemCode, message: string, detail?: string) =>
+    problems.push(detail === undefined ? { code, message } : { code, message, detail });
+  const file = env.TBI_HOST_SIM_PLANS_CONFIG;
+  if (file === undefined) {
+    const stray = HOST_SIM_FLAGS.filter((f) => env[f] !== undefined);
+    if (stray.length === 0) return undefined;
+    add(
+      'flags_partial',
+      `${stray.join(', ')} set without TBI_HOST_SIM_PLANS_CONFIG; refusing to start`,
+    );
+    return { problems };
+  }
+  let cfg: PlansConfig | undefined;
+  try {
+    cfg = parseConfig(JSON.parse(readConfigFile(file)));
+  } catch (e) {
+    const why =
+      e instanceof HostSimBootError
+        ? e.message.replace(/^sim plans config /, '')
+        : e instanceof Error
+          ? e.constructor.name
+          : 'error';
+    const missing = (e as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+    add(
+      missing ? 'config_missing' : 'config_unusable',
+      `sim plans config unusable (${why}); refusing to start`,
+      configDetail(e),
+    );
+  }
+  if (cfg && !cfg.metering.enabled)
+    add('metering_disabled', 'sim plans config opted in but metering.enabled is not true');
+  const leaseOk = Number.isSafeInteger(hostLeaseMs) && hostLeaseMs >= 1;
+  if (!leaseOk) add('host_lease_invalid', 'host leaseMs invalid; refusing to start');
+  if (cfg) {
+    if (leaseOk && cfg.sim.leaseMs !== hostLeaseMs)
+      add('lease_mismatch', 'sim.leaseMs must equal the host lease (TBI_HOST_LEASE_MS)');
+    if (cfg.queue.freeCapMode !== 'fixed')
+      add(
+        'lift_until_first_paid',
+        'queue.freeCapMode must be fixed on the host (liftUntilFirstPaid)',
+      );
+    if (cfg.sim.maxConcurrentPerPrincipal !== 1 && hasMinuteCaps(cfg))
+      add('max_concurrent', 'sim.maxConcurrentPerPrincipal must be 1 while minute caps apply');
+  }
+  const names = host.policyPlanNames;
+  const hasNames = !!names && names.length > 0;
+  if (!hasNames) add('no_policy', 'sim metering needs a host policy; refusing to start');
+
+  const rawMap = env.TBI_HOST_SIM_PLAN_MAP;
+  let planMap: Map<string, PlanId> | undefined;
+  if (rawMap === undefined) add('flags_partial', 'TBI_HOST_SIM_PLAN_MAP is required');
+  else {
+    try {
+      planMap = parsePlanMap(rawMap);
+    } catch (e) {
+      add('plan_map_invalid', (e as Error).message);
+    }
+  }
+  if (planMap && hasNames) {
+    if (names.some((n) => !planMap.has(n)))
+      add('plan_map_unmapped', 'TBI_HOST_SIM_PLAN_MAP: a policy plan is not mapped');
+    if ([...planMap.keys()].some((n) => !names.includes(n)))
+      add(
+        'plan_map_unknown_policy_plan',
+        'TBI_HOST_SIM_PLAN_MAP: names a plan the policy does not have',
+      );
+  }
+
+  const int = (name: string, dflt: number): number | undefined => {
+    try {
+      return intFlag(env, name, dflt);
+    } catch (e) {
+      add('flag_not_integer', (e as Error).message);
+      return undefined;
+    }
+  };
+  const beatMs = int('TBI_HOST_SIM_BEAT_MS', Math.floor(hostLeaseMs / 3));
+  if (leaseOk && beatMs !== undefined && (beatMs < 1 || beatMs >= hostLeaseMs))
+    add('bound_beat', 'TBI_HOST_SIM_BEAT_MS: must be >= 1 and < the host lease');
+  const housekeepingMs = int('TBI_HOST_SIM_HOUSEKEEPING_MS', DEFAULT_SIM_HOUSEKEEPING_MS);
+  if (housekeepingMs !== undefined && (housekeepingMs < 1 || housekeepingMs < host.housekeepingMs))
+    add('bound_housekeeping', 'TBI_HOST_SIM_HOUSEKEEPING_MS: below the host housekeeping');
+  const pollAfterS = int('TBI_HOST_SIM_POLL_S', DEFAULT_SIM_POLL_S);
+  if (
+    pollAfterS !== undefined &&
+    (pollAfterS < 1 || (cfg !== undefined && pollAfterS * 1000 >= cfg.queue.vanishMs))
+  )
+    add('bound_poll', 'TBI_HOST_SIM_POLL_S: must be >= 1 and below queue.vanishMs');
+
+  const dir = env.TBI_HOST_SIM_PLANS_STATE;
+  if (dir === undefined || dir === '') add('flags_partial', 'TBI_HOST_SIM_PLANS_STATE is required');
+  if (problems.length > 0 || !cfg || !planMap || dir === undefined) return { problems };
+  return {
+    problems,
+    ok: {
+      cfg,
+      planMap,
+      beatMs: beatMs!,
+      housekeepingMs: housekeepingMs!,
+      pollAfterS: pollAfterS!,
+      dir,
+    },
+  };
+}
+
 /**
  * Builds the host's sim adapter from the environment, or undefined when TBI_HOST_SIM_PLANS_CONFIG is
  * unset and no other sim flag is set (nothing read, nothing created). All config checks run before
@@ -399,64 +678,11 @@ export async function bootSimPlans(
   host: HostSimBootHost,
   deps: HostSimBootDeps = {},
 ): Promise<HostSimPlans | undefined> {
-  const file = env.TBI_HOST_SIM_PLANS_CONFIG;
-  if (file === undefined) {
-    const stray = HOST_SIM_FLAGS.filter((f) => env[f] !== undefined);
-    if (stray.length > 0)
-      throw new HostSimBootError(
-        `${stray.join(', ')} set without TBI_HOST_SIM_PLANS_CONFIG; refusing to start`,
-      );
-    return undefined;
-  }
-  let cfg: PlansConfig;
-  try {
-    cfg = parseConfig(JSON.parse(readConfigFile(file)));
-  } catch (e) {
-    const why =
-      e instanceof HostSimBootError
-        ? e.message.replace(/^sim plans config /, '')
-        : e instanceof Error
-          ? e.constructor.name
-          : 'error';
-    throw new HostSimBootError(`sim plans config unusable (${why}); refusing to start`);
-  }
-  if (!cfg.metering.enabled)
-    throw new HostSimBootError('sim plans config opted in but metering.enabled is not true');
-  if (!Number.isSafeInteger(hostLeaseMs) || hostLeaseMs < 1)
-    throw new HostSimBootError('host leaseMs invalid; refusing to start');
-  if (cfg.sim.leaseMs !== hostLeaseMs)
-    throw new HostSimBootError('sim.leaseMs must equal the host lease (TBI_HOST_LEASE_MS)');
-  if (cfg.queue.freeCapMode !== 'fixed')
-    throw new HostSimBootError('queue.freeCapMode must be fixed on the host (liftUntilFirstPaid)');
-  if (cfg.sim.maxConcurrentPerPrincipal !== 1 && hasMinuteCaps(cfg))
-    throw new HostSimBootError('sim.maxConcurrentPerPrincipal must be 1 while minute caps apply');
-  const names = host.policyPlanNames;
-  if (!names || names.length === 0)
-    throw new HostSimBootError('sim metering needs a host policy; refusing to start');
-
-  const rawMap = env.TBI_HOST_SIM_PLAN_MAP;
-  if (rawMap === undefined) throw new HostSimBootError('TBI_HOST_SIM_PLAN_MAP is required');
-  const planMap = parsePlanMap(rawMap);
-  for (const n of names)
-    if (!planMap.has(n))
-      throw new HostSimBootError('TBI_HOST_SIM_PLAN_MAP: a policy plan is not mapped');
-  for (const n of planMap.keys())
-    if (!names.includes(n))
-      throw new HostSimBootError('TBI_HOST_SIM_PLAN_MAP: names a plan the policy does not have');
-
-  const beatMs = intFlag(env, 'TBI_HOST_SIM_BEAT_MS', Math.floor(hostLeaseMs / 3));
-  if (beatMs < 1 || beatMs >= hostLeaseMs)
-    throw new HostSimBootError('TBI_HOST_SIM_BEAT_MS: must be >= 1 and < the host lease');
-  const housekeepingMs = intFlag(env, 'TBI_HOST_SIM_HOUSEKEEPING_MS', DEFAULT_SIM_HOUSEKEEPING_MS);
-  if (housekeepingMs < 1 || housekeepingMs < host.housekeepingMs)
-    throw new HostSimBootError('TBI_HOST_SIM_HOUSEKEEPING_MS: below the host housekeeping');
-  const pollAfterS = intFlag(env, 'TBI_HOST_SIM_POLL_S', DEFAULT_SIM_POLL_S);
-  if (pollAfterS < 1 || pollAfterS * 1000 >= cfg.queue.vanishMs)
-    throw new HostSimBootError('TBI_HOST_SIM_POLL_S: must be >= 1 and below queue.vanishMs');
-
-  const dir = env.TBI_HOST_SIM_PLANS_STATE;
-  if (dir === undefined || dir === '')
-    throw new HostSimBootError('TBI_HOST_SIM_PLANS_STATE is required');
+  const c = checkSimFlags(env, hostLeaseMs, host);
+  if (!c) return undefined;
+  const first = c.problems[0];
+  if (first || !c.ok) throw new HostSimBootError(first?.message ?? 'sim plans flags invalid');
+  const { cfg, planMap, beatMs, housekeepingMs, pollAfterS, dir } = c.ok;
   checkStateDir(dir, deps.uid ?? process.getuid?.());
   const lock = acquireStateLock(dir, deps.alive, deps.lockHooks);
   try {
