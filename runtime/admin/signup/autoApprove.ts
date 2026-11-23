@@ -217,7 +217,15 @@ interface AutoState {
   claims: Record<string, Claim>;
 }
 
-class CounterUnreadable extends Error {}
+class CounterUnreadable extends Error {
+  /** The errno name when the read itself failed (status route); the message stays the log class. */
+  constructor(
+    message: string,
+    readonly errno?: string,
+  ) {
+    super(message);
+  }
+}
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ID_RE = /^[0-9A-Za-z]{1,64}$/;
@@ -290,6 +298,33 @@ export interface SweepResult {
     | 'mark_failed';
 }
 
+/**
+ * The owner's read-only view of auto-approve (`GET /signups/auto-approve`, slice 5). Counts, the
+ * cap, booleans, the Israel day, the cut-off time and fixed reason codes only: never an id, name,
+ * address or path. A value that cannot be read is the string `unknown` (never a guessed number),
+ * with its reason (an errno name or a fixed class) in `unknownReasons`.
+ */
+export interface AutoApproveStatus {
+  /** The Israel calendar day the count belongs to (`YYYY-MM-DD`). */
+  day: string;
+  dailyCap: number;
+  /** Requests claimed today (0 when the state file is from an earlier day or absent). */
+  count: number | 'unknown';
+  capReached: boolean | 'unknown';
+  /** The kill switch, as the sweep sees it: any check error but ENOENT counts as paused. */
+  paused: boolean;
+  /** The errno name when the pause check failed (paused is then true, fail closed). */
+  pauseError?: string;
+  /** Whether the sweep accepts the state dir (autoStateDirCheck). */
+  stateDir: 'ok' | 'unsafe';
+  stateDirReason?: string;
+  /** Only requests created after this ISO time are auto-approved. */
+  cutoff: string | 'unknown';
+  /** Pending requests created at or before the cut-off: never auto-approved, they need the owner. */
+  waitingBacklog: number | 'unknown';
+  unknownReasons?: { count?: string; cutoff?: string; waitingBacklog?: string };
+}
+
 export class AutoApprover {
   private lastPaused = false;
   private readonly seenErrors = new Set<string>();
@@ -357,7 +392,7 @@ export class AutoApprover {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT')
         return { v: 2, day, count: 0, retries: 0, claims: {} };
-      throw new CounterUnreadable(errorClass(e));
+      throw new CounterUnreadable(errorClass(e), errnoOf(e));
     }
     let c: unknown;
     try {
@@ -395,6 +430,59 @@ export class AutoApprover {
   /** Today's count as persisted (for tests and the design's operator check). */
   async todayCount(): Promise<number> {
     return (await this.readState(this.today())).count;
+  }
+
+  /**
+   * Read-only status for the owner's UI: no write, no lock, no log line, no change to the
+   * transition/once-only log memory of the sweep. Reads the state file without the claim mutex
+   * (it is replaced by an atomic rename, so a read sees one whole version). In an unsafe state
+   * dir the state file is not read at all (the pause entry is only lstat'ed, never followed).
+   */
+  async status(): Promise<AutoApproveStatus> {
+    const day = this.today();
+    const unknown: NonNullable<AutoApproveStatus['unknownReasons']> = {};
+    const bad = await autoStateDirCheck(this.d.dir);
+    const pause = await autoPauseCheck(join(this.d.dir, AUTO_PAUSE_FILE), this.d.stat);
+    let state: AutoState | null = null;
+    if (bad) unknown.count = 'state_dir_unsafe';
+    else
+      try {
+        state = await this.readState(day);
+      } catch (e) {
+        unknown.count = !(e instanceof CounterUnreadable)
+          ? errorClass(e)
+          : e.errno && e.errno !== 'unknown'
+            ? e.errno
+            : e.message;
+      }
+    let cutoff: number | null = null;
+    if (this.d.since !== undefined) cutoff = this.d.since;
+    else if (state?.since) cutoff = Date.parse(state.since);
+    else unknown.cutoff = state ? 'not_recorded' : unknown.count!;
+    let backlog: number | null = null;
+    if (cutoff === null) unknown.waitingBacklog = unknown.cutoff!;
+    else
+      try {
+        const records = await this.d.store.list();
+        backlog = records.filter(
+          (r) => r.status === 'pending' && !(Date.parse(r.createdAt) > cutoff),
+        ).length;
+      } catch (e) {
+        unknown.waitingBacklog = errnoOf(e) === 'unknown' ? errorClass(e) : errnoOf(e);
+      }
+    return {
+      day,
+      dailyCap: this.d.dailyCap,
+      count: state ? state.count : 'unknown',
+      capReached: state ? state.count >= this.d.dailyCap : 'unknown',
+      paused: pause.paused,
+      ...(pause.error ? { pauseError: pause.error } : {}),
+      stateDir: bad ? 'unsafe' : 'ok',
+      ...(bad ? { stateDirReason: bad } : {}),
+      cutoff: cutoff === null ? 'unknown' : new Date(cutoff).toISOString(),
+      waitingBacklog: backlog ?? 'unknown',
+      ...(Object.keys(unknown).length > 0 ? { unknownReasons: unknown } : {}),
+    };
   }
 
   /** The cut-off (ms): the configured one, else the persisted first-run time (written now if new). */

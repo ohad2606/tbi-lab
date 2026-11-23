@@ -1,4 +1,4 @@
-# BETA-G1: self-signup without manual approval (design note, slices 1-2)
+# BETA-G1: self-signup without manual approval (design note, slices 1-5)
 
 Status: design plus a tested, **off-by-default** code slice (`runtime/admin/signup/autoApprove.ts`). Nothing is
 deployed or enabled anywhere. This builds on the sign-up automation (TBI-022, `docs/alpha/SIGNUP-AUTOMATION-DESIGN.md`);
@@ -230,6 +230,11 @@ runs as root and non-root; a real `chown` case runs only as root); wiring refuse
 mark failure after the claim releases the claim, keeps the slot used, logs once per errno, and the cap still
 holds; an orphan claim is pruned and re-claimed; a marked claim is kept; the unreadable-counter line is limited to
 once an hour per reason (fake clock).
+Slice 5 (`runtime/admin/tests/signup-auto-status.test.ts`, real admin server behind test gates): the status route
+needs the owner (401/403 like the sibling routes), is GET only (405; CSRF first), answers `{enabled:false}` without
+reading a locked store dir, reports count/cap/cut-off/backlog after a real sweep, `running` before/after stop, the
+day rollover without a write, pause as a file or a directory, `unknown` for a corrupt, future-dated, unreadable
+(EACCES, non-root only) or unsafe/missing state, writes nothing and logs nothing, and holds no path or personal data.
 
 ## 7. Not done in this slice
 
@@ -237,10 +242,10 @@ once an hour per reason (fake clock).
   `TBI_SIGNUP_AUTO_STATE_DIR`, optionally `TBI_SIGNUP_AUTO_SINCE`), **creating the admin-only state directory**
   (owned by the admin service user, 0700, not writable by the intake user), the runbook lines for pause/resume,
   and the monitoring alerts on the cap, pause, retry-limit and state-dir log lines.
-- Admin UI: an "approved automatically" badge (`autoApprovedAt` is in the record but the admin client ignores it),
-  today's count against the cap, the pause state, and "waiting for tomorrow" on waitlisted rows. Every new text
-  needs HE+EN keys.
-- An admin read-only status route (count/cap/paused) for the UI above.
+- Admin UI: today's count against the cap, the pause state, and "waiting for tomorrow" on waitlisted rows (the
+  "approved automatically" badge is done in slice 4; the status route below in slice 5). Every new text needs
+  HE+EN keys.
+- Done in slice 5: the admin read-only status route `GET /signups/auto-approve` (section 9).
 - Public copy (G5): the form and landing must stop saying the owner approves each request and must say what
   happens when the day is full.
 - The legal note (G4): automatic account creation from form data. Check whether the consent text still matches.
@@ -272,3 +277,30 @@ once an hour per reason (fake clock).
 - The state dir chain must have no group/world-writable non-sticky ancestors and no symlinks: use the real path
   (e.g. `/var/lib/tbi-signup/auto`, 0700, owned by the admin uid), not `/var/run/...`. A trailing slash is tolerated.
 - Ancestors such as 0775 directories are refused (`ancestor_mode`) — by design.
+
+## 9. Status route (slice 5, read-only)
+
+`GET /signups/auto-approve` on the admin service (under the gate's admin prefix in deployment), for the admin UI.
+Same rules as the other sign-up routes: gate identity, owner only (no identity 401, anyone else 403), rate
+limited, `no-store`. GET only: other methods 405 (a cross-site mutation is refused by the CSRF rule first, 403).
+It never writes, takes no lock, writes no log line and does not change the sweep's log memory.
+
+- Auto-approve off (flag unset or invalid): `{"enabled": false}`. Nothing is read; the state dir is not touched.
+- On: `{enabled: true, running, day, dailyCap, count, capReached, paused, pauseError?, stateDir, stateDirReason?,
+  cutoff, waitingBacklog, unknownReasons?}`.
+  - `running`: the sweep timer of this process is active (false before start, after stop, or when start refused an
+    unsafe state dir; that needs a restart, section 2).
+  - `day`: the Israel calendar day; `count`: requests claimed that day (0 when the file is from an earlier day or
+    absent: the cap has reset); `capReached`: `count >= dailyCap`.
+  - `paused`: the kill switch exactly as the sweep reads it (`lstat`, any entry; a check error other than
+    `ENOENT` is paused, with `pauseError` = the errno name).
+  - `stateDir`: `ok` or `unsafe` with `stateDirReason` (the codes of section 2). When unsafe the state file is not
+    read (`count: "unknown"`).
+  - `cutoff`: the ISO time after which requests are taken (configured, or persisted by the first sweep);
+    `waitingBacklog`: pending requests created at or before it (never auto-approved; they need the owner). Costs one
+    listing of the store, like the owner's list.
+  - **Explicit failure:** a value that cannot be read is the string `"unknown"`, never a guessed number, and
+    `unknownReasons.<field>` names why: an errno name, `corrupt`, `future_day`, `state_dir_unsafe`, or
+    `not_recorded` (no sweep has recorded the default cut-off yet).
+- The answer holds counts, the cap, booleans, the day, the cut-off time and fixed codes only: no id, name, address,
+  path or secret (tested).

@@ -178,6 +178,7 @@ JSON, `no-store`. Mutations need `content-type: application/json`, a same-origin
 | `GET /signups` | 200 `{signups: Record[]}` all statuses |
 | `GET /signups/pending` | 200 `{signups: Record[]}` only `status: "pending"` |
 | `GET /signups/open` | 200 `{signups: Record[]}` `pending`, `approved`, `email_queued`, `email_failed`: the admin UI list, so a queued or failed email is still shown (with Resend) after a reload |
+| `GET /signups/auto-approve` | BETA-G1, read-only: 200 `{enabled:false}` when auto-approve is off, else the counts against the daily cap, the pause state, the state-dir check, the cut-off and the backlog before it; unreadable values are `"unknown"` with a reason (docs/plans/BETA-G1-AUTO-APPROVE.md section 9); other methods 405 |
 | `POST /signups/<id>/approve` | 200 `{record, note?}` (`note`: `already_done` or `email_not_resent`); 202 `account_pending` (helper has not answered yet; retry); 409 `bad_state` / `email_failed_use_resend`; 502 `cap_reached` / `account_error` / `email_failed`; 404 |
 | `POST /signups/<id>/reject` | 200 `{record}`; sends nothing; 409 if already approved |
 | `POST /signups/<id>/resend` | 200 only after a failed or interrupted send for an added account; 409 otherwise |

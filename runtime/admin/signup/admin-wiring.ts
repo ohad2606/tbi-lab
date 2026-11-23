@@ -29,6 +29,7 @@
 import {
   AUTO_APPROVE_INTERVAL_MS,
   AutoApprover,
+  type AutoApproveStatus,
   autoApproveConfigFromEnv,
   autoStateDirCheck,
 } from './autoApprove.js';
@@ -118,9 +119,20 @@ export function adminSignupConfigFromEnv(
 
 export const PURGE_INTERVAL_MS = 24 * 3_600_000;
 
+/**
+ * BETA-G1 slice 5: `GET /signups/auto-approve`. Off: `{enabled:false}` (nothing read). On: the
+ * sweeper's read-only status plus `running` (the sweep timer of this process is active: false
+ * before start, after stop, or when start refused an unsafe state dir; then a restart is needed).
+ */
+export type AutoApproveStatusAnswer =
+  { enabled: false } | ({ enabled: true; running: boolean } & AutoApproveStatus);
+
 export interface SignupAdminWiring {
   /** The `signups` dependency of `createAdminServer`. */
-  signups: { approver: (actor: Principal) => SignupApprover };
+  signups: {
+    approver: (actor: Principal) => SignupApprover;
+    autoStatus: () => Promise<AutoApproveStatusAnswer>;
+  };
   store: PendingStore;
   /**
    * Runs the retention purge now and then daily; returns the stop function. Each run also deletes
@@ -245,6 +257,7 @@ export async function wireSignupAdmin(
       })
     : null;
   let sweeping: Promise<void> | null = null;
+  let running = false;
   return {
     store,
     auto,
@@ -275,15 +288,19 @@ export async function wireSignupAdmin(
         if (stopped) return;
         t = setInterval(tick, AUTO_APPROVE_INTERVAL_MS);
         t.unref();
+        running = true;
       });
       return async () => {
         stopped = true;
+        running = false;
         await started;
         if (t) clearInterval(t);
         await sweeping;
       };
     },
     signups: {
+      autoStatus: async () =>
+        auto ? { enabled: true, running, ...(await auto.status()) } : { enabled: false },
       approver: (actor) =>
         new SignupApprover({
           store,

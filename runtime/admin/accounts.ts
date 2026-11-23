@@ -47,6 +47,7 @@ import {
   type Caller,
   type SpoolIo,
 } from './common.js';
+import type { AutoApproveStatusAnswer } from './signup/admin-wiring.js';
 import type { SignupApprover } from './signup/service.js';
 import { OPEN_STATUSES } from './signup/store.js';
 import { auditLimit, usageAnswer, usageRange, type AdminViews } from './views.js';
@@ -379,7 +380,11 @@ export interface AccountsDeps {
    * TBI-022: the sign-up approval routes (`/signups...`). Absent (the default): they do not exist
    * (404). The caller builds the approver with `spoolAccountAdder(spool, <owner principal>)`.
    */
-  signups?: { approver: (actor: Principal) => SignupApprover } | null;
+  signups?: {
+    approver: (actor: Principal) => SignupApprover;
+    /** BETA-G1: `GET /signups/auto-approve` (read-only); absent: answers `{enabled:false}`. */
+    autoStatus?: () => Promise<AutoApproveStatusAnswer>;
+  } | null;
 }
 
 /** A `forbidden` caused by the owner's Google id not being recorded yet says so. */
@@ -529,7 +534,9 @@ async function routeAccounts(
 
 /**
  * TBI-022 (owner only, checked by the caller): `GET /signups` (all), `GET /signups/pending`,
- * `GET /signups/open` (pending + approved + email_queued + email_failed), `POST /signups/<id>/approve|reject|resend`.
+ * `GET /signups/open` (pending + approved + email_queued + email_failed), `POST /signups/<id>/approve|reject|resend`,
+ * and `GET /signups/auto-approve` (BETA-G1: read-only auto-approve status; counts, cap, booleans
+ * and reason codes only, no personal data; other methods 405).
  * Mutations already passed CSRF and the write rate limit. The records hold personal data: the
  * list is for the owner only and is never cached (`send` sets no-store).
  */
@@ -544,6 +551,11 @@ async function routeSignups(
   if (!caller.principal) throw new AdminError(401, 'identity_required');
   const approver = deps.signups!.approver(caller.principal);
   const [, id, op] = parts;
+  if (parts.length === 2 && id === 'auto-approve') {
+    if (method !== 'GET') throw new AdminError(405, 'method_not_allowed');
+    const status = deps.signups!.autoStatus;
+    return send(res, 200, status ? await status() : { enabled: false });
+  }
   if (method === 'GET' && parts.length === 1)
     return send(res, 200, { signups: await approver.list() });
   if (method === 'GET' && parts.length === 2 && id === 'pending')
