@@ -172,6 +172,56 @@ export class SimHostAdapter {
     return this.live.get(sessionId)?.plan;
   }
 
+  /**
+   * TBI-018 s3d-6 boot recovery (design §7): close every meter session still open with reason 'host'
+   * (SimMeter.closeAllOpen). Only before this process admitted anything: with a tracked run it refuses
+   * (invalid_state) and closes nothing, so it can never end a run of this process.
+   */
+  recoverAtBoot(): Promise<
+    | Off
+    | { metered: true; ok: true; closed: number }
+    | { metered: true; ok: false; error: LimitError }
+  > {
+    if (!this.enabled) return Promise.resolve(OFF);
+    return this.run(async () => {
+      if (this.live.size > 0)
+        return { metered: true as const, ok: false as const, error: limitError('invalid_state') };
+      const r = await this.meter.closeAllOpen('host');
+      if (!r.ok) return { metered: true as const, ok: false as const, error: r.error };
+      if (!r.metered)
+        return { metered: true as const, ok: false as const, error: limitError('invalid_state') };
+      return { metered: true as const, ok: true as const, closed: r.closed };
+    });
+  }
+
+  /**
+   * TBI-018 s3d-6 boot compaction (SimMeter.compact): only when no meter session is open and this
+   * process tracks no run. `skipped` = nothing done (sessions open); the caller copies the journal first.
+   */
+  compactAtBoot(): Promise<
+    | Off
+    | { metered: true; ok: true; skipped: boolean }
+    | { metered: true; ok: false; error: LimitError }
+  > {
+    if (!this.enabled) return Promise.resolve(OFF);
+    return this.run(async () => {
+      if (this.live.size > 0 || this.meter.openCount > 0)
+        return { metered: true as const, ok: true as const, skipped: true };
+      const r = await this.meter.compact();
+      if (!r.ok) return { metered: true as const, ok: false as const, error: r.error };
+      return { metered: true as const, ok: true as const, skipped: false };
+    });
+  }
+
+  /** meter sessions not closed (journaled state) */
+  get openMeterSessions(): number {
+    return this.meter.openCount;
+  }
+  /** events in the journal since it began or was last compacted (boot compaction threshold) */
+  get journalSeq(): number {
+    return this.meter.journalSeq;
+  }
+
   /** Is `ticket` queued, and is it `principal`'s entry? */
   private owns(ticket: string, principal: string): boolean {
     return this.queue.snapshot().some((e) => e.ticket === ticket && e.principal === principal);
