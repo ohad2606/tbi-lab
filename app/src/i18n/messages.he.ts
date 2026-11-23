@@ -2364,6 +2364,51 @@ export const he: Record<MessageKey, string> = {
   'compguide.led-resistor.limits.body':
     'הנורית היא רכיב נומינלי: אין סחיפה עם הטמפרטורה, והמודל שלה מתועד לתחום זרם מוגבל.',
 
+  // TBI-019 G3: לחצן ופוטנציומטר.
+  'compguide.button.title': 'לחצן',
+  'compguide.button.what.heading': 'מה הרכיב עושה',
+  'compguide.button.what.body':
+    '[[pushButton]] רגעי הוא מתג שסגור רק כל עוד לוחצים עליו. כשלא לוחצים הוא פתוח, ולא עובר דרכו זרם. כשמשחררים אותו הוא חוזר להיות פתוח.',
+  'compguide.button.behaviour.heading': 'איך הוא מתנהג',
+  'compguide.button.behaviour.items.1':
+    'במעגל הדוגמה ה[[pushButton]] בטור לנגד של {r} ולנורית, על ספק של {supply}. כשלא לוחצים הוא פתוח: זרם הנורית הוא {iOff}, וכל מתח הספק, {swOpenV}, נופל על ה[[pushButton]].',
+  'compguide.button.behaviour.items.2':
+    'כשלוחצים, ה[[pushButton]] מתנהג כמוליך אידיאלי: המתח עליו הוא {swClosedV}, וזרם הנורית עולה ל-{iOn}, כשהמתח על הנורית הוא {vOn}.',
+  'compguide.button.behaviour.items.3':
+    'הלחיצה היא קלט בזמן הרצה בלבד. היא אינה נשמרת בפרויקט ואינה משנה אותו.',
+  'compguide.button.circuit.heading': 'המעגל',
+  'compguide.button.circuit.body':
+    'ספק מתח למעבדה, לחצן, נגד, נורית LED ואדמה (GND), מחוברים בלולאה אחת. פותחים אותו במעבדה ורואים את המעגל האמיתי.',
+  'compguide.button.tryit.heading': 'נסו בעצמכם',
+  'compguide.button.tryit.action':
+    'פתחו את הדוגמה, לחצו על "הרצה" ואז החזיקו את הלחצן לחוץ, או העבירו אליו פוקוס והחזיקו רווח.',
+  'compguide.button.tryit.expect':
+    'כל עוד הלחצן לחוץ הנורית דולקת וזרמה {iOn}. כשמשחררים אותו הזרם חוזר ל-{iOff}.',
+  'compguide.button.limits.heading': 'מה המודל לא כולל',
+  'compguide.button.limits.body':
+    'הלחצן במודל הוא מגע אידיאלי: אין לו התנגדות מגע, אין קפיצות מגע (bounce), ואין ערכים מרביים שמגבילים את הזרם או את המתח עליו.',
+  'compguide.potentiometer.title': 'פוטנציומטר',
+  'compguide.potentiometer.what.heading': 'מה הרכיב עושה',
+  'compguide.potentiometer.what.body':
+    '[[potentiometer]] הוא מסלול התנגדות עם שני קצוות, A ו-B, ועם [[wiper]] שנוגע במסלול בנקודה שאפשר להזיז. המיקום של ה[[wiper]] קובע איזה חלק מההתנגדות נמצא בין A ל-[[wiper]], ואיזה חלק בין ה[[wiper]] ל-B.',
+  'compguide.potentiometer.behaviour.heading': 'איך הוא מתנהג',
+  'compguide.potentiometer.behaviour.items.1':
+    'במעגל הדוגמה המסלול הוא {rTotal} בסך הכול, קצה A מחובר ל-GND וקצה B ל-{supply}. כך הרכיב עובד כמחלק מתח.',
+  'compguide.potentiometer.behaviour.items.2':
+    'כש[[wiper]] נמצא ב-{pos} מהמסלול, המתח עליו הוא {vWiper}: מתח הספק כפול חלק המסלול שמ-A עד ה[[wiper]].',
+  'compguide.potentiometer.behaviour.items.3':
+    'אם מחברים רק קצה אחד ואת ה[[wiper]], הרכיב הוא נגד משתנה. כך הוא מחובר בדוגמה "עמעם LED עם פוטנציומטר".',
+  'compguide.potentiometer.circuit.heading': 'המעגל',
+  'compguide.potentiometer.circuit.body':
+    'ספק מתח למעבדה ו[[potentiometer]] שקצותיו על המתח של הספק ועל אדמה (GND). פותחים אותו במעבדה, מזיזים את מחוון המיקום ורואים את המתח ב[[wiper]].',
+  'compguide.potentiometer.tryit.heading': 'נסו בעצמכם',
+  'compguide.potentiometer.tryit.action':
+    'פתחו את הדוגמה, הריצו, והזיזו את מחוון המיקום ל-{posTry}.',
+  'compguide.potentiometer.tryit.expect': 'המתח ב[[wiper]] יורד ל-{vWiperAfter}.',
+  'compguide.potentiometer.limits.heading': 'מה המודל לא כולל',
+  'compguide.potentiometer.limits.body':
+    'המודל הוא רכיב נומינלי עם מסלול אידיאלי: בקצוות המסלול ה[[wiper]] הוא מגע אידיאלי, בלי ההתנגדות השארית שגיליון הנתונים מתיר, בלי סטיית ערך, ובלי התנגדות מגע של ה[[wiper]]. מיקום ה[[wiper]] הוא חלק המסלול החשמלי ולא זווית הציר.',
+
   // TBI-019 G2: חלונית המדריך ונקודות הכניסה אליה.
   'guidepanel.home.heading': 'מדריכי רכיבים',
   'guidepanel.home.intro': 'שיעורים קצרים על רכיב אחד, עם מעגל עובד לפתיחה.',

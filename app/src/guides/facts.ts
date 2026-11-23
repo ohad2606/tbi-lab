@@ -50,15 +50,20 @@ export interface GuideEvaluation {
 
 function solve(
   doc: ProjectDocument | null,
+  pressed?: string,
 ): { snapshot: ReturnType<typeof createSnapshot>; out: SolveSuccess } | null {
   if (!doc) return null;
   const snapshot = createSnapshot(doc);
-  const out = new EngineSession(snapshot).solve();
+  const session = new EngineSession(snapshot);
+  if (pressed !== undefined && session.setMomentary(pressed, true) !== null) return null;
+  const out = session.solve();
   return out.ok ? { snapshot, out } : null;
 }
 
+/** The document after the try-it action (a press leaves the document unchanged). */
 function applyAction(guide: ComponentGuide, doc: ProjectDocument): ProjectDocument | null {
   const a = guide.tryIt.action;
+  if (a.kind === 'press') return doc.components.some((c) => c.id === a.component) ? doc : null;
   const r = setParam(doc, a.component, a.param, a.to);
   return r.ok ? r.doc : null;
 }
@@ -74,7 +79,10 @@ export function evaluateGuide(guide: ComponentGuide, before: ProjectDocument): G
   const docs: Record<FactState, ProjectDocument | null> = { before, after };
   const solved: Record<FactState, ReturnType<typeof solve>> = {
     before: solve(before),
-    after: solve(after),
+    after: solve(
+      after,
+      guide.tryIt.action.kind === 'press' ? guide.tryIt.action.component : undefined,
+    ),
   };
   const read = (src: FactSource): FactValue | null => {
     if (src.kind === 'constant') return CONSTANTS[src.ref];
@@ -84,6 +92,10 @@ export function evaluateGuide(guide: ComponentGuide, before: ProjectDocument): G
       return r ? { value: r[src.field], unit: RATING_UNIT[src.field] } : null;
     }
     const state = src.state ?? 'before';
+    if (src.kind === 'terminal') {
+      const p = solved[state]?.out.components[src.component]?.terminals[src.terminal];
+      return typeof p === 'number' && Number.isFinite(p) ? { value: p, unit: 'volt' } : null;
+    }
     if (src.kind === 'param') return paramQuantity(docs[state], src.component, src.param);
     const c = solved[state]?.out.components[src.component];
     const value = c?.[src.field];
