@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
+  loadAutoApproveStatus,
   loadOpenSignups,
   signupAction,
+  type AutoApproveStatus,
   type Loaded,
   type SignupAction,
   type SignupRecord,
@@ -10,6 +12,7 @@ import { Confirm, Loading, Problem } from '../common.js';
 import { api, useConsole, useT } from '../context.js';
 import type { MessageKey } from '../i18n.js';
 import {
+  autoApproveView,
   focusAfterRemoval,
   isAutoApproved,
   signupCountKey,
@@ -22,7 +25,7 @@ import {
 const isolate = (s: string) => `⁨${s}⁩`;
 
 /** Placeholder swapped for the time, so it can sit in its own left-to-right <bdi>. */
-const SLOT = '\u0001';
+const SLOT = '\uE000';
 
 interface RowMessage {
   key: MessageKey;
@@ -41,6 +44,105 @@ const rowFocus = (id: string) =>
   document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`) ??
   document.querySelector<HTMLElement>(`[data-signup-id="${id}"][tabindex="-1"]`);
 
+const N_SLOT = '\uE000';
+const C_SLOT = '\uE001';
+
+/**
+ * Read-only status of the automatic approver (BETA-G1). Off is one line (the owner should see that
+ * it is off); on shows today's count against the cap, the state as text (not colour alone), and the
+ * older backlog. Numbers and codes are left-to-right inside <bdi>; an unreadable value is the word
+ * "unknown", never 0. Loaded on open and by Refresh only; not a live region (no polling).
+ */
+function AutoApproveBlock({ status }: { status: Loaded<AutoApproveStatus> | null }) {
+  const t = useT();
+  const val = (v: number | 'unknown') =>
+    v === 'unknown' ? (
+      <bdi dir="auto" data-testid="auto-unknown">
+        {t('console.signups.auto.value.unknown')}
+      </bdi>
+    ) : (
+      <bdi dir="ltr">{v}</bdi>
+    );
+  let body;
+  if (!status) body = <Loading />;
+  else if (!status.ok)
+    body = (
+      <p class="result warn" data-testid="auto-unavailable">
+        {t('console.signups.auto.unavailable')}
+      </p>
+    );
+  else {
+    const v = autoApproveView(status.value);
+    if (v.mode === 'off')
+      body = (
+        <p class="muted" data-testid="auto-off">
+          {t('console.signups.auto.off')}
+        </p>
+      );
+    else if (v.mode === 'unknown')
+      body = (
+        <p class="result warn" data-testid="auto-unknown-mode">
+          {t('console.signups.auto.unknown')}
+        </p>
+      );
+    else {
+      const cls =
+        v.state === 'running' ? 'badge-auto' : v.state === 'paused' ? 'badge-pending' : 'badge-off';
+      body = (
+        <>
+          <p data-testid="auto-today">
+            {t('console.signups.auto.today', { count: N_SLOT, cap: C_SLOT })
+              .split(/(\uE000|\uE001)/)
+              .map((part) =>
+                part === N_SLOT ? val(v.count) : part === C_SLOT ? val(v.dailyCap) : part,
+              )}
+          </p>
+          {v.capReached && (
+            <p class="small" data-testid="auto-cap-reached">
+              {t('console.signups.auto.capReached')}
+            </p>
+          )}
+          <p>
+            {t('console.signups.auto.state.label')}:{' '}
+            <span class={`badge ${cls}`} data-testid="auto-state" data-state={v.state}>
+              {t(`console.signups.auto.state.${v.state}` as MessageKey)}
+            </span>
+          </p>
+          {v.reason && (
+            <p class="small" data-testid="auto-reason">
+              {t('console.signups.auto.reason', { code: N_SLOT })
+                .split(N_SLOT)
+                .flatMap((part, i) =>
+                  i === 0
+                    ? [part]
+                    : [
+                        <bdi key={i} dir="ltr" class="code">
+                          {v.reason}
+                        </bdi>,
+                        part,
+                      ],
+                )}
+            </p>
+          )}
+          <p class="small" data-testid="auto-backlog">
+            {t('console.signups.auto.backlog', { count: N_SLOT })
+              .split(N_SLOT)
+              .flatMap((part, i) =>
+                i === 0 ? [part] : [<span key={i}>{val(v.waitingBacklog)}</span>, part],
+              )}
+          </p>
+        </>
+      );
+    }
+  }
+  return (
+    <section aria-labelledby="signups-auto-h" class="item" data-testid="auto-status">
+      <h2 id="signups-auto-h">{t('console.signups.auto.heading')}</h2>
+      {body}
+    </section>
+  );
+}
+
 /**
  * Open sign-up requests (TBI-022, owner-only): undecided ones, and approved ones whose account or
  * email has not finished, so a failed or queued email is still here after a reload. Approve adds
@@ -52,6 +154,7 @@ export function Signups() {
   const t = useT();
   const { date } = useConsole();
   const [list, setList] = useState<Loaded<SignupRecord[]> | null>(null);
+  const [autoStatus, setAutoStatus] = useState<Loaded<AutoApproveStatus> | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, RowMessage>>({});
@@ -72,6 +175,10 @@ export function Signups() {
   };
 
   const reload = async () => {
+    // The status is independent of the list: its failure shows its own message and never blocks it.
+    void loadAutoApproveStatus(api).then((st) => {
+      if (alive.current) setAutoStatus(st);
+    });
     const v = await loadOpenSignups(api);
     if (!alive.current) return;
     setList(v);
@@ -176,6 +283,7 @@ export function Signups() {
       <div role="status" aria-live="polite" class="visually-hidden" data-testid="signups-live">
         {announce}
       </div>
+      <AutoApproveBlock status={autoStatus} />
       {!list ? (
         <Loading />
       ) : !list.ok ? (

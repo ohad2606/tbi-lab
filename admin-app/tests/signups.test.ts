@@ -1,8 +1,14 @@
 /** TBI-022 slice D: the sign-up screen's logic without the DOM; texts exist in both locales. */
 import { describe, expect, it } from 'vitest';
-import { SIGNUP_ERRORS, interpretSignup, type SignupRecord } from '@tbi-lab/admin-client';
+import {
+  SIGNUP_ERRORS,
+  interpretSignup,
+  type AutoApproveStatus,
+  type SignupRecord,
+} from '@tbi-lab/admin-client';
 import { LOCALES, isMessageKey } from '../src/i18n.js';
 import {
+  autoApproveView,
   canResend,
   focusAfterRemoval,
   isAutoApproved,
@@ -179,5 +185,72 @@ describe('sign-up requests view logic', () => {
     }
     const he = LOCALES.find((l) => l.code === 'he')!;
     expect(he.messages['console.signups.confirm.body' as keyof typeof he.messages]).toBeTruthy();
+  });
+});
+
+const AUTO_KEYS = [
+  'console.signups.auto.heading',
+  'console.signups.auto.off',
+  'console.signups.auto.unknown',
+  'console.signups.auto.unavailable',
+  'console.signups.auto.today',
+  'console.signups.auto.capReached',
+  'console.signups.auto.state.label',
+  'console.signups.auto.state.running',
+  'console.signups.auto.state.paused',
+  'console.signups.auto.state.notRunning',
+  'console.signups.auto.state.unknown',
+  'console.signups.auto.reason',
+  'console.signups.auto.backlog',
+  'console.signups.auto.value.unknown',
+];
+describe('autoApproveView', () => {
+  const ok: AutoApproveStatus = {
+    enabled: true,
+    running: true,
+    paused: false,
+    capReached: false,
+    count: 3,
+    dailyCap: 20,
+    waitingBacklog: 4,
+    stateDir: 'ok',
+    stateDirReason: null,
+  };
+  const state = (x: Partial<AutoApproveStatus>) => {
+    const v = autoApproveView({ ...ok, ...x });
+    return v.mode === 'on' ? v.state : v.mode;
+  };
+  it('off and unreadable-enabled are their own modes', () => {
+    expect(state({ enabled: false })).toBe('off');
+    expect(state({ enabled: 'unknown' })).toBe('unknown');
+  });
+  it('running only when running, not paused and the directory is safe are all known', () => {
+    expect(state({})).toBe('running');
+    expect(state({ paused: true })).toBe('paused');
+    expect(state({ paused: 'unknown' })).toBe('unknown');
+    expect(state({ running: 'unknown' })).toBe('unknown');
+    expect(state({ stateDir: 'unknown' })).toBe('unknown');
+  });
+  it('not running wins over paused (stopped sweep or unsafe directory)', () => {
+    expect(state({ running: false, paused: true })).toBe('notRunning');
+    expect(state({ stateDir: 'unsafe', paused: true, stateDirReason: 'ancestor_mode' })).toBe(
+      'notRunning',
+    );
+    expect(state({ running: 'unknown', stateDir: 'unsafe' })).toBe('notRunning');
+  });
+  it('keeps unknown numbers unknown and carries the reason only when unsafe', () => {
+    const v = autoApproveView({
+      ...ok,
+      count: 'unknown',
+      stateDir: 'unsafe',
+      stateDirReason: 'x_y',
+    });
+    expect(v).toMatchObject({ count: 'unknown', reason: 'x_y', dailyCap: 20 });
+    expect(autoApproveView({ ...ok, stateDirReason: 'x_y' })).toMatchObject({ reason: null });
+    expect(autoApproveView({ ...ok, capReached: 'unknown' })).toMatchObject({ capReached: false });
+  });
+  it('has HE and EN texts for every key', () => {
+    for (const l of LOCALES)
+      for (const k of AUTO_KEYS) expect(l.messages[k as never], k).toBeTruthy();
   });
 });

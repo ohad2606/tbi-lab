@@ -1,6 +1,11 @@
 /** TBI-022 slice D: the sign-up requests calls (design §6.1). Synthetic data only. */
 import { describe, expect, it } from 'vitest';
-import { interpretSignup, loadOpenSignups, signupAction } from '../src/index.js';
+import {
+  interpretSignup,
+  loadAutoApproveStatus,
+  loadOpenSignups,
+  signupAction,
+} from '../src/index.js';
 
 type Call = { url: string; init: RequestInit | undefined };
 function fake(status: number, body: unknown) {
@@ -130,5 +135,76 @@ describe('interpretSignup', () => {
     expect(interpretSignup(403, { error: 'csrf' })).toEqual({ kind: 'refused', error: 'csrf' });
     expect(interpretSignup(429, {})).toEqual({ kind: 'refused', error: 'rate_limited' });
     expect(interpretSignup(null, null)).toEqual({ kind: 'refused', error: 'network' });
+  });
+});
+
+describe('loadAutoApproveStatus', () => {
+  const on = {
+    enabled: true,
+    running: true,
+    day: '2026-11-23',
+    dailyCap: 20,
+    count: 3,
+    capReached: false,
+    paused: false,
+    stateDir: 'ok',
+    cutoff: '2026-11-20T00:00:00Z',
+    waitingBacklog: 4,
+  };
+  it('reads the route with the admin service path', async () => {
+    const f = fake(200, on);
+    const r = await loadAutoApproveStatus(f.fn);
+    expect(f.calls[0]!.url).toMatch(/\/signups\/auto-approve$/);
+    expect(r).toEqual({
+      ok: true,
+      value: {
+        enabled: true,
+        running: true,
+        paused: false,
+        capReached: false,
+        count: 3,
+        dailyCap: 20,
+        waitingBacklog: 4,
+        stateDir: 'ok',
+        stateDirReason: null,
+      },
+    });
+  });
+  it('keeps "unknown" and turns missing or malformed values into "unknown", never 0 or false', async () => {
+    const f = fake(200, {
+      enabled: true,
+      running: 'unknown',
+      count: 'unknown',
+      dailyCap: -1,
+      waitingBacklog: 1.5,
+      paused: 'yes',
+      stateDir: 'unsafe',
+      stateDirReason: 'ancestor_mode',
+    });
+    const r = await loadAutoApproveStatus(f.fn);
+    expect(r.ok && r.value).toMatchObject({
+      running: 'unknown',
+      count: 'unknown',
+      dailyCap: 'unknown',
+      waitingBacklog: 'unknown',
+      paused: 'unknown',
+      capReached: 'unknown',
+      stateDir: 'unsafe',
+      stateDirReason: 'ancestor_mode',
+    });
+  });
+  it('drops a reason that is not a plain code', async () => {
+    const r = await loadAutoApproveStatus(fake(200, { ...on, stateDirReason: '/var/x y' }).fn);
+    expect(r.ok && r.value.stateDirReason).toBeNull();
+  });
+  it('off is enabled:false; failures are explicit errors', async () => {
+    const off = await loadAutoApproveStatus(fake(200, { enabled: false }).fn);
+    expect(off.ok && off.value.enabled).toBe(false);
+    expect(await loadAutoApproveStatus(fake(404, {}).fn)).toEqual({
+      ok: false,
+      error: 'unavailable',
+    });
+    expect((await loadAutoApproveStatus(fake(200, 'x').fn)).ok).toBe(false);
+    expect((await loadAutoApproveStatus(fake(500, {}).fn)).ok).toBe(false);
   });
 });
