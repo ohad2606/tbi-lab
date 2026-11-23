@@ -46,6 +46,7 @@ helper change, which is out of scope (owner question Q1).
 | `TBI_SIGNUP_AUTO_DAILY_CAP` | required when on: whole number 1..1000. Missing or invalid: off plus one log line. |
 | `TBI_SIGNUP_AUTO_STATE_DIR` | optional absolute, normalized path of the **control-state directory** (pause file + state file). Unset: `<STORE_DIR>` (slice 1 behaviour). Not absolute / not normalized: off plus one log line. See "Control-state directory" below. |
 | `TBI_SIGNUP_AUTO_SINCE` | optional ISO time with zone (`2026-12-12T08:00:00+02:00`). Only requests **created after** it are auto-approved. Unset: the time auto-approve first ran, persisted in the state file (section 3). Invalid: off plus one log line. |
+| `TBI_SIGNUP_AUTO_WEB` | BETA-G1 s8: optional `excluded` (default when unset or empty) or `included`. With `excluded`, requests from the browser route (`origin: "web"`, docs/plans/BETA-G1-WEB-INTAKE.md) are never auto-approved: they stay `pending` for the owner and spend no slot. Must stay `excluded` until the owner answers O1 there. Any other value: off plus one log line. |
 
 The flag needs `TBI_SIGNUP_ADMIN=1` (the sign-up feature itself). A bad auto setting never disables the manual
 routes. Turning the flag on or off needs a restart of the admin service. Pausing (section 4) does not.
