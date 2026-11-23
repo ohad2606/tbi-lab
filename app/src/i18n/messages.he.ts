@@ -1406,6 +1406,9 @@ export const he: Record<MessageKey, string> = {
   'sim.limit.daily':
     'הגעתם למגבלה היומית של דקות הסימולציה. היא תתאפס מחר. עדיין אפשר לערוך ולחבר רכיבים.',
   'sim.limit.system_unavailable': 'השירות זמנית לא זמין ולא חויבתם. נסו שוב בעוד רגע.',
+  // BETA-G2 (NEEDS DOCS REVIEW, tbi-docs): the Free kill switch; copy of server key limit.sim.free_paused.
+  'sim.limit.free_paused':
+    'הרצות חינמיות מושהות כרגע. נסו שוב מאוחר יותר. אפשר להמשיך לערוך ולחבר רכיבים בינתיים.',
   'sim.queue.cancel': 'ביטול',
   'sim.queue.waiting_label': 'מצב תור ההרצה',
   'sim.error.runtime.sim_limit': 'לא ניתן להתחיל הרצה בגלל מגבלת שימוש. הפרויקט לא נפגע.',

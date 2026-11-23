@@ -13,6 +13,11 @@
  *   TBI_HOST_SIM_HOUSEKEEPING_MS  adapter housekeeping, default 5000; >= host housekeepingMs
  *   TBI_HOST_SIM_POLL_S           pollAfterS for a 202, default 15; v * 1000 < queue.vanishMs
  *
+ * BETA-G2 kill switch: while `${TBI_HOST_SIM_PLANS_STATE}/free-admission.paused` exists, new Free
+ * admissions are refused with free_paused (SimHostAdapter `freePaused`), checked on every admission, so an
+ * operator switches it on (`touch`) and off (`rm`) without a restart. A path that cannot be checked
+ * counts as paused (fail closed). No file = off (the default).
+ *
  * Every refusal throws HostSimBootError (fail closed). Messages carry flag names only: never file
  * content, paths, values or principals.
  */
@@ -43,6 +48,21 @@ export class HostSimBootError extends Error {}
 
 export const SIM_JOURNAL_FILE = 'sim-journal.log';
 export const SIM_LOCK_FILE = 'host.lock';
+/** BETA-G2: operator kill switch for new Free admissions (in the state directory; content ignored) */
+export const FREE_PAUSE_FILE = 'free-admission.paused';
+
+/**
+ * BETA-G2: is the Free kill switch on? Any entry at `path` (file, directory, symlink, even dangling)
+ * = paused; ENOENT = not paused; any other error (EACCES, ENOTDIR, ...) = paused (fail closed).
+ */
+export function freePausedAt(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code !== 'ENOENT';
+  }
+}
 /** O_EXCL mutex serialising a stale-lock takeover and release (never removed by a non-holder) */
 export const SIM_LOCK_TAKEOVER_FILE = 'host.lock.takeover';
 /** the plans config is a small JSON file; anything larger is refused unread */
@@ -445,6 +465,7 @@ export async function bootSimPlans(
       {
         config: cfg,
         clock: clockOf(deps),
+        freePaused: () => freePausedAt(join(dir, FREE_PAUSE_FILE)),
       },
     );
     // A torn or corrupt journal: refuse (design §7, O-7); never repaired automatically.

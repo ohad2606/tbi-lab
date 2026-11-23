@@ -49,6 +49,9 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     // NEEDS DOCS REVIEW (tbi-docs): queue_replaced, placeholder wording from the s3d design (section 4).
     'limit.sim.queue_replaced':
       'המקום שלכם בתור הועבר ללשונית אחרת. אפשר לסגור את הלשונית הזו ולחזור ללשונית השנייה.',
+    // NEEDS DOCS REVIEW (tbi-docs): BETA-G2 free_paused, draft wording.
+    'limit.sim.free_paused':
+      'הרצות חינמיות מושהות כרגע. נסו שוב מאוחר יותר. אפשר להמשיך לערוך ולחבר רכיבים בינתיים.',
   },
   en: {
     'limit.ai.credits_out':
@@ -88,6 +91,9 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     // NEEDS DOCS REVIEW (tbi-docs): queue_replaced, placeholder wording from the s3d design (section 4).
     'limit.sim.queue_replaced':
       'Your place in the queue is now held by another tab. Close this tab or return to the other one.',
+    // NEEDS DOCS REVIEW (tbi-docs): BETA-G2 free_paused, draft wording.
+    'limit.sim.free_paused':
+      'Free runs are paused right now. Please try again later. You can keep editing and wiring parts meanwhile.',
   },
 };
 
