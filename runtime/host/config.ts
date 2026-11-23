@@ -37,9 +37,8 @@ export interface HostConfig {
    * (metering.enabled=false) = the host behaves exactly as without it. s3d-3a: the queue surface
    * (`hasWaiting` peek, `cancel` behind `DELETE /sessions/queue`). s3d-3b: an ENABLED adapter admits
    * `POST /sessions` (SessionHost.admitCreate) and needs `policy` and `simAdmission` (the constructor
-   * refuses it otherwise). The run lifecycle (beats, `ended` on every terminal path) is s3d-4, so an
-   * enabled adapter is acceptable only in tests: `main.ts` refuses to boot with any TBI_HOST_SIM_* flag
-   * (runtime/plans/hostflags.ts) until s3d-6.
+   * refuses it otherwise). s3d-4: run lifecycle. s3d-6: `main.ts` builds it from TBI_HOST_SIM_*
+   * (runtime/host/simboot.ts); unset = absent. Enabling in a deployment is an owner decision.
    */
   simPlans?: Pick<
     SimHostAdapter,
