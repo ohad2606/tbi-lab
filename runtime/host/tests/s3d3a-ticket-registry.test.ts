@@ -252,7 +252,9 @@ describe('TicketRegistry (M2)', () => {
     expect(reg.lookup(r1, P(3))).toBeNull();
   });
 
-  it('sweep removes expired entries (count only) and issue sweeps first', () => {
+  // s3d-3b (3a review note 3, no O(n) per issue): issue sweeps only when the registry is at its cap,
+  // so expired entries are still removed before anything live is evicted.
+  it('sweep removes expired entries (count only) and issue sweeps first when at the cap', () => {
     const { reg, clock } = registry({ cap: 3, perPrincipalCap: 2 });
     reg.issue(P(1));
     reg.issue(P(2));
@@ -262,9 +264,15 @@ describe('TicketRegistry (M2)', () => {
     const a = reg.issue(P(3)).ticket;
     reg.issue(P(4));
     clock.advance(TTL);
-    reg.issue(P(5)); // sweeps a and P(4) instead of evicting anything live
-    expect(reg.size).toBe(1);
-    expect(reg.lookup(a, P(3))).toBeNull();
+    reg.issue(P(5)); // below the cap: no sweep (expired entries still behave as unknown)
+    expect(reg.size).toBe(3);
+    expect(reg.lookup(a, P(3))).toBeNull(); // lazily removed
+    expect(reg.size).toBe(2);
+    const b = reg.issue(P(6)).ticket;
+    const live = reg.issue(P(7)); // at the cap: sweeps the expired P(4) instead of evicting live ones
+    expect(live.evicted).toEqual([{ ticket: expect.any(String), principal: P(4) }]);
+    expect(reg.lookup(b, P(6))).toEqual({ kind: 'waiting' });
+    expect(reg.size).toBe(3);
   });
 
   it('cap: a ticketless flood from many principals never grows past the cap (oldest first)', () => {

@@ -124,6 +124,18 @@ describe('Session Host: sim admission result mapping (pre-s3d)', () => {
     expect(simRefusal('credits_out').status).toBe(503);
   });
 
+  it('s3d-3b: queue_replaced is its own 409 with its own key, distinct from queue_timeout (429)', () => {
+    const r = simAdmissionResponse(refused('queue_replaced', PARAMS));
+    expect(r).toMatchObject({
+      kind: 'refused',
+      status: 409,
+      body: { code: 'queue_replaced', messageKey: 'limit.sim.queue_replaced', params: {} },
+    });
+    expect(simRefusal('queue_timeout').status).toBe(429);
+    for (const lang of ['en', 'he'] as const)
+      expect(MESSAGES[lang]['limit.sim.queue_replaced']).toBeTypeOf('string');
+  });
+
   it('a sim limit whose required param is missing fails closed to system_unavailable', () => {
     const r = simAdmissionResponse(refused('minutes_out', {}));
     expect(r.kind === 'refused' && r.body.code).toBe('system_unavailable');

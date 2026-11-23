@@ -4,6 +4,10 @@
  *   GET    /health                          host liveness and session counts (no identifiers)
  *   POST   /sessions                        create (body: CreateSessionRequest)
  *                                           -> 201 { sessionId, token, status }
+ *                                           TBI-018 s3d-3b, enabled sim adapter only: + `sim`;
+ *                                           `Tbi-Queue: 1` clients may get 202 { queued, limit }
+ *                                           and poll with `Tbi-Queue-Ticket`; metered refusals
+ *                                           { error, limit } (design section 3)
  *   GET    /sessions/:id                    status
  *   POST   /sessions/:id/run                ready -> running
  *   POST   /sessions/:id/stop               orderly stop (idempotent)
@@ -40,14 +44,14 @@ import { handleAdmin, type AdminLimits, type AdminMode, type IdentityObserver } 
 import type { OwnerReference } from './owner.js';
 import { MemoryRate } from '../policy/rate.js';
 import { Refusal, admissionEvent, sendRefusal } from '../policy/refusal.js';
-import type { SessionHost } from './host.js';
+import type { SessionHost, SimAnswer } from './host.js';
 import { PROTOCOL, type SessionEvent } from './protocol.js';
 import type { HostSession } from './session.js';
 import { isTerminal } from './stateMachine.js';
 import { runtimeIdentity } from './identity.js';
 import { MAX_REPORT_BYTES } from './reportProtocol.js';
 import type { ReportStore } from './reports.js';
-import { queueTicketOf } from './queueTickets.js';
+import { queueCapable, queueTicketOf } from './queueTickets.js';
 
 /** Largest amount of unsent SSE data kept for a slow client before its stream is closed. */
 const STREAM_BACKLOG_BYTES = 1024 * 1024;
@@ -79,6 +83,30 @@ function send(res: ServerResponse, status: number, body: unknown): void {
     'x-content-type-options': 'nosniff',
   });
   res.end(text);
+}
+
+/**
+ * TBI-018 s3d-3b: a metered admission answer (design section 3). Refusals: `{ error, limit }` (keys
+ * only, O-8); 202: `{ queued: { ticket, position, pollAfterS }, limit }` + `Retry-After`. The ticket is
+ * a capability: it is only ever in this body, never in a header, URL or log line.
+ */
+function sendSim(res: ServerResponse, a: SimAnswer): void {
+  const retryAfterS = a.kind === 'queued' ? a.pollAfterS : a.retryAfterS;
+  const status = a.kind === 'queued' ? 202 : a.status;
+  const body =
+    a.kind === 'queued'
+      ? {
+          queued: { ticket: a.ticket, position: a.position, pollAfterS: a.pollAfterS },
+          limit: a.limit,
+        }
+      : { error: a.limit.code, limit: a.limit };
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    ...(retryAfterS !== undefined ? { 'retry-after': String(retryAfterS) } : {}),
+  });
+  res.end(JSON.stringify(body));
 }
 
 /** A bodiless answer with the same safety headers as `send`. */
@@ -326,15 +354,40 @@ async function handle(
 
   if (parts.length === 1 && method === 'POST') {
     const body = await readBody(req, host.config.maxRequestBytes);
-    const r = await host.admitCreate(body, principal, decision.emailTag);
+    // TBI-018 s3d-3b: the queue headers and the client-gone probe exist only with an enabled sim
+    // adapter; flag-off `admitCreate` is exactly `create` (headers ignored, design section 10 R-1).
+    const metered = host.queueEnabled === true;
+    let gone = false;
+    if (metered) res.once('close', () => (gone = !res.writableFinished));
+    const r = await host.admitCreate(
+      body,
+      principal,
+      decision.emailTag,
+      metered
+        ? {
+            queueCapable: queueCapable(req),
+            ticket: queueTicketOf(req),
+            gone: () => gone || res.destroyed,
+          }
+        : {},
+    );
+    if (!r.ok && 'sim' in r) return sendSim(res, r.sim);
     if (!r.ok && r.refusal) {
       admissionEvent('runtime', 'session-create', r.refusal.code, principal);
       return sendRefusal(res, r.refusal);
     }
     if (!r.ok) throw new HttpError(r.status, r.error);
-    if (host.config.policy) admissionEvent('runtime', 'session-create', 'admitted', principal);
     const s = r.value.session;
-    return send(res, 201, { sessionId: s.id, token: s.token, status: s.status() });
+    // metered admissions log their own decision (host.ts simAdmissionEvent)
+    if (host.config.policy && !s.simAdmitted)
+      admissionEvent('runtime', 'session-create', 'admitted', principal);
+    return send(res, 201, {
+      sessionId: s.id,
+      token: s.token,
+      status: s.status(),
+      // s3d-3b: additive, only for a metered run (design section 3)
+      ...(s.simAdmitted ? { sim: { ...s.simAdmitted } } : {}),
+    });
   }
 
   // TBI-018 s3d-3a: queue cancel, before host.get (whose 32-hex id check would 404 it). Same caller

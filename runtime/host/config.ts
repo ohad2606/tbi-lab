@@ -9,7 +9,9 @@ import type { RuntimeLauncher } from '../harness/launcher.js';
 import type { Policy } from '../policy/policy.js';
 import type { RateLimiter } from '../policy/rate.js';
 import type { ResourceProbe } from '../policy/resources.js';
+import type { PlanId } from '../plans/config.js';
 import type { SimHostAdapter } from '../plans/simhost.js';
+import type { TicketRegistry } from './queueTickets.js';
 import type { DiagnosticsSink } from './diagnostics.js';
 import { COMMAND_QUANTUM_US } from './protocol.js';
 
@@ -31,13 +33,17 @@ export interface HostConfig {
   /** Phase 4: plans and global limits; without it only `maxSessions` applies (tests). */
   policy?: Policy;
   /**
-   * TBI-018 s3c: sim-minute metering and the fair queue (runtime/plans/simhost.ts). NOT WIRED yet:
-   * absent or disabled (metering.enabled=false) = the host behaves exactly as without it. An ENABLED
-   * adapter makes the SessionHost constructor throw: metering must never look on while the host does
-   * not enforce it (docs/runtime/TBI-018-sim-host-integration.md). s3d-3a: the queue surface
-   * (`hasWaiting` peek, `cancel` behind `DELETE /sessions/queue`) is used only when it is enabled.
+   * TBI-018 s3c: sim-minute metering and the fair queue (runtime/plans/simhost.ts). Absent or disabled
+   * (metering.enabled=false) = the host behaves exactly as without it. s3d-3a: the queue surface
+   * (`hasWaiting` peek, `cancel` behind `DELETE /sessions/queue`). s3d-3b: an ENABLED adapter admits
+   * `POST /sessions` (SessionHost.admitCreate) and needs `policy` and `simAdmission` (the constructor
+   * refuses it otherwise). The run lifecycle (beats, `ended` on every terminal path) is s3d-4, so an
+   * enabled adapter is acceptable only in tests: `main.ts` refuses to boot with any TBI_HOST_SIM_* flag
+   * (runtime/plans/hostflags.ts) until s3d-6.
    */
-  simPlans?: Pick<SimHostAdapter, 'enabled' | 'hasWaiting' | 'cancel'>;
+  simPlans?: Pick<SimHostAdapter, 'enabled' | 'hasWaiting' | 'cancel' | 'admit' | 'ended'>;
+  /** TBI-018 s3d-3b: what the metered admission needs besides the adapter (unused flag-off). */
+  simAdmission?: SimAdmissionConfig;
   /** Persistent per-principal rate windows (session creation). */
   rates?: RateLimiter;
   /** Host resources (disk, memory); tests substitute. */
@@ -96,6 +102,16 @@ export interface HostConfig {
    * Default: the service's stderr (journald). Tests substitute.
    */
   diagnostics?: DiagnosticsSink;
+}
+
+/** TBI-018 s3d-3b: host side of the metered admission (design sections 4 and 6). */
+export interface SimAdmissionConfig {
+  /** host policy plan name (`Policy.planName`) -> sim PlanId; an unmapped name is refused (503) */
+  planMap: ReadonlyMap<string, PlanId>;
+  /** `pollAfterS` and `Retry-After` of a 202 (boot: v * 1000 < queue.vanishMs) */
+  pollAfterS: number;
+  /** the queue ticket registry of this host process (memory only) */
+  tickets: TicketRegistry;
 }
 
 export function defaultConfig(
