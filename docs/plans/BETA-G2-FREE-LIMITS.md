@@ -1,6 +1,6 @@
-# BETA-G2: free-plan limits for the public beta (slice 1)
+# BETA-G2: free-plan limits for the public beta (slices 1 and 2)
 
-Status: implemented and unit-tested; **off by default** and not enabled anywhere. Enabling (setting
+Status: implemented and unit-tested (slice 2: ops-review minors of slice 1); **off by default** and not enabled anywhere. Enabling (setting
 `TBI_HOST_SIM_PLANS_CONFIG` on any host) stays a separate owner approval
 (`docs/plans/S3D-STAGING-ENABLE-CHECKLIST.md`). Billing, credits, AI quotas, plan-assignment UI and any
 app UI are out of scope (frozen). Read with `docs/plans/S3D-HOST-WIRING-DESIGN.md` (the TBI-018 wiring).
@@ -21,14 +21,31 @@ app UI are out of scope (frozen). Read with `docs/plans/S3D-HOST-WIRING-DESIGN.m
   as the host user (the directory is 0700 and owned by the host user, checked at boot). Switch off:
   remove it. Effective on the next admission or housekeeping pass (default 5 s); no restart.
 - While on: a new Free `POST /sessions` (join, poll or legacy client) answers 429
-  `{ error: 'free_paused', limit: { code: 'free_paused', messageKey: 'limit.sim.free_paused', params: {} } }`;
-  nothing is opened, queued or billed. Waiting Free entries are removed (any admission and every
-  housekeeping pass); their ticket answers `free_paused` on the next poll. Non-free plans are not affected
-  and are never blocked behind a paused Free waiter.
+  `{ error: 'free_paused', limit: { code: 'free_paused', messageKey: 'limit.sim.free_paused', params: {} } }`
+  with `Retry-After: 30` (a constant; the host cannot know when the pause ends); nothing is opened, queued
+  or billed. A new Free join / legacy request is refused before the creation rate, so it costs no
+  creation token (slice 2). This is no bypass: that path never calls the adapter and never starts
+  anything; a pause that starts after the check is still refused by the adapter (the token is then
+  taken, as before). Every request still passes the per-request anti-hammering rate. Waiting Free
+  entries are removed (any admission that reaches the adapter and every housekeeping pass); their ticket
+  answers `free_paused` on the next poll. Non-free plans are not affected and are never blocked behind a
+  paused Free waiter.
+- A ticket dropped by the pause keeps answering `free_paused` (429, `Retry-After: 30`) also after the
+  pause ends: the host's ticket registry remembers why a ticket was dropped until it expires; it is never
+  re-queued. The client starts a new wait with a new join (tested over HTTP).
+- Operator lines (stderr, slice 2): `{"event":"sim_free_pause","paused":true|false}` once per transition
+  (the initial off state is not logged) and `{"event":"sim_free_pause_error","code":"EACCES"}` once per
+  distinct error code per process (an errno name or `unknown`; never the path or error text), so an
+  accidental pause (permissions, a broken state directory) can be told from an intended one.
+- `/health` on the health-only socket: with metering enabled, `capacity` carries the boolean
+  `freePaused` next to `waiting` / `metered` (a throwing probe reads `true`). Flag-off the body is
+  byte-identical (asserted in `runtime/host/tests/s3d6-health-boot.test.ts`). The API socket's `/health`
+  has no `capacity` and is unchanged.
 - Running Free runs are **not** stopped (they end by their lifetime cap, lease or minutes). Stopping
   running runs is a separate decision (open question Q3).
 - Fail closed: any error other than "does not exist" when checking the path (EACCES, ENOTDIR, ...) counts
-  as paused; a probe that throws or answers anything but `false` counts as paused.
+  as paused; a probe that throws or answers anything but `false` counts as paused. The path is checked
+  with `lstat`: a symlink there (dangling or live) is paused, its target is never followed.
 - Only with an enabled adapter (metering on). Without `TBI_HOST_SIM_PLANS_CONFIG` there is no Free plan
   on the host and the file is never read.
 - Old apps: 429 with an unknown code maps to "busy" (try again later); the current app shows its own
@@ -45,18 +62,16 @@ policy file), the plan map, and the pause file (absent = off).
 
 | Failure | Behaviour |
 |---|---|
-| pause path cannot be checked | paused (Free refused `free_paused`), paid unaffected |
+| pause path cannot be checked | paused (Free refused `free_paused`), paid unaffected; one `sim_free_pause_error` line per error code |
 | meter / journal problem | existing rule: admissions 503 `system_unavailable`, running metered runs stop `sim_unavailable` |
-| policy plan not mapped | boot refuses; at run time 503 `system_unavailable` (never unmetered) |
+| policy plan not mapped | boot refuses; at run time 503 `system_unavailable` (never unmetered; since slice 2 checked before the creation rate, so it costs no token) |
 | host restart | waiting list, tickets and Free cooldowns are lost (known s3c limit); the pause file survives |
 
-## 5. Not done (slice 2 and later)
+## 5. Not done (later slices)
 
 - No Free policy plan or number is set anywhere: the Free lifetime value, the capacity (6) and who is
   Free are operator/owner config (`TBI_POLICY_FILE` + `TBI_HOST_SIM_PLAN_MAP`). Nothing enabled.
 - App UI for the new message (rendering exists through `simLimitText`; no new screen) and an a11y review.
-- `/health` does not report the pause state (could add a boolean next to `waiting` / `metered`).
-- No `Retry-After` on `free_paused` (only `sim_cooldown` has one).
 - Real Free/paid resolution from entitlements (O-1): today only the policy-name map.
 - tbi-docs review of the HE/EN draft wording (marked NEEDS DOCS REVIEW).
 

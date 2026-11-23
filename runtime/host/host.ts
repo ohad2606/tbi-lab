@@ -18,6 +18,7 @@ import { checkResources } from '../policy/resources.js';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PlanId } from '../plans/config.js';
+import { limitError } from '../plans/limits.js';
 import type { Dropped } from '../plans/queue.js';
 import type { CloseReason } from '../plans/simminutes.js';
 import {
@@ -87,8 +88,20 @@ const CANCELLED_LIMIT: PublicLimit = simLimitAnswer({
   params: {},
 }).body;
 
+/**
+ * BETA-G2 slice 2: `Retry-After` of a free_paused refusal (seconds). A constant: the pause has no end
+ * time the host could know; it only spaces out the retries of a well-behaved client.
+ */
+export const FREE_PAUSED_RETRY_S = 30;
+
 const simLimit = (limit: PublicLimit, status = statusOfLimit(limit)): AdmitResult => {
   const n = limit.params.n;
+  const retryAfterS =
+    limit.code === 'sim_cooldown' && typeof n === 'number'
+      ? n
+      : limit.code === 'free_paused'
+        ? FREE_PAUSED_RETRY_S
+        : undefined;
   return {
     ok: false,
     status,
@@ -97,7 +110,7 @@ const simLimit = (limit: PublicLimit, status = statusOfLimit(limit)): AdmitResul
       kind: 'limit',
       status,
       limit,
-      ...(limit.code === 'sim_cooldown' && typeof n === 'number' ? { retryAfterS: n } : {}),
+      ...(retryAfterS !== undefined ? { retryAfterS } : {}),
     },
   };
 };
@@ -331,12 +344,7 @@ export class SessionHost {
     // legacy client whose principal waits (M3): the waiting tab's entry is left alone
     if (!capable && this.hasWaiting(principal))
       return refused(new Refusal('runtime_capacity', LEGACY_CAPACITY_RETRY_MS));
-    // 6: the creation rate, once per new admission (never on a poll; O-6)
-    if (poll === null) {
-      const rate = this.config.rates?.take(principal, 'session-create', plan.runtime.creations);
-      if (rate && !rate.ok) return refused(new Refusal('rate_limited', rate.retryAfterMs));
-    }
-    // 7: admission (plan resolution fails closed, m13)
+    // 7 (part, before 6 since BETA-G2 slice 2): plan resolution fails closed (m13)
     let planId: PlanId | undefined;
     try {
       planId = sim.planMap.get(policy.planName(principal));
@@ -347,21 +355,36 @@ export class SessionHost {
       logSimFault('plan');
       return simLimit(SYSTEM_LIMIT, 503);
     }
+    // BETA-G2 slice 2: a NEW Free admission while the kill switch is on is refused here, before the
+    // creation rate, so the refusal costs the user no token. Safe: this path never calls admit and never
+    // starts anything. A pause that ends meanwhile only refuses this one request; one that starts after
+    // this check is caught by admit (which re-checks) after the token was taken, as before.
+    const pausedEarly = poll === null && planId === 'free' && this.freePausedPeek(adapter);
+    // 6: the creation rate, once per new admission (never on a poll; O-6)
+    if (poll === null && !pausedEarly) {
+      const rate = this.config.rates?.take(principal, 'session-create', plan.runtime.creations);
+      if (rate && !rate.ok) return refused(new Refusal('rate_limited', rate.retryAfterMs));
+    }
+    // 7: admission
     const sessionId = newSessionId();
     const ticket = poll ?? newQueueTicket();
     let a: HostAdmit;
     try {
-      a = await adapter.admit({
-        ticket,
-        sessionId,
-        principal,
-        plan: planId,
-        slots: {
-          capacity: Math.min(policy.maxLiveSessions, this.config.maxSessions),
-          running: live.length,
-        },
-        mode: capable ? (poll !== null ? 'poll' : 'join') : 'legacy',
-      });
+      // the paused answer is the adapter's own refusal shape, so step 8 treats it exactly like one
+      // (waiting Free entries are dropped by the next admit or housekeeping pass)
+      a = pausedEarly
+        ? { metered: true, decision: 'refused', error: limitError('free_paused'), dropped: [] }
+        : await adapter.admit({
+            ticket,
+            sessionId,
+            principal,
+            plan: planId,
+            slots: {
+              capacity: Math.min(policy.maxLiveSessions, this.config.maxSessions),
+              running: live.length,
+            },
+            mode: capable ? (poll !== null ? 'poll' : 'join') : 'legacy',
+          });
     } catch {
       // M1: nothing starts and nothing stays queued
       logSimFault('admit');
@@ -718,6 +741,19 @@ export class SessionHost {
       });
   }
 
+  /**
+   * BETA-G2 slice 2: the adapter's kill switch state for the pre-rate check and /health. An adapter
+   * without it (absent or not a boolean) answers false here: the request then takes the normal path
+   * (token taken, admit decides). A throwing getter answers true (fail closed, as the adapter does).
+   */
+  private freePausedPeek(adapter: Adapter): boolean {
+    try {
+      return adapter.freePaused === true;
+    } catch {
+      return true;
+    }
+  }
+
   /** TBI-018 s3d-3a: the sim adapter's queue surface, only when the adapter is enabled. */
   private get queueAdapter(): NonNullable<HostConfig['simPlans']> | null {
     const a = this.config.simPlans;
@@ -845,10 +881,17 @@ export class SessionHost {
   /**
    * Sprint 23B: live (non-terminal) sessions, and the host's effective ceiling. TBI-018 s3d-6 (design
    * §10 R-1b, m8): with an ENABLED sim adapter also two coarse counts, `waiting` (queue entries) and
-   * `metered` (metered runs not terminal yet); never a principal, ticket or session id. Flag-off: the
+   * `metered` (metered runs not terminal yet); never a principal, ticket or session id. BETA-G2 slice 2:
+   * plus the boolean `freePaused` (the Free kill switch; a throwing probe reads true). Flag-off: the
    * exact Sprint 23B body.
    */
-  capacity(): { live: number; max: number; waiting?: number; metered?: number } {
+  capacity(): {
+    live: number;
+    max: number;
+    waiting?: number;
+    metered?: number;
+    freePaused?: boolean;
+  } {
     const live = [...this.sessions.values()].filter((s) => !isTerminal(s.state)).length;
     const policy = this.config.policy;
     const max = policy
@@ -858,7 +901,13 @@ export class SessionHost {
     if (!adapter) return { live, max };
     const w = (adapter as { waiting?: unknown }).waiting;
     const waiting = typeof w === 'number' && Number.isSafeInteger(w) && w >= 0 ? w : undefined;
-    return { live, max, ...(waiting !== undefined ? { waiting } : {}), metered: this.metered.size };
+    return {
+      live,
+      max,
+      ...(waiting !== undefined ? { waiting } : {}),
+      metered: this.metered.size,
+      freePaused: this.freePausedPeek(adapter),
+    };
   }
 
   /** Stop admitting sessions, terminate every live one, release every resource. */

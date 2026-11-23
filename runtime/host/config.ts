@@ -43,7 +43,9 @@ export interface HostConfig {
   simPlans?: Pick<
     SimHostAdapter,
     'enabled' | 'hasWaiting' | 'cancel' | 'admit' | 'ended' | 'heartbeat' | 'housekeeping'
-  >;
+  > &
+    /** BETA-G2 slice 2: the Free kill switch state (pre-rate refusal, /health); optional */
+    Partial<Pick<SimHostAdapter, 'freePaused'>>;
   /** TBI-018 s3d-3b: what the metered admission needs besides the adapter (unused flag-off). */
   simAdmission?: SimAdmissionConfig;
   /** Persistent per-principal rate windows (session creation). */

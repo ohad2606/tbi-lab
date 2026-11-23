@@ -5,12 +5,12 @@
  * as paused) and (e) its machine-readable reason `free_paused` with HE + EN texts.
  * (a) the per-session time cap is the host policy plan lifetime (runtime/host/tests/g2-free-limits.test.ts).
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG, parseConfig } from '../config.js';
-import { FREE_PAUSE_FILE, bootSimPlans, freePausedAt } from '../hostboot.js';
+import { FREE_PAUSE_FILE, bootSimPlans, freePauseProbe, freePausedAt } from '../hostboot.js';
 import { MESSAGE_KEY, limitError } from '../limits.js';
 import { MESSAGES, renderLimit } from '../messages.js';
 import type { SimEvent } from '../simminutes.js';
@@ -320,5 +320,113 @@ describe('BETA-G2 (d): the kill switch file in the sim state directory (hostboot
     } finally {
       b!.lock.release();
     }
+  });
+});
+
+describe('BETA-G2 slice 2: kill switch probe edge cases and operator lines', () => {
+  const parent = mkdtempSync(join(tmpdir(), 'plans-g2s2-'));
+  afterAll(() => rmSync(parent, { recursive: true, force: true }));
+  const errno = (code: string | undefined): Error =>
+    Object.assign(new Error(`lstat failed: /private/state/${FREE_PAUSE_FILE}`), { code });
+
+  it('a symlink at the pause path is paused, dangling or live (lstat never follows it)', () => {
+    const dir = mkdtempSync(join(parent, 'link-'));
+    const f = join(dir, FREE_PAUSE_FILE);
+    symlinkSync(join(dir, 'does-not-exist'), f);
+    expect(freePausedAt(f)).toBe(true);
+    rmSync(f);
+    const target = join(dir, 'target');
+    writeFileSync(target, '');
+    symlinkSync(target, f);
+    expect(freePausedAt(f)).toBe(true);
+    rmSync(f);
+    expect(freePausedAt(f)).toBe(false);
+  });
+
+  it('an error other than ENOENT (EACCES) = paused, logged ONCE per error code, code only (no path)', () => {
+    const lines: string[] = [];
+    let fail: string | null = 'EACCES';
+    const probe = freePauseProbe(join(parent, 'x', FREE_PAUSE_FILE), {
+      log: (l) => lines.push(l),
+      stat: () => {
+        if (fail) throw errno(fail);
+        throw errno('ENOENT');
+      },
+    });
+    expect(probe()).toBe(true);
+    expect(probe()).toBe(true);
+    expect(probe()).toBe(true);
+    expect(lines.map((l) => JSON.parse(l))).toEqual([
+      { event: 'sim_free_pause_error', code: 'EACCES' },
+      { event: 'sim_free_pause', paused: true },
+    ]);
+    // another distinct code: one more line; the same code again: none
+    fail = 'EIO';
+    expect(probe()).toBe(true);
+    fail = 'EACCES';
+    expect(probe()).toBe(true);
+    expect(lines).toHaveLength(3);
+    expect(JSON.parse(lines[2]!)).toEqual({ event: 'sim_free_pause_error', code: 'EIO' });
+    // recovers (ENOENT): one "off" transition line
+    fail = null;
+    expect(probe()).toBe(false);
+    expect(probe()).toBe(false);
+    expect(lines).toHaveLength(4);
+    expect(JSON.parse(lines[3]!)).toEqual({ event: 'sim_free_pause', paused: false });
+    for (const l of lines) {
+      expect(l).not.toContain('/');
+      expect(l).not.toContain(FREE_PAUSE_FILE);
+    }
+  });
+
+  it('a code that is not a plain errno name is logged as "unknown" (never error text)', () => {
+    const lines: string[] = [];
+    for (const code of [undefined, 'EACCES /private/state', 'x'.repeat(100)]) {
+      const probe = freePauseProbe('/nowhere', {
+        log: (l) => lines.push(l),
+        stat: () => {
+          throw errno(code);
+        },
+      });
+      expect(probe()).toBe(true);
+    }
+    const errors = lines
+      .map((l) => JSON.parse(l))
+      .filter((l) => l.event === 'sim_free_pause_error');
+    expect(errors).toEqual([
+      { event: 'sim_free_pause_error', code: 'unknown' },
+      { event: 'sim_free_pause_error', code: 'unknown' },
+      { event: 'sim_free_pause_error', code: 'unknown' },
+    ]);
+    for (const l of lines) expect(l).not.toContain('private');
+  });
+
+  it('ENOTDIR from a real parent that is a file: paused + logged once; touch/rm transitions logged once each', () => {
+    const dir = mkdtempSync(join(parent, 'real-'));
+    const plain = join(dir, 'plain');
+    writeFileSync(plain, '');
+    const lines: string[] = [];
+    const bad = freePauseProbe(join(plain, FREE_PAUSE_FILE), { log: (l) => lines.push(l) });
+    expect(bad()).toBe(true);
+    expect(bad()).toBe(true);
+    expect(lines.map((l) => JSON.parse(l))).toEqual([
+      { event: 'sim_free_pause_error', code: 'ENOTDIR' },
+      { event: 'sim_free_pause', paused: true },
+    ]);
+
+    lines.length = 0;
+    const f = join(dir, FREE_PAUSE_FILE);
+    const probe = freePauseProbe(f, { log: (l) => lines.push(l) });
+    expect(probe()).toBe(false);
+    expect(lines).toEqual([]); // the default state (off) is never logged
+    writeFileSync(f, '');
+    expect(probe()).toBe(true);
+    expect(probe()).toBe(true);
+    rmSync(f);
+    expect(probe()).toBe(false);
+    expect(lines.map((l) => JSON.parse(l))).toEqual([
+      { event: 'sim_free_pause', paused: true },
+      { event: 'sim_free_pause', paused: false },
+    ]);
   });
 });
