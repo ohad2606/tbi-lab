@@ -1,11 +1,14 @@
 /** BETA-G1: auto-approve with a daily cap and a kill switch. Real temp store; fakes for the account path and mail. */
 import {
   chmodSync,
+  chownSync,
+  lstatSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -86,7 +89,7 @@ interface Rig {
 }
 
 async function rig(opts: { quiet?: string } = {}): Promise<Rig> {
-  const root = mkdtempSync(join(tmpdir(), 'tbi-g1-auto-'));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'tbi-g1-auto-')));
   roots.push(root);
   const dir = join(root, 'p');
   const clock = { t: NOON_IL };
@@ -217,7 +220,7 @@ describe('flag off: today behaviour unchanged', () => {
   });
 
   it('no auto vars: no sweeper, start is a no-op, no file written, record untouched, no log line', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'tbi-g1-off-'));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'tbi-g1-off-')));
     roots.push(root);
     const logs: string[] = [];
     const w = await signupWiringFromEnv(baseEnv(root), {} as AdminSpool, io(logs));
@@ -235,7 +238,7 @@ describe('flag off: today behaviour unchanged', () => {
   });
 
   it('a malformed flag leaves auto-approve off (one log line) and manual routes on', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'tbi-g1-bad-'));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'tbi-g1-bad-')));
     roots.push(root);
     const logs: string[] = [];
     const w = await signupWiringFromEnv(
@@ -449,7 +452,7 @@ describe('kill switch', () => {
 
   it('a real EACCES (unreadable parent directory) fails closed', async () => {
     if (process.getuid?.() === 0) return; // root ignores permissions
-    const root = mkdtempSync(join(tmpdir(), 'tbi-g1-eacces-'));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'tbi-g1-eacces-')));
     roots.push(root);
     const locked = join(root, 'locked');
     mkdirSync(locked, { mode: 0o700 });
@@ -584,7 +587,7 @@ describe('idempotency, double submit, concurrency, restart', () => {
 
 describe('wiring with the flag on', () => {
   it('submits the account request as the recorded owner principal and starts / stops cleanly', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'tbi-g1-wire-'));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'tbi-g1-wire-')));
     roots.push(root);
     const submitted: { actor: string; email: string }[] = [];
     const spool = {
@@ -718,7 +721,7 @@ describe('ops review follow-up (slice 2)', () => {
   });
 
   it('M3: the last spool request id and time are stored on the claim (wiring)', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'tbi-g1-spool-'));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'tbi-g1-spool-')));
     roots.push(root);
     const spool = {
       submit: async () => '01JBBBBBBBBBBBBBBBBBBBBBBB',
@@ -789,7 +792,7 @@ describe('ops review follow-up (slice 2)', () => {
   });
 
   it('M1: the wiring refuses to start with an unsafe state dir (one log line, manual stays)', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'tbi-g1-unsafe-'));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'tbi-g1-unsafe-')));
     roots.push(root);
     const sd = join(root, 's');
     mkdirSync(sd, { mode: 0o700 });
@@ -885,5 +888,206 @@ describe('ops review follow-up (slice 2)', () => {
         enabled: false,
         error: true,
       });
+  });
+});
+
+describe('review follow-up (slice 3)', () => {
+  /** <root>/a/s, all 0700 and owned by this process: a safe chain (works as root and non-root). */
+  async function chain() {
+    const r = await rig();
+    const root = join(r.dir, '..');
+    const a = join(root, 'a');
+    const s = join(a, 's');
+    mkdirSync(s, { recursive: true, mode: 0o700 });
+    chmodSync(a, 0o700);
+    return { r, root, a, s };
+  }
+
+  it('ancestors: a group/world-writable ancestor without the sticky bit is refused; sticky (like /tmp) is fine', async () => {
+    const { r, a, s } = await chain();
+    await createN(r, 1);
+    expect(await autoStateDirCheck(s)).toBeNull();
+    chmodSync(a, 0o777);
+    expect(await autoStateDirCheck(s)).toBe('ancestor_mode');
+    chmodSync(a, 0o770);
+    expect(await autoStateDirCheck(s)).toBe('ancestor_mode');
+    chmodSync(a, 0o1777);
+    expect(await autoStateDirCheck(s)).toBeNull();
+    chmodSync(a, 0o707);
+    const auto = r.auto({ stateDir: s });
+    expect((await auto.sweep()).stopped).toBe('state_dir_unsafe');
+    expect((await auto.sweep()).stopped).toBe('state_dir_unsafe');
+    expect(r.logs.filter((l) => /state dir unsafe \(ancestor_mode\)/.test(l))).toHaveLength(1);
+    expect(r.added).toEqual([]);
+    chmodSync(a, 0o700);
+    expect((await auto.sweep()).claimed).toBe(1);
+  });
+
+  it('ancestors: a symlink anywhere in the path is refused (the path must be its own realpath)', async () => {
+    const { root, s } = await chain();
+    const link = join(root, 'l');
+    symlinkSync(join(root, 'a'), link);
+    expect(realpathSync(join(link, 's'))).toBe(s);
+    expect(await autoStateDirCheck(join(link, 's'))).toBe('symlink');
+    // The leaf itself as a symlink stays `not_dir` (lstat first).
+    symlinkSync(s, join(root, 'leaf'));
+    expect(await autoStateDirCheck(join(root, 'leaf'))).toBe('not_dir');
+  });
+
+  it('ancestors: one owned by another uid (not root) is refused (stat hook; works as root and non-root)', async () => {
+    const { a, s } = await chain();
+    const foreign = async (p: string) => {
+      const st = lstatSync(p);
+      return p === a ? Object.create(st, { uid: { value: 4242 } }) : st;
+    };
+    expect(await autoStateDirCheck(s, { lstat: foreign })).toBe('ancestor_owner');
+    // Root-owned ancestors are fine (the chain up to / is checked; /tmp and / are root-owned).
+    const rootOwned = async (p: string) => {
+      const st = lstatSync(p);
+      return p === a ? Object.create(st, { uid: { value: 0 } }) : st;
+    };
+    expect(await autoStateDirCheck(s, { lstat: rootOwned })).toBeNull();
+  });
+
+  it('ancestors: a real foreign-owned ancestor is refused (only when run as root, which can chown)', async () => {
+    if (process.getuid?.() !== 0) return;
+    const { a, s } = await chain();
+    chownSync(a, 65534, 65534);
+    expect(await autoStateDirCheck(s)).toBe('ancestor_owner');
+    chownSync(a, 0, 0);
+    expect(await autoStateDirCheck(s)).toBeNull();
+  });
+
+  it('ancestors: the wiring refuses to start when an ancestor is unsafe', async () => {
+    const { root, a, s } = await chain();
+    chmodSync(a, 0o777);
+    const logs: string[] = [];
+    const w = await wireSignupAdmin(
+      {
+        dir: join(root, 'w'),
+        keyFile: join(root, 'k'),
+        from: 'x',
+        labUrl: 'https://l.example.invalid/',
+        quiet: null,
+        autoApprove: { dailyCap: 2, since: NOON_IL - DAY_MS, stateDir: s },
+      },
+      { submit: async () => 'x', wait: async () => ({ ok: true }) } as unknown as AdminSpool,
+      {
+        fetch: (async () => ({ ok: true, status: 200 })) as FetchLike,
+        log: (l) => {
+          logs.push(l);
+          allLogs.push(l);
+        },
+        email: { sendApproval: async () => undefined },
+        autoActor: () => 'p_ownerownerownerownerowner' as Principal,
+        now: () => NOON_IL,
+      },
+    );
+    await w.startAutoApprove()();
+    expect(
+      logs.filter((l) => /not started \(state dir unsafe: ancestor_mode\)/.test(l)),
+    ).toHaveLength(1);
+  });
+
+  /** Makes store.update fail with `code` while it marks `autoApprovedAt` (the approver's updates still work). */
+  function failMark(r: Rig, code: string) {
+    const real = r.store.update.bind(r.store);
+    const state = { on: true };
+    r.store.update = (async (id, patch) => {
+      if (state.on && 'autoApprovedAt' in patch)
+        throw Object.assign(new Error(`boom ${code}`), { code });
+      return real(id, patch);
+    }) as PendingStore['update'];
+    return state;
+  }
+
+  it('mark failure after the claim: the claim is released, the slot stays used, logged once per errno', async () => {
+    const r = await rig();
+    const [id] = await createN(r, 1);
+    const fail = failMark(r, 'EIO');
+    const a = r.auto({ cap: 3 });
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0, stopped: 'mark_failed' });
+    expect(counter(r.dir)).toMatchObject({ count: 1, claims: {} });
+    expect(await r.store.get(id!)).toMatchObject({ status: 'pending', lastError: null });
+    expect((await r.store.get(id!)).autoApprovedAt).toBeUndefined();
+    expect(await a.sweep()).toMatchObject({ stopped: 'mark_failed' });
+    expect(counter(r.dir)).toMatchObject({ count: 2, claims: {} });
+    expect(r.logs.filter((l) => /could not mark a claimed request \(EIO\)/.test(l))).toHaveLength(
+      1,
+    );
+    expect(r.added).toEqual([]);
+    // Store fixed: the request is taken again with a new slot (never more than the cap).
+    fail.on = false;
+    expect(await a.sweep()).toEqual({ claimed: 1, attempted: 1 });
+    expect(counter(r.dir).count).toBe(3);
+    expect(r.mails).toEqual([id]);
+  });
+
+  it('mark failure: the cap still holds (cap 1: the released request waits for the next day)', async () => {
+    const r = await rig();
+    const [id] = await createN(r, 1);
+    const fail = failMark(r, 'ENOSPC');
+    const a = r.auto({ cap: 1 });
+    expect((await a.sweep()).stopped).toBe('mark_failed');
+    fail.on = false;
+    expect((await a.sweep()).stopped).toBe('cap');
+    expect(counter(r.dir)).toMatchObject({ count: 1, claims: {} });
+    expect(r.added).toEqual([]);
+    r.clock.t = NOON_IL + DAY_MS;
+    expect(await a.sweep()).toEqual({ claimed: 1, attempted: 1 });
+    expect(r.mails).toEqual([id]);
+  });
+
+  it('an orphan claim (claimed, never marked: crash or failed release) is pruned and can be re-claimed', async () => {
+    const r = await rig();
+    const [id] = await createN(r, 1);
+    const at = new Date(NOON_IL - 60_000).toISOString();
+    const st = {
+      v: 2,
+      day: israelDay(NOON_IL),
+      count: 1,
+      retries: 0,
+      claims: { [id!]: { at, attempts: 1, lastAttemptAt: at } },
+    };
+    writeFileSync(join(r.dir, AUTO_STATE_FILE), `${JSON.stringify(st)}\n`, { mode: 0o600 });
+    expect(await r.auto({ cap: 2 }).sweep()).toEqual({ claimed: 1, attempted: 1 });
+    expect(counter(r.dir).count).toBe(2);
+    expect(r.mails).toEqual([id]);
+  });
+
+  it('a claimed and marked request is not pruned (still retried, no new slot)', async () => {
+    const r = await rig();
+    const [id] = await createN(r, 1);
+    r.addAnswers.push('pending');
+    const a = r.auto({ cap: 2 });
+    await a.sweep();
+    await a.sweep();
+    expect(Object.keys(counter(r.dir).claims)).toEqual([id]);
+    expect(counter(r.dir).count).toBe(1);
+  });
+
+  it('the unreadable-counter line is logged at most once per hour per condition (fake clock)', async () => {
+    const r = await rig();
+    await createN(r, 1);
+    writeFileSync(join(r.dir, AUTO_STATE_FILE), '{not json', { mode: 0o600 });
+    const a = r.auto();
+    const t0 = r.clock.t;
+    const lines = (re: RegExp) => r.logs.filter((l) => re.test(l)).length;
+    for (let m = 0; m < 60; m++) {
+      r.clock.t = t0 + m * 60_000;
+      expect((await a.sweep()).stopped).toBe('counter_unreadable');
+    }
+    expect(lines(/counter unreadable \(corrupt\)/)).toBe(1);
+    // Another condition is logged at once, on its own hourly budget.
+    const fut = { v: 2, day: '2099-01-01', count: 0, retries: 0, claims: {} };
+    writeFileSync(join(r.dir, AUTO_STATE_FILE), JSON.stringify(fut), { mode: 0o600 });
+    expect((await a.sweep()).stopped).toBe('counter_unreadable');
+    expect((await a.sweep()).stopped).toBe('counter_unreadable');
+    expect(lines(/counter unreadable \(future_day\)/)).toBe(1);
+    writeFileSync(join(r.dir, AUTO_STATE_FILE), '{not json', { mode: 0o600 });
+    r.clock.t = t0 + 60 * 60_000;
+    await a.sweep();
+    expect(lines(/counter unreadable \(corrupt\)/)).toBe(2);
+    expect(r.added).toEqual([]);
   });
 });
