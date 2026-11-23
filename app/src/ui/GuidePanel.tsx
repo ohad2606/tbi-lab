@@ -43,7 +43,8 @@ export function GuidePanel({
   const [status, setStatus] = useState('');
   const [copyId, setCopyId] = useState<string | undefined>();
   const primary = useRef<HTMLButtonElement>(null);
-  const refocusPrimary = useRef(false);
+  // Bumped after a successful open/copy so focus lands on the (possibly new) primary button.
+  const [focusTick, setFocusTick] = useState(0);
   const announceTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Focus the title on open; on close return to the opener, or to the canvas if the opener is gone.
@@ -92,13 +93,11 @@ export function GuidePanel({
     return () => void (live = false);
   }, [guideId]);
 
-  // The primary button changes label when a copy appears; keep keyboard focus on it.
+  // The primary button changes label when a copy appears; keep keyboard focus on it. Driven by an
+  // explicit tick (not copyId), so it also works when the id is unchanged and never fires on failure.
   useEffect(() => {
-    if (refocusPrimary.current && primary.current) {
-      refocusPrimary.current = false;
-      primary.current.focus();
-    }
-  }, [copyId]);
+    if (focusTick > 0) primary.current?.focus();
+  }, [focusTick]);
 
   const params = useMemo(() => {
     if (!guide || !evaluation) return {};
@@ -127,12 +126,12 @@ export function GuidePanel({
 
   /** Create a new copy of the example and remember it for this guide (memory only). */
   const createCopy = async (missing = false) => {
-    refocusPrimary.current = true;
     const ok = await store.openExample(guide.exampleId);
     const id = store.state.doc?.projectId;
     if (ok && id) {
       rememberGuideCopy(guide.id, id);
       setCopyId(id);
+      setFocusTick((n) => n + 1);
     }
     announce(
       t(
@@ -220,7 +219,7 @@ export function GuidePanel({
               {s.id === 'circuit' &&
                 (copyId ? (
                   <div>
-                    <p class="muted" data-testid="guide-copy-hint">
+                    <p class="muted" id="guide-copy-hint-text" data-testid="guide-copy-hint">
                       {t('guidepanel.panel.copyHint')}
                     </p>
                     <div>
@@ -228,6 +227,7 @@ export function GuidePanel({
                         type="button"
                         class="button button-primary"
                         data-testid="guide-go-back"
+                        aria-describedby="guide-copy-hint-text"
                         ref={primary}
                         onClick={() => void goBack(copyId)}
                       >
