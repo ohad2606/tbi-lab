@@ -1,4 +1,4 @@
-# BETA-G1: self-signup without manual approval (design note, slices 1-5)
+# BETA-G1: self-signup without manual approval (design note, slices 1-7)
 
 Status: design plus a tested, **off-by-default** code slice (`runtime/admin/signup/autoApprove.ts`). Nothing is
 deployed or enabled anywhere. This builds on the sign-up automation (TBI-022, `docs/alpha/SIGNUP-AUTOMATION-DESIGN.md`);
@@ -238,10 +238,38 @@ day rollover without a write, pause as a file or a directory, `unknown` for a co
 
 ## 7. Not done in this slice
 
-- Deploy wiring: the admin service unit env (`TBI_SIGNUP_AUTO_APPROVE`, `TBI_SIGNUP_AUTO_DAILY_CAP`,
-  `TBI_SIGNUP_AUTO_STATE_DIR`, optionally `TBI_SIGNUP_AUTO_SINCE`), **creating the admin-only state directory**
-  (owned by the admin service user, 0700, not writable by the intake user), the runbook lines for pause/resume,
-  and the monitoring alerts on the cap, pause, retry-limit and state-dir log lines.
+- **Done in slice 7 (repo wiring only; nothing installed or enabled anywhere):**
+  - `deploy/dev-lab/s8/tbi-admin.service.in`: `StateDirectory=<N>-admin-auto` + `StateDirectoryMode=0700`. systemd
+    creates `/var/lib/<N>-admin-auto` owned by the unit's `User=`/`Group=` (`tbi-admin:tbi-adminio`) and re-applies
+    the owner and the mode at every start. Also `TBI_SIGNUP_AUTO_STATE_DIR=/var/lib/<N>-admin-auto`, which is inert
+    while the flag is off. `TBI_SIGNUP_AUTO_APPROVE`, `TBI_SIGNUP_AUTO_DAILY_CAP` and `TBI_SIGNUP_AUTO_SINCE` are
+    only **commented** lines: installing the unit leaves auto-approve off. The cap is the placeholder
+    `<OWNER_CAP>` (Q2). Uncommented as they stand, these lines still fail closed (config error, off). The owner
+    enables auto-approve with a drop-in.
+  - Path choice: the parents `/var/lib`, `/var`, `/` are root-owned 0755 on the host, so they pass the
+    `autoStateDirCheck` ancestor rules. No symlink, and no DynamicUser (which would place the directory under
+    `/var/lib/private` behind a symlink). It is a sibling of the helper's `/var/lib/tbi-admin` and is never inside
+    that tree (a StateDirectory there would make systemd chown the helper's tree). It is not under the sign-up
+    store either (that is owned by the intake user and would fail `ancestor_owner`).
+  - No other writable path was added. All hardening stays (ProtectSystem=strict, PrivateNetwork=yes,
+    AF_UNIX only, IPAddressDeny=any, no capabilities).
+  - Test `runtime/admin/tests/signup-auto-deploy-unit.test.ts` renders the unit with install.sh's real
+    `render_raw` (non-root, nothing installed). It asserts that the flag, cap and cut-off are unset (the parser
+    says off, no error); that no install.sh mode uncomments them; the StateDirectory and its 0700 mode; that the
+    writable paths are only the spool, the socket dir and the state dir; the hardening values; that the state dir
+    is separate from every path rule, the helper tree and the stores; that no other repo unit runs as
+    `tbi-admin` or can write the dir; and that the parents pass the ancestor rules on the test host.
+  - Owner runbook: `docs/alpha/SIGNUP-AUTO-APPROVE-RUNBOOK.md` (enable, pause/resume, log lines to alert on,
+    rollback, and the cut-off caveat when re-enabling).
+- Still open for deploy:
+  - The intake unit `tbi-signup` is not in the repo yet. When it lands it must set
+    `InaccessiblePaths=-/var/lib/<N>-admin-auto` (defence in depth; the 0700 mode already denies it). The test
+    case for this is an explicit skip until then.
+  - The draft mailer unit could add the same `InaccessiblePaths` line (separate mailer slice).
+  - The signup env of the admin unit (`TBI_SIGNUP_ADMIN`, store, mail) is not in this template. It is a TBI-022
+    deploy item.
+  - The monitoring alerts themselves (the runbook lists the lines).
+  - The cap value (Q2).
 - Admin UI: today's count against the cap, the pause state, and "waiting for tomorrow" on waitlisted rows (the
   "approved automatically" badge is done in slice 4; the status route below in slice 5). Every new text needs
   HE+EN keys.
@@ -275,7 +303,9 @@ day rollover without a write, pause as a file or a directory, `unknown` for a co
 
 ### Runbook note (QA day2213)
 - The state dir chain must have no group/world-writable non-sticky ancestors and no symlinks: use the real path
-  (e.g. `/var/lib/tbi-signup/auto`, 0700, owned by the admin uid), not `/var/run/...`. A trailing slash is tolerated.
+  (slice 7: `/var/lib/<N>-admin-auto`, a systemd StateDirectory, 0700, owned by the admin uid), not `/var/run/...`.
+  Not under the sign-up store (`/var/lib/tbi-signup` is owned by the intake user: `ancestor_owner`). A trailing
+  slash is tolerated.
 - Ancestors such as 0775 directories are refused (`ancestor_mode`) — by design.
 
 ## 9. Status route (slice 5, read-only)
