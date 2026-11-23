@@ -298,6 +298,9 @@ export function signupRowKind(r: SignupRecord): SignupRowKind {
   return 'decide';
 }
 
+/** True when the record carries the automatic approver's mark (BETA-G1). */
+export const isAutoApproved = (r: SignupRecord): boolean => r.autoApprovedAt !== null;
+
 /** The text for one outcome: its key (in console.signups.*) and whether the row leaves the list. */
 export function signupOutcomeView(
   o: SignupOutcome,

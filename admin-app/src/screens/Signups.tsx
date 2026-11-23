@@ -11,6 +11,7 @@ import { api, useConsole, useT } from '../context.js';
 import type { MessageKey } from '../i18n.js';
 import {
   focusAfterRemoval,
+  isAutoApproved,
   signupCountKey,
   signupOutcomeView,
   signupRowKind,
@@ -215,6 +216,11 @@ export function Signups() {
                     <span class="badge" data-testid="signup-status">
                       {t(working ? 'console.signups.status.working' : STATUS_KEY[kind])}
                     </span>
+                    {isAutoApproved(r) && (
+                      <span class="badge badge-auto" data-testid="signup-auto-approved">
+                        {t('console.signups.autoApproved')}
+                      </span>
+                    )}
                   </div>
                   <div>
                     <bdi dir="ltr" class="code" data-testid="signup-email">

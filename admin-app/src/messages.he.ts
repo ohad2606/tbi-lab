@@ -133,6 +133,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.status.emailFailed': 'החשבון נוסף, אבל המייל לא נשלח. אפשר לשלוח שוב.',
   'console.signups.status.accountPending': 'אושרה, אבל החשבון עדיין לא מוכן. אשרו שוב כדי להשלים.',
   'console.signups.status.emailQueued': 'החשבון נוסף. המייל מתוזמן ויישלח בתום שעות השקט.',
+  'console.signups.autoApproved': 'אושרה אוטומטית',
   'console.signups.sendAfter': 'המייל מתוזמן ל-{time}',
   'console.signups.status.working': 'מבצע…',
   'console.signups.approve': 'אישור',

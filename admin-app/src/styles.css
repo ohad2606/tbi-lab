@@ -515,6 +515,10 @@ fieldset {
   color: var(--warning-ink);
   background: var(--warning-bg);
 }
+.badge-auto {
+  color: var(--text);
+  border-color: var(--ok);
+}
 .badge-new {
   background: var(--accent);
   border-color: var(--accent);
