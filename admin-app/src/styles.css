@@ -519,6 +519,11 @@ fieldset {
   color: var(--text);
   border-color: var(--ok);
 }
+.badge-off {
+  color: var(--text);
+  border-color: var(--danger);
+  border-width: 2px;
+}
 .badge-new {
   background: var(--accent);
   border-color: var(--accent);
