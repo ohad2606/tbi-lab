@@ -50,8 +50,11 @@ template, `<user>` = the Session Host's user).
 - [ ] Plans config JSON, owned by root, readable by `<user>` only, at most 1 MiB:
       `metering.enabled: true`; `sim.leaseMs` equal to the host's `TBI_HOST_LEASE_MS` (default 30000);
       `queue.freeCapMode: "fixed"`; `sim.maxConcurrentPerPrincipal: 1` if any plan has minute caps.
-      There is no separate validator yet (s3d-7 candidate): the host's boot checks refuse an
-      invalid file with exit 78 and a one-line reason, which is only seen at the restart in §3.
+- [ ] Before enabling (and before §3), after creating the state dir (§2), run the offline validator
+      (s3d-8; built from the same commit with `npm run simvalidate:build`, installed like the repair
+      bundle) as `<user>` with exactly the unit's environment:
+      `sudo -u <user> env TBI_HOST_SIM_PLANS_CONFIG=... TBI_HOST_SIM_PLANS_STATE=... TBI_HOST_SIM_PLAN_MAP=... TBI_POLICY_FILE=... [TBI_HOST_LEASE_MS=...] <node> <bundles>/sim-config-validate.mjs`
+      -> must exit 0 (1 = fix every listed problem; 78 = no sim flag reached it). It writes nothing.
 - [ ] Plan map: `TBI_HOST_SIM_PLAN_MAP=preview=legacy,system=legacy` (every policy plan mapped, no
       unknown names; check against the installed policy file).
 - [ ] Intervals left at defaults unless measured: beat `floor(leaseMs/3)`, adapter housekeeping

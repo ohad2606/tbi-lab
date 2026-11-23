@@ -26,6 +26,7 @@
     "host:build": "esbuild runtime/host/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/host/dist/session-host.mjs --log-level=warning",
     "buildsvc:build": "esbuild runtime/builder/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/builder/dist/build-service.mjs --log-level=warning && esbuild runtime/builder/build-job.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/builder/dist/build-job.mjs --log-level=warning",
     "simrepair:build": "esbuild runtime/plans/repair-main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/plans/dist/sim-journal-repair.mjs --log-level=warning",
+    "simvalidate:build": "esbuild runtime/plans/validate-main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/plans/dist/sim-config-validate.mjs --log-level=warning",
     "records:build": "esbuild runtime/builder/records-cli.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/builder/dist/records-cli.mjs --log-level=warning",
     "assist:build": "esbuild runtime/assist/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/assist/dist/assist-service.mjs --log-level=warning",
     "admin:build": "esbuild runtime/admin/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/admin/dist/admin-service.mjs --log-level=warning",

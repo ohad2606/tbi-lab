@@ -465,6 +465,47 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
    separate config validator; retention m11 (owner, D-day1417-2); unit re-install on a host. Enabling
    metering on staging or anywhere stays a SEPARATE owner approval (O-10), executed with
    `S3D-STAGING-ENABLE-CHECKLIST.md`.
+8. **s3d-8 offline sim config validator (flag-off).** *Implemented (2026-11-23):*
+   `runtime/plans/validateconfig.ts` (`validateSimConfig(env)`) + CLI `runtime/plans/validate-main.ts`,
+   bundled by `npm run simvalidate:build` -> `runtime/plans/dist/sim-config-validate.mjs` (one
+   self-contained file like the repair CLI; no `node_modules`). Run as the host's user with the unit's
+   environment (`TBI_HOST_SIM_*`, `TBI_POLICY_FILE`, `TBI_HOST_LEASE_MS`); it takes no arguments. It
+   answers "would the host boot metered with this?" and reports EVERY problem at once (the host stops
+   at the first). It never starts a host and never creates, writes, locks or repairs anything (the
+   state directory is lstat/access-checked, the lock files and the journal only read).
+   - *One rule set, no drift:* `bootSimPlans` now calls `checkSimFlags` (collects; the host throws the
+     first problem, same order and text as before), `checkStateDir` calls `stateDirProblems`, and
+     `acquireStateLock` and the validator's read-only `inspectStateLock` share `classifyLock`
+     (all `runtime/plans/hostboot.ts`). Interval bounds go through `checkSimBounds` (host.ts) as in
+     simboot.ts. `main.ts` reads its tunables through `hostTunablesFromEnv` (host/config.ts), which the
+     validator uses too (pure refactor, no host behaviour change). A parity test boots the real
+     `hostSimFromEnv` on the same bad environments and requires the host's refusal text to equal the
+     validator's first problem.
+   - *Problem codes:* `flags_partial`, `flag_not_integer`, `config_missing`, `config_unusable`,
+     `metering_disabled`, `host_lease_invalid`, `lease_mismatch`, `lift_until_first_paid` (O-11),
+     `max_concurrent`, `no_policy`, `policy_unusable`, `plan_map_invalid` (incl. unknown plan id),
+     `plan_map_unmapped`, `plan_map_unknown_policy_plan`, `bound_beat`, `bound_housekeeping`,
+     `bound_poll`, `sim_bounds` (`endWaitMs <= 12000`; no flag sets it today), `state_dir_path`,
+     `state_dir_missing`, `state_dir_unusable`, `state_dir_not_dir`, `state_dir_owner`,
+     `state_dir_mode` (anything but 0700, e.g. world-readable), `state_dir_symlink`,
+     `state_dir_not_writable`, `state_lock` (malformed lock, stale lock + leftover takeover mutex),
+     `state_locked` (a live process holds `host.lock`), `journal_torn`, `journal_corrupt`.
+   - *Stricter than the host, by design:* a missing state directory is a problem (the host would create
+     it 0700; create it beforehand with `install -d -m 0700`); a live lock is a problem (run with the
+     host stopped, or expect `state_locked`).
+   - *Output:* stdout one JSON line `{status, problems:[{code, message, detail?}], notes}`; stderr one
+     line per problem. `message` is the host's own refusal text; nothing printed carries a value, a
+     path, file content or a principal (an unknown config key is not named).
+   - *Exit codes:*
+
+     | Exit | Meaning |
+     |---|---|
+     | 0 | flags set and valid: the host would boot metered |
+     | 1 | at least one problem (each one a host refusal with exit 78, except `state_dir_missing`), or an internal error |
+     | 78 | refused to validate (EX_CONFIG, = `HOST_SIM_REFUSED_EXIT`): no `TBI_HOST_SIM_*` flag set (the environment is not the unit's), or an argument given |
+
+   *Not done:* shipping the bundle in `build-package.sh` / `install.sh` (owner decision pending, as for
+   the repair CLI); reading the unit's drop-in directly (the operator passes the environment).
 
 ## 13. Owner / PM decisions
 

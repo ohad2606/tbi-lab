@@ -64,8 +64,11 @@ export function preRepairName(nowMs: number): string {
   return `${SIM_JOURNAL_FILE}.${stamp}${PRE_REPAIR_SUFFIX}`;
 }
 
-/** Events of the journal replay (metering off: replay only, no sweep, nothing written). */
-async function replays(file: string): Promise<{ ok: boolean; events: number }> {
+/**
+ * Events of the journal replay (metering off: replay only, no sweep, nothing written). Exported for the
+ * s3d-8 offline validator (validateconfig.ts).
+ */
+export async function journalReplays(file: string): Promise<{ ok: boolean; events: number }> {
   const store = new JournalStore<SimEvent>(file);
   const loaded = await store.load();
   if (loaded.problem) return { ok: false, events: loaded.events.length };
@@ -105,7 +108,7 @@ export async function repairTornTail(dir: string, opts: RepairOptions): Promise<
     const loaded = await store.load();
     const p = loaded.problem;
     if (!p) {
-      const r = await replays(file);
+      const r = await journalReplays(file);
       return r.ok ? { kind: 'clean', events: r.events } : { kind: 'corrupt' };
     }
     if (p.kind !== 'torn_tail') return { kind: 'corrupt' };
@@ -133,7 +136,7 @@ export async function repairTornTail(dir: string, opts: RepairOptions): Promise<
       );
     }
     await store.recoverTornTail();
-    const after = await replays(file);
+    const after = await journalReplays(file);
     if (!after.ok)
       throw new RepairError('journal still does not replay after the repair; restore the copy');
     return { kind: 'repaired', ...base, copy };

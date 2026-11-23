@@ -41,7 +41,7 @@ import { systemdLauncher } from '../harness/launcher.js';
 import { Policy } from '../policy/policy.js';
 import { RateLimiter } from '../policy/rate.js';
 import { stopTemplateInstances } from '../builder/runner.js';
-import { defaultConfig, type HostConfig } from './config.js';
+import { defaultConfig, hostTunablesFromEnv } from './config.js';
 import { SessionHost, revokeOnReload } from './host.js';
 import { createHealthServer, createHttpServer } from './http.js';
 import { ReportStore, reportsConfigFromEnv } from './reports.js';
@@ -72,20 +72,8 @@ const healthWhere = process.env.TBI_HOST_HEALTH_LISTEN
   : null;
 const healthGid = socketGidFromEnv('TBI_HOST_HEALTH_SOCKET_GID');
 const identity = identityFromEnv();
-/** Operator-tunable engineering controls (never client-controlled). */
-const TUNABLE: Record<string, keyof HostConfig> = {
-  TBI_HOST_LEASE_MS: 'leaseMs',
-  TBI_HOST_MAX_SESSIONS: 'maxSessions',
-  TBI_HOST_STARTUP_TIMEOUT_MS: 'startupTimeoutMs',
-  TBI_HOST_STALL_TIMEOUT_MS: 'stallTimeoutMs',
-  TBI_HOST_RETAIN_ENDED_MS: 'retainEndedMs',
-  TBI_HOST_MAX_LIFETIME_MS: 'maxLifetimeMs',
-};
-const overrides: Partial<HostConfig> = {};
-for (const [env, key] of Object.entries(TUNABLE)) {
-  const v = process.env[env];
-  if (v !== undefined && /^\d+$/.test(v)) (overrides as Record<string, number>)[key] = Number(v);
-}
+/** Operator-tunable engineering controls (config.ts HOST_TUNABLE_ENV; never client-controlled). */
+const overrides = hostTunablesFromEnv(process.env);
 const ticketFile = process.env.TBI_TICKET_KEY_FILE;
 if (!ticketFile) throw new Error('TBI_TICKET_KEY_FILE is required');
 // Sprint 8 containment: QEMU as a sandboxed per-session unit, sessions on disk.
