@@ -35,7 +35,13 @@ export type SimFailure =
       features?: string[];
     }
   /** An ESP32 session could not start, or ended abnormally (Sprint 6). */
-  | { kind: 'runtime'; code: RuntimeFailCode; detail?: string }
+  | {
+      kind: 'runtime';
+      code: RuntimeFailCode;
+      detail?: string;
+      /** TBI-018 s3d-5: the host's public limit (code + params); the app renders its own text. */
+      limit?: { code: string; params: Record<string, string | number> };
+    }
   /**
    * Sprint 19B (Runtime v4): the program started USING a facility the emulator does not model
    * (`facility`: the capability registry's id, e.g. adc); the session ended at that moment.

@@ -608,10 +608,10 @@ describe('Alpha: session lifetime (30 min under the Alpha policy) — warning, e
   });
 });
 
-describe('TBI-018 s3d-4: host end reasons the app does not know yet', () => {
-  // s3d-5 adds their own texts; until then an unexpected end is a lost session (no app change).
+describe('TBI-018 s3d-4: host meter end reasons (s3d-5)', () => {
+  // s3d-5: the meter's stop reasons have their own texts and carry the host's public limit.
   for (const reason of ['sim_minutes', 'sim_unavailable'])
-    it(`ended with ${reason} -> session_lost`, async () => {
+    it(`ended with ${reason} -> its own failure with the public limit`, async () => {
       const f = fakeClient();
       const sim = new McuSimulation({ client: f.client });
       const s = await running(sim, f, example('esp32-blink'));
@@ -624,7 +624,12 @@ describe('TBI-018 s3d-4: host end reasons the app does not know yet', () => {
       });
       expect(sim.state).toMatchObject({
         status: 'failed',
-        failure: { kind: 'runtime', code: 'session_lost', detail: reason },
+        failure: {
+          kind: 'runtime',
+          code: reason,
+          detail: reason,
+          limit: { code: 'system_unavailable', params: {} },
+        },
       });
     });
 });

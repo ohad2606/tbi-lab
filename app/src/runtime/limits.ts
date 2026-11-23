@@ -1,0 +1,63 @@
+/**
+ * TBI-018 s3d-5: the Session Host's public sim limits (runtime/host/simAdmission.ts PublicLimit) as
+ * app text. The host sends a code and params, never text (decision O-8); the app renders its own
+ * `sim.limit.*` message. An unknown code is not a limit: callers fall back to the generic message.
+ * Numbers and dates are isolated LTR inside the sentence.
+ */
+import { isolateLtr, translate, type LocaleInfo } from '../i18n/i18n.js';
+import type { MessageKey } from '../i18n/messages.en.js';
+import type { PublicLimit } from './client.js';
+
+const KEY = {
+  queue: 'sim.limit.queue',
+  queue_timeout: 'sim.limit.queue_timeout',
+  queue_full: 'sim.limit.queue_full',
+  queue_replaced: 'sim.limit.queue_replaced',
+  sim_cooldown: 'sim.limit.cooldown',
+  sim_concurrent: 'sim.limit.concurrent',
+  minutes_out: 'sim.limit.minutes_out',
+  minutes_out_free: 'sim.limit.minutes_out_free',
+  sim_daily: 'sim.limit.daily',
+  system_unavailable: 'sim.limit.system_unavailable',
+} as const satisfies Record<string, MessageKey>;
+
+/** The variant without the parameter, when the host did not give a usable one. */
+const KEY_NODATE: Partial<Record<keyof typeof KEY, MessageKey>> = {
+  minutes_out: 'sim.limit.minutes_out.nodate',
+  minutes_out_free: 'sim.limit.minutes_out_free.nodate',
+};
+
+export type SimLimitCode = keyof typeof KEY;
+
+/** Every app key of the limits (tests: EN/HE parity and placeholders). */
+export const simLimitKeys = (): MessageKey[] => [
+  ...Object.values(KEY),
+  ...Object.values(KEY_NODATE),
+  'sim.limit.queue.nopos',
+  'sim.limit.cooldown.nowait',
+];
+
+export const isSimLimitCode = (c: unknown): c is SimLimitCode =>
+  typeof c === 'string' && Object.hasOwn(KEY, c);
+
+const DATE = /^\d{2}\.\d{2}\.\d{4}$/;
+
+/** The sentence for a limit, or null for a code this app does not know. */
+export function simLimitText(locale: LocaleInfo, limit: PublicLimit): string | null {
+  if (!isSimLimitCode(limit.code)) return null;
+  const code = limit.code;
+  const p = limit.params;
+  if (code === 'minutes_out' || code === 'minutes_out_free') {
+    const date = typeof p.date === 'string' && DATE.test(p.date) ? p.date : '';
+    return date
+      ? translate(locale, KEY[code], { date: isolateLtr(date) })
+      : translate(locale, KEY_NODATE[code]!);
+  }
+  if (code === 'queue' || code === 'sim_cooldown') {
+    const n = typeof p.n === 'number' && Number.isInteger(p.n) && p.n > 0 ? p.n : null;
+    return n === null
+      ? translate(locale, code === 'queue' ? 'sim.limit.queue.nopos' : 'sim.limit.cooldown.nowait')
+      : translate(locale, KEY[code], { n: isolateLtr(String(n)) });
+  }
+  return translate(locale, KEY[code]);
+}

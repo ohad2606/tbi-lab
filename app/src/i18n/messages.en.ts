@@ -1441,6 +1441,43 @@ export const en = {
     'The ESP32 session was lost (connection lost or session expired). The project is safe; press Run for a fresh session.',
   'sim.runtime.expiring':
     'This ESP32 session will end within a minute (a session lasts at most {minutes} min). Your project is saved; afterwards, press Run for a fresh session.',
+  // TBI-018 s3d-5 (NEEDS DOCS REVIEW, tbi-docs): sim queue and limits. Copies of the server keys
+  // limit.sim.* without purchase / upgrade / priority offers (the product has none yet).
+  'sim.limit.queue':
+    'All run slots are busy right now. You are number {n} in the queue. The run starts automatically when a slot is free. You can keep editing meanwhile.',
+  'sim.limit.queue.nopos':
+    'All run slots are busy right now. The run starts automatically when a slot is free. You can keep editing meanwhile.',
+  'sim.limit.queue_timeout':
+    'No run slot became free in a reasonable time. Try again in a few minutes.',
+  'sim.limit.queue_full': 'The run queue is full right now. Please try again in a few minutes.',
+  'sim.limit.queue_replaced':
+    'Your place in the queue is now held by another tab. Close this tab or return to the other one.',
+  'sim.limit.cooldown':
+    'You can start a new free run in {n} seconds. You can keep editing meanwhile.',
+  'sim.limit.cooldown.nowait':
+    'You can start a new free run in a moment. You can keep editing meanwhile.',
+  'sim.limit.concurrent':
+    'You already have a run in progress. Stop it or wait until it ends, then start a new run.',
+  'sim.limit.minutes_out':
+    'You have used all your ESP32 simulation minutes for this month. They renew on {date}. You can still edit, wire parts and use the in-browser solver.',
+  'sim.limit.minutes_out.nodate':
+    'You have used all your ESP32 simulation minutes for this month. You can still edit, wire parts and use the in-browser solver.',
+  'sim.limit.minutes_out_free':
+    'You have used your free ESP32 simulation minutes for this month. They renew on {date}. You can still edit and wire parts.',
+  'sim.limit.minutes_out_free.nodate':
+    'You have used your free ESP32 simulation minutes for this month. You can still edit and wire parts.',
+  'sim.limit.daily':
+    'You have reached the daily limit of simulation minutes. It resets tomorrow. You can still edit and wire parts.',
+  'sim.limit.system_unavailable':
+    'The service is temporarily unavailable and you were not charged. Please try again shortly.',
+  'sim.queue.cancel': 'Cancel',
+  'sim.queue.waiting_label': 'Run queue status',
+  'sim.error.runtime.sim_limit':
+    'The run could not start because of a usage limit. The project is not affected.',
+  'sim.error.runtime.sim_minutes':
+    'The ESP32 session was stopped because your simulation minutes are used up. The project is safe.',
+  'sim.error.runtime.sim_unavailable':
+    'The ESP32 session was stopped because usage metering is temporarily unavailable. You were not charged. The project is safe; try again shortly.',
   'sim.error.runtime.account_disabled':
     'The ESP32 session was stopped because access to TBI Lab was ended for this account. The project is safe in this browser.',
   'sim.error.runtime.session_expired':

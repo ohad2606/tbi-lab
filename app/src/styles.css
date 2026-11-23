@@ -336,6 +336,19 @@ select {
   color: var(--danger);
 }
 
+/* TBI-018 s3d-5: the run-queue status (wraps on a narrow screen; logical properties only). */
+.queue-status {
+  flex-wrap: wrap;
+}
+.queue-status [role='status'] {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+}
+.queue-status .button {
+  min-block-size: 24px;
+  min-inline-size: 24px;
+}
+
 /* ---------------------------------------------------------------- home */
 
 .home {
