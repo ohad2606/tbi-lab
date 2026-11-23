@@ -2421,6 +2421,12 @@ export const he: Record<MessageKey, string> = {
   'guidepanel.panel.openExample': 'פתיחת הדוגמה',
   'guidepanel.panel.exampleOpened': 'הדוגמה נפתחה במעבדה כפרויקט חדש.',
   'guidepanel.panel.exampleFailed': 'לא ניתן היה לפתוח את הדוגמה.',
+  'guidepanel.panel.copyHint':
+    'כבר פתחת את המעגל הזה בביקור הנוכחי. אפשר לחזור לעותק שלך או להתחיל עותק חדש.',
+  'guidepanel.panel.goBack': 'חזרה לעותק שלי',
+  'guidepanel.panel.freshCopy': 'יצירת עותק חדש',
+  'guidepanel.panel.wentBack': 'חזרת לעותק שלך של הדוגמה.',
+  'guidepanel.panel.copyMissing': 'העותק שלך לא נמצא, ולכן נוצר עותק חדש.',
 
   // Admin app design §3: shared with the TBI Lab Admin app (packages/admin-client), unchanged.
   ...adminMessagesHe,

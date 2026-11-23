@@ -8,12 +8,15 @@
  * - every number is computed by the engine from the linked example (facts.ts) and shown as an LTR
  *   isolate; if a number cannot be computed the panel says so and shows a dash, never a guess;
  * - "Open the example" opens the guide's example as a new project; the result is announced in a
- *   polite status region.
+ *   polite status region. The created project id is remembered IN MEMORY ONLY (guideCopies.ts, D-1420-4):
+ *   while that copy still exists the panel offers "Go back to my copy" (primary) and "Start a fresh
+ *   copy" instead; focus moves to the primary button when the buttons swap.
  */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ProjectDocument } from '@tbi-lab/domain';
 import { loadExampleDocument } from '../examples/catalog.js';
 import { guideById } from '../guides/catalog.js';
+import { lookupGuideCopy, rememberGuideCopy } from '../guides/guideCopies.js';
 import { evaluateGuide, formatFacts, type GuideEvaluation } from '../guides/facts.js';
 import { messageParts } from '../i18n/i18n.js';
 import type { MessageKey } from '../i18n/messages.en.js';
@@ -38,6 +41,9 @@ export function GuidePanel({
   const heading = useRef<HTMLHeadingElement>(null);
   const [evaluation, setEvaluation] = useState<GuideEvaluation | null>(null);
   const [status, setStatus] = useState('');
+  const [copyId, setCopyId] = useState<string | undefined>();
+  const primary = useRef<HTMLButtonElement>(null);
+  const refocusPrimary = useRef(false);
   const announceTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Focus the title on open; on close return to the opener, or to the canvas if the opener is gone.
@@ -72,6 +78,28 @@ export function GuidePanel({
     return () => void (live = false);
   }, [guideId]);
 
+  /** The learner's copy of this guide's circuit, if it still exists (the library list is fresh). */
+  const findCopy = async (): Promise<string | undefined> => {
+    await store.refreshProjects().catch(() => undefined);
+    const ids = store.state.projects.map((p) => p.projectId);
+    const open = store.state.doc?.projectId;
+    return lookupGuideCopy(guideId, open ? [...ids, open] : ids);
+  };
+  useEffect(() => {
+    setCopyId(undefined);
+    let live = true;
+    void findCopy().then((id) => live && setCopyId(id));
+    return () => void (live = false);
+  }, [guideId]);
+
+  // The primary button changes label when a copy appears; keep keyboard focus on it.
+  useEffect(() => {
+    if (refocusPrimary.current && primary.current) {
+      refocusPrimary.current = false;
+      primary.current.focus();
+    }
+  }, [copyId]);
+
   const params = useMemo(() => {
     if (!guide || !evaluation) return {};
     const formatted = formatFacts(locale, evaluation.facts);
@@ -97,9 +125,41 @@ export function GuidePanel({
       Object.values(evaluation.facts).some((f) => f === null));
   const msg = (k: MessageKey) => <LtrMessage k={k} params={params} />;
 
-  const openExample = async () => {
+  /** Create a new copy of the example and remember it for this guide (memory only). */
+  const createCopy = async (missing = false) => {
+    refocusPrimary.current = true;
     const ok = await store.openExample(guide.exampleId);
-    announce(t(ok ? 'guidepanel.panel.exampleOpened' : 'guidepanel.panel.exampleFailed'));
+    const id = store.state.doc?.projectId;
+    if (ok && id) {
+      rememberGuideCopy(guide.id, id);
+      setCopyId(id);
+    }
+    announce(
+      t(
+        !ok
+          ? 'guidepanel.panel.exampleFailed'
+          : missing
+            ? 'guidepanel.panel.copyMissing'
+            : 'guidepanel.panel.exampleOpened',
+      ),
+    );
+  };
+
+  const openExample = async () => {
+    // Re-check at click time: the copy may have been deleted since the panel opened.
+    const existing = await findCopy();
+    if (existing) return void (await goBack(existing));
+    await createCopy(copyId !== undefined);
+  };
+
+  const goBack = async (id: string) => {
+    await store.openProject(id);
+    if (store.state.doc?.projectId === id) {
+      announce(t('guidepanel.panel.wentBack'));
+      return;
+    }
+    // The project vanished between the check and the open.
+    await createCopy(true);
   };
 
   return (
@@ -157,16 +217,43 @@ export function GuidePanel({
               ) : (
                 rest.map((k) => <p key={k}>{msg(k)}</p>)
               )}
-              {s.id === 'circuit' && (
-                <button
-                  type="button"
-                  class="button button-primary"
-                  data-testid="guide-open-example"
-                  onClick={() => void openExample()}
-                >
-                  {t('guidepanel.panel.openExample')}
-                </button>
-              )}
+              {s.id === 'circuit' &&
+                (copyId ? (
+                  <div>
+                    <p class="muted" data-testid="guide-copy-hint">
+                      {t('guidepanel.panel.copyHint')}
+                    </p>
+                    <div>
+                      <button
+                        type="button"
+                        class="button button-primary"
+                        data-testid="guide-go-back"
+                        ref={primary}
+                        onClick={() => void goBack(copyId)}
+                      >
+                        {t('guidepanel.panel.goBack')}
+                      </button>{' '}
+                      <button
+                        type="button"
+                        class="button"
+                        data-testid="guide-fresh-copy"
+                        onClick={() => void createCopy()}
+                      >
+                        {t('guidepanel.panel.freshCopy')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    class="button button-primary"
+                    data-testid="guide-open-example"
+                    ref={primary}
+                    onClick={() => void openExample()}
+                  >
+                    {t('guidepanel.panel.openExample')}
+                  </button>
+                ))}
             </section>
           );
         })}
