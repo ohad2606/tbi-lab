@@ -123,7 +123,11 @@ describe('build output', () => {
   });
   it('has no scripts, inline styles/handlers, third-party URLs, other emails or phone numbers', () => {
     for (const f of walk(out).filter((x) => /\.(html|css)$/.test(x))) {
-      const t = readFileSync(f, 'utf8');
+      // the sign-up pages carry the one allowed external module script (checked in signup.test.mjs)
+      const t = readFileSync(f, 'utf8').replace(
+        /<script type="module" src="\/assets\/signup\.mjs"><\/script>/,
+        '',
+      );
       expect(t, f).not.toMatch(/<script|\sstyle=|\son[a-z]+=|<style/i);
       // the only absolute URLs allowed are the tester sign-in link and the configured sign-up form
       let noLab = t.replaceAll(`href="${LAB_URL}"`, '');

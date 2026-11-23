@@ -32,6 +32,7 @@ const TEXT = [
   ['accent', 'hero-bg', 4.5, 'hero eyebrow'],
   ['on-accent', 'accent', 4.5, 'primary button text'],
   ['bg', 'ink', 4.5, 'skip link'],
+  ['error', 'bg', 4.5, 'form error text'],
 ];
 const UI = [
   ['border', 'bg', 3, 'card/header border on white'],
@@ -42,6 +43,7 @@ const UI = [
   ['focus-dark', 'hero-bg', 3, 'focus ring in hero'],
   ['accent', 'hero-bg', 3, 'dashed/primary button edge in hero'],
   ['ink', 'bg', 3, 'button edge on white band'],
+  ['error', 'bg', 3, 'invalid field border'],
 ];
 
 describe('colour tokens', () => {
