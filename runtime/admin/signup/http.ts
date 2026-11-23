@@ -17,6 +17,7 @@ import { MIN_SECRET_BYTES } from './hmac.js';
 import { BodyTooLarge, readCappedBody } from './limits.js';
 import { readSecretFile } from './secret-file.js';
 import type { AccountAdder, AddOutcome, SignupIntake } from './service.js';
+import { allowedOrigin } from './web.js';
 
 export interface SignupEnvConfig {
   dir: string;
@@ -104,6 +105,103 @@ export async function handleSignupRequest(
     return send(res, 500, { error: 'internal' });
   }
   if (out.status === 202) return send(res, 202, { ok: true });
+  if (out.status === 429 && out.retryAfterMs)
+    res.setHeader('retry-after', String(Math.ceil(out.retryAfterMs / 1000)));
+  return send(res, out.status, { error: out.error });
+}
+
+export const WEB_TOKEN_PATH = '/signup/form-token';
+export const WEB_SIGNUP_PATH = '/signup/web';
+
+export interface WebHttpOptions {
+  sourceHeader: string;
+  /** The exact allow-listed origins (TBI_SIGNUP_WEB_ORIGINS). */
+  origins: readonly string[];
+  onSourceFallback?: () => void;
+}
+
+/** `application/json`, optionally with `charset=utf-8`; nothing else (no form posts, no text/plain). */
+const STRICT_JSON = /^application\/json\s*(;\s*charset=utf-8\s*)?$/i;
+
+/** CORS for an allow-listed origin only; never credentials; `Vary: Origin` on every answer. */
+function cors(res: ServerResponse, origin: string | null): void {
+  res.setHeader('vary', 'Origin');
+  if (origin) res.setHeader('access-control-allow-origin', origin);
+}
+
+function refuse(req: IncomingMessage, res: ServerResponse, status: number, error: string): void {
+  req.resume();
+  send(res, status, { error });
+}
+
+/**
+ * BETA-G1 s8: `GET /signup/form-token` and `POST /signup/web` (plus their CORS preflights). Exists
+ * only when the web route is enabled (the server answers 404 otherwise). Every answer is a small
+ * JSON body with a machine code; nothing from the request is echoed.
+ */
+export async function handleWebSignupRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  intake: SignupIntake,
+  path: string,
+  o: WebHttpOptions,
+): Promise<void> {
+  const isToken = path === WEB_TOKEN_PATH;
+  const method = isToken ? 'GET' : 'POST';
+  if (req.method === 'OPTIONS') {
+    // Preflight: only from an allow-listed origin, only for this route's method.
+    const origin = allowedOrigin({ origin: req.headers.origin }, o.origins);
+    cors(res, origin);
+    if (!origin || req.headers['access-control-request-method'] !== method)
+      return refuse(req, res, 403, 'forbidden');
+    res.setHeader('access-control-allow-methods', method);
+    if (!isToken) res.setHeader('access-control-allow-headers', 'content-type');
+    res.setHeader('access-control-max-age', '600');
+    req.resume();
+    res.writeHead(204, { 'cache-control': 'no-store', 'content-length': 0 });
+    res.end();
+    return;
+  }
+  if (req.method !== method) {
+    res.setHeader('allow', `${method}, OPTIONS`);
+    return refuse(req, res, 405, 'method_not_allowed');
+  }
+  const key = () => sourceKey(req, o.sourceHeader, o.onSourceFallback);
+  if (isToken) {
+    // A same-origin GET carries no Origin header (allowed); a cross-origin one must be listed.
+    const origin = req.headers.origin === undefined ? null : allowedOrigin(req.headers, o.origins);
+    cors(res, origin);
+    if (req.headers.origin !== undefined && !origin) return refuse(req, res, 403, 'forbidden');
+    req.resume();
+    const t = intake.issueWebToken(key());
+    if (t.status === 200) return send(res, 200, { token: t.token, ttl: t.ttl });
+    if (t.status === 429 && t.retryAfterMs)
+      res.setHeader('retry-after', String(Math.ceil(t.retryAfterMs / 1000)));
+    return send(res, t.status, { error: t.error });
+  }
+  // POST: the origin (or, without Origin, the Referer) must be listed: a cross-site page cannot
+  // post here (CSRF), and a JSON body forces a browser preflight that only listed origins pass.
+  const origin = allowedOrigin(req.headers, o.origins);
+  cors(res, origin);
+  if (!origin) return refuse(req, res, 403, 'forbidden');
+  if (!STRICT_JSON.test(req.headers['content-type'] ?? ''))
+    return refuse(req, res, 415, 'unsupported_media_type');
+  let body: Buffer;
+  try {
+    body = await readCappedBody(req);
+  } catch (e) {
+    return send(res, e instanceof BodyTooLarge ? 413 : 400, {
+      error: e instanceof BodyTooLarge ? 'body_too_large' : 'invalid',
+    });
+  }
+  let out;
+  try {
+    out = await intake.submitWeb(key(), body);
+  } catch {
+    return send(res, 500, { error: 'internal' });
+  }
+  // Same answer for a new and an already known address (privacy: no account enumeration).
+  if (out.status === 200) return send(res, 200, { ok: true, status: 'received' });
   if (out.status === 429 && out.retryAfterMs)
     res.setHeader('retry-after', String(Math.ceil(out.retryAfterMs / 1000)));
   return send(res, out.status, { error: out.error });
