@@ -21,7 +21,7 @@ stored record; tested).
 
 | Route | Answer |
 |---|---|
-| `GET /signup/form-token` | 200 `{token, ttl}` (`ttl` in seconds, 1800); 403 `forbidden` (foreign `Origin`); 429 `rate_limited` + `retry-after`; 405 |
+| `GET /signup/form-token` | 200 `{token, ttl}` (`ttl` in seconds, 1800); 403 `forbidden` (foreign `Origin`); 429 `rate_limited` + `retry-after`; 503 `unavailable` (no valid client address from the proxy); 405 |
 | `POST /signup/web` | 200 `{ok:true, status:"received"}` (new **and** already known address); 400 `too_fast` / `invalid`; 401 `unauthorized` / `expired`; 403 `forbidden`; 413 `body_too_large`; 415 `unsupported_media_type`; 429 `rate_limited` + `retry-after`; 503 `unavailable`; 405 |
 | `OPTIONS` on both | CORS preflight: 204 for an allow-listed `Origin` and the route's own method only, else 403 |
 
@@ -44,22 +44,30 @@ nothing from the request is echoed; `cache-control: no-store`.
 - **Lifetime:** valid from 3 s (`WEB_MIN_FILL_MS`, below that `too_fast` = automated) to 30 min
   (`WEB_TOKEN_TTL_MS`, after that `expired`: the page fetches a new token and retries). An issue time more than 5 s
   in the future is a bad token.
-- **Single use:** at submit time, after the MAC, the limits and the field validation, the nonce is taken in a
-  `NonceCache` (the existing class, a **separate instance** from the signed route's, window = token TTL, so a used
-  nonce is remembered for 2 x TTL, longer than the token can live). A second use is 401 `unauthorized`. A forged
-  token never consumes anything. `too_fast` and `invalid` do **not** consume the token, so the page can fix a typo
-  or wait and resend with the same token.
+- **Single use:** at submit time, after the MAC, the honeypot, the field validation and the global limit, the
+  nonce is taken in a `NonceCache` (the existing class, a **separate instance** from the signed route's, window =
+  token TTL, so a used nonce is remembered for 2 x TTL, longer than the token can live). A second use is 401
+  `unauthorized`. A forged token never consumes anything. `too_fast`, an `invalid` field and a global-limit 429 do
+  **not** consume the token, so the page can fix a typo or wait and resend with the same token. A **honeypot hit
+  consumes** it (a bot that filled the field cannot reuse the token; the answer is still the generic 400
+  `invalid`). A **store refusal** (503 `unavailable`, nothing stored) gives the token back: it was reserved during
+  the store call, so a concurrent post with the same token gets 401 and can never create a second record, and after
+  the 503 the page may retry with the same token. The page should still fetch a new token on any 401.
 
 ### Order of checks in `POST /signup/web`
 
 1. method (405), 2. `Origin` allow-list, or the `Referer`'s origin only when `Origin` is absent (403),
-3. strict `Content-Type: application/json` (optionally `; charset=utf-8`) (415), 4. body cap 4 KiB, by header and
-by stream (413), 5. **per-source limit** (before any crypto) (429), 6. JSON object (400 `invalid`), 7. token: MAC,
-age, minimum fill time (401 / 400 `too_fast`), 8. **global limit** (only requests carrying a token this intake
-issued can spend it) (429), 9. honeypot empty (400 `invalid`), 10. field validation, the same `validateSignup` as
-`/signup` plus the optional `heardFrom` (400 `invalid`), 11. consume the token (401 on replay), 12. the **same
-downstream path** as `/signup`: atomic dedupe, store `pending`, Telegram alert (name and role only) or deferral in
-quiet hours. The auto-approve sweep (admin service) then sees the record like any other pending request.
+3. strict `Content-Type: application/json` (optionally `; charset=utf-8`) (415), 4. a valid client address in the
+proxy header, else 503 `unavailable` (no fallback to the proxy peer, see Limits), 5. body cap 4 KiB, by header and
+by stream (413), 6. **per-source limit** (before any crypto) (429), 7. JSON object (400 `invalid`), 8. token: MAC,
+age, minimum fill time (401 / 400 `too_fast`), 9. honeypot empty (400 `invalid`; **consumes the token**),
+10. field validation, the same `validateSignup` as `/signup` plus the optional `heardFrom` (400 `invalid`), 11. an
+already used token is refused here (401) before it can spend anything, 12. **global limit** (only requests that
+passed everything above, i.e. that would be stored, can spend it; honeypot hits and junk cannot) (429), 13. consume
+the token (401 on a concurrent replay), 14. the **same downstream path** as `/signup`: the web caps (see Limits),
+atomic dedupe, store `pending` with `origin: "web"`, Telegram alert (name and role only) or deferral in quiet hours
+(a 503 here gives the token back). The auto-approve sweep (admin service) does **not** take web records by default
+(see section 5, auto-approve).
 
 ### Limits (`intake-server.ts`; reuse `SlidingWindowLimiter` from `limits.ts`, separate instances per route)
 
@@ -67,10 +75,24 @@ quiet hours. The auto-approve sweep (admin service) then sees the record like an
 |---|---|---|
 | token issue, per source | 20 / 10 min | a few page loads and refetches per person |
 | post, per source | 10 / 10 min | a few retries (typo, `too_fast`, expired) per person |
-| post, global (web only) | 200 / h | spent only with a valid token; a real person never auto-retries a 429, so generous; separate from the signed route's 200 / h, so a web flood cannot block the Apps Script path |
+| post, global (web only) | 200 / h | spent only by a request with a valid, unused token, an empty honeypot and valid fields; a real person never auto-retries a 429, so generous; separate from the signed route's 200 / h, so a web flood cannot block the Apps Script path |
+| web records in the store (`WEB_MAX_RECORDS`) | 1 500 | a sub-cap of the shared store cap (`INTAKE_MAX_RECORDS` 5 000): past it the web route answers 503 `unavailable` (generic, web only) while `/signup` keeps the other 3 500 slots, so a web flood can never fill the store and stop the Apps Script form. Slots free up when records are purged (retention) |
 
 Here the source key **is** a person's address (the trusted proxy's last hop of `TBI_SIGNUP_SOURCE_HEADER`), unlike
-the signed route where it is Google's shared pool. The store cap (5 000) stays the final bound for both routes.
+the signed route where it is Google's shared pool. For the web route only, the key is normalised (`webBucket`,
+`http.ts`): IPv4 as is; an IPv4-mapped IPv6 address (`::ffff:a.b.c.d`, also in hex) as its IPv4 address; any other
+IPv6 address as its **/64** (`p:q:r:s::/64`), because one subscriber or cloud host usually holds a whole /64 and
+could otherwise rotate through fresh addresses (fresh buckets each time, and limiter table growth). Without a valid
+address in the header the web route answers 503 `unavailable` (and logs the existing rate-limited
+`source_header_missing` warning) instead of bucketing every visitor with the proxy peer. `/signup` keeps its
+documented key and fallback unchanged.
+
+Web origin in the store: a web record carries `origin: "web"` (additive, `v` stays 1, absent on every `/signup`
+record) plus an empty `<id>.web` marker file written before the record, so the sub-cap is counted from one
+directory listing without reading records (a marker without its record is not counted and is purged after an
+hour; the record's purge removes its marker). At the web sub-cap the caps are checked **before** the dedupe for the
+web route, so a known and an unknown address both get 503 (no existence oracle there); `/signup` keeps its
+dedupe-first answer.
 
 ### Content type: JSON, not form-urlencoded
 
@@ -141,6 +163,13 @@ and the store-full case (see 6).
 | Honeypot false positive (autofill / assistive tech filling the hidden field) | explicit 400 `invalid`, never a silent drop: the page can tell the person to try again | the page slice must hide the field from people and assistive technology correctly (off-screen, `aria-hidden`, `tabindex=-1`, `autocomplete=off`) |
 | Large or slow bodies | 4 KiB cap (header and stream), the existing server timeouts | none new |
 | Misconfiguration exposes the route | off by default; flag plus explicit origins required; anything else refuses to start | the proxy must not route other paths (deploy review) |
+| **Web flood fills the shared store** (ops review H1) | web sub-cap `WEB_MAX_RECORDS` 1 500 of the 5 000 shared slots; 503 `unavailable` for web only; `/signup` keeps 3 500 slots | web sign-ups stop until records are purged or the owner rejects/purges junk; an Apps Script flood (secret holder) can still fill the shared cap as before |
+| **Token reuse / drain of the global budget** (ops review M1) | the global slot is taken only after honeypot, validation and the used-token check; a honeypot hit burns its token; a replayed token is refused before the global limit | a farm of valid tokens with valid-looking fields can still spend the 200 / h (row "token farming") |
+| **IPv6 rotation and limiter table exhaustion** (ops review M2/M3) | per-/64 buckets; IPv4-mapped folded to IPv4; per-source limiter entries expire with their window | an attacker with many /64s (a /48 is 65 536 of them) still gets one bucket each; memory per bucket is small and bounded by the window, but not capped by count (proxy limits are the outer bound) |
+| **Missing source header** (ops review L2) | 503 `unavailable` on both web paths; rate-limited warning in the log | a proxy misconfiguration makes the web route unusable (visible, fail closed) instead of one shared bucket |
+| **Plus / dot address variants** (ops review M4) | none in this slice: dedupe is by the normalised address (`normalizeAddEmail`, the same as the account path: case, trim), so `a+1@`, `a+2@` and, for Google mail, `a.b@` / `ab@` are different addresses | one mailbox can have many pending requests (each needs a token and a slot of the per-source and global limits); with auto-approve it could get several accounts and approval mails. Folding variants changes the account path's address rules: owner question O5 |
+| **Auto-approve cap starvation** (ops review) | web records are **not auto-approvable** by default: `TBI_SIGNUP_AUTO_WEB` unset / empty / `excluded` = the sweep skips `origin: "web"` records (they stay `pending` for the owner and spend no slot); `included` makes them eligible; any other value = auto-approve off (config error). This stays `excluded` until the owner answers O1 | with `included`, a web flood of valid-looking requests could take the whole daily cap before the Apps Script requests (FIFO by creation time) and give strangers accounts (email-bombing row) |
+| **Telegram alert flood** (ops review L1) | one alert per stored new request, bounded by the web global limit (200 / h) and the web sub-cap; name and role only | at the limit the owner's chat can get up to 200 alerts per hour from the web route; quiet hours defer but do not merge them. A digest / per-hour alert cap is a possible later slice (owner question O6) |
 
 Decision taken in this slice (reversible): tokens are **not bound to the client address**, because some real
 clients change their egress address between page load and submit (carrier NAT, IPv6 privacy addresses), and a
@@ -150,11 +179,18 @@ posts). Binding would be one extra field in the MAC input.
 ## 6. Residual risks (accepted in this slice, to review before enabling)
 
 - No human-verification layer beyond timing and honeypot (see O1).
-- Store full (5 000 records): a new address gets 503 while a known one still gets 200, so at the cap the answer
-  reveals existence. The cap is an emergency state that the monitoring slice alerts on.
+- Store full: on the web route both a new and a known address get 503 at either cap (no oracle there); on `/signup`
+  (secret holders only) a new address gets 503 while a known one still gets 200, as before. Both caps are emergency
+  states that the monitoring slice should alert on (not built yet).
+- The web sub-cap counts every web record still in the store (pending, rejected or approved) until it is purged by
+  retention; a flood of junk therefore blocks web sign-ups for up to the retention period unless the owner rejects
+  and an operator purges.
 - Nonce cache in memory (restart reopens one more use per recent token).
 - A distributed token farm can exhaust the web route's global budget for up to an hour at a time.
-- Approval is manual unless auto-approve is on; with it on, see the email-bombing row.
+- Approval of web sign-ups is manual even with auto-approve on (default `TBI_SIGNUP_AUTO_WEB=excluded`); see
+  the email-bombing and cap-starvation rows before setting `included`.
+- `origin: "web"` is written by the intake; a compromised intake could omit it (it can do much more anyway). The
+  admin UI does not show the origin yet.
 
 ## 7. Configuration (intake process; nothing changes unless set)
 
@@ -162,11 +198,12 @@ posts). Binding would be one extra field in the MAC input.
 |---|---|
 | `TBI_SIGNUP_WEB` | unset, empty or `0`: off (both paths 404). Exactly `1`: on. Anything else: refusal to start. |
 | `TBI_SIGNUP_WEB_ORIGINS` | required with `TBI_SIGNUP_WEB=1`; exact `https://host[:port]` list, comma-separated; no default. |
+| `TBI_SIGNUP_AUTO_WEB` (admin service, with auto-approve on) | unset, empty or `excluded`: web-origin requests are never auto-approved (default). `included`: they are eligible like any other. Anything else: auto-approve stays off (config error). |
 
 Start-up logs one line `web route on (<n> origin(s))` (no origin values). Everything else (secret file, source
 header, store, quiet hours) is the existing intake configuration.
 
-## 8. Tests (`runtime/admin/tests/signup-web-intake.test.ts`, vitest, fakes only)
+## 8. Tests (`runtime/admin/tests/signup-web-intake.test.ts`, `signup-web-intake-fixes.test.ts`, the web part of `signup-auto-approve.test.ts`; vitest, fakes only)
 
 Token round trip and every refusal (missing, malformed, forged, other key, future, expired, too fast), domain
 separation both ways; origin parsing and matching; `heardFrom` validation (refused on `/signup`, optional and
@@ -178,17 +215,29 @@ flag off = 404 on every method, the full token -> wait -> post flow with CORS he
 foreign / missing `Origin` and `Referer`, preflight, strict content type, 4 KiB cap, 405, replay, expiry /
 too fast / honeypot codes, per-source 429 with `retry-after`, duplicate answers identical, and `/signup` unchanged
 with the web route on (same 202 body, `heardFrom` still refused, a token is not a signature, identical record keys).
+Fix round (ops review): origin marker and sub-cap in the store (web full while `/signup` still stores; no oracle at
+the web cap; purge frees slots; orphan marker not counted), 503 for web only at the sub-cap, global slot not spent
+by honeypot / invalid / replayed posts, honeypot burns the token, 429 keeps it, 503 gives it back without double
+use (also concurrently), `webBucket` (IPv4, mapped dotted / hex, /64, zone id, junk), /64 and mapped buckets over
+HTTP, 503 without a source header (and `/signup` unchanged), `TBI_SIGNUP_AUTO_WEB` parsing, the sweep skipping web
+records by default (also through `wireSignupAdmin`) and taking them with `included`.
 
 ## 9. Owner questions (not decided here)
 
-- **O1:** when auto-approve is on, must a web sign-up first prove control of the address (email verification
-  link) before it counts, or an extra human check (CAPTCHA / proof of work)? Without it, a stranger's address can
-  receive one unsolicited approval mail and get an account (bounded by the daily cap and dedupe). Email
-  verification is not implemented in this slice.
+- **O1:** may web sign-ups ever be auto-approved, and if so, must a web sign-up first prove control of the
+  address (email verification link) or pass an extra human check (CAPTCHA / proof of work)? Until answered, web
+  sign-ups are **not** auto-approvable (`TBI_SIGNUP_AUTO_WEB` defaults to `excluded`; the owner approves them by
+  hand). Without such a check, `included` lets a stranger's address receive one unsolicited approval mail and get an
+  account, and lets a web flood take the daily cap. Email verification is not implemented.
 - **O2:** deploy shape: same-origin via the site's proxy (recommended) or cross-origin CORS to the intake host?
 - **O3:** keep "how did you hear about us" as short free text, or a fixed list of options (then the server accepts
   only those ids)?
-- **O4:** are the web limits right for launch day (10 posts / 10 min per address, 200 / h in total)?
+- **O4:** are the web limits right for launch day (10 posts / 10 min per address or IPv6 /64, 200 / h in total,
+  at most 1 500 web records in the store)?
+- **O5:** should plus-addressing (`a+x@`) and, for Google mail, dots be folded when checking for duplicates? This
+  touches the account path's address rules, so it is a product decision, not done here.
+- **O6:** is up to 200 Telegram alerts per hour from the web route acceptable, or should a digest / alert cap come
+  before enabling?
 
 ## 10. Not in this slice
 
