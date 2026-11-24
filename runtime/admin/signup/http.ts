@@ -110,7 +110,10 @@ export async function handleSignupRequest(
 }
 
 /** Adapter: the existing admin spool (-> root helper) as the approver's account-add path. */
-export function spoolAccountAdder(spool: AdminSpool, actor: Principal): AccountAdder {
+export function spoolAccountAdder(
+  spool: Pick<AdminSpool, 'submit' | 'wait'>,
+  actor: Principal,
+): AccountAdder {
   return {
     async add(email, name): Promise<AddOutcome> {
       const displayName = name ? normalizeDisplayName(name) : null;

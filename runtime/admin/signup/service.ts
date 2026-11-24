@@ -207,6 +207,8 @@ export class SignupApprover {
       quiet?: QuietWindow | null;
       now?: () => number;
       log?: (line: string) => void;
+      /** BETA-G1: the auto-approve sweep's approver; its audit lines are marked `actor=auto`. */
+      actor?: 'auto';
     },
   ) {}
 
@@ -214,7 +216,9 @@ export class SignupApprover {
   private async audited(id: string, action: string, out: ApproveOutcome): Promise<ApproveOutcome> {
     const outcome = out.ok ? (out.note ?? 'ok') : out.code;
     try {
-      await this.d.store.audit(id, action, outcome);
+      await (this.d.actor
+        ? this.d.store.audit(id, action, outcome, this.d.actor)
+        : this.d.store.audit(id, action, outcome));
     } catch (e) {
       this.d.log?.(`signup: audit write failed (${errorClass(e)})`);
     }

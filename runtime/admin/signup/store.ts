@@ -63,6 +63,11 @@ export interface SignupRecord extends SignupInput {
   notified: boolean;
   /** Derived on read from the `<id>.notifyq` marker: the alert was deferred by quiet hours and is not sent yet. */
   notifyPending: boolean;
+  /**
+   * BETA-G1: set (ISO time) when the auto-approve sweep claimed this request against the daily
+   * cap. Absent on every record while auto-approve is off (records are then unchanged).
+   */
+  autoApprovedAt?: string;
 }
 
 /**
@@ -246,9 +251,13 @@ export class PendingStore {
     return id;
   }
 
-  /** Append-only audit line: time, id, action, outcome class. No personal data. */
-  async audit(id: string, action: string, outcome: string): Promise<void> {
-    const line = `${new Date(this.now()).toISOString()} ${this.idOnly(id)} ${action} ${outcome}\n`;
+  /**
+   * Append-only audit line: time, id, action, outcome class, and (BETA-G1, only when given) a
+   * fixed actor tag such as `actor=auto`. No personal data.
+   */
+  async audit(id: string, action: string, outcome: string, actor?: 'auto'): Promise<void> {
+    const tag = actor ? ` actor=${actor}` : '';
+    const line = `${new Date(this.now()).toISOString()} ${this.idOnly(id)} ${action} ${outcome}${tag}\n`;
     await appendFile(join(this.dir, 'audit.log'), line, { mode: 0o600 });
   }
 
