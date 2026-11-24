@@ -14,6 +14,7 @@ import {
   onVersionChanged,
   reloadTab,
   reminderSeen,
+  resetReminderMemory,
   resetVersionChangeLatch,
   shouldShowExportReminder,
   VERSION_CHANGE_EVENT,
@@ -22,6 +23,7 @@ import {
 afterEach(() => {
   resetVersionChangeLatch();
   resetPersistStatus();
+  resetReminderMemory();
 });
 
 describe('version-change latch', () => {
@@ -76,8 +78,10 @@ describe('export reminder rule', () => {
         throw new Error('x');
       },
     };
+    resetReminderMemory();
     expect(reminderSeen(bad)).toBe(false);
     expect(() => markReminderSeen(bad)).not.toThrow();
+    resetReminderMemory();
     expect(reminderSeen(null)).toBe(false);
   });
 });
@@ -106,5 +110,26 @@ describe('messages', () => {
       expect(he[k].length).toBeGreaterThan(3);
       expect(he[k]).not.toBe(en[k]);
     }
+  });
+});
+
+describe('reminder seen flag without sessionStorage', () => {
+  afterEach(() => resetReminderMemory());
+  it('stays seen in memory when storage is null or throws', () => {
+    const bad = {
+      getItem: () => {
+        throw new Error('denied');
+      },
+      setItem: () => {
+        throw new Error('denied');
+      },
+    };
+    resetReminderMemory();
+    expect(reminderSeen(null)).toBe(false);
+    markReminderSeen(null);
+    expect(reminderSeen(null)).toBe(true);
+    resetReminderMemory();
+    markReminderSeen(bad);
+    expect(reminderSeen(bad)).toBe(true);
   });
 });

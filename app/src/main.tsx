@@ -44,7 +44,7 @@ async function main() {
   void requestPersistentStorage();
   const storage = await ProjectStore.open(indexedDB, storageName(DB_NAME, STORAGE_NAMESPACE), {
     // Another tab upgraded the database: this tab's connection is closed. Surfaced as an event
-    // so the UI can show a "reload this tab" message (no visual UI in this slice).
+    // so the UI can show a "reload this tab" alert (TabOutdatedBanner in ui/StorageNotices.tsx).
     onVersionChange: () => window.dispatchEvent(new CustomEvent('tbi:storage-versionchange')),
   }).catch(() => null);
   // DEV-Lab and previews say so in the window title (the HTML already carries the DEV prefix).

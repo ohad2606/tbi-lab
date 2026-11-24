@@ -323,6 +323,7 @@ select {
 .banner {
   display: flex;
   gap: 1rem;
+  flex-wrap: wrap;
   align-items: center;
   padding-block: 0.5rem;
   padding-inline: 1rem;
@@ -3580,6 +3581,14 @@ select {
   line-height: 1.3;
   border-inline-start: 3px solid var(--muted);
   background: var(--panel-alt, rgba(0, 0, 0, 0.03));
+}
+
+/* Export reminder actions (same layout as the update banner). */
+.export-reminder .update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-inline-start: auto;
 }
 
 /* New version available (UpdateBanner): actions at the inline end. */
