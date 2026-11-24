@@ -351,7 +351,10 @@ test('ESP32 terminal: the serial console under the properties, from boot; kept r
   await runAndWait(page);
   await expect(state).toHaveAttribute('data-state', 'running');
   await expect(out).toContainText('TBI-ARDUINO-READY');
-  await expect(state).toContainText(/Running · \u2066?[\d.]+ s\u2069? simulated/);
+  await expect(state).toContainText('Running');
+  // The ticking clock lives outside the live status (K9): it must not be announced.
+  await expect(state).not.toContainText('simulated');
+  await expect(page.getByTestId('mcu-terminal-time')).toContainText(/\u2066?[\d.]+ s\u2069? simulated/);
 
   // Stop: the last output stays, marked as ended; nothing of it is stored.
   await stopAndWait(page);
