@@ -12,7 +12,7 @@ test('out-of-date tab: alert with a keyboard-reachable Reload, focus not stolen'
   await page.getByTestId('project-name').focus();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('tbi:storage-versionchange')));
   const banner = page.getByTestId('tab-outdated');
-  await expect(banner).toHaveAttribute('role', 'alert');
+  await expect(page.getByTestId('tab-outdated-live')).toHaveAttribute('role', 'alert');
   await expect(banner).toBeVisible();
   await expect(page.getByTestId('project-name')).toBeFocused();
   const reload = page.getByTestId('tab-outdated-reload');
@@ -35,11 +35,12 @@ test('export reminder: once, after an edit, when persistence is not granted; dis
   await expect(page.getByTestId('export-reminder')).toHaveCount(0);
   await place(page, 'resistor', { x: 200, y: 200 });
   const note = page.getByTestId('export-reminder');
-  await expect(note).toHaveAttribute('role', 'status');
+  await expect(page.getByTestId('export-reminder-live')).toHaveAttribute('role', 'status');
   const dismiss = page.getByTestId('export-reminder-dismiss');
   await dismiss.focus();
   await page.keyboard.press('Enter');
   await expect(note).toHaveCount(0);
+  await expect(page.locator('#main')).toBeFocused();
   await place(page, 'resistor', { x: 300, y: 200 });
   await expect(note).toHaveCount(0);
 });

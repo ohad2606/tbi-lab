@@ -1007,6 +1007,7 @@ export const en = {
   'storage.tabOutdated':
     'This tab is out of date: another tab updated the local storage. Reload to keep working. Changes made in this tab since then may not be saved.',
   'storage.reload': 'Reload',
+  'storage.reloadTab': 'Reload this tab',
   'storage.exportReminder':
     'Your browser may clear local data. Export your project to keep a copy.',
   'storage.exportAction': 'Export project',

@@ -28,20 +28,24 @@ export function TabOutdatedBanner() {
   const t = useT();
   const [stale, setStale] = useState(isVersionChanged);
   useEffect(() => onVersionChanged(() => setStale(true)), []);
-  if (!stale) return null;
+  // The live region is always mounted; its content appears later so screen readers announce it.
   return (
-    <div class="banners">
-      <div class="banner banner-warning" role="alert" data-testid="tab-outdated">
-        <span>{t('storage.tabOutdated')}</span>{' '}
-        <button
-          type="button"
-          class="button button-primary"
-          data-testid="tab-outdated-reload"
-          onClick={() => reloadTab()}
-        >
-          {t('storage.reload')}
-        </button>
-      </div>
+    <div class="banners" role="alert" data-testid="tab-outdated-live">
+      {stale && (
+        <div class="banner banner-warning" data-testid="tab-outdated">
+          <span id="tab-outdated-text">{t('storage.tabOutdated')}</span>{' '}
+          <button
+            type="button"
+            class="button button-primary"
+            data-testid="tab-outdated-reload"
+            aria-label={t('storage.reloadTab')}
+            aria-describedby="tab-outdated-text"
+            onClick={() => reloadTab()}
+          >
+            {t('storage.reload')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -84,32 +88,38 @@ export function ExportReminder() {
       setVisible(true);
     }
   }, [persist, edited, stale, visible]);
-  if (!visible) return null;
+  // Dismissing removes the focused button: move focus to the main landmark (tabIndex -1).
+  const dismiss = () => {
+    setVisible(false);
+    document.getElementById('main')?.focus();
+  };
   return (
-    <div class="banners">
-      <div class="banner banner-info export-reminder" role="status" data-testid="export-reminder">
-        <span>{t('storage.exportReminder')}</span>
-        <span class="update-actions">
-          {projectId.current && (
+    <div class="banners" role="status" data-testid="export-reminder-live">
+      {visible && (
+        <div class="banner banner-info export-reminder" data-testid="export-reminder">
+          <span>{t('storage.exportReminder')}</span>
+          <span class="update-actions">
+            {projectId.current && (
+              <button
+                type="button"
+                class="button"
+                data-testid="export-reminder-export"
+                onClick={() => void downloadProject(store, projectId.current!)}
+              >
+                {t('storage.exportAction')}
+              </button>
+            )}
             <button
               type="button"
               class="button"
-              data-testid="export-reminder-export"
-              onClick={() => void downloadProject(store, projectId.current!)}
+              data-testid="export-reminder-dismiss"
+              onClick={dismiss}
             >
-              {t('storage.exportAction')}
+              {t('storage.exportDismiss')}
             </button>
-          )}
-          <button
-            type="button"
-            class="button"
-            data-testid="export-reminder-dismiss"
-            onClick={() => setVisible(false)}
-          >
-            {t('storage.exportDismiss')}
-          </button>
-        </span>
-      </div>
+          </span>
+        </div>
+      )}
     </div>
   );
 }

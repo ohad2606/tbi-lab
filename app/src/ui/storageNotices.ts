@@ -51,7 +51,13 @@ export function shouldShowExportReminder(i: ReminderInput): boolean {
   return i.persist !== null && i.persist !== 'granted';
 }
 
+/** In-memory fallback so a dismissed reminder stays dismissed when sessionStorage is unavailable. */
+let seenInMemory = false;
+export function resetReminderMemory(): void {
+  seenInMemory = false;
+}
 export function reminderSeen(storage: Pick<Storage, 'getItem'> | null): boolean {
+  if (seenInMemory) return true;
   try {
     return storage?.getItem(REMINDER_SEEN_KEY) === '1';
   } catch {
@@ -59,6 +65,7 @@ export function reminderSeen(storage: Pick<Storage, 'getItem'> | null): boolean 
   }
 }
 export function markReminderSeen(storage: Pick<Storage, 'setItem'> | null): void {
+  seenInMemory = true;
   try {
     storage?.setItem(REMINDER_SEEN_KEY, '1');
   } catch {
