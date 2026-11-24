@@ -21,6 +21,8 @@ const KEY = {
   system_unavailable: 'sim.limit.system_unavailable',
   // BETA-G2: the operator paused new Free runs (try again later)
   free_paused: 'sim.limit.free_paused',
+  // K3-3: not a refused start: the host ended an unattended run (controller idleStop)
+  session_idle: 'sim.limit.session_idle',
 } as const satisfies Record<string, MessageKey>;
 
 /** The variant without the parameter, when the host did not give a usable one. */
@@ -37,6 +39,7 @@ export const simLimitKeys = (): MessageKey[] => [
   ...Object.values(KEY_NODATE),
   'sim.limit.queue.nopos',
   'sim.limit.cooldown.nowait',
+  'sim.limit.session_idle.one',
 ];
 
 /**
@@ -56,6 +59,7 @@ const UI: Record<SimLimitCode, { role: 'status' | 'alert'; retry: boolean }> = {
   sim_daily: { role: 'alert', retry: false },
   system_unavailable: { role: 'status', retry: true },
   free_paused: { role: 'status', retry: true },
+  session_idle: { role: 'status', retry: true },
 };
 
 export const simLimitUi = (code: unknown): { role: 'status' | 'alert'; retry: boolean } | null =>
@@ -76,6 +80,13 @@ export function simLimitText(locale: LocaleInfo, limit: PublicLimit): string | n
     return date
       ? translate(locale, KEY[code], { date: isolateLtr(date) })
       : translate(locale, KEY_NODATE[code]!);
+  }
+  if (code === 'session_idle') {
+    // Its own sentence for one minute (HE has no "1 minutes").
+    const m = Number(p.minutes);
+    return m > 1
+      ? translate(locale, KEY[code], { minutes: isolateLtr(String(m)) })
+      : translate(locale, 'sim.limit.session_idle.one');
   }
   if (code === 'queue' || code === 'sim_cooldown') {
     const n = typeof p.n === 'number' && Number.isInteger(p.n) && p.n > 0 ? p.n : null;

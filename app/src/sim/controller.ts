@@ -119,6 +119,8 @@ export interface SimulationHost {
   control(component: string, control: LiveControl, projectRevision: number): boolean;
   momentary(component: string, pressed: boolean): boolean;
   stop(): void;
+  /** K3-3: answer the idle warning (ESP32 sessions only); true once the host accepted. */
+  stillHere?(): Promise<boolean>;
   dispose(): void;
 }
 

@@ -16,7 +16,15 @@ import { en } from '../src/i18n/messages.en.js';
 import { he } from '../src/i18n/messages.he.js';
 import { EXAMPLES_WITH_DOCUMENTS as EXAMPLES } from '../src/examples/documents.js';
 import { RuntimeClient, RuntimeSession, RuntimeTransportError } from '../src/runtime/client.js';
-import { IDLE_WARNING_MS, McuSimulation, PRESENCE_THROTTLE_MS } from '../src/runtime/controller.js';
+import {
+  IDLE_WARNING_MS,
+  McuSimulation,
+  PRESENCE_ANSWER_MS,
+  PRESENCE_THROTTLE_MS,
+} from '../src/runtime/controller.js';
+import { simLimitText, simLimitUi } from '../src/runtime/limits.js';
+import type { SimulationHost } from '../src/sim/controller.js';
+import { SimulationDispatcher } from '../src/sim/dispatch.js';
 import type { RuntimeView } from '../src/runtime/view.js';
 import { simFailureMessage } from '../src/sim/format.js';
 
@@ -151,14 +159,12 @@ describe('K3-2 idle warning and presence', () => {
     },
   );
 
-  it('real input posts, cancels the warning and restarts the countdown', async () => {
+  it('real input before the warning posts and restarts the countdown', async () => {
     const { sim, s, input } = await start();
-    await advance(QUIET);
-    expect(warning(sim)).not.toBeNull();
+    await advance(QUIET - 1);
     input.fire('pointerdown');
     await advance(0);
     expect(s.presences).toBe(1);
-    expect(warning(sim)).toBeNull();
     await advance(QUIET - 1);
     expect(warning(sim)).toBeNull();
     await advance(1);
@@ -204,17 +210,17 @@ describe('K3-2 idle warning and presence', () => {
   });
 
   it('countdown uses the send time of the accepted POST, not the (late) answer', async () => {
-    const { sim, s, input } = await start();
+    const { sim, s } = await start();
     await advance(QUIET);
     let accept!: () => void;
     s.answer = () => new Promise<void>((r) => (accept = r));
-    input.fire();
-    await advance(20_000);
+    void sim.stillHere();
+    await advance(5_000);
     expect(warning(sim)).not.toBeNull(); // not accepted yet
     accept();
     await advance(0);
     expect(warning(sim)).toBeNull();
-    await advance(QUIET - 20_000 - 1);
+    await advance(QUIET - 5_000 - 1);
     expect(warning(sim)).toBeNull();
     await advance(1);
     expect(warning(sim)).not.toBeNull();
@@ -271,10 +277,10 @@ describe('K3-2 idle warning and presence', () => {
   it.each([404, 503])('a failing presence (%s) is silent and never retried', async (status) => {
     const { sim, s, input } = await start();
     s.answer = () => Promise.reject(new RuntimeTransportError('not_found', status));
-    await advance(QUIET);
+    await advance(QUIET - 1);
     input.fire();
     input.fire();
-    await advance(MIN - 1);
+    await advance(MIN);
     expect(s.presences).toBe(1);
     expect(sim.state.status).toBe('running');
     expect(warning(sim)).not.toBeNull(); // not accepted: the warning stays
@@ -353,14 +359,93 @@ describe('K3-2 idle warning and presence', () => {
       expect(text).toContain('⁦5⁩');
       expect(text).not.toMatch(/[{}]|sim\.error/);
     }
-    expect(en['sim.error.runtime.session_idle']).toContain('{minutes}');
-    expect(he['sim.error.runtime.session_idle']).toContain('{minutes}');
+    expect(en['sim.limit.session_idle']).toContain('{minutes}');
+    expect(he['sim.limit.session_idle']).toContain('{minutes}');
   });
 
   it('idle_timeout without a host idleMs is the old session_lost (no invented minutes)', async () => {
     const { sim, s } = await start(undefined);
     s.emit({ type: 'state', simNs: null, state: 'ended', reason: 'idle_timeout' });
     expect(sim.state).toMatchObject({ failure: { code: 'session_lost' } });
+  });
+});
+
+describe('K3-3 the "Still there?" prompt: only explicit answers decide', () => {
+  beforeEach(() => void vi.useFakeTimers());
+  afterEach(() => void vi.useRealTimers());
+
+  it('while the warning shows, passive input sends nothing and dismisses nothing', async () => {
+    const { sim, s, input } = await start();
+    await advance(QUIET);
+    for (const type of INPUT_TYPES) input.fire(type, { movementX: 1 });
+    await advance(0);
+    expect(s.presences).toBe(0);
+    expect(warning(sim)).not.toBeNull();
+  });
+
+  it('stillHere() resolves true once the host accepted, and clears the warning', async () => {
+    const { sim, s } = await start();
+    await advance(QUIET);
+    await expect(sim.stillHere()).resolves.toBe(true);
+    expect(s.presences).toBe(1);
+    expect(warning(sim)).toBeNull();
+  });
+
+  it('a refused request resolves false, keeps the warning, and can be retried', async () => {
+    const { sim, s } = await start();
+    await advance(QUIET);
+    s.answer = () => Promise.reject(new RuntimeTransportError('unreachable'));
+    await expect(sim.stillHere()).resolves.toBe(false);
+    expect(warning(sim)).not.toBeNull();
+    s.answer = async () => undefined;
+    await expect(sim.stillHere()).resolves.toBe(true);
+    expect(s.presences).toBe(2);
+  });
+
+  it('an unanswered request resolves false after the answer limit; a retry sends again', async () => {
+    const { sim, s } = await start();
+    await advance(QUIET);
+    s.answer = () => new Promise<void>(() => undefined);
+    const results: boolean[] = [];
+    void sim.stillHere().then((ok) => results.push(ok));
+    void sim.stillHere().then((ok) => results.push(ok)); // same request
+    await advance(PRESENCE_ANSWER_MS - 1);
+    expect(results).toEqual([]);
+    await advance(1);
+    expect(results).toEqual([false, false]);
+    expect(warning(sim)).not.toBeNull();
+    s.answer = async () => undefined;
+    await expect(sim.stillHere()).resolves.toBe(true);
+    expect(s.presences).toBe(2);
+  });
+
+  it('the session ending drops the warning; stillHere() then resolves false without a POST', async () => {
+    const { sim, s } = await start();
+    await advance(QUIET);
+    s.emit({ type: 'state', simNs: null, state: 'ended', reason: 'idle_timeout' });
+    expect(warning(sim) ?? null).toBeNull();
+    await expect(sim.stillHere()).resolves.toBe(false);
+    expect(s.presences).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('the idle end is a calm retryable limit; one minute is not "1 minutes"', () => {
+    expect(simLimitUi('session_idle')).toEqual({ role: 'status', retry: true });
+    for (const locale of LOCALES) {
+      const text = (minutes: number) =>
+        simLimitText(locale, { code: 'session_idle', params: { minutes } })!;
+      expect(text(5)).toContain('\u20665\u2069');
+      expect(text(1)).not.toMatch(/1|[{}]/);
+    }
+  });
+
+  it('the dispatcher forwards stillHere() to the active host only', async () => {
+    const host = (over: object) =>
+      ({ subscribe: () => () => undefined, ...over }) as unknown as SimulationHost;
+    const stillHere = vi.fn(async () => true);
+    const local = new SimulationDispatcher(host({}), host({ stillHere }));
+    await expect(local.stillHere()).resolves.toBe(false); // the local engine has no idle limit
+    expect(stillHere).not.toHaveBeenCalled();
   });
 });
 

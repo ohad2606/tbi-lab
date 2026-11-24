@@ -85,6 +85,8 @@ export const EXPIRY_WARNING_MS = 60_000;
 export const IDLE_WARNING_MS = 60_000;
 /** K3-2: input sends at most one presence POST per this interval (never from a timer). */
 export const PRESENCE_THROTTLE_MS = 30_000;
+/** K3-3: an explicit "keep running" without an answer after this long counts as not confirmed. */
+export const PRESENCE_ANSWER_MS = 10_000;
 
 export interface UserInput {
   target: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>;
@@ -119,6 +121,8 @@ interface IdleWatch {
   /** Local send time of the latest presence POST, accepted or not (throttle). */
   sentAt: number;
   pending: boolean;
+  /** K3-3: the explicit answer in flight, shared by repeated clicks. */
+  answer: Promise<boolean> | null;
   timer: ReturnType<typeof setTimeout> | null;
   input: UserInput;
   listener: (e: Event) => void;
@@ -413,11 +417,23 @@ export class McuSimulation implements SimulationHost {
   }
 
   /**
-   * K3-2: the user's explicit "I am still here" (answer to `view.idleSoon`). While the warning
-   * shows it is sent even inside the input throttle; one request at a time. No-op when idle is off.
+   * K3-2: the user's explicit "I am still here" (answer to `view.idleSoon`), sent even inside the
+   * input throttle; one answer at a time. K3-3: true only once the host accepted it; false when it
+   * refused, did not answer within PRESENCE_ANSWER_MS, or there is no warning to answer.
    */
-  stillHere(): void {
-    this.sendPresence(Boolean(this.view?.idleSoon));
+  stillHere(): Promise<boolean> {
+    const idle = this.idle;
+    if (!idle || !this.view?.idleSoon || idle.input.hidden()) return Promise.resolve(false);
+    idle.answer ??= new Promise<boolean>((resolve) => {
+      const done = (ok: boolean) => {
+        clearTimeout(timer);
+        idle.answer = null;
+        resolve(ok);
+      };
+      const timer = setTimeout(done, PRESENCE_ANSWER_MS, false);
+      void this.sendPresence(idle).then(done);
+    });
+    return idle.answer;
   }
 
   /** Stop: end the session for good. The next Run creates a fresh one. */
@@ -521,7 +537,12 @@ export class McuSimulation implements SimulationHost {
     const input = this.deps.input ?? pageInput();
     if (idleMs === null || !input) return;
     const listener = (e: Event) => {
-      if (isUserInput(e)) this.sendPresence(false);
+      // K3-3: while the warning shows, only its explicit answer counts: a Tab, an Esc or the
+      // press on "Stop now" must not dismiss the prompt before the action lands.
+      const idle = this.idle;
+      if (!idle || this.view?.idleSoon || !isUserInput(e) || idle.input.hidden()) return;
+      if (!idle.pending && this.now() - idle.sentAt >= PRESENCE_THROTTLE_MS)
+        void this.sendPresence(idle);
     };
     for (const type of INPUT_EVENTS) input.target.addEventListener(type, listener, INPUT_OPTIONS);
     this.idle = {
@@ -530,6 +551,7 @@ export class McuSimulation implements SimulationHost {
       since,
       sentAt: -Infinity,
       pending: false,
+      answer: null,
       timer: null,
       input,
       listener,
@@ -547,20 +569,19 @@ export class McuSimulation implements SimulationHost {
       idle.input.target.removeEventListener(type, idle.listener, INPUT_OPTIONS);
   }
 
-  /** Called only by user actions. A failure is silent: the warning (and the host) simply stand. */
-  private sendPresence(urgent: boolean): void {
-    const idle = this.idle;
-    if (!idle || idle.input.hidden()) return;
+  /** Called only by user actions. Resolves whether the host accepted; a refusal changes nothing. */
+  private sendPresence(idle: IdleWatch): Promise<boolean> {
     const sentAt = this.now();
-    if (urgent ? idle.pending : sentAt - idle.sentAt < PRESENCE_THROTTLE_MS) return;
     idle.sentAt = sentAt;
     idle.pending = true;
-    void idle.session
+    return idle.session
       .presence()
       .then(() => {
-        if (this.idle === idle) this.interacted(sentAt);
+        if (this.idle !== idle) return false;
+        this.interacted(sentAt);
+        return true;
       })
-      .catch(() => undefined)
+      .catch(() => false)
       .finally(() => (idle.pending = false));
   }
 
