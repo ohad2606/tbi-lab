@@ -3583,21 +3583,50 @@ select {
   background: var(--panel-alt, rgba(0, 0, 0, 0.03));
 }
 
-/* Export reminder: a floating card above the status bar, NOT a grid row. It appears after the first
-   edit; an in-flow banner would shift the canvas/Inspector under the pointer mid-interaction (and
-   squeeze the Inspector at 1024x768). It is non-modal and dismissible; the text carries the meaning. */
-.export-reminder {
-  position: fixed;
-  inset-block-end: 2rem;
+/* Export reminder: while shown it REPLACES the status bar's content in the bar's own row (it fills
+   the bar exactly; the bar's other items are visibility:hidden, so nothing interactive is covered,
+   focusable-but-hidden, or moved). A floating card covered the diagnostics list (WCAG 2.4.11) and an
+   extra in-flow row shifted the canvas/Inspector mid-interaction. The bar's height never changes
+   (min 24px = the WCAG 2.5.8 target size, which the note's buttons use). Non-modal and dismissible:
+   Dismiss restores the bar. Empty, the live region takes no space (and stays in the a11y tree). */
+.statusbar {
+  position: relative;
+  min-block-size: 24px;
+}
+.export-reminder-live {
+  inline-size: 0;
+  block-size: 0;
+  overflow: hidden;
+  margin-inline-end: -1rem;
+}
+.export-reminder-live:not(:empty) {
+  position: absolute;
   inset-inline: 0;
-  margin-inline: auto;
-  inline-size: max-content;
-  max-inline-size: min(40rem, calc(100vw - 2rem));
-  z-index: 20;
-  border: 1px solid var(--text);
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-  color: var(--text);
+  inset-block-end: 0;
+  min-block-size: 100%;
+  inline-size: auto;
+  block-size: auto;
+  overflow: visible;
+  margin: 0;
+  z-index: 5;
+  display: flex;
+}
+.statusbar:has(.export-reminder) > :not(.export-reminder-live) {
+  visibility: hidden;
+}
+.export-reminder {
+  flex: 1;
+  padding-block: 0;
+  padding-inline: 0.6rem;
+  gap: 0.5rem;
+  border: 0;
+  border-block-start: 1px solid var(--border);
+  line-height: 1.2;
+  font-size: 0.8rem;
+}
+.export-reminder .button {
+  min-block-size: 24px;
+  padding-block: 0;
 }
 
 /* Export reminder actions (same layout as the update banner). */

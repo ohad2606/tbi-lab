@@ -96,7 +96,12 @@ export function ExportReminder() {
     document.getElementById('main')?.focus();
   };
   return (
-    <div class="banners" aria-live="polite" aria-atomic="true" data-testid="export-reminder-live">
+    <div
+      class="export-reminder-live"
+      aria-live="polite"
+      aria-atomic="true"
+      data-testid="export-reminder-live"
+    >
       {visible && (
         <div class="banner banner-info export-reminder" role="status" data-testid="export-reminder">
           <span>{t('storage.exportReminder')}</span>
