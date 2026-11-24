@@ -92,7 +92,8 @@ cp runtime/host/dist/session-host.mjs runtime/builder/dist/build-service.mjs run
 [ "$admin_bundle" = 0 ] || cp runtime/admin/dist/admin-service.mjs runtime/admin/dist/signup-intake.mjs "$out/services/"
 (cd "$out" && find "${pkg_dirs[@]}" -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > MANIFEST.sha256)
 sha256sum package-lock.json runtime/firmware/artifacts.lock.json deploy/dev-lab/s8/policy.json \
-  deploy/dev-lab/s8/policy.alpha.json "deploy/release/$(basename "$profile")" > "$out/inputs.sha256"
+  deploy/dev-lab/s8/policy.alpha.json deploy/dev-lab/s8/policy.beta.json \
+  "deploy/release/$(basename "$profile")" > "$out/inputs.sha256"
 echo "$R" > "$out/COMMIT"; echo "$version" > "$out/VERSION"; echo "$T" > "$out/BUILD_TIME"
 node --version > "$out/node.version"; npm --version > "$out/npm.version"
 echo "package $(basename "$out") done: $(sha256sum "$out/MANIFEST.sha256" | cut -c1-16)"
