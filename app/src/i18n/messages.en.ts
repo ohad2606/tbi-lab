@@ -6,6 +6,8 @@ import { adminMessagesEn } from '@tbi-lab/admin-client/messages';
  */
 export const en = {
   'app.loading': 'Loading…',
+  'a11y.skipToMain': 'Skip to main content',
+  'editor.heading': 'Circuit editor',
   'app.descriptor': 'Electronics Engineering Workspace',
   'app.storageUnavailable':
     "TBI Lab cannot use this browser's local storage (it may be blocked, for example in some private windows), so projects cannot be saved here. Nothing was changed. Allow site storage or use a regular window, then reload.",

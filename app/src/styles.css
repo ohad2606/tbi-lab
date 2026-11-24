@@ -3825,6 +3825,29 @@ select {
   .build-icon.spinning {
     animation: none;
   }
+
+  .mcu-terminal-chevron {
+    transition: none;
+  }
+}
+
+.skip-link {
+  position: absolute;
+  inset-inline-start: 0.5rem;
+  inset-block-start: -4rem;
+  z-index: 1000;
+  padding: 0.5rem 0.9rem;
+  background: var(--panel);
+  color: var(--text);
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.skip-link:focus {
+  inset-block-start: 0.5rem;
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .toolbar-build-state {

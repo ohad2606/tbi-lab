@@ -8,6 +8,8 @@ import type { MessageKey } from './messages.en.js';
  */
 export const he: Record<MessageKey, string> = {
   'app.loading': 'טוען…',
+  'a11y.skipToMain': 'דלג לתוכן הראשי',
+  'editor.heading': 'עורך המעגלים',
   'app.descriptor': 'סביבת עבודה הנדסית לאלקטרוניקה',
   'app.storageUnavailable':
     'TBI Lab אינו יכול להשתמש באחסון המקומי של הדפדפן (ייתכן שהוא חסום, למשל בחלון גלישה פרטית), ולכן לא ניתן לשמור כאן פרויקטים. דבר לא שונה. אפשרו אחסון לאתר או השתמשו בחלון רגיל, ואז טענו מחדש.',
