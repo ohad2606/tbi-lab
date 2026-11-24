@@ -21,6 +21,7 @@ import {
   HONEYPOT_FIELD,
   issueToken,
   TOKEN_FIELD,
+  WEB_MIN_FILL_MS,
   WEB_TOKEN_TTL_MS,
   type TokenFailure,
 } from './web.js';
@@ -67,7 +68,7 @@ export type WebOutcome =
   { status: 200 } | { status: 400 | 401 | 404 | 429 | 503; error: string; retryAfterMs?: number };
 
 export type TokenOutcome =
-  | { status: 200; token: string; ttl: number }
+  | { status: 200; token: string; ttl: number; minFill: number }
   | { status: 404 | 429; error: string; retryAfterMs?: number };
 
 const statusOf = (_r: VerifyFailure): 401 => 401;
@@ -122,8 +123,8 @@ export class SignupIntake {
   }
 
   /**
-   * `GET /signup/form-token`: a fresh stateless token (web.ts), per-source rate limited. `ttl` is
-   * in seconds. Nothing is stored; the token carries its own issue time and MAC.
+   * `GET /signup/form-token`: a fresh stateless token (web.ts), per-source rate limited. `ttl` and
+   * `minFill` are in seconds. Nothing is stored; the token carries its own issue time and MAC.
    */
   issueWebToken(source: string): TokenOutcome {
     const w = this.d.web;
@@ -135,13 +136,22 @@ export class SignupIntake {
     }
     const now = (this.d.now ?? Date.now)();
     const ttlMs = w.ttlMs ?? WEB_TOKEN_TTL_MS;
-    return { status: 200, token: issueToken(w.webKey, now), ttl: Math.floor(ttlMs / 1000) };
+    // The page waits this long after the token arrives before it posts (fixed, whole seconds,
+    // rounded up so the page never waits less than the server requires).
+    const minFill = Math.ceil((w.minFillMs ?? WEB_MIN_FILL_MS) / 1000);
+    return {
+      status: 200,
+      token: issueToken(w.webKey, now),
+      ttl: Math.floor(ttlMs / 1000),
+      minFill,
+    };
   }
 
   /**
    * `POST /signup/web` after the HTTP checks (method, origin, content type, size cap, source key).
    * Order: the per-source limit (before any crypto), the token (MAC, age, minimum fill time; not
-   * consumed), the honeypot (a hit CONSUMES the token: a bot cannot reuse it), field validation
+   * consumed), the honeypot (a hit records nothing, so it cannot fill the nonce cache; a resend
+   * is bounded by the per-source limit), field validation
    * (not consumed: the person fixes a typo and retries), the GLOBAL limit (taken only by requests
    * that would be stored, so honeypot hits and junk cannot drain it; a 429 does not consume the
    * token), then the token is consumed (single use) and the request takes the same path as
@@ -184,8 +194,9 @@ export class SignupIntake {
         : { status: 401, error: webAuthError(t.reason) };
     }
     if (honey !== '') {
-      // Burn the token (best effort: an already used one stays used); same answer as a typo.
-      w.nonces.take(t.nonce, now);
+      // Same answer as a typo. The nonce is NOT recorded (Fable review finding 2): honeypot hits
+      // from many sources would otherwise fill the bounded cache and lock real people out. The
+      // same token may therefore be resent here; that is bounded by the per-source limit above.
       refuse('honeypot');
       return { status: 400, error: 'invalid' };
     }

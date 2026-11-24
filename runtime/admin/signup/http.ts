@@ -236,7 +236,7 @@ export async function handleWebSignupRequest(
     if (key === null) return noSource();
     req.resume();
     const t = intake.issueWebToken(key);
-    if (t.status === 200) return send(res, 200, { token: t.token, ttl: t.ttl });
+    if (t.status === 200) return send(res, 200, { token: t.token, ttl: t.ttl, minFill: t.minFill });
     if (t.status === 429 && t.retryAfterMs)
       res.setHeader('retry-after', String(Math.ceil(t.retryAfterMs / 1000)));
     return send(res, t.status, { error: t.error });

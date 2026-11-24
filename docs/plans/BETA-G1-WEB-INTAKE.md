@@ -21,7 +21,7 @@ stored record; tested).
 
 | Route | Answer |
 |---|---|
-| `GET /signup/form-token` | 200 `{token, ttl}` (`ttl` in seconds, 1800); 403 `forbidden` (foreign `Origin`); 429 `rate_limited` + `retry-after`; 503 `unavailable` (no valid client address from the proxy); 405 |
+| `GET /signup/form-token` | 200 `{token, ttl, minFill}` (seconds: `ttl` 1800, `minFill` 3); 403 `forbidden` (foreign `Origin`); 429 `rate_limited` + `retry-after`; 503 `unavailable` (no valid client address from the proxy); 405 |
 | `POST /signup/web` | 200 `{ok:true, status:"received"}` (new **and** already known address); 400 `too_fast` / `invalid`; 401 `unauthorized` / `expired`; 403 `forbidden`; 413 `body_too_large`; 415 `unsupported_media_type`; 429 `rate_limited` + `retry-after`; 503 `unavailable`; 405 |
 | `OPTIONS` on both | CORS preflight: 204 for an allow-listed `Origin` and the route's own method only, else 403 |
 
@@ -42,15 +42,18 @@ nothing from the request is echoed; `cache-control: no-store`.
   token is therefore never a valid `/signup` signature and vice versa (tested both ways). Same secret file, so no
   new secret to install or rotate; rotating the HMAC secret invalidates all open tokens (pages fetch a new one).
 - **Lifetime:** valid from 3 s (`WEB_MIN_FILL_MS`, below that `too_fast` = automated) to 30 min
-  (`WEB_TOKEN_TTL_MS`, after that `expired`: the page fetches a new token and retries). An issue time more than 5 s
+  (`WEB_TOKEN_TTL_MS`, after that `expired`: the page fetches a new token and retries). The token answer carries
+  `minFill` (the server's fixed minimum fill time in whole seconds, rounded up, the same for everyone); the page
+  waits that long after a token arrives before it posts with it (clamped to 0-10 s on the page). An issue time more than 5 s
   in the future is a bad token.
 - **Single use:** at submit time, after the MAC, the honeypot, the field validation and the global limit, the
   nonce is taken in a `NonceCache` (the existing class, a **separate instance** from the signed route's, window =
   token TTL, so a used nonce is remembered for 2 x TTL, longer than the token can live). A second use is 401
   `unauthorized`. A forged token never consumes anything. `too_fast`, an `invalid` field and a global-limit 429 do
   **not** consume the token, so the page can fix a typo or wait and resend with the same token. A **honeypot hit
-  consumes** it (a bot that filled the field cannot reuse the token; the answer is still the generic 400
-  `invalid`). A **store refusal** (503 `unavailable`, nothing stored) gives the token back: it was reserved during
+  records nothing** (Fable review finding 2: recording it let honeypot posts from many sources fill the bounded
+  cache, after which every real post got 401 for up to an hour). The answer is the generic 400 `invalid`; the same
+  token may be resent, bounded by the per-source post limit. A **store refusal** (503 `unavailable`, nothing stored) gives the token back: it was reserved during
   the store call, so a concurrent post with the same token gets 401 and can never create a second record, and after
   the 503 the page may retry with the same token. The page should still fetch a new token on any 401.
 
@@ -60,7 +63,7 @@ nothing from the request is echoed; `cache-control: no-store`.
 3. strict `Content-Type: application/json` (optionally `; charset=utf-8`) (415), 4. a valid client address in the
 proxy header, else 503 `unavailable` (no fallback to the proxy peer, see Limits), 5. body cap 4 KiB, by header and
 by stream (413), 6. **per-source limit** (before any crypto) (429), 7. JSON object (400 `invalid`), 8. token: MAC,
-age, minimum fill time (401 / 400 `too_fast`), 9. honeypot empty (400 `invalid`; **consumes the token**),
+age, minimum fill time (401 / 400 `too_fast`), 9. honeypot empty (400 `invalid`; records no nonce),
 10. field validation, the same `validateSignup` as `/signup` plus the optional `heardFrom` (400 `invalid`), 11. an
 already used token is refused here (401) before it can spend anything, 12. **global limit** (only requests that
 passed everything above, i.e. that would be stored, can spend it; honeypot hits and junk cannot) (429), 13. consume
@@ -164,7 +167,7 @@ and the store-full case (see 6).
 | Large or slow bodies | 4 KiB cap (header and stream), the existing server timeouts | none new |
 | Misconfiguration exposes the route | off by default; flag plus explicit origins required; anything else refuses to start | the proxy must not route other paths (deploy review) |
 | **Web flood fills the shared store** (ops review H1) | web sub-cap `WEB_MAX_RECORDS` 1 500 of the 5 000 shared slots; 503 `unavailable` for web only; `/signup` keeps 3 500 slots | web sign-ups stop until records are purged or the owner rejects/purges junk; an Apps Script flood (secret holder) can still fill the shared cap as before |
-| **Token reuse / drain of the global budget** (ops review M1) | the global slot is taken only after honeypot, validation and the used-token check; a honeypot hit burns its token; a replayed token is refused before the global limit | a farm of valid tokens with valid-looking fields can still spend the 200 / h (row "token farming") |
+| **Token reuse / drain of the global budget** (ops review M1) | the global slot is taken only after honeypot, validation and the used-token check; a honeypot hit records no nonce (cannot fill the cache; resends are bounded by the per-source limit); a replayed token is refused before the global limit | a farm of valid tokens with valid-looking fields can still spend the 200 / h (row "token farming") |
 | **IPv6 rotation and limiter table exhaustion** (ops review M2/M3) | per-/64 buckets; IPv4-mapped folded to IPv4; per-source limiter entries expire with their window | an attacker with many /64s (a /48 is 65 536 of them) still gets one bucket each; each limiter is capped at 10 000 keys and FAILS CLOSED when full: a sweep from 10 000 distinct /64s inside one window makes new visitors get 429 for up to 10 min (OWNER-ACCEPTED RESIDUAL until a per-/48 tier exists; the proxy's own rate limits are the outer bound and must be confirmed at deploy review). Approved web records count toward the 1 500 web cap for up to 365 days (see O4) |
 | **Missing source header** (ops review L2) | 503 `unavailable` on both web paths; rate-limited warning in the log | a proxy misconfiguration makes the web route unusable (visible, fail closed) instead of one shared bucket |
 | **Plus / dot address variants** (ops review M4) | none in this slice: dedupe is by the normalised address (`normalizeAddEmail`, the same as the account path: case, trim), so `a+1@`, `a+2@` and, for Google mail, `a.b@` / `ab@` are different addresses | one mailbox can have many pending requests (each needs a token and a slot of the per-source and global limits); with auto-approve it could get several accounts and approval mails. Folding variants changes the account path's address rules: owner question O5 |

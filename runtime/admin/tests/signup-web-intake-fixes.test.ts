@@ -197,7 +197,7 @@ describe('H1 service: web cap answers 503 unavailable for web only', () => {
   });
 });
 
-describe('M1: global slot only after honeypot + validation; honeypot consumes the token', () => {
+describe('M1: global slot only after honeypot + validation; honeypot records no nonce', () => {
   it('honeypot and invalid posts do not spend the global slot', async () => {
     const u = unit(tmp(), { globalCount: 1 });
     await u.store.init();
@@ -217,16 +217,16 @@ describe('M1: global slot only after honeypot + validation; honeypot consumes th
     expect(u.logs).not.toContain('signup: web refused (global_limit)');
   });
 
-  it('a honeypot hit burns the token: the same token is refused afterwards', async () => {
+  // Fable review finding 2 (supersedes the M1 "burn"): recording the nonce let honeypot hits from
+  // many sources fill the bounded cache. A resend is bounded by the per-source limit instead.
+  it('a honeypot hit records no nonce: it answers 400 again on resend and stores nothing', async () => {
     const u = unit(tmp());
     await u.store.init();
     const tok = u.token();
     u.advance(WEB_MIN_FILL_MS);
-    expect((await u.intake.submitWeb('src', body({ ...FIELDS, token: tok }))).status).toBe(400);
-    expect(await u.intake.submitWeb('src', body({ ...FIELDS, token: tok, website: '' }))).toEqual({
-      status: 401,
-      error: 'unauthorized',
-    });
+    const hp = body({ ...FIELDS, token: tok });
+    expect(await u.intake.submitWeb('src', hp)).toEqual({ status: 400, error: 'invalid' });
+    expect(await u.intake.submitWeb('src', hp)).toEqual({ status: 400, error: 'invalid' });
     expect(await u.store.list()).toHaveLength(0);
   });
 
