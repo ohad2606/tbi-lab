@@ -2,6 +2,7 @@ import { render } from 'preact';
 import { PREVIEW_NAME, STORAGE_NAMESPACE, TBI_ENV, storageName } from './deployment.js';
 import { documentTitle } from './environment.js';
 import { DB_NAME, ProjectStore } from './persistence/store.js';
+import { installVersionChangeLatch } from './ui/storageNotices.js';
 import { requestPersistentStorage } from './persistence/persist.js';
 import { McuSimulation } from './runtime/controller.js';
 import { RuntimeClient } from './runtime/client.js';
@@ -37,6 +38,7 @@ const prefs: Preferences = {
 };
 
 async function main() {
+  installVersionChangeLatch(window);
   // Without IndexedDB (e.g. a locked-down profile) the app says so instead of pretending to save.
   // Ask the browser not to evict project data (non-blocking, never throws).
   void requestPersistentStorage();
