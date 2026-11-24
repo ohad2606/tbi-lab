@@ -17,7 +17,6 @@ import { NoticeBar } from './NoticeBar.js';
 import { TopBar } from './TopBar.js';
 import { SignInBanner } from './SignInBanner.js';
 import { UpdateBanner } from './UpdateBanner.js';
-import { ExportReminder, TabOutdatedBanner } from './StorageNotices.js';
 import { VersionStatus } from './VersionStatus.js';
 
 /** Move focus to the main landmark (a bare #fragment would only scroll in some browsers). */
@@ -110,9 +109,7 @@ export function App() {
       <EnvironmentNotes />
       <TopBar />
       <SignInBanner />
-      <TabOutdatedBanner />
       <UpdateBanner />
-      <ExportReminder />
       <NoticeBar />
       {state.screen === 'editor' && state.doc ? <Editor /> : <Home />}
       <VersionStatus />
