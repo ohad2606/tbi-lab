@@ -529,7 +529,8 @@ async function routeAccounts(
 
 /**
  * TBI-022 (owner only, checked by the caller): `GET /signups` (all), `GET /signups/pending`,
- * `GET /signups/open` (pending + approved + email_queued + email_failed), `POST /signups/<id>/approve|reject|resend`.
+ * `GET /signups/open` (pending + approved + email_queued + email_failed), `POST /signups/<id>/approve|reject|resend`,
+ * `DELETE /signups/<id>` (K12: delete the request now; see PendingStore.deleteNow).
  * Mutations already passed CSRF and the write rate limit. The records hold personal data: the
  * list is for the owner only and is never cached (`send` sets no-store).
  */
@@ -556,6 +557,18 @@ async function routeSignups(
     return send(res, 200, {
       signups: (await approver.list()).filter((r) => OPEN_STATUSES.includes(r.status)),
     });
+  // K12: delete one request now (owner only, CSRF and write limit already applied). No body is
+  // read. 200 deleted; 200 with `already_deleted` when the audit log shows an earlier delete
+  // (no-op); 404 unknown. The account, if one was added, is not touched.
+  if (method === 'DELETE' && parts.length === 2 && id && REQUEST_ID_RE.test(id)) {
+    req.resume();
+    const out = await approver.remove(id);
+    if (out === 'not_found') throw new AdminError(404, 'not_found');
+    return send(res, 200, {
+      deleted: true,
+      ...(out === 'already_deleted' ? { note: 'already_deleted' } : {}),
+    });
+  }
   if (method !== 'POST' || parts.length !== 3 || !id || !REQUEST_ID_RE.test(id))
     throw new AdminError(404, 'not_found');
   const body = await readJson(req);

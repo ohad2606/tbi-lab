@@ -114,6 +114,9 @@ export function retentionFromEnv(env: NodeJS.ProcessEnv): Retention {
   return { notApprovedMs, maxMs };
 }
 
+/** K12: the result of `PendingStore.deleteNow`. */
+export type DeleteOutcome = 'deleted' | 'already_deleted' | 'not_found';
+
 export class StoreError extends Error {
   constructor(readonly code: 'unsafe_dir' | 'not_found' | 'corrupt' | 'full') {
     super(code);
@@ -338,6 +341,64 @@ export class PendingStore {
       }
     }
     return out.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  /**
+   * K12: the owner deletes one request now (a person asked to be forgotten), whatever its status.
+   * Under the per-id lock shared with the approver and the purge, it removes the `<id>.notified`
+   * and `<id>.notifyq` markers, the address marker (`<sha256>.mark`, the de-duplication lock)
+   * that points to this id, any `<id>.*.tmp` left by a crash, and LAST the record `<id>.json`
+   * (a crash part-way leaves the record, so a retry finishes the job). Then one audit line
+   * `<time> <id> delete ok` (no personal data). A record file that cannot be parsed is deleted too.
+   *
+   *   deleted          the record existed and is gone (audited)
+   *   already_deleted  no record, but the audit log shows an earlier `delete ok` for this id: no-op
+   *   not_found        no record and no earlier delete (unknown id, or removed by retention)
+   *
+   * An account already added for the request is NOT touched (accounts.ts: disable).
+   */
+  deleteNow(id: string): Promise<DeleteOutcome> {
+    if (!REQUEST_ID_RE.test(id)) return Promise.resolve('not_found');
+    return serialById(id, async () => {
+      const existed = await stat(this.path(id)).then(
+        () => true,
+        (e: unknown) => {
+          if ((e as { code?: string }).code === 'ENOENT') return false;
+          throw e;
+        },
+      );
+      const gone = async (name: string) => {
+        try {
+          await unlink(join(this.dir, name));
+        } catch (e) {
+          if ((e as { code?: string }).code !== 'ENOENT') throw e;
+        }
+      };
+      await gone(`${id}.notified`);
+      await gone(`${id}.notifyq`);
+      for (const f of await readdir(this.dir)) {
+        if (f.startsWith(`${id}.`) && f.endsWith('.tmp')) await gone(f);
+        else if (/^[0-9a-f]{64}\.mark$/.test(f)) {
+          const holder = (await readFile(join(this.dir, f), 'utf8').catch(() => '')).trim();
+          if (holder === id) await gone(f);
+        }
+      }
+      if (!existed)
+        return (await this.auditHas(id, 'delete', 'ok')) ? 'already_deleted' : 'not_found';
+      await gone(`${id}.json`);
+      await this.audit(id, 'delete', 'ok');
+      return 'deleted';
+    });
+  }
+
+  /** Whether the audit log has a line `<time> <id> <action> <outcome>[ actor=...]`. */
+  private async auditHas(id: string, action: string, outcome: string): Promise<boolean> {
+    const text = await readFile(join(this.dir, 'audit.log'), 'utf8').catch(() => '');
+    const needle = ` ${id} ${action} ${outcome}`;
+    return text.split('\n').some((l) => {
+      const i = l.indexOf(needle);
+      return i > 0 && !l.slice(0, i).includes(' ') && /^(\s|$)/.test(l.slice(i + needle.length));
+    });
   }
 
   /**
