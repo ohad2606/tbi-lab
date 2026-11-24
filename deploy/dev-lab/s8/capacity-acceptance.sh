@@ -41,6 +41,7 @@ live="$(systemctl list-units --plain --no-legend --state=active "$inst-qemu@*" |
   echo "runtime: $(sudo -n cat "/etc/$inst/runtime.json" | python3 -c 'import json,sys;print(json.load(sys.stdin)["runtimeId"])')"
   echo "policy sha256: $(sudo -n sha256sum "/etc/$inst/policy.json" | cut -c1-16)"
   echo "alpha policy:  $(sha256sum "$repo/deploy/dev-lab/s8/policy.alpha.json" | cut -c1-16) (must match for the alpha acceptance)"
+  echo "beta policy:   $(sha256sum "$repo/deploy/dev-lab/s8/policy.beta.json" | cut -c1-16) (must match for the public-beta acceptance)"
   echo "host: $(nproc) CPU, $(free -m | awk '/Mem:/{print $2}') MiB, $(uname -r), $(lscpu | sed -n 's/Model name:\s*//p')"
   echo "artifact cap: $(sudo -n systemctl show -p Environment "$inst-build.service" | grep -o 'TBI_ARTIFACT_CAP_MB=[0-9]*' || echo 'default (256 MiB)')"
 } | tee -a "$out/summary.txt"
