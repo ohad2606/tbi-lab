@@ -94,7 +94,7 @@ export function SchematicView() {
     <div class="schematic-wrap" ref={wrap} dir="ltr" data-testid="schematic-view">
       <svg
         class="schematic"
-        role="img"
+        role="group"
         aria-label={t('schematic.aria', { name: doc.name })}
         viewBox={`${cam.x} ${cam.y} ${viewW} ${viewH}`}
         data-parts={layout.parts.map((p) => p.component).join(' ')}

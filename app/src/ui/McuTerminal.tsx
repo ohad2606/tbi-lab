@@ -95,13 +95,13 @@ export function McuTerminal() {
         >
           <span class="mcu-terminal-dot" aria-hidden="true" />
           {t(ended ? 'mcu.terminal.state.ended' : (`mcu.terminal.state.${state}` as MessageKey))}
-          {seconds !== null && state === 'running' && (
-            <span class="technical">
-              {' · '}
-              {t('mcu.terminal.simTime', { time: isolateLtr(`${seconds.toFixed(1)} s`) })}
-            </span>
-          )}
         </span>
+        {seconds !== null && state === 'running' && (
+          // Outside the live status: a ticking clock must not be announced.
+          <span class="technical" data-testid="mcu-terminal-time">
+            {t('mcu.terminal.simTime', { time: isolateLtr(`${seconds.toFixed(1)} s`) })}
+          </span>
+        )}
         {shown && shown.dropped > 0 && (
           <span class="muted small">
             {t('mcu.serial.dropped', { count: isolateLtr(String(shown.dropped)) })}
