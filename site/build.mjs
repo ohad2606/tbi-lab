@@ -2,7 +2,7 @@
 /**
  * Static generator for the public site (TBI-013). No dependencies, no client JS.
  * Usage: node site/build.mjs [outDir] [--signup-preview]   (default site/dist). Exported: buildSite(outDir, opts).
- * --signup-preview: e2e / local preview only (builds the noindex, unlinked sign-up page while the flag is off).
+ * --signup-preview: e2e / local preview only (builds the unlinked sign-up page while the flag is off).
  */
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -20,6 +20,7 @@ import {
   CONTACT_EMAIL,
   SCREENSHOTS,
   SIGNUP_PAGE_ENABLED,
+  SIGNUP_NOINDEX,
   SIGNUP_API_BASE,
   SIGNUP_ROLE_VALUES,
 } from './content.mjs';
@@ -270,7 +271,7 @@ ${pg.sections
 <meta name="description" content="${esc(plain(pg.description))}">
 ${ogTags({ url: pagePath(lang, page), title: plain(pg.title), description: plain(pg.description), locale: OG_LOCALE[lang] ?? lang, altLocale: OG_LOCALE[t.switchToLang] })}
 ${alts}
-${page === 'signup' && !signupOn ? '<meta name="robots" content="noindex">\n' : ''}<link rel="icon" href="/assets/favicon.ico" sizes="any">
+${page === 'signup' && opts.signupNoindex ? '<meta name="robots" content="noindex">\n' : ''}<link rel="icon" href="/assets/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" href="/assets/favicon-32.png" sizes="32x32">
 <link rel="stylesheet" href="/assets/site.css">
 </head>
@@ -346,13 +347,15 @@ ${links}
 
 /**
  * `signupPreview` (e2e / local preview only, never the published build): also build the sign-up page while the flag
- * is off. It stays noindex and unlinked, so every other page is byte-identical to a build without it.
+ * is off. It is unlinked, so every other page is byte-identical to a build without it.
+ * `signupNoindex` (default SIGNUP_NOINDEX): robots noindex on the sign-up pages, independent of the flag.
  */
 export function buildSite(outDir = join(here, 'dist'), opts = {}) {
   const o = {
     applyUrl: APPLY_URL,
     signupEnabled: SIGNUP_PAGE_ENABLED,
     signupPreview: false,
+    signupNoindex: SIGNUP_NOINDEX,
     ...opts,
   };
   // Flag off (and no preview): no sign-up page and no client script at all (review finding 8).

@@ -85,6 +85,21 @@ describe('site flip mode: flag=true', () => {
     expect(s.pOwn[0]).toContain(heard);
     expect(s.pOwn[0]).toContain(optional);
   });
+  // Review finding 5: the "this website" section must not deny collection while the own form is on the site.
+  it.each([
+    ['en', /collects no personal (data|information)/i],
+    ['he', /לא אוסף מידע אישי/],
+  ])('%s: privacy "this website" section does not say the site collects nothing', (l, denial) => {
+    const s = content[l].pages.privacy.sections.find((x) => x.id === 'site');
+    expect(html(off, l, 'privacy')).toMatch(denial);
+    const h = html(on, l, 'privacy');
+    expect(h).not.toMatch(denial);
+    expect(s.pOwn).toHaveLength(2);
+    for (const p of s.pOwn) expect(h).toContain(p.replaceAll('"', '&quot;'));
+    // it points at the section that lists what is collected, by that section's own heading
+    const signup = content[l].pages.privacy.sections.find((x) => x.id === 'signup');
+    expect(s.pOwn.join(' ')).toContain(signup.h);
+  });
   it('HE and EN have the same flip keys', () => {
     for (const l of ['he', 'en']) {
       const s = content[l].pages.privacy.sections.find((x) => x.id === 'signup');

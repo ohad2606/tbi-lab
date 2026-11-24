@@ -19,9 +19,14 @@ export const APPLY_URL = 'https://forms.gle/iSfCbg4BwWF7HqDCA';
  * Own sign-up page (BETA-G1 s9). While the flag is false the page and its script are not built at all (only the
  * e2e/preview build `--signup-preview` adds them, noindex and unlinked). The owner flips it when the intake endpoint is
  * live; then the page is built, the nav link appears, the home/alpha CTAs point to the page instead of APPLY_URL, and
- * noindex is dropped.
+ * the privacy page switches to its own-form text. The flag does not touch noindex (SIGNUP_NOINDEX).
  */
 export const SIGNUP_PAGE_ENABLED = false;
+/**
+ * DEC-07: the sign-up pages carry `noindex` whatever SIGNUP_PAGE_ENABLED says. Set to false on the public launch day
+ * (15.12) only, never as part of the flip.
+ */
+export const SIGNUP_NOINDEX = true;
 /** Base of the intake routes: GET <base>/form-token, POST <base>/web. Relative = same origin (proxied by the web server). */
 export const SIGNUP_API_BASE = '/signup';
 /** Stable values sent to the server (admin reads these); the visible labels live in each language below, same order. */
@@ -379,6 +384,11 @@ const en = {
           p: [
             'This website collects no personal data. It sets no cookies, uses no analytics or advertising trackers, and loads no third-party scripts, fonts or images.',
           ],
+          /** Used instead of p when the own sign-up page is enabled. Draft, lawyer review required. */
+          pOwn: [
+            'This website sets no cookies, uses no analytics or advertising trackers, and loads no third-party scripts, fonts or images.',
+            'We ask for personal details on this website in one place: the sign-up form. When you open the sign-up page or send the form, we also briefly use your network address to limit abuse. What we collect and how we use it is described below, under “Signing up for the Alpha”.',
+          ],
         },
         {
           id: 'signup',
@@ -728,6 +738,11 @@ const he = {
           h: 'האתר הזה',
           p: [
             'האתר הזה לא אוסף מידע אישי. הוא לא מציב עוגיות, לא משתמש בכלי ניתוח או בעוקבי פרסום, ולא טוען סקריפטים, גופנים או תמונות מצדדים שלישיים.',
+          ],
+          /** Used instead of p when the own sign-up page is enabled. Draft, lawyer review required. */
+          pOwn: [
+            'האתר הזה לא מציב עוגיות, לא משתמש בכלי ניתוח או בעוקבי פרסום, ולא טוען סקריפטים, גופנים או תמונות מצדדים שלישיים.',
+            'אנחנו מבקשים פרטים אישיים באתר במקום אחד: טופס ההרשמה. כשפותחים את דף ההרשמה או שולחים את הטופס, אנחנו משתמשים לזמן קצר גם בכתובת הרשת שלכם כדי להגביל ניצול לרעה. מה אנחנו אוספים ואיך אנחנו משתמשים בזה מפורט בהמשך, בסעיף "הרשמה לאלפא".',
           ],
         },
         {
