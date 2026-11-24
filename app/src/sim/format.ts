@@ -222,6 +222,13 @@ export function engineErrorMessage(
         });
       return t('sim.error.invalid_parameter', { components, param });
     }
+    case 'circuit_too_large': {
+      const d = (error.detail ?? {}) as { limit?: number; actual?: number };
+      return t('sim.error.circuit_too_large', {
+        limit: String(d.limit ?? ''),
+        actual: String(d.actual ?? ''),
+      });
+    }
     // Sprint 25: I2C phases no simulated part can answer honestly (the run stops).
     case 'i2c_clock_exceeded': {
       const d = (error.detail ?? {}) as { hz?: number; max?: number };

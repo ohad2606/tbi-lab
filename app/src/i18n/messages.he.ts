@@ -617,6 +617,8 @@ export const he: Record<MessageKey, string> = {
     'למעגל אין פתרון יחיד, למשל שני ספקים שכופים מתחים שונים על אותה [[net]]. מעורבים: {components}.',
   'sim.error.no_convergence':
     'הפותר לא מצא נקודת עבודה, ולכן לא מוצגים ערכים. מעורבים: {components}.',
+  'sim.error.circuit_too_large':
+    'המעגל גדול מדי לסימולציה (מגבלה: {limit} נעלמים, במעגל הזה יש {actual}). פשטו אותו ונסו שוב.',
   'sim.error.no_steady_state':
     'למעגל אין מצב יציב: {components} ממשיך להדליק ולכבות את עצמו (ממסר שמנתק את הסליל של עצמו מרטט). סימולציית DC אינה יכולה להציג אחד ממצבי המעבר שלו.',
   'sim.error.mcu_component_unsupported':

@@ -626,6 +626,8 @@ export const en = {
     'The circuit has no unique solution, for example two supplies forcing different voltages on the same [[net]]. Involved: {components}.',
   'sim.error.no_convergence':
     'The solver could not find an operating point, so no values are shown. Involved: {components}.',
+  'sim.error.circuit_too_large':
+    'This circuit is too large to simulate (limit: {limit} unknowns, this one has {actual}). Simplify it and try again.',
   'sim.error.no_steady_state':
     'This circuit has no steady state: {components} keeps switching itself on and off (a relay that interrupts its own coil chatters). A DC simulation cannot show one of its transitory states.',
   'sim.error.mcu_component_unsupported':
