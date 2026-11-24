@@ -49,6 +49,7 @@ import {
   type Retention,
 } from './store.js';
 import type { AdminSpool } from '../accounts.js';
+import type { FunnelSink } from '../funnel/counters.js';
 import type { Principal } from '../../identity/principal.js';
 
 export interface AdminSignupConfig {
@@ -176,6 +177,8 @@ export async function wireSignupAdmin(
      * them from the owner only), read at every sweep; null = not known yet (sweep waits).
      */
     autoActor?: () => Principal | null;
+    /** K12: funnel counters (`signup_approved`); null / unset = off (see funnel/counters.ts). */
+    counters?: FunnelSink | null;
   },
 ): Promise<SignupAdminWiring> {
   const store = new PendingStore(c.dir, { now: io.now });
@@ -259,6 +262,7 @@ export async function wireSignupAdmin(
                 now: io.now,
                 log: io.log,
                 actor: 'auto',
+                counters: io.counters ?? null,
               })
             : null;
         },
@@ -317,6 +321,7 @@ export async function wireSignupAdmin(
           quiet,
           now: io.now,
           log: io.log,
+          counters: io.counters ?? null,
         }),
     },
     startDrain() {

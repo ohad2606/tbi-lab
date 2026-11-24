@@ -39,11 +39,29 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
+/** The open was blocked by another tab holding an older connection. Nothing was opened. */
+export class DatabaseBlockedError extends Error {
+  constructor() {
+    super('IndexedDB open blocked by another tab');
+    this.name = 'DatabaseBlockedError';
+  }
+}
+
+export interface OpenHooks {
+  /**
+   * Another tab wants to upgrade or delete the database. The connection is already closed when
+   * this runs: the app should ask the user to reload this tab.
+   */
+  onVersionChange?: () => void;
+}
+
 export function openDatabase(
   factory: IDBFactory = indexedDB,
   name: string = DB_NAME,
+  hooks: OpenHooks = {},
 ): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
+    let settled = false;
     const request = factory.open(name, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -53,8 +71,30 @@ export function openDatabase(
         db.createObjectStore(INDEX, { keyPath: 'projectId' });
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META);
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onblocked = () => {
+      // Fail clearly instead of hanging; if the other tab lets go later, drop that connection.
+      if (settled) return;
+      settled = true;
+      reject(new DatabaseBlockedError());
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      if (settled) {
+        db.close();
+        return;
+      }
+      settled = true;
+      db.onversionchange = () => {
+        db.close();
+        hooks.onVersionChange?.();
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      if (settled) return;
+      settled = true;
+      reject(request.error);
+    };
   });
 }
 
@@ -122,8 +162,12 @@ const indexEntry = (doc: ProjectDocument): ProjectIndexEntry => ({
 export class ProjectStore implements ProjectStorage {
   constructor(private readonly db: IDBDatabase) {}
 
-  static async open(factory: IDBFactory = indexedDB, name?: string): Promise<ProjectStore> {
-    return new ProjectStore(await openDatabase(factory, name));
+  static async open(
+    factory: IDBFactory = indexedDB,
+    name?: string,
+    hooks?: OpenHooks,
+  ): Promise<ProjectStore> {
+    return new ProjectStore(await openDatabase(factory, name, hooks));
   }
 
   /**

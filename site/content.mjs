@@ -16,9 +16,10 @@ export const LEGAL_PAGES = ['privacy', 'accessibility'];
 /** Sign-up form (Google Forms). Empty = applications not open: the CTA keeps its "opens soon" state. https only. */
 export const APPLY_URL = 'https://forms.gle/iSfCbg4BwWF7HqDCA';
 /**
- * Own sign-up page (BETA-G1 s9). The page is always built (/he/signup/, /en/signup/) but stays noindex and unlinked while
- * the flag is false. The owner flips it when the intake endpoint is live; then the nav link appears, the home/alpha
- * CTAs point to the page instead of APPLY_URL, and noindex is dropped.
+ * Own sign-up page (BETA-G1 s9). While the flag is false the page and its script are not built at all (only the
+ * e2e/preview build `--signup-preview` adds them, noindex and unlinked). The owner flips it when the intake endpoint is
+ * live; then the page is built, the nav link appears, the home/alpha CTAs point to the page instead of APPLY_URL, and
+ * noindex is dropped.
  */
 export const SIGNUP_PAGE_ENABLED = false;
 /** Base of the intake routes: GET <base>/form-token, POST <base>/web. Relative = same origin (proxied by the web server). */
@@ -31,7 +32,6 @@ export const SIGNUP_ROLE_VALUES = [
   'Teacher or instructor',
   'Other',
 ];
-export const SIGNUP_HEARD_VALUES = ['Instagram', 'Facebook', 'A friend or colleague', 'Other'];
 /** Approved testers sign in here. */
 export const LAB_URL = 'https://lab.tbi-tech.net/';
 /** The one public contact address. */
@@ -118,7 +118,7 @@ const en = {
   interimNote: 'Interim text. It will be replaced by a reviewed version.',
   screenshotsH: 'See it in the Lab',
   signup: {
-    required: 'All fields are required.',
+    required: 'All fields are required except the one marked (optional).',
     name: 'Name',
     email: 'Email address',
     emailHint: 'We will write to this address when we approve your request.',
@@ -132,8 +132,7 @@ const en = {
       'Other',
     ],
     heard: 'How did you hear about us?',
-    heardPick: 'Choose one',
-    heards: ['Instagram', 'Facebook', 'A friend or colleague', 'Other'],
+    optional: '(optional)',
     age: 'I am 18 or older, or a parent has approved my sign-up.',
     consentBefore: 'I have read the ',
     consentLink: 'privacy notice',
@@ -143,8 +142,6 @@ const en = {
     newTab: '(opens in a new tab)',
     nojs: 'The sign-up form could not load. It needs [[JavaScript]]. Please turn it on in your browser and reload the page, or write to us at support@tbi-tech.net.',
     honeypot: 'Leave this field empty',
-    noscript:
-      'This form needs [[JavaScript]]. Please turn it on in your browser and reload the page, or write to us at support@tbi-tech.net.',
     privacyH: 'What we do with your details',
     privacy: [
       'We use the details in this form to review your request, give you access to the Alpha and update you about it. We will not sell your details or pass them on to others.',
@@ -153,7 +150,7 @@ const en = {
     errName: 'Enter your name.',
     errEmail: 'Enter a valid email address.',
     errRole: 'Choose the option that describes you best.',
-    errHeard: 'Choose how you heard about us.',
+    errHeard: 'Use at most 80 characters.',
     errAge: 'Confirm that you are 18 or older, or that a parent approved your sign-up.',
     errConsent: 'Confirm that you have read the privacy notice and agree.',
     summaryFieldsH: 'Please fix these before sending:',
@@ -242,7 +239,7 @@ const en = {
           h: 'Circuits',
           ul: [
             'A schematic workspace with standard symbols: place, move, rotate, wire, undo and redo, in a 2D view and a 3D view.',
-            'DC operating point and limited time-domain simulation of capacitor circuits, with the results shown next to the circuit.',
+            'DC operating point simulation, with the results shown next to the circuit.',
             'A laboratory power supply with voltage setpoint and current limit.',
             'Parts driven beyond their absolute maximum ratings are flagged, and wiring errors are explained.',
             'When something cannot be modeled reliably, the workspace says so instead of showing a made-up result.',
@@ -264,7 +261,7 @@ const en = {
           ul: [
             'Projects are saved in your browser as you work.',
             'The interface is available in Hebrew and English. Switching language never changes the circuit.',
-            'Keyboard and mouse are both first-class ways to work.',
+            'Keyboard and mouse can both be used to work; some actions are still easier with a mouse.',
           ],
         },
         {
@@ -392,7 +389,7 @@ const en = {
           ],
           /** Used instead of p when the own sign-up page is enabled (SIGNUP_PAGE_ENABLED). Draft, lawyer review required. */
           pOwn: [
-            'To apply, you fill in the sign-up form on this website. We collect your name, email address, role, the language of the page, your answer to “How did you hear about us?”, and your confirmation that you have read this notice. The details are stored on our own server. We use them only to review your request and to send you the email about it.',
+            'To apply, you fill in the sign-up form on this website. We collect your name, email address, role, the language of the page, your answer to “How did you hear about us?” (optional), and your confirmation that you have read this notice. The details are stored on our own server. We use them only to review your request and to send you the email about it.',
             'The sign-up form does not use cookies, analytics or advertising trackers, and loads no third-party scripts. Your browser sends the form directly to us. To limit abuse, we briefly use your network address to count requests. We keep that count in memory only and do not store it with your request.',
             'We use two service providers to run the process. When a request arrives, we send ourselves a [[Telegram]] message with your name and role only. If we approve your request, we send you an email through [[Resend]]. Those providers handle the data they receive under their own terms.',
             'We will not sell your details or pass them on to others.',
@@ -487,16 +484,15 @@ const he = {
   interimNote: 'טקסט ביניים. יוחלף בגרסה שנבדקה.',
   screenshotsH: 'ככה זה נראה במעבדה',
   signup: {
-    required: 'כל השדות הם חובה.',
+    required: 'כל השדות חובה, חוץ מהשדה שמסומן (לא חובה).',
     name: 'שם',
     email: 'כתובת אימייל',
     emailHint: 'לכתובת הזאת נכתוב כשנאשר את הבקשה.',
-    role: 'מה מתאר אותך הכי טוב?',
+    role: 'מה מתאר אתכם הכי טוב?',
     rolePick: 'בחרו אפשרות',
     roles: ['סטודנט/ית', 'מייקר/ית או תחביב', 'מהנדס/ת או טכנאי/ת', 'מורה או מדריך/ה', 'אחר'],
-    heard: 'איך שמעת עלינו?',
-    heardPick: 'בחרו אפשרות',
-    heards: ['אינסטגרם', 'פייסבוק', 'חבר או חברה', 'אחר'],
+    heard: 'איך הגעת אלינו?',
+    optional: '(לא חובה)',
     age: 'אני בן/בת 18 ומעלה, או שהורה אישר לי להירשם.',
     consentBefore: 'קראתי את ',
     consentLink: 'הודעת הפרטיות',
@@ -505,8 +501,6 @@ const he = {
     newTab: '(נפתח בלשונית חדשה)',
     nojs: 'טופס ההרשמה לא נטען. הוא דורש [[JavaScript]]. הפעילו אותו בדפדפן וטענו את הדף מחדש, או כתבו לנו ל-support@tbi-tech.net.',
     honeypot: 'השאירו שדה זה ריק',
-    noscript:
-      'הטופס הזה דורש [[JavaScript]]. הפעילו אותו בדפדפן וטענו את הדף מחדש, או כתבו לנו ל-support@tbi-tech.net.',
     privacyH: 'מה אנחנו עושים עם הפרטים',
     privacy: [
       'אנחנו משתמשים בפרטים בטופס כדי לבחון את הבקשה, לתת גישה לאלפא ולעדכן אתכם לגביה. לא נמכור את הפרטים ולא נעביר אותם לאחרים.',
@@ -515,7 +509,7 @@ const he = {
     errName: 'הזינו את השם שלכם.',
     errEmail: 'הזינו כתובת אימייל תקינה.',
     errRole: 'בחרו את האפשרות שמתארת אתכם הכי טוב.',
-    errHeard: 'בחרו איך שמעתם עלינו.',
+    errHeard: 'כתבו עד 80 תווים.',
     errAge: 'אשרו שאתם בני 18 ומעלה, או שהורה אישר לכם להירשם.',
     errConsent: 'אשרו שקראתם את הודעת הפרטיות ושאתם מסכימים.',
     summaryFieldsH: 'יש לתקן לפני השליחה:',
@@ -599,7 +593,7 @@ const he = {
           h: 'מעגלים',
           ul: [
             'סביבת סכמה עם סמלים סטנדרטיים: הצבה, הזזה, סיבוב, חיווט, ביטול וחזרה, בתצוגה דו-ממדית ובתצוגה תלת-ממדית.',
-            'נקודת עבודה בזרם ישר וסימולציה מוגבלת בזמן של מעגלי קבלים, עם התוצאות לצד המעגל.',
+            'סימולציה של נקודת עבודה בזרם ישר, עם התוצאות לצד המעגל.',
             'מקור מתח מעבדתי עם הגדרת מתח והגבלת זרם.',
             'רכיבים שעוברים את המגבלות המקסימליות שלהם מסומנים, ושגיאות חיווט מוסברות.',
             'כשאי אפשר לדמות משהו באופן אמין, הסביבה אומרת זאת במקום להציג תוצאה מומצאת.',
@@ -621,7 +615,7 @@ const he = {
           ul: [
             'פרויקטים נשמרים בדפדפן שלכם תוך כדי עבודה.',
             'הממשק זמין בעברית ובאנגלית. החלפת שפה לא משנה את המעגל.',
-            'מקלדת ועכבר הם שניהם דרכי עבודה מלאות.',
+            'אפשר לעבוד עם מקלדת ועם עכבר; חלק מהפעולות עדיין נוחות יותר בעכבר.',
           ],
         },
         {
@@ -745,7 +739,7 @@ const he = {
           ],
           /** Used instead of p when the own sign-up page is enabled. Draft, lawyer review required. */
           pOwn: [
-            'להגשת מועמדות ממלאים את טופס ההרשמה באתר הזה. אנחנו אוספים את השם, כתובת האימייל, התפקיד, שפת הדף, התשובה לשאלה "איך שמעת עלינו?" ואת האישור שקראתם את ההודעה הזאת. הפרטים נשמרים בשרת שלנו. אנחנו משתמשים בהם רק כדי לבחון את הבקשה ולשלוח לכם את המייל בעניינה.',
+            'להגשת מועמדות ממלאים את טופס ההרשמה באתר הזה. אנחנו אוספים את השם, כתובת האימייל, התפקיד, שפת הדף, התשובה לשאלה "איך הגעת אלינו?" (לא חובה) ואת האישור שקראתם את ההודעה הזאת. הפרטים נשמרים בשרת שלנו. אנחנו משתמשים בהם רק כדי לבחון את הבקשה ולשלוח לכם את המייל בעניינה.',
             'בטופס ההרשמה אין עוגיות, אין כלי ניתוח או מעקב פרסומי, ואין סקריפטים של צד שלישי. הדפדפן שולח את הטופס ישירות אלינו. כדי להגביל ניצול לרעה אנחנו משתמשים לזמן קצר בכתובת הרשת שלכם כדי לספור בקשות. הספירה נשמרת בזיכרון בלבד ואינה נשמרת יחד עם הבקשה.',
             'אנחנו נעזרים בשני נותני שירות להפעלת התהליך. כשמגיעה בקשה אנחנו שולחים לעצמנו הודעה ב-[[Telegram]] עם השם והתפקיד בלבד. אם נאשר את הבקשה, נשלח לכם מייל באמצעות [[Resend]]. נותני השירות האלה מטפלים במידע שהם מקבלים לפי התנאים שלהם.',
             'לא נמכור את הפרטים ולא נעביר אותם לאחרים.',

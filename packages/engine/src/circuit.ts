@@ -62,7 +62,16 @@ export interface TransientResult {
   newtonIterations: number;
 }
 
+/**
+ * Largest MNA system (non-ground nodes + voltage-source/branch unknowns) a circuit may have. The dense
+ * solve is O(n^3) per Newton iteration, so an oversize circuit would hog a shared 1-CPU host; it is
+ * refused before the matrix is built. Overridable per solve with `SolveOptions.maxUnknowns`.
+ */
+export const MAX_UNKNOWNS = 400;
+
 export interface SolveOptions {
+  /** Refuse (CircuitTooLargeError) a circuit with more MNA unknowns than this (default MAX_UNKNOWNS). */
+  maxUnknowns?: number;
   /** Max Newton iterations per active-set pass. */
   maxNewtonIterations?: number;
   /** Max active-set passes over PSU modes. */
@@ -121,7 +130,21 @@ export class ConvergenceError extends Error {
   }
 }
 
+/** The circuit has more MNA unknowns than the allowed limit; nothing was assembled or solved. */
+export class CircuitTooLargeError extends Error {
+  constructor(
+    readonly limit: number,
+    readonly actual: number,
+  ) {
+    super(
+      `Circuit too large: ${actual} unknowns (nodes + branches) exceeds the limit of ${limit}. Simplify the circuit.`,
+    );
+    this.name = 'CircuitTooLargeError';
+  }
+}
+
 const DEFAULTS = {
+  maxUnknowns: MAX_UNKNOWNS,
   maxNewtonIterations: 200,
   maxActiveSetIterations: 32,
   newtonAbsTol: 1e-12,
@@ -367,6 +390,7 @@ export class Circuit {
     this.buildIndex();
     for (const d of this.devices) d.resetState();
     if (this.size === 0) throw new Error('Circuit has no unknowns');
+    if (this.size > o.maxUnknowns) throw new CircuitTooLargeError(o.maxUnknowns, this.size);
 
     const psus = this.devices.filter((d): d is LabPsu => d instanceof LabPsu);
 

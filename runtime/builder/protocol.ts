@@ -13,6 +13,7 @@
  *   GET  /v1/lookup?key=<sourceKey>  -> 200 {build} | 404   (never builds)
  *   POST /v1/artifacts               raw bytes (Advanced prebuilt image) -> 200 {artifact}
  *   POST /v1/artifacts/:sha/lease    -> 200 {artifact, leaseUntil} | 404   (pin before a Run)
+ *                                    | 403 capability_disabled (prebuilt image, plan without it)
  *   GET  /v1/health
  */
 

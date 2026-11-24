@@ -57,6 +57,11 @@ export class NonceCache {
     return true;
   }
 
+  /** Number of recorded entries (expired ones are dropped lazily by `take`). */
+  get size(): number {
+    return this.seen.size;
+  }
+
   /** Whether the nonce is recorded and not yet expired (does not record it). */
   has(nonce: string, now: number): boolean {
     const exp = this.seen.get(nonce);

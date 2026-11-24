@@ -273,11 +273,22 @@ export class BuildService {
 
   /**
    * Pin an artifact the principal may use and issue a run ticket for it; null (like "unknown")
-   * when there is no grant — own, global, or an R1 reference image — or no blob.
+   * when there is no grant — own, global, or an R1 reference image — or no blob. Throws
+   * `capability_disabled` for an image held only as a prebuilt upload when the plan disallows it.
    */
   lease(principal: Principal, sha: string, ms: number): { until: number; ticket: string } | null {
     const reference = this.store.isReference(sha);
     if (!reference && !this.access.grants.canUse(principal, sha)) return null;
+    // FW-FREE: the prebuilt capability holds at run time too, not only at upload: an image this
+    // principal holds only as an Advanced upload (e.g. made while on another plan) is refused
+    // when the plan now disallows prebuilt binaries. Built firmware (own or shared) and R1
+    // reference images are unaffected. Checked before the blob is touched (no lease, no pin).
+    if (
+      !reference &&
+      !this.access.policy.plan(principal).capabilities.allowPrebuiltBinary &&
+      !this.access.grants.canUseBuilt(principal, sha)
+    )
+      throw new Refusal('capability_disabled');
     const until = this.store.lease(sha, ms);
     if (until === null) {
       this.access.grants.dropArtifact(sha);

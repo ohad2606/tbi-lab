@@ -19,6 +19,12 @@ import { SignInBanner } from './SignInBanner.js';
 import { UpdateBanner } from './UpdateBanner.js';
 import { VersionStatus } from './VersionStatus.js';
 
+/** Move focus to the main landmark (a bare #fragment would only scroll in some browsers). */
+function skipToMain(e: Event) {
+  e.preventDefault();
+  document.getElementById('main')?.focus();
+}
+
 export function App() {
   const state = useAppState();
   const store = useStore();
@@ -94,6 +100,11 @@ export function App() {
   }
   return (
     <div class="app">
+      {state.screen === 'editor' && state.doc && (
+        <a class="skip-link" href="#main" onClick={skipToMain}>
+          {t('a11y.skipToMain')}
+        </a>
+      )}
       {/* The DEV strip and the screen support note: their own row, above the top bar. */}
       <EnvironmentNotes />
       <TopBar />

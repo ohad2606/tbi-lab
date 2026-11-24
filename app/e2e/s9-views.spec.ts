@@ -204,7 +204,7 @@ test('Hebrew: tabs and notes are localized; technical labels stay LTR', async ({
   await tab(page, 'schematic').click();
   const view = page.getByTestId('schematic-view');
   await expect(view).toHaveAttribute('dir', 'ltr');
-  await expect(view.getByRole('img', { name: /^סכמה חשמלית של / })).toBeVisible();
+  await expect(view.getByRole('group', { name: /^סכמה חשמלית של / })).toBeVisible();
   await expect(view.locator('.sch-pin-name')).toContainText(['IO34']);
   await expect(view.locator('.view-note')).toHaveAttribute('dir', 'rtl');
   await tab(page, '3d').click();

@@ -3,7 +3,10 @@
  * Disabled unless TBI_SIGNUP_INTAKE=1 (exit 0, one log line). Enabled but misconfigured or with a
  * missing secret: one log line with a class code (never a path or a value) and exit 1; nothing
  * listens. SIGTERM / SIGINT: stop accepting, close connections, exit.
+ * K12: TBI_FUNNEL_COUNTERS=1 + TBI_FUNNEL_DIR (absolute, private) count `signup_submitted`
+ * (funnel/counters.ts); off by default, and a bad setting only turns the counters off.
  */
+import { funnelCountersFromEnv } from '../funnel/counters.js';
 import { errorClass } from './errors.js';
 import { intakeConfigFromEnv, startIntake } from './intake-server.js';
 
@@ -17,13 +20,23 @@ if (!cfg.enabled) {
   log(`disabled: ${cfg.reason}`);
   process.exit(0);
 }
+// K12: funnel counters, off unless TBI_FUNNEL_COUNTERS=1; a bad setting only turns them off.
+const counters = await funnelCountersFromEnv(process.env, { log });
 try {
-  const running = await startIntake(cfg.config, { fetch: (u, i) => fetch(u, i), log });
+  const running = await startIntake(cfg.config, { fetch: (u, i) => fetch(u, i), log, counters });
   let stopping = false;
   const stop = () => {
     if (stopping) return;
     stopping = true;
-    void running.close().then(() => process.exit(0));
+    // Counts not yet written get a bounded chance (1 s) to be saved.
+    const flushed = Promise.race([
+      counters?.flush(),
+      new Promise<void>((r) => setTimeout(r, 1_000).unref()),
+    ]);
+    void running
+      .close()
+      .then(() => flushed)
+      .then(() => process.exit(0));
   };
   process.on('SIGTERM', stop);
   process.on('SIGINT', stop);

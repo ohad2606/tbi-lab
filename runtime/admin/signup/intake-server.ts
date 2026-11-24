@@ -28,6 +28,7 @@
  */
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { FunnelSink } from '../funnel/counters.js';
 import { errorClass } from './errors.js';
 import { NonceCache } from './hmac.js';
 import {
@@ -186,7 +187,13 @@ export interface RunningIntake {
  */
 export async function startIntake(
   c: IntakeConfig,
-  io: { fetch: FetchLike; log: (line: string) => void; now?: () => number },
+  io: {
+    fetch: FetchLike;
+    log: (line: string) => void;
+    now?: () => number;
+    /** K12: funnel counters (`signup_submitted`); null / unset = off (see funnel/counters.ts). */
+    counters?: FunnelSink | null;
+  },
 ): Promise<RunningIntake> {
   const secret = await readSecret(c.hmacFile); // throws secret_missing / secret_unreadable / secret_short
   // The token must be usable now (same shape check as the notifier), else nothing listens.
@@ -220,6 +227,7 @@ export async function startIntake(
     globalRate: new SlidingWindowLimiter(INTAKE_GLOBAL_LIMIT, now),
     nonces: new NonceCache(),
     log: io.log,
+    counters: io.counters ?? null,
     ...(c.web
       ? {
           web: {

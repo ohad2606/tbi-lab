@@ -7,6 +7,7 @@
  *                  approval email), reject, resend. Idempotent: an account is added once and an
  *                  approval email is sent once unless the owner explicitly resends after a failure.
  */
+import type { FunnelEvent, FunnelSink } from '../funnel/counters.js';
 import { errorClass } from './errors.js';
 import { NonceCache, verifyRequest, type VerifyFailure } from './hmac.js';
 import { SlidingWindowLimiter } from './limits.js';
@@ -14,13 +15,14 @@ import type { SignupNotifier } from './notify.js';
 import { isQuiet, nextSendAt, type QuietWindow } from './quietHours.js';
 import type { EmailSender } from './email.js';
 import { serialById } from './locks.js';
-import { PendingStore, StoreError, type SignupRecord } from './store.js';
+import { PendingStore, StoreError, type DeleteOutcome, type SignupRecord } from './store.js';
 import { validateSignup, type SignupInput } from './validate.js';
 import {
   checkToken,
   HONEYPOT_FIELD,
   issueToken,
   TOKEN_FIELD,
+  WEB_MIN_FILL_MS,
   WEB_TOKEN_TTL_MS,
   type TokenFailure,
 } from './web.js';
@@ -43,6 +45,17 @@ export interface IntakeDeps {
   log?: (line: string) => void;
   /** BETA-G1 s8: the browser route (`POST /signup/web`); absent = the route does not exist. */
   web?: WebIntakeDeps;
+  /** K12: funnel counters (`signup_submitted` per new request); null / unset = off. */
+  counters?: FunnelSink | null;
+}
+
+/** K12: counts an event; the counters never throw, and this guard keeps it so for any sink. */
+function count(sink: FunnelSink | null | undefined, event: FunnelEvent): void {
+  try {
+    sink?.increment(event);
+  } catch {
+    /* counters are indicative; a sign-up never fails because of them */
+  }
 }
 
 /**
@@ -67,7 +80,7 @@ export type WebOutcome =
   { status: 200 } | { status: 400 | 401 | 404 | 429 | 503; error: string; retryAfterMs?: number };
 
 export type TokenOutcome =
-  | { status: 200; token: string; ttl: number }
+  | { status: 200; token: string; ttl: number; minFill: number }
   | { status: 404 | 429; error: string; retryAfterMs?: number };
 
 const statusOf = (_r: VerifyFailure): 401 => 401;
@@ -122,8 +135,8 @@ export class SignupIntake {
   }
 
   /**
-   * `GET /signup/form-token`: a fresh stateless token (web.ts), per-source rate limited. `ttl` is
-   * in seconds. Nothing is stored; the token carries its own issue time and MAC.
+   * `GET /signup/form-token`: a fresh stateless token (web.ts), per-source rate limited. `ttl` and
+   * `minFill` are in seconds. Nothing is stored; the token carries its own issue time and MAC.
    */
   issueWebToken(source: string): TokenOutcome {
     const w = this.d.web;
@@ -135,13 +148,22 @@ export class SignupIntake {
     }
     const now = (this.d.now ?? Date.now)();
     const ttlMs = w.ttlMs ?? WEB_TOKEN_TTL_MS;
-    return { status: 200, token: issueToken(w.webKey, now), ttl: Math.floor(ttlMs / 1000) };
+    // The page waits this long after the token arrives before it posts (fixed, whole seconds,
+    // rounded up so the page never waits less than the server requires).
+    const minFill = Math.ceil((w.minFillMs ?? WEB_MIN_FILL_MS) / 1000);
+    return {
+      status: 200,
+      token: issueToken(w.webKey, now),
+      ttl: Math.floor(ttlMs / 1000),
+      minFill,
+    };
   }
 
   /**
    * `POST /signup/web` after the HTTP checks (method, origin, content type, size cap, source key).
    * Order: the per-source limit (before any crypto), the token (MAC, age, minimum fill time; not
-   * consumed), the honeypot (a hit CONSUMES the token: a bot cannot reuse it), field validation
+   * consumed), the honeypot (a hit records nothing, so it cannot fill the nonce cache; a resend
+   * is bounded by the per-source limit), field validation
    * (not consumed: the person fixes a typo and retries), the GLOBAL limit (taken only by requests
    * that would be stored, so honeypot hits and junk cannot drain it; a 429 does not consume the
    * token), then the token is consumed (single use) and the request takes the same path as
@@ -184,8 +206,9 @@ export class SignupIntake {
         : { status: 401, error: webAuthError(t.reason) };
     }
     if (honey !== '') {
-      // Burn the token (best effort: an already used one stays used); same answer as a typo.
-      w.nonces.take(t.nonce, now);
+      // Same answer as a typo. The nonce is NOT recorded (Fable review finding 2): honeypot hits
+      // from many sources would otherwise fill the bounded cache and lock real people out. The
+      // same token may therefore be resent here; that is bounded by the per-source limit above.
       refuse('honeypot');
       return { status: 400, error: 'invalid' };
     }
@@ -247,6 +270,7 @@ export class SignupIntake {
         return 'stored';
       }
       rec = r.record;
+      count(this.d.counters, 'signup_submitted');
     } catch (e) {
       this.d.log?.(`signup: store failed (${e instanceof StoreError ? e.code : errorClass(e)})`);
       return 'unavailable';
@@ -378,6 +402,8 @@ export class SignupApprover {
       log?: (line: string) => void;
       /** BETA-G1: the auto-approve sweep's approver; its audit lines are marked `actor=auto`. */
       actor?: 'auto';
+      /** K12: funnel counters (`signup_approved`, once per request); null / unset = off. */
+      counters?: FunnelSink | null;
     },
   ) {}
 
@@ -420,6 +446,14 @@ export class SignupApprover {
     if (r.status === 'rejected') return { ok: true, record: r, note: 'already_done' };
     if (r.status !== 'pending') return { ok: false, code: 'bad_state', record: r };
     return { ok: true, record: await this.d.store.update(id, { status: 'rejected' }) };
+  }
+
+  /**
+   * K12: the owner deletes a request now (PendingStore.deleteNow: own per-id lock and audit line).
+   * Only the request is removed; an account already added is not touched (disable it separately).
+   */
+  remove(id: string): Promise<DeleteOutcome> {
+    return this.d.store.deleteNow(id);
   }
 
   /** Explicit resend: only after a failed (or interrupted) send, and only for an added account. */
@@ -470,6 +504,8 @@ export class SignupApprover {
         };
       }
       r = await this.d.store.update(id, { accountAdded: true });
+      // Counted exactly once per request: `accountAdded` is set once and never cleared.
+      count(this.d.counters, 'signup_approved');
     }
     // A send was attempted before and its outcome is unknown: never repeat it automatically.
     if (r.emailAttemptedAt) return { ok: true, record: r, note: 'email_not_resent' };

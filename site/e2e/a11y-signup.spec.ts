@@ -28,7 +28,7 @@ async function stub(page: Page, postStatuses: Array<[number, object?]> = []) {
   const posts: any[] = [];
   let tokens = 0;
   await page.route(/\/signup\/form-token$/, (r) =>
-    r.fulfill({ json: { token: `w1.test${++tokens}`, ttl: 1800 } }),
+    r.fulfill({ json: { token: `w1.test${++tokens}`, ttl: 1800, minFill: 0 } }),
   );
   await page.route(/\/signup\/web$/, (r) => {
     posts.push(r.request().postDataJSON());
@@ -45,8 +45,8 @@ async function fillByKeyboard(page: Page) {
   await page.keyboard.type('dana@example.com');
   await page.keyboard.press('Tab');
   await page.keyboard.press('ArrowDown'); // first real option
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Tab'); // how did you hear about us (optional free text)
+  await page.keyboard.type('A friend');
   await page.keyboard.press('Tab'); // the support address link in the privacy text
   await page.keyboard.press('Tab'); // honeypot is skipped: next stop is the age checkbox
   await expect(page.locator('#su-age')).toBeFocused();
@@ -78,7 +78,7 @@ for (const { lang, dir } of LANGS) {
       await page.locator('#su-name').fill('Dana');
       await page.locator('#su-email').fill('dana@example.com');
       await page.locator('#su-role').selectOption({ index: 1 });
-      await page.locator('#su-heard').selectOption({ index: 1 });
+      await page.locator('#su-heard').fill('A friend');
       await page.locator('#su-age').check();
       await page.locator('#su-consent').check();
       await page.locator('#su-submit').click();
@@ -93,7 +93,7 @@ for (const { lang, dir } of LANGS) {
       await page.goto(`/${lang}/signup/`);
       await page.locator('#su-submit').click();
       await expect(page.locator('#su-summary')).toBeFocused();
-      await expect(page.locator('#su-summary li')).toHaveCount(6);
+      await expect(page.locator('#su-summary li')).toHaveCount(5); // heardFrom is optional
       const name = page.locator('#su-name');
       await expect(name).toHaveAttribute('aria-invalid', 'true');
       await expect(name).toHaveAttribute('aria-describedby', 'su-err-name');
@@ -108,10 +108,10 @@ for (const { lang, dir } of LANGS) {
       await expect(name).not.toHaveAttribute('aria-invalid', 'true');
       await expect(page.locator('#su-err-name')).toBeHidden();
       // the fixed field leaves the summary; an empty summary disappears
-      await expect(page.locator('#su-summary li')).toHaveCount(5);
+      await expect(page.locator('#su-summary li')).toHaveCount(4);
       await page.locator('#su-email').fill('dana@example.com');
       await page.locator('#su-role').selectOption({ index: 1 });
-      await page.locator('#su-heard').selectOption({ index: 1 });
+      await page.locator('#su-heard').fill('A friend');
       await page.locator('#su-age').check();
       await expect(page.locator('#su-summary li')).toHaveCount(1);
       await expect(page.locator('#su-summary')).toBeVisible();
@@ -155,7 +155,7 @@ for (const { lang, dir } of LANGS) {
         token: 'w1.test1',
       });
       expect(typeof s.posts[0].role).toBe('string');
-      expect(s.posts[0].heardFrom).toBeTruthy();
+      expect(s.posts[0].heardFrom).toBe('A friend');
     });
 
     test('429 and 503: friendly message in the summary, focus there, form data kept, retry works', async ({
@@ -192,7 +192,7 @@ for (const { lang, dir } of LANGS) {
 
     test('network failure message, and the button keeps focus while sending', async ({ page }) => {
       await page.route(/\/signup\/form-token$/, (r) =>
-        r.fulfill({ json: { token: 't', ttl: 1800 } }),
+        r.fulfill({ json: { token: 't', ttl: 1800, minFill: 0 } }),
       );
       let release: () => void = () => {};
       const gate = new Promise<void>((r) => (release = r));
@@ -219,7 +219,7 @@ for (const { lang, dir } of LANGS) {
       await page.goto(`/${lang}/signup/`);
       const hp = page.locator('#su-website');
       await expect(hp).toHaveAttribute('tabindex', '-1');
-      await expect(page.getByRole('textbox', { name: /.*/ })).toHaveCount(2); // name + email only
+      await expect(page.getByRole('textbox', { name: /.*/ })).toHaveCount(3); // name, email, heard
       const box = await hp.boundingBox();
       expect(box!.width).toBeLessThanOrEqual(1);
     });

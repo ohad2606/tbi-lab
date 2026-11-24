@@ -294,7 +294,7 @@ describe('SignupIntake.submitWeb', () => {
     const u = unitIntake(tmp());
     await u.init();
     const tok = u.token();
-    // Honeypot hits burn their token (fix round M1), so each gets its own.
+    // Each honeypot case has its own token (a hit records no nonce, Fable review finding 2).
     const hp = [u.token(), u.token(), u.token()];
     u.advance(5_000);
     const cases: [Record<string, unknown> | string, number, string][] = [
@@ -580,7 +580,8 @@ describe('web route over http', () => {
     const s = await up();
     const t = await s.token();
     expect(t.status).toBe(200);
-    expect(t.json).toMatchObject({ ttl: WEB_TOKEN_TTL_MS / 1000 });
+    expect(t.json).toMatchObject({ ttl: WEB_TOKEN_TTL_MS / 1000, minFill: WEB_MIN_FILL_MS / 1000 });
+    expect(Object.keys(t.json!).sort()).toEqual(['minFill', 'token', 'ttl']);
     expect(t.headers['access-control-allow-origin']).toBe(SITE);
     expect(t.headers['access-control-allow-credentials']).toBeUndefined();
     expect(t.headers['cache-control']).toBe('no-store');

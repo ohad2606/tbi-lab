@@ -39,6 +39,28 @@ export const simLimitKeys = (): MessageKey[] => [
   'sim.limit.cooldown.nowait',
 ];
 
+/**
+ * BETA-G2 s3: how the app presents a refused start. `status` = a calm, polite announcement (waiting or
+ * "try again later"); `alert` = a hard refusal. `retry` = offer a "Try again" button (a new start can
+ * succeed later without anything changing on the user's side).
+ */
+const UI: Record<SimLimitCode, { role: 'status' | 'alert'; retry: boolean }> = {
+  queue: { role: 'status', retry: false },
+  queue_timeout: { role: 'status', retry: true },
+  queue_full: { role: 'status', retry: true },
+  queue_replaced: { role: 'alert', retry: false },
+  sim_cooldown: { role: 'status', retry: true },
+  sim_concurrent: { role: 'alert', retry: false },
+  minutes_out: { role: 'alert', retry: false },
+  minutes_out_free: { role: 'alert', retry: false },
+  sim_daily: { role: 'alert', retry: false },
+  system_unavailable: { role: 'status', retry: true },
+  free_paused: { role: 'status', retry: true },
+};
+
+export const simLimitUi = (code: unknown): { role: 'status' | 'alert'; retry: boolean } | null =>
+  isSimLimitCode(code) ? UI[code] : null;
+
 export const isSimLimitCode = (c: unknown): c is SimLimitCode =>
   typeof c === 'string' && Object.hasOwn(KEY, c);
 

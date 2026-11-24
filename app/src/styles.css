@@ -346,6 +346,14 @@ select {
   flex: 1 1 14rem;
   min-inline-size: 0;
 }
+.limit-notice {
+  flex-wrap: wrap;
+}
+.limit-notice [role='status'] {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+}
+.limit-notice .button,
 .queue-status .button {
   min-block-size: 24px;
   min-inline-size: 24px;
@@ -756,6 +764,10 @@ select {
 
 /* A11Y-002 keyboard wiring: the focused pin and the chosen target get a ring (navy on white,
    well above 3:1); the target is also dashed and filled so it does not rely on colour alone. */
+.kb-wire-point {
+  pointer-events: none;
+}
+
 .terminal.kb-pin:focus,
 .terminal.kb-pin:focus-visible {
   outline: none;
@@ -776,7 +788,9 @@ select {
   visibility: visible;
 }
 
-.terminal.kb-target .kb-ring {
+.terminal.kb-target .kb-ring,
+.junction.kb-target .kb-ring,
+.kb-wire-point.kb-target .kb-ring {
   visibility: visible;
   stroke-dasharray: 4 3;
   fill: var(--accent-soft);
@@ -792,12 +806,28 @@ select {
   stroke-dasharray: none;
 }
 
+/* The wire a keyboard T-connection would land on: a dashed navy halo along its whole body (3:1 or
+   more on the white canvas), in addition to the dot and ring at the exact point. */
+.wire-group.kb-wire-target .wire-hit {
+  stroke: var(--focus);
+  stroke-opacity: 0.9;
+  stroke-width: 9;
+  stroke-dasharray: 8 5;
+}
+
 @media (forced-colors: active) {
+  .wire-group.kb-wire-target .wire-hit {
+    forced-color-adjust: none;
+    stroke: Highlight;
+    stroke-opacity: 1;
+  }
   .kb-ring {
     forced-color-adjust: none;
     stroke: Highlight;
   }
-  .terminal.kb-target .kb-ring {
+  .terminal.kb-target .kb-ring,
+  .junction.kb-target .kb-ring,
+  .kb-wire-point.kb-target .kb-ring {
     fill: Canvas;
     fill-opacity: 0.6;
   }
@@ -3795,6 +3825,29 @@ select {
   .build-icon.spinning {
     animation: none;
   }
+
+  .mcu-terminal-chevron {
+    transition: none;
+  }
+}
+
+.skip-link {
+  position: absolute;
+  inset-inline-start: 0.5rem;
+  inset-block-start: -4rem;
+  z-index: 1000;
+  padding: 0.5rem 0.9rem;
+  background: var(--panel);
+  color: var(--text);
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.skip-link:focus {
+  inset-block-start: 0.5rem;
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .toolbar-build-state {

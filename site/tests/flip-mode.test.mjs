@@ -6,9 +6,10 @@ import { join } from 'node:path';
 import { buildSite } from '../build.mjs';
 import { content } from '../content.mjs';
 
-// sha256 over (relative path, bytes) of the whole flag=false build, taken before BETA-G1 s11 (3249181).
+// sha256 over (relative path, bytes) of the whole flag=false build, as of the merge of the PR #94 review fixes
+// (797594d: no sign-up page or script while the flag is off) into BETA-G1 s11; byte-identical to a build of 797594d.
 // If you change the flag=false site on purpose, update this value in the same commit.
-const FLAG_FALSE_HASH = '91f51086897fe627340180f6d56450445a4c3393ce7e8974f096995486586122';
+const FLAG_FALSE_HASH = 'cb4c8c20f02667b114416fd5025695eac489108ff1d9408f397c65a74389c76a';
 
 const walk = (d) =>
   readdirSync(d)
@@ -35,7 +36,7 @@ beforeAll(() => {
 });
 
 describe('site flip mode: flag=false', () => {
-  it('build output is byte-identical to the pre-s11 snapshot', () => {
+  it('build output is byte-identical to the recorded snapshot', () => {
     expect(treeHash(off)).toBe(FLAG_FALSE_HASH);
   });
   it('still says Google Forms and uses the Google link', () => {
@@ -77,6 +78,12 @@ describe('site flip mode: flag=true', () => {
     expect(he).toMatch(/<bdi[^>]*>Telegram<\/bdi>|dir="ltr"[^>]*>Telegram</);
     expect(he).toMatch(/<bdi[^>]*>Resend<\/bdi>|dir="ltr"[^>]*>Resend</);
     expect(he).not.toContain('גוגל');
+  });
+  it.each(['he', 'en'])('%s: privacy quotes the form question as the form asks it', (l) => {
+    const s = content[l].pages.privacy.sections.find((x) => x.id === 'signup');
+    const { heard, optional } = content[l].signup;
+    expect(s.pOwn[0]).toContain(heard);
+    expect(s.pOwn[0]).toContain(optional);
   });
   it('HE and EN have the same flip keys', () => {
     for (const l of ['he', 'en']) {

@@ -216,6 +216,21 @@ export class Grants {
   }
 
   /**
+   * FW-FREE: whether the principal may use the image as BUILT firmware (an own or shared `build`
+   * grant), not only as an Advanced prebuilt upload.
+   */
+  canUseBuilt(principal: Principal, sha: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `SELECT 1 FROM artifact_grant
+           WHERE sha256 = ? AND owner IN (?, 'global') AND origin = 'build' LIMIT 1`,
+        )
+        .get(sha, principal) !== undefined
+    );
+  }
+
+  /**
    * Every build record of an image the principal may use: their own first, then the shared one.
    * Sprint 25: records of the same image can differ (an older analysis beside a current one: a
    * system build is rebuilt under 'global' while the principal's own older record stays), so the

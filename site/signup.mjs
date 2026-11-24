@@ -3,8 +3,9 @@
  * script (CSP: script-src 'self'; connect-src 'self'). All visible text is rendered by the generator into the page;
  * this script only toggles it, so there are no strings here.
  *
- * Server contract (docs/plans/BETA-G1-WEB-INTAKE.md): GET <base>/form-token -> {token, ttl};
- * POST <base>/web JSON {name,email,role,lang,consent:true,heardFrom,website:'',token}.
+ * Server contract (docs/plans/BETA-G1-WEB-INTAKE.md): GET <base>/form-token -> {token, ttl, minFill};
+ * POST <base>/web JSON {name,email,role,lang,consent:true,heardFrom,website:'',token}. A token is posted only after
+ * `minFill` seconds have passed since it ARRIVED here (the server refuses younger tokens as `too_fast`).
  * The logic (token store, outcome mapping, double-submit guard, validation) is exported and unit tested with a fake
  * fetch; the DOM wiring at the bottom runs only in a browser.
  */
@@ -12,18 +13,39 @@
 /** Refresh a token this long before it expires so a slow typist never hits an expired token (no timing trap). */
 export const TOKEN_MARGIN_MS = 120_000;
 const DEFAULT_TTL_S = 1800;
+/** Without a usable `minFill` from the server, wait as long as the server's own constant (WEB_MIN_FILL_MS, 3 s). */
+export const DEFAULT_MIN_FILL_S = 3;
+/** The page never waits longer than this, whatever the server says (a wrong answer must not freeze the form). */
+export const MAX_MIN_FILL_S = 10;
 export const NAME_MAX = 80;
-export const EMAIL_MAX = 254;
+export const HEARD_MAX = 80;
+
+/**
+ * EXACT copy of the server's address check (runtime/admin/accounts.ts `ADD_EMAIL_RE` / `normalizeAddEmail`), so the
+ * page never accepts an address the server refuses (review finding 9). site/tests/signup-review-fixes.test.mjs runs
+ * the same table through both; change them together.
+ */
+const ADD_EMAIL_RE =
+  /^[a-z0-9_%+-]+(?:\.[a-z0-9_%+-]+)*@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,63}$/;
+export function normalizeEmail(v) {
+  if (typeof v !== 'string' || v.length > 320) return null;
+  // ASCII only, checked before lower-casing (case folding maps e.g. U+212A KELVIN SIGN to `k`).
+  const t = v.trim();
+  if (!/^[\x21-\x7e]+$/.test(t)) return null;
+  const e = t.toLowerCase();
+  if (e.length > 254 || e.split('@')[0].length > 64 || !ADD_EMAIL_RE.test(e)) return null;
+  return e;
+}
 
 /** @returns {string[]} error keys (name, email, role, heard, age, consent) for a values object. */
 export function validate(v) {
   const bad = [];
   const name = String(v.name ?? '').trim();
   if (!name || [...name].length > NAME_MAX) bad.push('name');
-  const email = String(v.email ?? '').trim();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > EMAIL_MAX) bad.push('email');
+  if (normalizeEmail(String(v.email ?? '')) === null) bad.push('email');
   if (!String(v.role ?? '')) bad.push('role');
-  if (!String(v.heard ?? '')) bad.push('heard');
+  // Optional; the server (validate.ts) is the authority. Only its length limit (code points) is mirrored here.
+  if ([...String(v.heard ?? '').trim()].length > HEARD_MAX) bad.push('heard');
   if (!v.age) bad.push('age');
   if (!v.consent) bad.push('consent');
   return bad;
@@ -57,6 +79,12 @@ async function readJson(res) {
   }
 }
 
+/** The server's minimum fill time in ms, clamped to 0..MAX_MIN_FILL_S seconds; a missing or odd value = the default. */
+export function minFillMs(v) {
+  const s = typeof v === 'number' && Number.isFinite(v) ? v : DEFAULT_MIN_FILL_S;
+  return Math.min(MAX_MIN_FILL_S, Math.max(0, s)) * 1000;
+}
+
 /** Holds the form token. Fetching never blocks typing; submit awaits it only when it is missing or about to expire. */
 export function createTokenStore({ fetchFn, base, now = () => Date.now() }) {
   let tok = null;
@@ -78,11 +106,21 @@ export function createTokenStore({ fetchFn, base, now = () => Date.now() }) {
     const j = await readJson(res);
     if (typeof j.token !== 'string' || !j.token) throw { msg: MSG.generic };
     const ttl = Number.isFinite(j.ttl) && j.ttl > 0 ? j.ttl : DEFAULT_TTL_S;
-    tok = { token: j.token, expiresAt: now() + ttl * 1000 };
+    const at = now();
+    tok = {
+      token: j.token,
+      expiresAt: at + ttl * 1000,
+      readyAt: at + minFillMs(j.minFill),
+      fillMs: minFillMs(j.minFill),
+    };
     return tok.token;
   }
   return {
     has: () => !!fresh(),
+    /** ms still to wait before the current token may be posted (counted from its arrival on this page). */
+    waitMs: () => (tok ? Math.max(0, tok.readyAt - now()) : 0),
+    /** The current token's (clamped) minimum fill time in ms. */
+    fillMs: () => (tok ? tok.fillMs : minFillMs(undefined)),
     invalidate() {
       tok = null;
     },
@@ -100,9 +138,18 @@ export function createTokenStore({ fetchFn, base, now = () => Date.now() }) {
 
 /**
  * The submit flow. `submit(payload)` resolves to {ok:true} or {ok:false, msg:<MSG key>}; a call made while another is
- * running resolves to {ignored:true} (double-submit guard). A 401 refetches the token and retries exactly once.
+ * running resolves to {ignored:true} (double-submit guard). Bounded, never a loop:
+ * - every post waits until its token's minimum fill time has passed since the token arrived here;
+ * - a 401 fetches a new token (the only case that does), waits for it and posts once more;
+ * - a `too_fast` answer waits the fill time once more and posts once more with the same token, then stops.
+ * So one submit makes at most three posts. `sleep` is injectable for tests.
  */
-export function createSubmitter({ fetchFn, base, tokens }) {
+export function createSubmitter({
+  fetchFn,
+  base,
+  tokens,
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+}) {
   let busy = false;
   async function post(payload, token) {
     let res;
@@ -119,6 +166,13 @@ export function createSubmitter({ fetchFn, base, tokens }) {
     }
     return { status: res.status, body: await readJson(res) };
   }
+  const isTooFast = (r) =>
+    r.status === 400 && (r.body.error === 'too_fast' || r.body.code === 'too_fast');
+  async function postWhenReady(payload, token) {
+    const w = tokens.waitMs();
+    if (w > 0) await sleep(w);
+    return post(payload, token);
+  }
   async function run(payload) {
     let token;
     try {
@@ -126,16 +180,27 @@ export function createSubmitter({ fetchFn, base, tokens }) {
     } catch (e) {
       return { ok: false, msg: e.msg ?? MSG.generic };
     }
-    let r = await post(payload, token);
+    let r = await postWhenReady(payload, token);
+    let waitedAgain = false;
+    if (isTooFast(r)) {
+      // Clocks disagree a little: wait the fill time once more, then post once more (no loop).
+      waitedAgain = true;
+      await sleep(tokens.fillMs());
+      r = await post(payload, token);
+    }
     if (r.status === 401) {
-      // expired / used / unknown token: transparently get a new one and try once more
+      // expired / used / unknown token: transparently get a new one, wait for it and try once more
       tokens.invalidate();
       try {
         token = await tokens.get(true);
       } catch (e) {
         return { ok: false, msg: e.msg ?? MSG.generic };
       }
-      r = await post(payload, token);
+      r = await postWhenReady(payload, token);
+      if (isTooFast(r) && !waitedAgain) {
+        await sleep(tokens.fillMs());
+        r = await post(payload, token);
+      }
       if (r.status === 401) {
         tokens.invalidate();
         return { ok: false, msg: MSG.session };
@@ -148,8 +213,7 @@ export function createSubmitter({ fetchFn, base, tokens }) {
     }
     if (r.status === 400) {
       // too_fast keeps the token (the minimum fill time passes by itself); anything else may have consumed it
-      if (r.body.error === 'too_fast' || r.body.code === 'too_fast')
-        return { ok: false, msg: MSG.tooFast };
+      if (isTooFast(r)) return { ok: false, msg: MSG.tooFast };
       tokens.invalidate();
       return { ok: false, msg: MSG.invalid };
     }
@@ -307,7 +371,7 @@ export function initSignup(doc = document, fetchFn = (...a) => fetch(...a)) {
       role: v.role,
       lang: form.dataset.lang,
       consent: true,
-      heardFrom: v.heard,
+      heardFrom: v.heard.trim(),
       website: form.elements.website.value,
     });
     setBusy(false);
