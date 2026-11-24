@@ -2,11 +2,12 @@
  * K11 slice 2: two storage notices (logic in storageNotices.ts).
  *  - TabOutdatedBanner: assertive live region (always mounted, no role while empty so it is not an
  *    empty alert); the banner inside has role="alert". Reload button. No timeout, never moves focus.
- *  - ExportReminder: polite live region; the note inside has role="status". Non-modal, dismissible,
+ *  - ExportReminder: the wrapper is the single polite live region (the note has no role of its own).
  *    shown once per session.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { onPersistStatus, persistStatus, type PersistResult } from '../persistence/persist.js';
+import { SUPPORT_EMAIL } from '../product.js';
 import { useAppState, useStore, useT } from './context.js';
 import { downloadProject } from './download.js';
 import {
@@ -103,9 +104,17 @@ export function ExportReminder() {
       data-testid="export-reminder-live"
     >
       {visible && (
-        <div class="banner banner-info export-reminder" role="status" data-testid="export-reminder">
+        <div class="banner banner-info export-reminder" data-testid="export-reminder">
           <span>{t('storage.exportReminder')}</span>
           <span class="update-actions">
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              class="export-reminder-support"
+              data-testid="export-reminder-support"
+              aria-label={t('footer.supportLabel', { email: SUPPORT_EMAIL })}
+            >
+              <bdi dir="ltr">{SUPPORT_EMAIL}</bdi>
+            </a>
             {projectId.current && (
               <button
                 type="button"

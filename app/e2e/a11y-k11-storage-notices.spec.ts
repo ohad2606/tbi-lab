@@ -46,7 +46,8 @@ test('export reminder: once, after an edit, when persistence is not granted; dis
   await place(page, 'component.resistor', { x: 0, y: 0 });
   const note = page.getByTestId('export-reminder');
   await expect(page.getByTestId('export-reminder-live')).toHaveAttribute('aria-live', 'polite');
-  await expect(note).toHaveAttribute('role', 'status');
+  // Single announcer: the wrapper is the live region; the note has no role=status of its own.
+  await expect(note).not.toHaveAttribute('role', /.*/);
   const dismiss = page.getByTestId('export-reminder-dismiss');
   await dismiss.focus();
   await page.keyboard.press('Enter');
