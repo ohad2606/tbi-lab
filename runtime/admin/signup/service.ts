@@ -7,6 +7,7 @@
  *                  approval email), reject, resend. Idempotent: an account is added once and an
  *                  approval email is sent once unless the owner explicitly resends after a failure.
  */
+import type { FunnelEvent, FunnelSink } from '../funnel/counters.js';
 import { errorClass } from './errors.js';
 import { NonceCache, verifyRequest, type VerifyFailure } from './hmac.js';
 import { SlidingWindowLimiter } from './limits.js';
@@ -14,7 +15,7 @@ import type { SignupNotifier } from './notify.js';
 import { isQuiet, nextSendAt, type QuietWindow } from './quietHours.js';
 import type { EmailSender } from './email.js';
 import { serialById } from './locks.js';
-import { PendingStore, StoreError, type SignupRecord } from './store.js';
+import { PendingStore, StoreError, type DeleteOutcome, type SignupRecord } from './store.js';
 import { validateSignup } from './validate.js';
 
 export type IntakeOutcome =
@@ -33,6 +34,17 @@ export interface IntakeDeps {
   quiet?: QuietWindow | null;
   windowMs?: number;
   log?: (line: string) => void;
+  /** K12: funnel counters (`signup_submitted` per new request); null / unset = off. */
+  counters?: FunnelSink | null;
+}
+
+/** K12: counts an event; the counters never throw, and this guard keeps it so for any sink. */
+function count(sink: FunnelSink | null | undefined, event: FunnelEvent): void {
+  try {
+    sink?.increment(event);
+  } catch {
+    /* counters are indicative; a sign-up never fails because of them */
+  }
 }
 
 const statusOf = (_r: VerifyFailure): 401 => 401;
@@ -88,6 +100,7 @@ export class SignupIntake {
         return { status: 202 };
       }
       rec = r.record;
+      count(this.d.counters, 'signup_submitted');
     } catch (e) {
       this.d.log?.(`signup: store failed (${e instanceof StoreError ? e.code : errorClass(e)})`);
       return { status: 503, error: 'unavailable' };
@@ -209,6 +222,8 @@ export class SignupApprover {
       log?: (line: string) => void;
       /** BETA-G1: the auto-approve sweep's approver; its audit lines are marked `actor=auto`. */
       actor?: 'auto';
+      /** K12: funnel counters (`signup_approved`, once per request); null / unset = off. */
+      counters?: FunnelSink | null;
     },
   ) {}
 
@@ -251,6 +266,14 @@ export class SignupApprover {
     if (r.status === 'rejected') return { ok: true, record: r, note: 'already_done' };
     if (r.status !== 'pending') return { ok: false, code: 'bad_state', record: r };
     return { ok: true, record: await this.d.store.update(id, { status: 'rejected' }) };
+  }
+
+  /**
+   * K12: the owner deletes a request now (PendingStore.deleteNow: own per-id lock and audit line).
+   * Only the request is removed; an account already added is not touched (disable it separately).
+   */
+  remove(id: string): Promise<DeleteOutcome> {
+    return this.d.store.deleteNow(id);
   }
 
   /** Explicit resend: only after a failed (or interrupted) send, and only for an added account. */
@@ -301,6 +324,8 @@ export class SignupApprover {
         };
       }
       r = await this.d.store.update(id, { accountAdded: true });
+      // Counted exactly once per request: `accountAdded` is set once and never cleared.
+      count(this.d.counters, 'signup_approved');
     }
     // A send was attempted before and its outcome is unknown: never repeat it automatically.
     if (r.emailAttemptedAt) return { ok: true, record: r, note: 'email_not_resent' };
