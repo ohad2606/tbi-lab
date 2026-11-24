@@ -552,6 +552,7 @@ describe('sessionEndRecord (pure)', () => {
       account_disabled: 'client_release/info', // Sprint 23B revocation
       sim_minutes: 'timeout/info', // TBI-018 s3d-4: sim minutes used up
       sim_unavailable: 'internal/warning', // TBI-018 s3d-4: meter cannot bill (fail closed)
+      idle_timeout: 'timeout/info', // K3-1: no interaction for the host's idleMs
       unsupported_feature: 'user_content/info',
       invalid_attachment: 'user_content/info',
       electrical_error: 'user_content/info',
