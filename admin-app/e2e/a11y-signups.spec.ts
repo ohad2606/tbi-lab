@@ -595,7 +595,9 @@ test.describe('signups: the real list', () => {
       const queued = rowOf(page, 'queued');
       await expect(queued.getByTestId('signup-send-after')).toBeVisible();
       await expect(queued.locator('button')).toHaveCount(0);
-      await expect(page.getByTestId('signups-live')).toContainText(lang === 'he' ? '4' : '4 requests waiting for you');
+      await expect(page.getByTestId('signups-live')).toContainText(
+        lang === 'he' ? '4' : '4 requests waiting for you',
+      );
     });
 
   test('Resend: a failure keeps the row and focus; a success removes it and focus moves on', async ({
