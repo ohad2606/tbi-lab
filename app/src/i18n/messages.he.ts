@@ -981,6 +981,13 @@ export const he: Record<MessageKey, string> = {
   'footer.supportLabel': 'שליחת דוא״ל לתמיכה: {email}',
   'update.available': 'גרסה חדשה זמינה',
   'update.reload': 'טעינה מחדש',
+  'storage.tabOutdated':
+    'הלשונית הזו אינה מעודכנת: לשונית אחרת עדכנה את האחסון המקומי. טענו מחדש כדי להמשיך לעבוד. שינויים שנעשו בלשונית הזו מאז עשויים לא להישמר.',
+  'storage.reload': 'טעינה מחדש',
+  'storage.reloadTab': 'טעינה מחדש של הלשונית',
+  'storage.exportReminder': 'הדפדפן עשוי למחוק נתונים מקומיים. ייצאו את הפרויקט כדי לשמור עותק.',
+  'storage.exportAction': 'ייצוא הפרויקט',
+  'storage.exportDismiss': 'סגירה',
   'update.later': 'אחר כך',
   'update.busySimulation': 'יש לעצור את הסימולציה כדי לטעון מחדש.',
   'update.busyBuild': 'אפשר לטעון מחדש בסיום הבנייה.',

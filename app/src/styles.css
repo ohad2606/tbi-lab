@@ -323,6 +323,7 @@ select {
 .banner {
   display: flex;
   gap: 1rem;
+  flex-wrap: wrap;
   align-items: center;
   padding-block: 0.5rem;
   padding-inline: 1rem;
@@ -3580,6 +3581,80 @@ select {
   line-height: 1.3;
   border-inline-start: 3px solid var(--muted);
   background: var(--panel-alt, rgba(0, 0, 0, 0.03));
+}
+
+/* Export reminder: while shown it REPLACES the status bar's content in the bar's own grid cell
+   (bar items and reminder share cell 1/1; the bar's items are visibility:hidden, so nothing
+   hidden stays focusable). The reminder is in normal flow, so when its text wraps (320px, 200%
+   zoom) the bar grows to fit instead of overflowing upward over the workspace. At desktop widths
+   the text fits one line and the bar stays 24px (WCAG 2.5.8 target size). Support stays reachable
+   through the link inside the reminder. Non-modal and dismissible: Dismiss restores the bar.
+   Empty, the live region takes no space (and stays in the a11y tree). */
+.statusbar {
+  min-block-size: 24px;
+}
+.export-reminder-live {
+  inline-size: 0;
+  block-size: 0;
+  overflow: hidden;
+  margin-inline-end: -1rem;
+}
+.statusbar:has(.export-reminder) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding-inline: 0;
+  border-block-start-width: 0;
+}
+.statusbar:has(.export-reminder) > * {
+  grid-area: 1 / 1;
+}
+.export-reminder-live:not(:empty) {
+  inline-size: auto;
+  block-size: auto;
+  overflow: visible;
+  margin: 0;
+  z-index: 5;
+  display: flex;
+  min-inline-size: 0;
+}
+.statusbar:has(.export-reminder) > :not(.export-reminder-live) {
+  visibility: hidden;
+}
+.export-reminder {
+  flex: 1;
+  min-inline-size: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-block: 0;
+  padding-inline: 0.6rem;
+  gap: 0 0.5rem;
+  border: 0;
+  line-height: 1.2;
+  font-size: 0.8rem;
+}
+.export-reminder .button {
+  min-block-size: 24px;
+  padding-block: 0;
+}
+.export-reminder-support {
+  color: inherit;
+  text-decoration: underline;
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 24px;
+  overflow-wrap: anywhere;
+}
+.export-reminder-support:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Export reminder actions (same layout as the update banner). */
+.export-reminder .update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-inline-start: auto;
 }
 
 /* New version available (UpdateBanner): actions at the inline end. */

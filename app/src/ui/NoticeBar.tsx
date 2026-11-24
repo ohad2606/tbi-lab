@@ -9,6 +9,7 @@ import { engineErrorParts, groupByComponent, ratingRow, simFailureMessage } from
 import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
 import { TOOLBAR_BUILD_ID, programBoardOf, requestCodeView } from './buildAction.js';
+import { TabOutdatedBanner } from './StorageNotices.js';
 
 const damage = (w: RatingWarning[]) => w.filter((x) => x.kind === 'absolute');
 const operating = (w: RatingWarning[]) => w.filter((x) => x.kind !== 'absolute');
@@ -28,6 +29,10 @@ export function NoticeBar() {
   const running = sim.status === 'running' ? sim.outcome : null;
   return (
     <div class="banners">
+      {/* K11 live regions live INSIDE this one grid row: as separate children of .app (an explicit
+          grid-template-rows) their empty wrappers would take grid cells and push the workspace
+          out of the 1fr row. Empty, they have no height; they stay in the accessibility tree. */}
+      <TabOutdatedBanner />
       {/* A preview deployment says so on every screen (deployment.ts), never in the top bar's
           space, which the editor's controls need. */}
       {PREVIEW_NAME && (

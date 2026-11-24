@@ -1004,6 +1004,14 @@ export const en = {
   'footer.supportLabel': 'Email support: {email}',
   'update.available': 'A new version is available',
   'update.reload': 'Reload',
+  'storage.tabOutdated':
+    'This tab is out of date: another tab updated the local storage. Reload to keep working. Changes made in this tab since then may not be saved.',
+  'storage.reload': 'Reload',
+  'storage.reloadTab': 'Reload this tab',
+  'storage.exportReminder':
+    'Your browser may clear local data. Export your project to keep a copy.',
+  'storage.exportAction': 'Export project',
+  'storage.exportDismiss': 'Dismiss',
   'update.later': 'Later',
   'update.busySimulation': 'Stop the simulation to reload.',
   'update.busyBuild': 'Reload when the build has finished.',

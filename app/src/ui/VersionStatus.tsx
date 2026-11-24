@@ -12,6 +12,7 @@ import { probeRuntime, type RuntimeIdentity } from '../runtimeInfo.js';
 import { useAppState, useT } from './context.js';
 import { ProductFooter } from './ProductFooter.js';
 import { StatusActions } from './StatusActions.js';
+import { ExportReminder } from './StorageNotices.js';
 
 export function VersionStatus() {
   const t = useT();
@@ -57,6 +58,7 @@ export function VersionStatus() {
   return (
     <footer class="statusbar" dir={locale.dir} aria-label={t('footer.aria')}>
       <ProductFooter />
+      <ExportReminder />
       <StatusActions />
       <div
         class={open ? 'version-status open' : 'version-status'}
