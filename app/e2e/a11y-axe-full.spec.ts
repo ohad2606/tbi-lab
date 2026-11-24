@@ -1,5 +1,6 @@
 /**
  * AXE-FULL: page-level automated axe-core scan of the main screens, HE and EN.
+ * Only serious/critical impact is asserted; moderate/minor findings are not reported here.
  * Automated rules catch only part of the possible problems; this spec does not establish
  * conformance with any standard. Manual and screen-reader checks stay separate.
  *
