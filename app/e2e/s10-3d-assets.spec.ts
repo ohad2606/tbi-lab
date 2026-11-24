@@ -36,10 +36,23 @@ test('the ESP32 glTF asset is fetched only when 3D opens, once per page; standar
   expect(glb).toHaveLength(1);
   expect(glb[0]).toMatch(/^\/assets\/esp32-devkitc-v4-[\w-]+\.glb$/);
   await expect(view).toHaveAttribute('data-assets-ms', /^\d+$/);
+  // 'ready' precedes the scene, and an empty first frame (target 0,0,0) may already be drawn:
+  // read the camera only from stats that include the built circuit (one snapshot with its size).
+  const waitForScene = () =>
+    expect
+      .poll(async () => Number(await view.getAttribute('data-gpu-bytes')), { timeout: 30_000 })
+      .toBeGreaterThan(100_000);
+  await waitForScene();
   // Standard views: each re-frames (the camera target is the circuit's centre in every one).
   const target = await view.getAttribute('data-target');
+  expect(target).not.toBe('0,0,0');
   for (const v of ['top', 'front', 'side', 'rear'] as const) {
+    const renders = Number(await view.getAttribute('data-renders'));
     await page.getByTestId(`view3d-view-${v}`).click();
+    // A new frame first, so the target checked is not the one from before the click.
+    await expect
+      .poll(async () => Number(await view.getAttribute('data-renders')))
+      .toBeGreaterThan(renders);
     await expect(view).toHaveAttribute('data-target', target!);
   }
   await page.getByTestId('language-select').selectOption('he');
@@ -51,9 +64,6 @@ test('the ESP32 glTF asset is fetched only when 3D opens, once per page; standar
   await page.getByTestId('view-3d').click();
   await expect(view).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
   expect(glb).toHaveLength(1);
-  // The scene is built just after 'ready' (the first update): wait for its stats.
-  await expect
-    .poll(async () => Number(await view.getAttribute('data-gpu-bytes')), { timeout: 30_000 })
-    .toBeGreaterThan(100_000);
+  await waitForScene();
   expect(JSON.stringify(await storedProject(page))).toBe(before); // viewing writes nothing
 });
