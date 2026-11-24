@@ -242,7 +242,7 @@ const en = {
           h: 'Circuits',
           ul: [
             'A schematic workspace with standard symbols: place, move, rotate, wire, undo and redo, in a 2D view and a 3D view.',
-            'DC operating point and limited time-domain simulation of capacitor circuits, with the results shown next to the circuit.',
+            'DC operating point simulation, with the results shown next to the circuit.',
             'A laboratory power supply with voltage setpoint and current limit.',
             'Parts driven beyond their absolute maximum ratings are flagged, and wiring errors are explained.',
             'When something cannot be modeled reliably, the workspace says so instead of showing a made-up result.',
@@ -264,7 +264,7 @@ const en = {
           ul: [
             'Projects are saved in your browser as you work.',
             'The interface is available in Hebrew and English. Switching language never changes the circuit.',
-            'Keyboard and mouse are both first-class ways to work.',
+            'Keyboard and mouse can both be used to work; some actions are still easier with a mouse.',
           ],
         },
         {
@@ -587,7 +587,7 @@ const he = {
           h: 'מעגלים',
           ul: [
             'סביבת סכמה עם סמלים סטנדרטיים: הצבה, הזזה, סיבוב, חיווט, ביטול וחזרה, בתצוגה דו-ממדית ובתצוגה תלת-ממדית.',
-            'נקודת עבודה בזרם ישר וסימולציה מוגבלת בזמן של מעגלי קבלים, עם התוצאות לצד המעגל.',
+            'סימולציה של נקודת עבודה בזרם ישר, עם התוצאות לצד המעגל.',
             'מקור מתח מעבדתי עם הגדרת מתח והגבלת זרם.',
             'רכיבים שעוברים את המגבלות המקסימליות שלהם מסומנים, ושגיאות חיווט מוסברות.',
             'כשאי אפשר לדמות משהו באופן אמין, הסביבה אומרת זאת במקום להציג תוצאה מומצאת.',
@@ -609,7 +609,7 @@ const he = {
           ul: [
             'פרויקטים נשמרים בדפדפן שלכם תוך כדי עבודה.',
             'הממשק זמין בעברית ובאנגלית. החלפת שפה לא משנה את המעגל.',
-            'מקלדת ועכבר הם שניהם דרכי עבודה מלאות.',
+            'אפשר לעבוד עם מקלדת ועם עכבר; חלק מהפעולות עדיין נוחות יותר בעכבר.',
           ],
         },
         {
