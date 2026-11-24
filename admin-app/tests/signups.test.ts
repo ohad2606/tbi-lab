@@ -122,6 +122,17 @@ describe('sign-up requests view logic', () => {
     const sent = interpretSignup(200, { record: rec('email_sent', true) });
     expect(signupOutcomeView(sent, 'resend')).toMatchObject({ removed: true, record: null });
   });
+  it('exact HE/EN strings: count (waiting for you, plural) and neutral unknown state', () => {
+    const m = (c: string) => LOCALES.find((l) => l.code === c)!.messages as Record<string, string>;
+    expect(m('he')['console.signups.count.one']).toBe('בקשה אחת ממתינה לך');
+    expect(m('he')['console.signups.count.other']).toBe('{count} בקשות ממתינות לך');
+    expect(m('he')['console.signups.auto.backlog']).toBe('בקשות ישנות שממתינות לך: {count}');
+    expect(m('he')['console.signups.auto.unknown']).toBe('מצב האישור האוטומטי אינו ידוע.');
+    expect(m('he')['console.signups.auto.state.unknown']).toBe('לא ידוע');
+    expect(m('en')['console.signups.count.one']).toBe('1 request waiting for you');
+    expect(m('en')['console.signups.count.other']).toBe('{count} requests waiting for you');
+    expect(m('en')['console.signups.auto.backlog']).toBe('Older requests waiting for you: {count}');
+  });
   it('count message: singular for one, plural otherwise, in both locales', () => {
     expect(signupCountKey(1)).toBe('console.signups.count.one');
     expect(signupCountKey(0)).toBe('console.signups.count.other');

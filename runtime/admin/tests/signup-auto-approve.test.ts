@@ -408,6 +408,47 @@ describe('kill switch', () => {
     );
   });
 
+  it('DEC-11: re-enable (paused after active, then off->on) resets the cut-off; requests from the off period stay pending', async () => {
+    const r = await rig();
+    const a = r.auto({ since: null });
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect(counter(r.dir).since).toBe(new Date(NOON_IL).toISOString());
+    writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+    r.clock.t += 10_000;
+    const [during] = await createN(r, 1); // created while it was off
+    expect((await a.sweep()).stopped).toBe('paused');
+    r.clock.t += 60_000;
+    rmSync(join(r.dir, AUTO_PAUSE_FILE));
+    // A restarted process (new instance) sees the same: the marker is persisted.
+    expect(await r.auto({ since: null }).sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect((await r.store.get(during!)).status).toBe('pending');
+    expect(counter(r.dir).since).toBe(new Date(r.clock.t).toISOString());
+    expect(r.logs.filter((l) => /re-enabled; cut-off reset/.test(l))).toHaveLength(1);
+    r.clock.t += 5_000;
+    const [after] = await createN(r, 1, 10);
+    r.clock.t += 1_000;
+    expect((await a.sweep()).claimed).toBe(1);
+    expect((await r.store.get(after!)).status).toBe('email_sent');
+    expect((await r.store.get(during!)).status).toBe('pending');
+    expect(r.logs.filter((l) => /re-enabled/.test(l))).toHaveLength(1); // unchanged-on: no more resets
+  });
+
+  it('DEC-11: also with a configured cut-off (the later one wins); first enable after a paused start is unchanged', async () => {
+    const r = await rig();
+    const a = r.auto(); // env cut-off one day back
+    const [old] = await createN(r, 1);
+    expect((await a.sweep()).claimed).toBe(1); // first enable: old-but-after-cut-off request taken
+    expect((await r.store.get(old!)).status).toBe('email_sent');
+    writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+    const [during] = await createN(r, 1, 5);
+    expect((await a.sweep()).stopped).toBe('paused');
+    r.clock.t += 30_000;
+    rmSync(join(r.dir, AUTO_PAUSE_FILE));
+    expect((await a.sweep()).claimed).toBe(0);
+    expect((await r.store.get(during!)).status).toBe('pending');
+    expect(counter(r.dir).since).toBe(new Date(r.clock.t).toISOString());
+  });
+
   it('absent: not paused', async () => {
     const r = await rig();
     expect(await autoPauseCheck(join(r.dir, AUTO_PAUSE_FILE))).toEqual({ paused: false });
