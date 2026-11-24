@@ -370,6 +370,8 @@ export class AutoApprover {
   /** Errno classes of failed record marks already logged (once each). */
   private readonly markErrors = new Set<string>();
   private spoolId: string | null = null;
+  /** DEC-11 (L2): a paused sweep failed to record the pause; the next un-paused sweep resets. */
+  private pauseUnrecorded = false;
 
   constructor(private readonly d: AutoApproverDeps) {}
 
@@ -520,23 +522,43 @@ export class AutoApprover {
   }
 
   /**
-   * DEC-11: remembers pause/resume in the state file. On a re-enable (paused after an active
+   * DEC-11: remembers pause/resume in the state file. On a re-enable (paused after an un-paused
    * sweep, now un-paused) the cut-off is reset to now, so requests that arrived while it was off
-   * are never auto-approved by mistake; the owner approves those by hand. The first enable and an
-   * unchanged "on" write nothing new. Returns the new cut-off (ms) on a reset, else null.
+   * are never auto-approved by mistake; the owner approves those by hand. The first un-paused
+   * sweep only records `active: true` (a first enable resets nothing). Returns the new cut-off
+   * (ms) on a reset, else null. Runs under the state-dir mutex like every other writer.
    */
-  private async trackActive(isPaused: boolean): Promise<number | null> {
-    const s = await this.readState(this.today());
-    if (isPaused) {
-      if (s.active === true) await this.writeState({ ...s, active: false });
+  private trackActive(isPaused: boolean): Promise<number | null> {
+    return exclusive(this.d.dir, async () => {
+      if (isPaused) {
+        try {
+          const s = await this.readState(this.today());
+          if (s.active === true) await this.writeState({ ...s, active: false });
+        } catch (e) {
+          // The pause could not be recorded: the sweep still stops (the error propagates); this
+          // process remembers it so its next un-paused sweep still resets the cut-off.
+          this.pauseUnrecorded = true;
+          throw e;
+        }
+        return null;
+      }
+      const s = await this.readState(this.today());
+      if (s.active === false || this.pauseUnrecorded) {
+        // Never earlier than a stored cut-off, even after a clock step back.
+        const stored = s.since ? Date.parse(s.since) : -Infinity;
+        const since = new Date(Math.max(this.now(), stored)).toISOString();
+        await this.writeState({ ...s, since, active: true });
+        this.pauseUnrecorded = false;
+        this.log(
+          'signup: auto-approve re-enabled; cut-off reset (only requests created from now on)',
+        );
+        return Date.parse(since);
+      }
+      // First un-paused sweep (also an old state file or an env cut-off with nothing claimed yet):
+      // mark it, so that a later pause -> resume resets the cut-off.
+      if (s.active === undefined) await this.writeState({ ...s, active: true });
       return null;
-    }
-    // Never active (nothing was ever claimed or recorded): a first enable, nothing to reset.
-    if (s.active !== false) return null;
-    const since = new Date(this.now()).toISOString();
-    await this.writeState({ ...s, since, active: true });
-    this.log('signup: auto-approve re-enabled; cut-off reset (only requests created from now on)');
-    return Date.parse(since);
+    });
   }
 
   /** The cut-off (ms): the configured one, else the persisted first-run time (written now if new). */
