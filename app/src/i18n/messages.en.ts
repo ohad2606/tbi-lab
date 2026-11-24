@@ -2345,6 +2345,9 @@ export const en = {
   'kbwire.wireCleared': 'Wire selection cleared',
   'kbwire.noWires': 'There are no wires.',
   'kbwire.endJunction': 'junction {id}',
+  // Slice 5: T-connection targets in the candidate cycle (and in "Connected ... to ...").
+  'kbwire.target.junction': 'existing junction {id}',
+  'kbwire.target.wire': 'a point on wire W{n} ({from} to {to})',
   'kbwire.list.title': 'Wires',
   'kbwire.list.empty': 'No wires yet. Connect two pins to add one.',
   'kbwire.list.item': 'W{n}: {from} to {to}',
@@ -2480,7 +2483,8 @@ export const en = {
   'shortcut.pinPrev.when': 'Pin mode',
   'shortcut.wireStart.action': 'Start a wire from this pin',
   'shortcut.wireStart.when': 'Pin mode',
-  'shortcut.targetCycle.action': 'Move between possible targets (Tab is kept inside on purpose)',
+  'shortcut.targetCycle.action':
+    'Move between possible targets: pins, junctions and points on wires (Tab is kept inside on purpose)',
   'shortcut.targetCycle.when': 'While choosing where the wire ends',
   'shortcut.repickEnd.action':
     'Choose which end of the wire to move: 1 is the first end, 2 the second; or switch ends with the arrow keys or Tab and Shift + Tab, and press Enter to choose',

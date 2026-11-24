@@ -2223,6 +2223,8 @@ export const he: Record<MessageKey, string> = {
   'kbwire.wireCleared': 'בחירת החוט בוטלה',
   'kbwire.noWires': 'אין חוטים.',
   'kbwire.endJunction': 'צומת {id}',
+  'kbwire.target.junction': 'צומת קיים {id}',
+  'kbwire.target.wire': 'נקודה על חוט {n} ({from} אל {to})',
   'kbwire.list.title': 'חוטים',
   'kbwire.list.empty': 'עדיין אין חוטים. חברו שני פינים כדי להוסיף חוט.',
   'kbwire.list.item': 'חוט {n}: {from} אל {to}',
@@ -2352,7 +2354,8 @@ export const he: Record<MessageKey, string> = {
   'shortcut.pinPrev.when': 'מצב פינים',
   'shortcut.wireStart.action': 'התחלת חוט מהפין הזה',
   'shortcut.wireStart.when': 'מצב פינים',
-  'shortcut.targetCycle.action': 'מעבר בין יעדים אפשריים (Tab נשאר כאן בכוונה)',
+  'shortcut.targetCycle.action':
+    'מעבר בין יעדים אפשריים: פינים, צמתים ונקודות על חוטים (Tab נשאר כאן בכוונה)',
   'shortcut.targetCycle.when': 'בזמן בחירת סוף החוט',
   'shortcut.repickEnd.action':
     'בחירת הקצה להזזה: 1 הקצה הראשון, 2 השני; או מעבר בין הקצוות במקשי החצים או ב-Tab וב-Shift + Tab, ו-Enter בוחר',
