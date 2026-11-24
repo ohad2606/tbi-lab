@@ -119,8 +119,8 @@ export const consoleEn = {
   'console.signups.heading': 'Open sign-up requests',
   'console.signups.intro':
     'People who asked to join, and approved requests whose email has not gone out yet. Approve adds the account and sends the welcome email.',
-  'console.signups.count.one': '1 open request',
-  'console.signups.count.other': '{count} open requests',
+  'console.signups.count.one': '1 request waiting for you',
+  'console.signups.count.other': '{count} requests waiting for you',
   'console.signups.empty': 'No open sign-up requests.',
   'console.signups.unavailable': 'Sign-up requests are not available right now.',
   'console.signups.refresh': 'Refresh requests',
