@@ -1499,6 +1499,9 @@ export const en = {
     'The ESP32 session was stopped because access to TBI Lab was ended for this account. The project is safe in this browser.',
   'sim.error.runtime.session_expired':
     'The ESP32 session reached its maximum duration and ended. Press Run for a fresh session.',
+  // K3-2 (NEEDS DOCS REVIEW, tbi-docs): the host ended an unattended run.
+  'sim.error.runtime.session_idle':
+    'The run was stopped after {minutes} min without activity, to free the slot for others. Your project is saved. Press Run to start again.',
   'sim.error.runtime.mirror_failed':
     'The running ESP32 session could not apply your change, so it was stopped. The project keeps your change.',
   'sim.error.runtime.command_refused':

@@ -152,7 +152,13 @@ export function simFailureMessage(
   }
   if (failure.kind === 'runtime') {
     const limit = failure.limit ? simLimitText(locale, failure.limit) : null;
-    return limit ?? t(`sim.error.runtime.${failure.code}`);
+    if (limit) return limit;
+    // K3-2: the idle end names the host's limit (minutes, isolated LTR).
+    const minutes = failure.code === 'session_idle' ? failure.limit?.params.minutes : undefined;
+    return t(
+      `sim.error.runtime.${failure.code}`,
+      minutes === undefined ? undefined : { minutes: isolateLtr(String(minutes)) },
+    );
   }
   if (failure.kind === 'unmodelled')
     return t('sim.error.unmodelled', { feature: featureName(locale, failure.facility) });

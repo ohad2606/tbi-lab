@@ -99,6 +99,11 @@ export interface SessionStatusBody {
    * hosts before Alpha Phase D: the app then shows no pre-expiry warning (it never guesses).
    */
   lifetimeMs?: number | null;
+  /**
+   * K3-1: the host ends a session whose user has not interacted (run, accepted command, presence)
+   * for this long (wall ms). Present only when the limit is on: absent = no warning, no presence.
+   */
+  idleMs?: number;
 }
 
 export interface CommandResult {
@@ -186,7 +191,9 @@ export class RuntimeClient {
       parsed = await res.json();
     } catch {
       // An authentication proxy answering with HTML (e.g. a login redirect) is not the host.
-      if (res.status < 300) throw new RuntimeTransportError('protocol', res.status, 'not JSON');
+      // 204 (presence, queue cancel) has no body by definition.
+      if (res.status < 300 && res.status !== 204)
+        throw new RuntimeTransportError('protocol', res.status, 'not JSON');
     }
     return { status: res.status, body: parsed };
   }
@@ -314,6 +321,12 @@ export class RuntimeSession {
   async run(): Promise<void> {
     const r = await this.client.request('POST', this.path('/run'), this.token);
     if (r.status !== 202) throw new RuntimeTransportError(statusCode(r.status), r.status);
+  }
+
+  /** K3-2: the user is there (real input): resets the host's idle clock, nothing else. */
+  async presence(): Promise<void> {
+    const r = await this.client.request('POST', this.path('/presence'), this.token);
+    if (r.status !== 204) throw new RuntimeTransportError(statusCode(r.status), r.status);
   }
 
   /** Graceful stop (idempotent on the host). */
