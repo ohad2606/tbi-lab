@@ -307,7 +307,8 @@ describe('happy path', () => {
     const out = await r.auto().sweep();
     expect(out.claimed).toBe(0);
     expect((await r.store.get(c!)).status).toBe('pending');
-    expect(existsSync(join(r.dir, AUTO_STATE_FILE))).toBe(false);
+    // No slot used, nothing claimed; only the DEC-11 marker of the first un-paused sweep is written.
+    expect(counter(r.dir)).toMatchObject({ count: 0, retries: 0, claims: {}, active: true });
   });
 });
 
@@ -445,6 +446,81 @@ describe('kill switch', () => {
     r.clock.t += 30_000;
     rmSync(join(r.dir, AUTO_PAUSE_FILE));
     expect((await a.sweep()).claimed).toBe(0);
+    expect((await r.store.get(during!)).status).toBe('pending');
+    expect(counter(r.dir).since).toBe(new Date(r.clock.t).toISOString());
+  });
+
+  it('DEC-11 (H1): configured cut-off, un-paused sweep that claimed nothing, then pause -> resume still resets', async () => {
+    const r = await rig();
+    const a = r.auto(); // env cut-off set: sinceMs writes nothing
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect(counter(r.dir)).toMatchObject({ active: true });
+    writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+    r.clock.t += 10_000;
+    const [during] = await createN(r, 1);
+    expect((await a.sweep()).stopped).toBe('paused');
+    expect(counter(r.dir)).toMatchObject({ active: false });
+    r.clock.t += 60_000;
+    rmSync(join(r.dir, AUTO_PAUSE_FILE));
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect((await r.store.get(during!)).status).toBe('pending');
+    expect(counter(r.dir).since).toBe(new Date(r.clock.t).toISOString());
+    expect(r.logs.filter((l) => /re-enabled; cut-off reset/.test(l))).toHaveLength(1);
+  });
+
+  it('DEC-11 (H1): a pre-upgrade state file (since, no active) is marked on the first un-paused sweep; a later pause -> resume resets', async () => {
+    const r = await rig();
+    const old = new Date(NOON_IL - 3_600_000).toISOString();
+    writeFileSync(
+      join(r.dir, AUTO_STATE_FILE),
+      `${JSON.stringify({ v: 2, day: '2026-11-23', count: 0, retries: 0, since: old, claims: {} })}\n`,
+      { mode: 0o600 },
+    );
+    const a = r.auto({ since: null });
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect(counter(r.dir)).toMatchObject({ since: old, active: true }); // first enable: no reset
+    expect(r.logs.filter((l) => /re-enabled/.test(l))).toHaveLength(0);
+    writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+    r.clock.t += 10_000;
+    const [during] = await createN(r, 1);
+    expect((await a.sweep()).stopped).toBe('paused');
+    r.clock.t += 60_000;
+    rmSync(join(r.dir, AUTO_PAUSE_FILE));
+    expect(await r.auto({ since: null }).sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect((await r.store.get(during!)).status).toBe('pending');
+    expect(counter(r.dir).since).toBe(new Date(r.clock.t).toISOString());
+  });
+
+  it('DEC-11 (L3): a reset after a clock step back never moves the cut-off earlier', async () => {
+    const r = await rig();
+    const a = r.auto({ since: null });
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    const first = counter(r.dir).since;
+    writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+    expect((await a.sweep()).stopped).toBe('paused');
+    r.clock.t -= 3_600_000; // clock stepped back one hour (same Israel day)
+    rmSync(join(r.dir, AUTO_PAUSE_FILE));
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect(counter(r.dir)).toMatchObject({ since: first, active: true });
+  });
+
+  it('DEC-11 (L2): pause not recordable -> the sweep still stops; the next un-paused sweep of this process resets', async () => {
+    const r = await rig();
+    const a = r.auto();
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+    chmodSync(r.dir, 0o500); // the state write fails (EACCES)
+    try {
+      await expect(a.sweep()).rejects.toThrow();
+    } finally {
+      chmodSync(r.dir, 0o700);
+    }
+    expect(counter(r.dir)).toMatchObject({ active: true }); // not recorded on disk
+    r.clock.t += 10_000;
+    const [during] = await createN(r, 1);
+    r.clock.t += 60_000;
+    rmSync(join(r.dir, AUTO_PAUSE_FILE));
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
     expect((await r.store.get(during!)).status).toBe('pending');
     expect(counter(r.dir).since).toBe(new Date(r.clock.t).toISOString());
   });
