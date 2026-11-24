@@ -3583,6 +3583,23 @@ select {
   background: var(--panel-alt, rgba(0, 0, 0, 0.03));
 }
 
+/* Export reminder: a floating card above the status bar, NOT a grid row. It appears after the first
+   edit; an in-flow banner would shift the canvas/Inspector under the pointer mid-interaction (and
+   squeeze the Inspector at 1024x768). It is non-modal and dismissible; the text carries the meaning. */
+.export-reminder {
+  position: fixed;
+  inset-block-end: 2rem;
+  inset-inline: 0;
+  margin-inline: auto;
+  inline-size: max-content;
+  max-inline-size: min(40rem, calc(100vw - 2rem));
+  z-index: 20;
+  border: 1px solid var(--text);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  color: var(--text);
+}
+
 /* Export reminder actions (same layout as the update banner). */
 .export-reminder .update-actions {
   display: flex;

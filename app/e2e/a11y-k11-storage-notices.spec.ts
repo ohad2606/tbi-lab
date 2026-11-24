@@ -43,7 +43,7 @@ test('export reminder: once, after an edit, when persistence is not granted; dis
   });
   await createProject(page);
   await expect(page.getByTestId('export-reminder')).toHaveCount(0);
-  await place(page, 'component.resistor', { x: 200, y: 200 });
+  await place(page, 'component.resistor', { x: 0, y: 0 });
   const note = page.getByTestId('export-reminder');
   await expect(page.getByTestId('export-reminder-live')).toHaveAttribute('aria-live', 'polite');
   await expect(note).toHaveAttribute('role', 'status');
@@ -52,6 +52,6 @@ test('export reminder: once, after an edit, when persistence is not granted; dis
   await page.keyboard.press('Enter');
   await expect(note).toHaveCount(0);
   await expect(page.locator('#main')).toBeFocused();
-  await place(page, 'component.resistor', { x: 300, y: 200 });
+  await place(page, 'component.resistor', { x: 0, y: 100 });
   await expect(note).toHaveCount(0);
 });
