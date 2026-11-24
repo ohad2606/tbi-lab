@@ -27,9 +27,13 @@ Deployment is an owner decision and has not been done.
 
 ## Own sign-up page (BETA-G1 s9)
 
-`/he/signup/` and `/en/signup/` are always built. While `SIGNUP_PAGE_ENABLED` (content.mjs) is `false` they are
-`noindex` and linked from nowhere; the home CTA keeps `APPLY_URL`. Flipping the flag adds the nav link, points the
-CTAs at the page and drops noindex. `SIGNUP_API_BASE` (default `/signup`, same origin) is the intake base: the page
+While `SIGNUP_PAGE_ENABLED` (content.mjs) is `false`, `/he/signup/`, `/en/signup/` and `assets/signup.mjs` are not
+built at all and every other page is byte-identical to the site without the sign-up work (checked against co/main
+hashes in `tests/signup-review-fixes.test.mjs`); the home CTA keeps `APPLY_URL`. `node site/build.mjs --signup-preview`
+(e2e and local preview only, never for publishing) builds the page anyway, `noindex` and linked from nowhere.
+Flipping the flag builds the page, adds the nav link, points the CTAs at the page and drops noindex. The page waits
+the server's `minFill` after a token arrives before posting (`tests/signup-contract.test.mjs` runs the real client
+against the real intake). `SIGNUP_API_BASE` (default `/signup`, same origin) is the intake base: the page
 calls `GET <base>/form-token` and `POST <base>/web`. The web server must proxy those two paths (see
 `docs/plans/BETA-G1-WEB-INTAKE.md`) and its CSP must allow `script-src 'self'; connect-src 'self'` (as `serve.mjs`
 does). `signup.mjs` holds only logic; all text is rendered by the generator. Tests: `tests/signup.test.mjs`,

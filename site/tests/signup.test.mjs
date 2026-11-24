@@ -3,20 +3,15 @@ import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildSite } from '../build.mjs';
-import {
-  content,
-  SIGNUP_PAGE_ENABLED,
-  SIGNUP_API_BASE,
-  SIGNUP_ROLE_VALUES,
-  SIGNUP_HEARD_VALUES,
-} from '../content.mjs';
+import { content, SIGNUP_PAGE_ENABLED, SIGNUP_API_BASE, SIGNUP_ROLE_VALUES } from '../content.mjs';
 import { validate, createTokenStore, createSubmitter, MSG, TOKEN_MARGIN_MS } from '../signup.mjs';
 
 let out;
 let outOn;
 const page = (o, lang) => readFileSync(join(o, lang, 'signup', 'index.html'), 'utf8');
 beforeAll(() => {
-  out = buildSite(mkdtempSync(join(tmpdir(), 'tbi-su-')));
+  // Flag off builds no sign-up page at all (signup-review-fixes.test.mjs); the page is checked in the preview build.
+  out = buildSite(mkdtempSync(join(tmpdir(), 'tbi-su-')), { signupPreview: true });
   outOn = buildSite(mkdtempSync(join(tmpdir(), 'tbi-su-on-')), { signupEnabled: true });
 });
 
@@ -35,7 +30,6 @@ describe('sign-up page build', () => {
       expect(h).toContain('<script type="module" src="/assets/signup.mjs"></script>');
       expect(existsSync(join(out, 'assets', 'signup.mjs'))).toBe(true);
       expect(h).not.toMatch(/\son[a-z]+=|\sstyle=/i);
-      expect(h).toContain('<noscript>');
     },
   );
   it('is not linked while disabled, linked and indexable when enabled', () => {
@@ -55,8 +49,7 @@ describe('sign-up page build', () => {
     expect(h).toContain('autocomplete="name"');
     expect(h).toContain('autocomplete="email"');
     expect(h).toMatch(/type="email"[^>]*dir="ltr"/);
-    for (const v of [...SIGNUP_ROLE_VALUES, ...SIGNUP_HEARD_VALUES])
-      expect(h).toContain(`<option value="${v}">`);
+    for (const v of SIGNUP_ROLE_VALUES) expect(h).toContain(`<option value="${v}">`);
     expect(h).toContain(`data-api="${SIGNUP_API_BASE}"`);
     expect(h).toContain(`data-lang="${l}"`);
     expect(h).toContain('href="/' + l + '/privacy/"');
@@ -92,7 +85,6 @@ describe('sign-up page build', () => {
       expect(p).not.toContain('hidden');
       expect(p).toContain('mailto:support@tbi-tech.net');
       expect(p).toContain(content[l].signup.nojs.slice(0, 12));
-      expect(h).toContain('<noscript>');
       const js = readFileSync(join(out, 'assets', 'signup.mjs'), 'utf8');
       expect(js).toMatch(/getElementById\('su-nojs'\)\?\.setAttribute\('hidden'/);
     },
@@ -122,11 +114,9 @@ describe('sign-up page build', () => {
       expect(content[l].signup.statusSuccess).toBeUndefined();
     }
   });
-  it('role/heard option counts match labels in both languages', () => {
-    for (const l of ['he', 'en']) {
+  it('role option count matches labels in both languages', () => {
+    for (const l of ['he', 'en'])
       expect(content[l].signup.roles).toHaveLength(SIGNUP_ROLE_VALUES.length);
-      expect(content[l].signup.heards).toHaveLength(SIGNUP_HEARD_VALUES.length);
-    }
   });
   it('the script has no inline strings of UI text, no third-party URLs', () => {
     const js = readFileSync(join(out, 'assets', 'signup.mjs'), 'utf8');
@@ -165,7 +155,9 @@ const payload = {
 function setup(handlers, now) {
   const fetchFn = fakeFetch(handlers);
   const tokens = createTokenStore({ fetchFn, base: '/signup', now });
-  return { fetchFn, tokens, sub: createSubmitter({ fetchFn, base: '/signup', tokens }) };
+  // The minimum-fill wait is covered in signup-contract.test.mjs; here time is not the subject.
+  const sleep = async () => {};
+  return { fetchFn, tokens, sub: createSubmitter({ fetchFn, base: '/signup', tokens, sleep }) };
 }
 const tokOk = (n) => res(200, { token: `w1.t${n}`, ttl: 1800 });
 const body = (c) => JSON.parse(c.init.body);
@@ -174,7 +166,7 @@ describe('client script logic', () => {
   it('validate: required fields, email shape, consents', () => {
     expect(
       validate({ name: '', email: 'x', role: '', heard: '', age: false, consent: false }),
-    ).toEqual(['name', 'email', 'role', 'heard', 'age', 'consent']);
+    ).toEqual(['name', 'email', 'role', 'age', 'consent']);
     expect(
       validate({
         name: 'N',

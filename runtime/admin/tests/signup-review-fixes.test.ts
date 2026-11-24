@@ -83,9 +83,9 @@ describe('finding 2: honeypot hits are not recorded in the nonce cache', () => {
         await u.intake.submitWeb(src, body({ ...person(1), token: tok, website: 'http://x' })),
       ).toEqual({ status: 400, error: 'invalid' });
     expect(u.nonces.size).toBe(0);
-    expect(await u.intake.submitWeb('src', body({ ...person(2), token: real, website: '' }))).toEqual(
-      { status: 200 },
-    );
+    expect(
+      await u.intake.submitWeb('src', body({ ...person(2), token: real, website: '' })),
+    ).toEqual({ status: 200 });
     expect(await u.store.list()).toHaveLength(1);
     // Logs carry the fixed class code only (no address, token or nonce).
     expect(u.logs.filter((l) => l === 'signup: web refused (honeypot)')).toHaveLength(40);

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Static generator for the public site (TBI-013). No dependencies, no client JS.
- * Usage: node site/build.mjs [outDir]   (default site/dist). Exported: buildSite(outDir).
+ * Usage: node site/build.mjs [outDir] [--signup-preview]   (default site/dist). Exported: buildSite(outDir, opts).
+ * --signup-preview: e2e / local preview only (builds the noindex, unlinked sign-up page while the flag is off).
  */
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -21,7 +22,6 @@ import {
   SIGNUP_PAGE_ENABLED,
   SIGNUP_API_BASE,
   SIGNUP_ROLE_VALUES,
-  SIGNUP_HEARD_VALUES,
 } from './content.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -94,9 +94,9 @@ function renderSignupBody(lang, t, pg) {
   const errKey = (key) => 'err' + key[0].toUpperCase() + key.slice(1);
   const errP = (key) =>
     `<p class="field-error" id="su-err-${key}" hidden>${esc(f[errKey(key)])}</p>`;
-  const field = (key, label, control, hint = '') =>
+  const field = (key, label, control, hint = '', labelExtra = '') =>
     `<div class="field">
-<label for="su-${key}">${esc(label)}</label>
+<label for="su-${key}">${esc(label)}${labelExtra}</label>
 ${hint ? `<p class="hint-text" id="su-hint-${key}">${esc(hint)}</p>` : ''}
 ${control}
 ${errP(key)}
@@ -129,26 +129,24 @@ ${errP(key)}
     .map(([k, v]) => `<span data-msg="${k}">${esc(v)}</span>`)
     .join('\n');
   return `<div class="wrap prose signup">
-<h1>${rich(pg.h1, lang)}</h1>
+<h1 id="su-h1">${rich(pg.h1, lang)}</h1>
 <p class="lead" id="su-intro-extra">${rich(pg.lead, lang)}</p>
-<noscript><p class="notice" role="note">${rich2(f.noscript, lang)}</p></noscript>
 <p class="notice" id="su-nojs">${rich2(f.nojs, lang)}</p>
 <div hidden>
 ${msgs}
 </div>
 <div id="su-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
-<form id="signup-form" method="post" action="${esc(SIGNUP_API_BASE)}/web" novalidate hidden data-api="${esc(SIGNUP_API_BASE)}" data-lang="${lang}" aria-labelledby="su-form-h">
-<h2 id="su-form-h" class="visually-hidden">${rich(pg.h1, lang)}</h2>
+<form id="signup-form" method="post" action="${esc(SIGNUP_API_BASE)}/web" novalidate hidden data-api="${esc(SIGNUP_API_BASE)}" data-lang="${lang}" aria-labelledby="su-h1">
 <div id="su-summary" class="summary" role="group" aria-labelledby="su-summary-h" tabindex="-1" hidden>
 <h2 id="su-summary-h"></h2>
 <p id="su-summary-msg" hidden></p>
 <ul id="su-summary-list"></ul>
 </div>
 <p>${esc(f.required)}</p>
-${field('name', f.name, '<input type="text" id="su-name" name="name" autocomplete="name" maxlength="80" aria-required="true">')}
+${field('name', f.name, '<input type="text" id="su-name" name="name" autocomplete="name" maxlength="80" dir="auto" aria-required="true">')}
 ${field('email', f.email, '<input type="email" id="su-email" name="email" autocomplete="email" inputmode="email" dir="ltr" maxlength="254" spellcheck="false" autocapitalize="off" aria-required="true" aria-describedby="su-hint-email">', f.emailHint)}
 ${field('role', f.role, `<select id="su-role" name="role" aria-required="true">\n${opts(SIGNUP_ROLE_VALUES, f.roles, f.rolePick)}\n</select>`)}
-${field('heard', f.heard, `<select id="su-heard" name="heardFrom" aria-required="true">\n${opts(SIGNUP_HEARD_VALUES, f.heards, f.heardPick)}\n</select>`)}
+${field('heard', f.heard, '<input type="text" id="su-heard" name="heardFrom" maxlength="80" autocomplete="off" dir="auto">', '', ` <span class="optional">${esc(f.optional)}</span>`)}
 <div class="hp" aria-hidden="true" inert>
 <label for="su-website">${esc(f.honeypot)}</label>
 <input type="text" id="su-website" name="website" value="" tabindex="-1" autocomplete="off" aria-hidden="true" data-lpignore="true" data-1p-ignore="true">
@@ -345,8 +343,19 @@ ${links}
 `;
 }
 
+/**
+ * `signupPreview` (e2e / local preview only, never the published build): also build the sign-up page while the flag
+ * is off. It stays noindex and unlinked, so every other page is byte-identical to a build without it.
+ */
 export function buildSite(outDir = join(here, 'dist'), opts = {}) {
-  const o = { applyUrl: APPLY_URL, signupEnabled: SIGNUP_PAGE_ENABLED, ...opts };
+  const o = {
+    applyUrl: APPLY_URL,
+    signupEnabled: SIGNUP_PAGE_ENABLED,
+    signupPreview: false,
+    ...opts,
+  };
+  // Flag off (and no preview): no sign-up page and no client script at all (review finding 8).
+  const withSignup = o.signupEnabled || o.signupPreview;
   const out = resolve(outDir);
   rmSync(out, { recursive: true, force: true });
   const write = (rel, data) => {
@@ -356,12 +365,12 @@ export function buildSite(outDir = join(here, 'dist'), opts = {}) {
   };
   write('index.html', renderRoot());
   for (const lang of LANGS)
-    for (const page of [...PAGES, 'signup'])
+    for (const page of withSignup ? [...PAGES, 'signup'] : PAGES)
       write(`${lang}${pagePath(lang, page).slice(3)}index.html`, renderPage(lang, page, o));
   mkdirSync(join(out, 'assets'), { recursive: true });
   copyFileSync(join(here, 'site.css'), join(out, 'assets', 'site.css'));
+  if (withSignup) copyFileSync(join(here, 'signup.mjs'), join(out, 'assets', 'signup.mjs'));
   // Self-hosted Heebo (SIL OFL 1.1, see site/fonts/OFL-Heebo.txt): consistent look, no third-party requests.
-  copyFileSync(join(here, 'signup.mjs'), join(out, 'assets', 'signup.mjs'));
   mkdirSync(join(out, 'assets', 'fonts'), { recursive: true });
   for (const f of [
     'heebo-hebrew-wght-normal.woff2',
@@ -386,6 +395,8 @@ export function buildSite(outDir = join(here, 'dist'), opts = {}) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const out = buildSite(process.argv[2]);
+  const args = process.argv.slice(2);
+  const dir = args.find((a) => !a.startsWith('--'));
+  const out = buildSite(dir, { signupPreview: args.includes('--signup-preview') });
   console.log(`site built: ${out} (default language ${DEFAULT_LANG})`);
 }

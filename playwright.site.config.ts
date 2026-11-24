@@ -15,7 +15,9 @@ export default defineConfig({
   use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:4391' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'node site/build.mjs && node site/serve.mjs 4391',
+    // --signup-preview: also build the noindex, unlinked sign-up page (the published build has no page while the
+    // flag is off); every other page is byte-identical either way (site/tests/signup-review-fixes.test.mjs).
+    command: 'node site/build.mjs --signup-preview && node site/serve.mjs 4391',
     url: 'http://127.0.0.1:4391/',
     reuseExistingServer: false,
     timeout: 30_000,

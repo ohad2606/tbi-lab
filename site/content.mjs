@@ -16,9 +16,10 @@ export const LEGAL_PAGES = ['privacy', 'accessibility'];
 /** Sign-up form (Google Forms). Empty = applications not open: the CTA keeps its "opens soon" state. https only. */
 export const APPLY_URL = 'https://forms.gle/iSfCbg4BwWF7HqDCA';
 /**
- * Own sign-up page (BETA-G1 s9). The page is always built (/he/signup/, /en/signup/) but stays noindex and unlinked while
- * the flag is false. The owner flips it when the intake endpoint is live; then the nav link appears, the home/alpha
- * CTAs point to the page instead of APPLY_URL, and noindex is dropped.
+ * Own sign-up page (BETA-G1 s9). While the flag is false the page and its script are not built at all (only the
+ * e2e/preview build `--signup-preview` adds them, noindex and unlinked). The owner flips it when the intake endpoint is
+ * live; then the page is built, the nav link appears, the home/alpha CTAs point to the page instead of APPLY_URL, and
+ * noindex is dropped.
  */
 export const SIGNUP_PAGE_ENABLED = false;
 /** Base of the intake routes: GET <base>/form-token, POST <base>/web. Relative = same origin (proxied by the web server). */
@@ -31,7 +32,6 @@ export const SIGNUP_ROLE_VALUES = [
   'Teacher or instructor',
   'Other',
 ];
-export const SIGNUP_HEARD_VALUES = ['Instagram', 'Facebook', 'A friend or colleague', 'Other'];
 /** Approved testers sign in here. */
 export const LAB_URL = 'https://lab.tbi-tech.net/';
 /** The one public contact address. */
@@ -118,7 +118,7 @@ const en = {
   interimNote: 'Interim text. It will be replaced by a reviewed version.',
   screenshotsH: 'See it in the Lab',
   signup: {
-    required: 'All fields are required.',
+    required: 'All fields are required except the one marked (optional).',
     name: 'Name',
     email: 'Email address',
     emailHint: 'We will write to this address when we approve your request.',
@@ -132,8 +132,7 @@ const en = {
       'Other',
     ],
     heard: 'How did you hear about us?',
-    heardPick: 'Choose one',
-    heards: ['Instagram', 'Facebook', 'A friend or colleague', 'Other'],
+    optional: '(optional)',
     age: 'I am 18 or older, or a parent has approved my sign-up.',
     consentBefore: 'I have read the ',
     consentLink: 'privacy notice',
@@ -143,8 +142,6 @@ const en = {
     newTab: '(opens in a new tab)',
     nojs: 'The sign-up form could not load. It needs [[JavaScript]]. Please turn it on in your browser and reload the page, or write to us at support@tbi-tech.net.',
     honeypot: 'Leave this field empty',
-    noscript:
-      'This form needs [[JavaScript]]. Please turn it on in your browser and reload the page, or write to us at support@tbi-tech.net.',
     privacyH: 'What we do with your details',
     privacy: [
       'We use the details in this form to review your request, give you access to the Alpha and update you about it. We will not sell your details or pass them on to others.',
@@ -153,7 +150,7 @@ const en = {
     errName: 'Enter your name.',
     errEmail: 'Enter a valid email address.',
     errRole: 'Choose the option that describes you best.',
-    errHeard: 'Choose how you heard about us.',
+    errHeard: 'Use at most 80 characters.',
     errAge: 'Confirm that you are 18 or older, or that a parent approved your sign-up.',
     errConsent: 'Confirm that you have read the privacy notice and agree.',
     summaryFieldsH: 'Please fix these before sending:',
@@ -475,16 +472,15 @@ const he = {
   interimNote: 'טקסט ביניים. יוחלף בגרסה שנבדקה.',
   screenshotsH: 'ככה זה נראה במעבדה',
   signup: {
-    required: 'כל השדות הם חובה.',
+    required: 'כל השדות חובה, חוץ מהשדה שמסומן (לא חובה).',
     name: 'שם',
     email: 'כתובת אימייל',
     emailHint: 'לכתובת הזאת נכתוב כשנאשר את הבקשה.',
-    role: 'מה מתאר אותך הכי טוב?',
+    role: 'מה מתאר אתכם הכי טוב?',
     rolePick: 'בחרו אפשרות',
     roles: ['סטודנט/ית', 'מייקר/ית או תחביב', 'מהנדס/ת או טכנאי/ת', 'מורה או מדריך/ה', 'אחר'],
-    heard: 'איך שמעת עלינו?',
-    heardPick: 'בחרו אפשרות',
-    heards: ['אינסטגרם', 'פייסבוק', 'חבר או חברה', 'אחר'],
+    heard: 'איך הגעת אלינו?',
+    optional: '(לא חובה)',
     age: 'אני בן/בת 18 ומעלה, או שהורה אישר לי להירשם.',
     consentBefore: 'קראתי את ',
     consentLink: 'הודעת הפרטיות',
@@ -493,8 +489,6 @@ const he = {
     newTab: '(נפתח בלשונית חדשה)',
     nojs: 'טופס ההרשמה לא נטען. הוא דורש [[JavaScript]]. הפעילו אותו בדפדפן וטענו את הדף מחדש, או כתבו לנו ל-support@tbi-tech.net.',
     honeypot: 'השאירו שדה זה ריק',
-    noscript:
-      'הטופס הזה דורש [[JavaScript]]. הפעילו אותו בדפדפן וטענו את הדף מחדש, או כתבו לנו ל-support@tbi-tech.net.',
     privacyH: 'מה אנחנו עושים עם הפרטים',
     privacy: [
       'אנחנו משתמשים בפרטים בטופס כדי לבחון את הבקשה, לתת גישה לאלפא ולעדכן אתכם לגביה. לא נמכור את הפרטים ולא נעביר אותם לאחרים.',
@@ -503,7 +497,7 @@ const he = {
     errName: 'הזינו את השם שלכם.',
     errEmail: 'הזינו כתובת אימייל תקינה.',
     errRole: 'בחרו את האפשרות שמתארת אתכם הכי טוב.',
-    errHeard: 'בחרו איך שמעתם עלינו.',
+    errHeard: 'כתבו עד 80 תווים.',
     errAge: 'אשרו שאתם בני 18 ומעלה, או שהורה אישר לכם להירשם.',
     errConsent: 'אשרו שקראתם את הודעת הפרטיות ושאתם מסכימים.',
     summaryFieldsH: 'יש לתקן לפני השליחה:',
