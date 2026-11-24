@@ -1,7 +1,9 @@
 /**
  * K11 slice 2: two storage notices (logic in storageNotices.ts).
- *  - TabOutdatedBanner: role="alert", Reload button. No timeout, never moves focus.
- *  - ExportReminder: role="status", non-modal, dismissible, shown once per session.
+ *  - TabOutdatedBanner: assertive live region (always mounted, no role while empty so it is not an
+ *    empty alert); the banner inside has role="alert". Reload button. No timeout, never moves focus.
+ *  - ExportReminder: polite live region; the note inside has role="status". Non-modal, dismissible,
+ *    shown once per session.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { onPersistStatus, persistStatus, type PersistResult } from '../persistence/persist.js';
@@ -30,9 +32,9 @@ export function TabOutdatedBanner() {
   useEffect(() => onVersionChanged(() => setStale(true)), []);
   // The live region is always mounted; its content appears later so screen readers announce it.
   return (
-    <div class="banners" role="alert" data-testid="tab-outdated-live">
+    <div class="banners" aria-live="assertive" aria-atomic="true" data-testid="tab-outdated-live">
       {stale && (
-        <div class="banner banner-warning" data-testid="tab-outdated">
+        <div class="banner banner-warning" role="alert" data-testid="tab-outdated">
           <span id="tab-outdated-text">{t('storage.tabOutdated')}</span>{' '}
           <button
             type="button"
@@ -94,9 +96,9 @@ export function ExportReminder() {
     document.getElementById('main')?.focus();
   };
   return (
-    <div class="banners" role="status" data-testid="export-reminder-live">
+    <div class="banners" aria-live="polite" aria-atomic="true" data-testid="export-reminder-live">
       {visible && (
-        <div class="banner banner-info export-reminder" data-testid="export-reminder">
+        <div class="banner banner-info export-reminder" role="status" data-testid="export-reminder">
           <span>{t('storage.exportReminder')}</span>
           <span class="update-actions">
             {projectId.current && (
