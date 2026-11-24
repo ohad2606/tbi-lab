@@ -140,7 +140,8 @@ export function Editor() {
   };
 
   return (
-    <main class="workspace">
+    <main class="workspace" id="main" tabIndex={-1}>
+      <h1 class="visually-hidden">{t('editor.heading')}</h1>
       <Palette
         placing={placing}
         onPick={(type, viaKeyboard) => {

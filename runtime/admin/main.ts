@@ -19,6 +19,8 @@
  *   TBI_SIGNUP_ADMIN       `1` enables the sign-up approval routes + purge (TBI-022; see signup/admin-wiring.ts); off by default.
  *                          A bad sign-up setting or store directory disables ONLY those routes (one log line
  *                          with a class code); the account administration starts regardless.
+ *   TBI_FUNNEL_COUNTERS    `1` counts `signup_approved` per day (K12, funnel/counters.ts) into TBI_FUNNEL_DIR
+ *                          (absolute, 0700, this service's own); off by default; a bad setting turns only them off.
  *
  * SIGTERM / SIGINT: stop accepting requests, wait (at most 5 s) for an approval email being sent
  * by the drain, and exit.
@@ -28,6 +30,7 @@ import { describeListen, listen, parseListen, socketGidFromEnv } from '../identi
 import { identityFromEnv } from '../identity/principal.js';
 import { AdminSpool, adminConfigFromEnv, createAdminServer } from './accounts.js';
 import { healthCapacity } from './capacity.js';
+import { funnelCountersFromEnv } from './funnel/counters.js';
 import { signupWiringFromEnv } from './signup/admin-wiring.js';
 import { AdminViews, viewPathsFromEnv } from './views.js';
 
@@ -42,11 +45,15 @@ const health = process.env.TBI_RUNTIME_HEALTH ? parseListen(process.env.TBI_RUNT
 access.start();
 
 const spool = new AdminSpool(config);
+const log = (l: string) => process.stdout.write(`tbi-admin: ${l}\n`);
+// K12: funnel counters (`signup_approved`), off unless TBI_FUNNEL_COUNTERS=1; never fatal.
+const counters = await funnelCountersFromEnv(process.env, { log });
 // TBI-022: sign-up approval routes and the retention purge, off unless TBI_SIGNUP_ADMIN=1.
 // Never throws: a broken sign-up setup is logged and leaves only the sign-up routes out (404).
 const signupWiring = await signupWiringFromEnv(process.env, spool, {
   fetch: (u, i) => fetch(u, i),
-  log: (l) => process.stdout.write(`tbi-admin: ${l}\n`),
+  log,
+  counters,
   // BETA-G1 (off unless TBI_SIGNUP_AUTO_APPROVE=1): auto-approve submits as the recorded owner.
   autoActor: () => access.current?.owner.principal ?? null,
 });
@@ -71,7 +78,7 @@ const stop = () => {
   stopPurge?.();
   // An approval email being sent now is allowed to finish and be saved (bounded: 5 s).
   const drained = Promise.race([
-    Promise.all([stopDrain?.(), stopAuto?.()]),
+    Promise.all([stopDrain?.(), stopAuto?.()]).then(() => counters?.flush()),
     new Promise<void>((r) => setTimeout(r, DRAIN_STOP_WAIT_MS).unref()),
   ]);
   server.close(() => void drained.then(() => process.exit(0)));

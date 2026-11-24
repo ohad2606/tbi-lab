@@ -188,6 +188,7 @@ JSON, `no-store`. Mutations need `content-type: application/json`, a same-origin
 | `POST /signups/<id>/approve` | 200 `{record, note?}` (`note`: `already_done` or `email_not_resent`); 202 `account_pending` (helper has not answered yet; retry); 409 `bad_state` / `email_failed_use_resend`; 502 `cap_reached` / `account_error` / `email_failed`; 404 |
 | `POST /signups/<id>/reject` | 200 `{record}`; sends nothing; 409 if already approved |
 | `POST /signups/<id>/resend` | 200 only after a failed or interrupted send for an added account; 409 otherwise |
+| `DELETE /signups/<id>` | K12: deletes the request now (record, markers, address marker; audit `<id> delete ok`). 200 `{deleted:true}`; 200 `{deleted:true,note:"already_deleted"}` when deleted before; 404 unknown. The account is not touched. Runbook: `SIGNUP-DATA-DELETION.md` |
 
 Error answers: `{error: <code>, record?}`. `Record`: `id, name, email, role, lang, status, accountAdded,
 emailAttempts, emailAttemptedAt, lastError, notified, createdAt, updatedAt`. Approve adds the account through the

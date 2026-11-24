@@ -6,6 +6,8 @@ import { adminMessagesEn } from '@tbi-lab/admin-client/messages';
  */
 export const en = {
   'app.loading': 'Loading…',
+  'a11y.skipToMain': 'Skip to main content',
+  'editor.heading': 'Circuit editor',
   'app.descriptor': 'Electronics Engineering Workspace',
   'app.storageUnavailable':
     "TBI Lab cannot use this browser's local storage (it may be blocked, for example in some private windows), so projects cannot be saved here. Nothing was changed. Allow site storage or use a regular window, then reload.",
@@ -624,6 +626,8 @@ export const en = {
     'The circuit has no unique solution, for example two supplies forcing different voltages on the same [[net]]. Involved: {components}.',
   'sim.error.no_convergence':
     'The solver could not find an operating point, so no values are shown. Involved: {components}.',
+  'sim.error.circuit_too_large':
+    'This circuit is too large to simulate (limit: {limit} unknowns, this one has {actual}). Simplify it and try again.',
   'sim.error.no_steady_state':
     'This circuit has no steady state: {components} keeps switching itself on and off (a relay that interrupts its own coil chatters). A DC simulation cannot show one of its transitory states.',
   'sim.error.mcu_component_unsupported':
@@ -1472,7 +1476,9 @@ export const en = {
     'The service is temporarily unavailable and you were not charged. Please try again shortly.',
   // BETA-G2 (NEEDS DOCS REVIEW, tbi-docs): the Free kill switch; copy of server key limit.sim.free_paused.
   'sim.limit.free_paused':
-    'Free runs are paused right now. Please try again later. You can keep editing and wiring parts meanwhile.',
+    'New runs are paused right now. Please try again later. You can keep editing and wiring parts meanwhile.',
+  'sim.limit.retry': 'Try again',
+  'sim.limit.region_label': 'Run status message',
   'sim.queue.cancel': 'Cancel',
   'sim.queue.waiting_label': 'Run queue status',
   'sim.error.runtime.sim_limit':
@@ -2343,6 +2349,9 @@ export const en = {
   'kbwire.wireCleared': 'Wire selection cleared',
   'kbwire.noWires': 'There are no wires.',
   'kbwire.endJunction': 'junction {id}',
+  // Slice 5: T-connection targets in the candidate cycle (and in "Connected ... to ...").
+  'kbwire.target.junction': 'existing junction {id}',
+  'kbwire.target.wire': 'a point on wire W{n} ({from} to {to})',
   'kbwire.list.title': 'Wires',
   'kbwire.list.empty': 'No wires yet. Connect two pins to add one.',
   'kbwire.list.item': 'W{n}: {from} to {to}',
@@ -2478,7 +2487,8 @@ export const en = {
   'shortcut.pinPrev.when': 'Pin mode',
   'shortcut.wireStart.action': 'Start a wire from this pin',
   'shortcut.wireStart.when': 'Pin mode',
-  'shortcut.targetCycle.action': 'Move between possible targets (Tab is kept inside on purpose)',
+  'shortcut.targetCycle.action':
+    'Move between possible targets: pins, junctions and points on wires (Tab is kept inside on purpose)',
   'shortcut.targetCycle.when': 'While choosing where the wire ends',
   'shortcut.repickEnd.action':
     'Choose which end of the wire to move: 1 is the first end, 2 the second; or switch ends with the arrow keys or Tab and Shift + Tab, and press Enter to choose',

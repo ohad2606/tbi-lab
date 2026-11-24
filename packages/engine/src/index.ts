@@ -35,7 +35,13 @@ export {
 
 // Low-level circuit API and the classic-ESP32 GPIO pin model, for the server-side MCU runtime
 // (runtime R1): the same physics implementation the browser uses (ADR-008).
-export { Circuit, ConvergenceError, type SolveResult } from './circuit.js';
+export {
+  Circuit,
+  CircuitTooLargeError,
+  ConvergenceError,
+  MAX_UNKNOWNS,
+  type SolveResult,
+} from './circuit.js';
 export { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.js';
 export {
   DIODE_1N4148,

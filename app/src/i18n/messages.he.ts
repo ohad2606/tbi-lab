@@ -8,6 +8,8 @@ import type { MessageKey } from './messages.en.js';
  */
 export const he: Record<MessageKey, string> = {
   'app.loading': 'טוען…',
+  'a11y.skipToMain': 'דלג לתוכן הראשי',
+  'editor.heading': 'עורך המעגלים',
   'app.descriptor': 'סביבת עבודה הנדסית לאלקטרוניקה',
   'app.storageUnavailable':
     'TBI Lab אינו יכול להשתמש באחסון המקומי של הדפדפן (ייתכן שהוא חסום, למשל בחלון גלישה פרטית), ולכן לא ניתן לשמור כאן פרויקטים. דבר לא שונה. אפשרו אחסון לאתר או השתמשו בחלון רגיל, ואז טענו מחדש.',
@@ -615,6 +617,8 @@ export const he: Record<MessageKey, string> = {
     'למעגל אין פתרון יחיד, למשל שני ספקים שכופים מתחים שונים על אותה [[net]]. מעורבים: {components}.',
   'sim.error.no_convergence':
     'הפותר לא מצא נקודת עבודה, ולכן לא מוצגים ערכים. מעורבים: {components}.',
+  'sim.error.circuit_too_large':
+    'המעגל גדול מדי לסימולציה (מגבלה: {limit} נעלמים, במעגל הזה יש {actual}). פשטו אותו ונסו שוב.',
   'sim.error.no_steady_state':
     'למעגל אין מצב יציב: {components} ממשיך להדליק ולכבות את עצמו (ממסר שמנתק את הסליל של עצמו מרטט). סימולציית DC אינה יכולה להציג אחד ממצבי המעבר שלו.',
   'sim.error.mcu_component_unsupported':
@@ -1408,7 +1412,9 @@ export const he: Record<MessageKey, string> = {
   'sim.limit.system_unavailable': 'השירות זמנית לא זמין ולא חויבתם. נסו שוב בעוד רגע.',
   // BETA-G2 (NEEDS DOCS REVIEW, tbi-docs): the Free kill switch; copy of server key limit.sim.free_paused.
   'sim.limit.free_paused':
-    'הרצות חינמיות מושהות כרגע. נסו שוב מאוחר יותר. אפשר להמשיך לערוך ולחבר רכיבים בינתיים.',
+    'הרצות חדשות מושהות כרגע. נסו שוב מאוחר יותר. אפשר להמשיך לערוך ולחבר רכיבים בינתיים.',
+  'sim.limit.retry': 'נסו שוב',
+  'sim.limit.region_label': 'הודעת מצב הרצה',
   'sim.queue.cancel': 'ביטול',
   'sim.queue.waiting_label': 'מצב תור ההרצה',
   'sim.error.runtime.sim_limit': 'לא ניתן להתחיל הרצה בגלל מגבלת שימוש. הפרויקט לא נפגע.',
@@ -2221,6 +2227,8 @@ export const he: Record<MessageKey, string> = {
   'kbwire.wireCleared': 'בחירת החוט בוטלה',
   'kbwire.noWires': 'אין חוטים.',
   'kbwire.endJunction': 'צומת {id}',
+  'kbwire.target.junction': 'צומת קיים {id}',
+  'kbwire.target.wire': 'נקודה על חוט {n} ({from} אל {to})',
   'kbwire.list.title': 'חוטים',
   'kbwire.list.empty': 'עדיין אין חוטים. חברו שני פינים כדי להוסיף חוט.',
   'kbwire.list.item': 'חוט {n}: {from} אל {to}',
@@ -2350,7 +2358,8 @@ export const he: Record<MessageKey, string> = {
   'shortcut.pinPrev.when': 'מצב פינים',
   'shortcut.wireStart.action': 'התחלת חוט מהפין הזה',
   'shortcut.wireStart.when': 'מצב פינים',
-  'shortcut.targetCycle.action': 'מעבר בין יעדים אפשריים (Tab נשאר כאן בכוונה)',
+  'shortcut.targetCycle.action':
+    'מעבר בין יעדים אפשריים: פינים, צמתים ונקודות על חוטים (Tab נשאר כאן בכוונה)',
   'shortcut.targetCycle.when': 'בזמן בחירת סוף החוט',
   'shortcut.repickEnd.action':
     'בחירת הקצה להזזה: 1 הקצה הראשון, 2 השני; או מעבר בין הקצוות במקשי החצים או ב-Tab וב-Shift + Tab, ו-Enter בוחר',

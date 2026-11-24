@@ -1085,3 +1085,75 @@ describe('admin service: sign-up admin wiring (TBI-022) with a fake helper', () 
     }
   });
 });
+
+describe('admin service: DELETE /signups/<id> (K12), owner only', () => {
+  async function wired() {
+    const root = mkdtempSync(join(tmpdir(), 'tbi-signup-del-'));
+    cleanup.push(() => rmSync(root, { recursive: true, force: true }));
+    const wiring = await wireSignupAdmin(
+      { dir: join(root, 'p'), keyFile: '/unused', from: 'x', labUrl: 'https://l.example.invalid/' },
+      { submit: async () => 'REQ', wait: async () => ({ ok: true, code: 'done' }) } as never,
+      {
+        fetch: async () => ({ ok: true, status: 200 }),
+        log: () => undefined,
+        email: { sendApproval: async () => undefined },
+      },
+    );
+    const rec = await wiring.store.create({
+      name: 'Dana Levi',
+      email: 'dana@example.com',
+      role: 'T',
+      lang: 'en',
+      consent: true,
+    });
+    const s = await serve({ roomyLimits: true, signups: wiring.signups });
+    return { root, wiring, rec, s };
+  }
+
+  it('non-owner 403 (record kept); owner deletes (200), twice is a no-op, unknown 404', async () => {
+    const { root, wiring, rec, s } = await wired();
+    const path = `/signups/${rec.id}`;
+    for (const u of [TESTER, OTHER]) {
+      const g = await s.gate(u);
+      expect((await call(g, path, mutation(g, 'DELETE'))).status).toBe(403);
+    }
+    expect((await call(await s.gate(null), path, mutation('http://x', 'DELETE'))).status).toBe(401);
+    expect((await wiring.store.get(rec.id)).id).toBe(rec.id);
+    const o = await s.gate(OWNER);
+    // CSRF: without the JSON content type / same-origin headers the owner is refused too.
+    expect((await call(o, path, { method: 'DELETE' })).status).toBe(403);
+    expect(
+      (await call(o, path, { method: 'DELETE', headers: { 'content-type': 'application/json' } }))
+        .status,
+    ).toBe(403);
+    expect((await wiring.store.get(rec.id)).id).toBe(rec.id);
+
+    const first = await call(o, path, mutation(o, 'DELETE'));
+    expect(first.status).toBe(200);
+    expect(first.body).toEqual({ deleted: true });
+    expect(first.headers.get('set-cookie')).toBeNull();
+    await expect(wiring.store.get(rec.id)).rejects.toThrow('not_found');
+    const again = await call(o, path, mutation(o, 'DELETE'));
+    expect(again.status).toBe(200);
+    expect(again.body).toEqual({ deleted: true, note: 'already_deleted' });
+    const audit = readFileSync(join(root, 'p', 'audit.log'), 'utf8');
+    expect(audit.trim().split('\n')).toEqual([expect.stringMatching(` ${rec.id} delete ok$`)]);
+    expect(audit).not.toContain('dana');
+
+    expect(
+      (await call(o, '/signups/0123456789ABCDEFGHJKMNPQRS', mutation(o, 'DELETE'))).status,
+    ).toBe(404);
+    expect((await call(o, '/signups/not-an-id', mutation(o, 'DELETE'))).status).toBe(404);
+    expect((await call(o, '/signups/pending', mutation(o, 'DELETE'))).status).toBe(404);
+    expect((await call(o, `${path}/approve`, mutation(o, 'DELETE'))).status).toBe(404);
+    expect((await call(o, '/signups', mutation(o, 'DELETE'))).status).toBe(404);
+  });
+
+  it('without the sign-up configuration the route does not exist', async () => {
+    const s = await serve({ roomyLimits: true });
+    const o = await s.gate(OWNER);
+    expect(
+      (await call(o, '/signups/0123456789ABCDEFGHJKMNPQRS', mutation(o, 'DELETE'))).status,
+    ).toBe(404);
+  });
+});

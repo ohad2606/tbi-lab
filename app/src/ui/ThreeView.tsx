@@ -394,7 +394,7 @@ export function ThreeView() {
           if ((e.key === ' ' || e.key === 'Enter') && keyHeld.current) releaseKey();
         }}
         onBlur={releaseKey}
-        role="img"
+        role="group"
         aria-label={t('view3d.aria', { name: doc.name })}
         aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown + - Home"
         tabIndex={status === 'ready' ? 0 : -1}

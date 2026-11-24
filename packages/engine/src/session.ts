@@ -14,7 +14,7 @@
 import type { ComponentInstance, SimulationSnapshot } from '@tbi-lab/domain';
 import { liveControlProblem } from '@tbi-lab/domain';
 import type { TimeStep } from './devices.js';
-import { Circuit, ConvergenceError } from './circuit.js';
+import { Circuit, CircuitTooLargeError, ConvergenceError } from './circuit.js';
 import { Diode, LabPsu, Resistor, VoltageSource, type Device } from './devices.js';
 import { PwlLoad } from './pwl.js';
 import { ConstantSink, RegulatedOutput } from './sources.js';
@@ -153,6 +153,8 @@ export type EngineErrorCode =
   | 'invalid_attachment'
   | 'singular_circuit'
   | 'no_convergence'
+  /** The circuit exceeds the engine's size limit (`detail.limit`, `detail.actual` MNA unknowns). */
+  | 'circuit_too_large'
   /**
    * Sprint 10: the circuit has no DC steady state because a part's discrete state contradicts the
    * operating point it produces (a relay that switches off its own coil: it chatters/buzzes).
@@ -1289,6 +1291,12 @@ export class EngineSession {
             code: 'singular_circuit',
             components: [...devices.keys()],
             detail: { pivotRow: e.pivotRow },
+          });
+        }
+        if (e instanceof CircuitTooLargeError) {
+          return this.fail({
+            code: 'circuit_too_large',
+            detail: { limit: e.limit, actual: e.actual },
           });
         }
         if (e instanceof ConvergenceError) {
