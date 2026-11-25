@@ -3,20 +3,49 @@
  * excluded from the units' restart policy) and one stderr line with no stack and no value, before any
  * side effect (no sim state lock, journal or recovery; nothing listens). Unset, 0 and valid values are
  * not refused. Same child hygiene as sim-plans-boot-guard.test.ts; no unit is stopped, no QEMU starts.
+ * The order against the unit stop is checked in process, with `stopTemplateInstances` and every
+ * systemctl child call replaced by recorders: real systemctl is never invoked.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { HOST_SIM_REFUSED_EXIT } from '../../plans/hostflags.js';
+
+const systemd = vi.hoisted(() => ({ stops: [] as unknown[][], spawned: [] as string[] }));
+
+vi.mock('../../builder/runner.js', async (original) => ({
+  ...(await original<typeof import('../../builder/runner.js')>()),
+  stopTemplateInstances: (...args: unknown[]) => void systemd.stops.push(args),
+}));
+// Second barrier: no systemctl child can be started from this test process by another path.
+vi.mock('node:child_process', async (original) => {
+  const real = await original<typeof import('node:child_process')>();
+  const guard = <F>(fn: F): F =>
+    ((command: string, ...rest: unknown[]) => {
+      if (!String(command).includes('systemctl'))
+        return (fn as (...a: unknown[]) => unknown)(command, ...rest);
+      systemd.spawned.push(command);
+      throw new Error('systemctl is blocked in this test');
+    }) as F;
+  return {
+    ...real,
+    spawn: guard(real.spawn),
+    spawnSync: guard(real.spawnSync),
+    exec: guard(real.exec),
+    execSync: guard(real.execSync),
+    execFile: guard(real.execFile),
+    execFileSync: guard(real.execFileSync),
+  };
+});
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
 const MAIN = join(ROOT, 'runtime', 'host', 'main.ts');
 const VITE_NODE = join(ROOT, 'node_modules', '.bin', 'vite-node');
 const LINE =
-  'tbi-session-host: TBI_HOST_IDLE_MS must be 0 (off) or at least 120000 ms (a safe integer); refusing to start';
+  'tbi-session-host: TBI_HOST_IDLE_MS must be 0 (off) or a whole number of ms, at least 120000 (a safe integer); refusing to start';
 
 const parent = mkdtempSync(join(tmpdir(), 'host-idleboot-'));
 afterAll(() => rmSync(parent, { recursive: true, force: true }));
@@ -52,6 +81,7 @@ describe('Session Host main: a bad TBI_HOST_IDLE_MS refuses to start (K3)', () =
   it.each([
     ['below the floor', '119999'],
     ['above the safe integers', '99999999999999999999'],
+    ['not a whole number', '5m'],
   ])(
     '%s: exit 78, exactly one line, no side effect',
     (_name, value) => {
@@ -80,7 +110,7 @@ describe('Session Host main: a bad TBI_HOST_IDLE_MS refuses to start (K3)', () =
 
   // Without TBI_TICKET_KEY_FILE the next check refuses (exit 1): reaching it proves the idle value
   // passed, without listening.
-  it.each([undefined, '0', '120000', '5m'])(
+  it.each([undefined, '', '0', '000', '120000'])(
     'TBI_HOST_IDLE_MS=%s is not refused by this check',
     (value) => {
       const r = runMain({
@@ -111,4 +141,56 @@ describe('Session Host main: a bad TBI_HOST_IDLE_MS refuses to start (K3)', () =
     child.kill('SIGTERM');
     expect(await exited).toBe(0);
   }, 120_000);
+});
+
+describe('Session Host main: the idle refusal precedes the unit stop (K3)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  /** Imports main.ts with a runtime unit set; the missing policy file stops it before any listen. */
+  const bootInProcess = async (idle: string) => {
+    systemd.stops.length = 0;
+    systemd.spawned.length = 0;
+    vi.resetModules();
+    vi.stubEnv('TBI_IDENTITY_KEY_FILE', key);
+    vi.stubEnv('TBI_TICKET_KEY_FILE', key);
+    vi.stubEnv('TBI_HOST_RUNTIME_UNIT', 'tbi-test-never-a-unit');
+    vi.stubEnv('TBI_POLICY_FILE', join(parent, 'no-such-policy.json'));
+    vi.stubEnv('TBI_HOST_IDLE_MS', idle);
+    let stderr = '';
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk);
+      return true;
+    });
+    const exit = vi.spyOn(process, 'exit').mockImplementation((code) => {
+      throw new Error(`exit ${String(code)}`);
+    });
+    const error: unknown = await import('../main.js').then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    return { error: String(error), stderr, exit };
+  };
+
+  it.each(['119999', '5m'])(
+    'TBI_HOST_IDLE_MS=%s: refused with no stopTemplateInstances and no systemctl',
+    async (idle) => {
+      const r = await bootInProcess(idle);
+      expect(r.exit).toHaveBeenCalledWith(HOST_SIM_REFUSED_EXIT);
+      expect(r.stderr).toBe(`${LINE}\n`);
+      expect(systemd.stops).toEqual([]);
+      expect(systemd.spawned).toEqual([]);
+    },
+    60_000,
+  );
+
+  it('control: a valid idle limit reaches the (recorded) unit stop', async () => {
+    const r = await bootInProcess('300000');
+    expect(r.error).toContain('no-such-policy');
+    expect(r.exit).not.toHaveBeenCalled();
+    expect(systemd.stops).toEqual([['/usr/bin/systemctl', 'tbi-test-never-a-unit']]);
+    expect(systemd.spawned).toEqual([]);
+  }, 60_000);
 });

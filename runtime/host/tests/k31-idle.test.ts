@@ -152,12 +152,12 @@ async function serve(over: Partial<HostConfig> = {}) {
 }
 
 describe('K3-1: configuration', () => {
-  it('TBI_HOST_IDLE_MS is an operator tunable: unset, 0 and non-digits are off; digits set idleMs', () => {
+  it('TBI_HOST_IDLE_MS is an operator tunable: unset, empty and 0 are off; digits set idleMs', () => {
     expect(HOST_TUNABLE_ENV.TBI_HOST_IDLE_MS).toBe('idleMs');
     expect(hostTunablesFromEnv({})).not.toHaveProperty('idleMs');
     expect(hostTunablesFromEnv({ TBI_HOST_IDLE_MS: '0' })).toEqual({ idleMs: 0 });
-    expect(hostTunablesFromEnv({ TBI_HOST_IDLE_MS: '5m' })).not.toHaveProperty('idleMs');
-    expect(hostTunablesFromEnv({ TBI_HOST_IDLE_MS: '-1' })).not.toHaveProperty('idleMs');
+    expect(hostTunablesFromEnv({ TBI_HOST_IDLE_MS: '' })).not.toHaveProperty('idleMs');
+    expect(hostTunablesFromEnv({ TBI_HOST_IDLE_MS: '000' })).toEqual({ idleMs: 0 });
     expect(hostTunablesFromEnv({ TBI_HOST_IDLE_MS: '300000' })).toEqual({ idleMs: 300_000 });
   });
 
@@ -168,6 +168,20 @@ describe('K3-1: configuration', () => {
       );
     expect(hostTunablesFromEnv({ TBI_HOST_IDLE_MS: '120000' })).toEqual({ idleMs: 120_000 });
     expect(hostTunablesFromEnv({ TBI_HOST_IDLE_MS: '0' })).toEqual({ idleMs: 0 });
+  });
+
+  it.each(['5m', '3e5', ' 60000', '60000\n', '-1', '+60000', '60000.0', ' '])(
+    'TBI_HOST_IDLE_MS=%j (set, not all digits) is refused, not silently off',
+    (v) => {
+      expect(() => hostTunablesFromEnv({ TBI_HOST_IDLE_MS: v })).toThrow(
+        /^TBI_HOST_IDLE_MS must be 0 \(off\) or a whole number of ms, at least 120000 \(a safe integer\)$/,
+      );
+    },
+  );
+
+  it('the other tunables still ignore a value that is not all digits', () => {
+    for (const name of Object.keys(HOST_TUNABLE_ENV).filter((n) => n !== 'TBI_HOST_IDLE_MS'))
+      expect(hostTunablesFromEnv({ [name]: '5m' })).toEqual({});
   });
 
   it('fails closed at construction when on and idleMs <= housekeepingMs (or not a safe integer); 0/absent boot', async () => {

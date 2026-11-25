@@ -9,8 +9,9 @@
  *                      build service publishes to); default $TBI_RUNTIME_HOME/artifacts. Only
  *                      the location changes: lookup, re-hash and private copy are unchanged.
  *   TBI_HOST_*_MS etc. operator-tunable limits (config.ts HOST_TUNABLE_ENV)
- *   TBI_HOST_IDLE_MS   K3 idle limit. Unset, 0 or not all digits: off. Any other value below 120000
- *                      (or beyond the safe integers) refuses to start: exit 78 (no restart).
+ *   TBI_HOST_IDLE_MS   K3 idle limit. Unset, empty or 0: off. Any other value that is not a whole
+ *                      number of ms (digits only), is below 120000 or is beyond the safe integers
+ *                      refuses to start: exit 78 (no restart).
  *   TBI_SOCKET_GID     the API socket's group (Sprint 23B: tbi-sock-runtime, shared with the proxy only)
  *   TBI_HOST_HEALTH_LISTEN, TBI_HOST_HEALTH_SOCKET_GID   a GET /health-only socket (build service)
  *   TBI_REPORTS_DIR    Sprint 14 problem reports (reports.ts); unset: the feature is off

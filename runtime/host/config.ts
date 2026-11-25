@@ -169,7 +169,7 @@ export const HOST_TUNABLE_ENV: Readonly<Record<string, keyof HostConfig>> = {
   TBI_HOST_STALL_TIMEOUT_MS: 'stallTimeoutMs',
   TBI_HOST_RETAIN_ENDED_MS: 'retainEndedMs',
   TBI_HOST_MAX_LIFETIME_MS: 'maxLifetimeMs',
-  // K3-1: unset, 0 or not all digits = off
+  // K3-1: unset, empty or 0 = off; any other non-digit value is refused
   TBI_HOST_IDLE_MS: 'idleMs',
 };
 
@@ -178,10 +178,11 @@ export const MIN_IDLE_ENV_MS = 120_000;
 
 /**
  * The tunable overrides `main.ts` applies (s3d-8: shared with the offline sim config validator so both
- * read TBI_HOST_LEASE_MS identically). A value that is not all digits is ignored (default kept).
- * K3-3: throws on a set, non-zero TBI_HOST_IDLE_MS below `MIN_IDLE_ENV_MS` (the host would otherwise
- * keep the "Still there?" prompt on screen) or beyond the safe integers (`checkIdleBounds` could only
- * refuse it later, after boot side effects). The message names the variable and the rule, no value.
+ * read TBI_HOST_LEASE_MS identically). A value that is not all digits is ignored (default kept),
+ * except TBI_HOST_IDLE_MS: K3 throws on a set, non-empty value that is not all digits (idle would
+ * otherwise stay silently off), is non-zero below `MIN_IDLE_ENV_MS` (the host would otherwise keep the
+ * "Still there?" prompt on screen) or is beyond the safe integers (`checkIdleBounds` could only refuse
+ * it later, after boot side effects). The message names the variable and the rule, no value.
  */
 export function hostTunablesFromEnv(env: Record<string, string | undefined>): Partial<HostConfig> {
   const overrides: Partial<HostConfig> = {};
@@ -189,10 +190,12 @@ export function hostTunablesFromEnv(env: Record<string, string | undefined>): Pa
     const v = env[name];
     if (v !== undefined && /^\d+$/.test(v)) (overrides as Record<string, number>)[key] = Number(v);
   }
-  const idle = overrides.idleMs;
-  if (idle !== undefined && idle !== 0 && !(Number.isSafeInteger(idle) && idle >= MIN_IDLE_ENV_MS))
+  // from the raw value: a non-digit one is NaN here (never in `overrides`) and refused
+  const raw = env.TBI_HOST_IDLE_MS;
+  const idle = raw ? (overrides.idleMs ?? NaN) : 0;
+  if (idle !== 0 && !(Number.isSafeInteger(idle) && idle >= MIN_IDLE_ENV_MS))
     throw new Error(
-      `TBI_HOST_IDLE_MS must be 0 (off) or at least ${MIN_IDLE_ENV_MS} ms (a safe integer)`,
+      `TBI_HOST_IDLE_MS must be 0 (off) or a whole number of ms, at least ${MIN_IDLE_ENV_MS} (a safe integer)`,
     );
   return overrides;
 }

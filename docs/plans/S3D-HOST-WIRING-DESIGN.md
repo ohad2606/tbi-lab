@@ -490,8 +490,8 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
      `state_dir_mode` (anything but 0700, e.g. world-readable), `state_dir_symlink`,
      `state_dir_not_writable`, `state_lock` (malformed lock, stale lock + leftover takeover mutex),
      `state_locked` (a live process holds `host.lock`), `journal_torn`, `journal_corrupt`,
-     `idle_limit_invalid` (`TBI_HOST_IDLE_MS` all digits, non-zero and below 120000 or beyond the safe
-     integers).
+     `idle_limit_invalid` (`TBI_HOST_IDLE_MS` set, non-empty and either not all digits, or non-zero and
+     below 120000 or beyond the safe integers).
    - *Stricter than the host, by design:* a missing state directory is a problem (the host would create
      it 0700; create it beforehand with `install -d -m 0700`); a live lock is a problem (run with the
      host stopped, or expect `state_locked`).
@@ -503,7 +503,7 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
      | Exit | Meaning |
      |---|---|
      | 0 | the sim flags, config, state dir, lock and journal replay (replayed with metering off) are valid; host prerequisites outside the sim checks (`TBI_TICKET_KEY_FILE`, `TBI_HOST_PACE`) and the metered-boot sweep/recovery/compaction are NOT checked |
-     | 1 | at least one problem (each one a host refusal with exit 78, except `state_dir_missing`, `state_dir_not_writable`, `state_locked` (stricter than the host), `policy_unusable` (the host exits 1 there, outside the sim boot, so a unit may restart-loop)), or an internal error |
+     | 1 | at least one problem (each one a host refusal with exit 78, except `state_dir_missing`, `state_dir_not_writable`, `state_locked` (stricter than the host) and `policy_unusable` (the host exits 1 there, outside the sim boot, so a unit may restart-loop)), or an internal error |
      | 78 | refused to validate (EX_CONFIG, = `HOST_SIM_REFUSED_EXIT`): no `TBI_HOST_SIM_*` flag set (the environment is not the unit's), or an argument given. NOTE: 78 here means "nothing to validate / bad usage", not "config bad" as for the host; wrappers must treat only exit 0 as go |
 
    *Not done:* shipping the bundle in `build-package.sh` / `install.sh` (owner decision pending, as for
