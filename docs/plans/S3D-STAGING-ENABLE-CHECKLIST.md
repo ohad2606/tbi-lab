@@ -47,6 +47,11 @@ template, `<user>` = the Session Host's user).
 
 ## 1. Configuration files (prepared, reviewed, not yet referenced by the unit)
 
+- [ ] Beta (K2-a): the prepared repo config is `deploy/dev-lab/s8/sim-plans.beta.json` (overrides over
+      the defaults: `metering.enabled: true`, `sim.leaseMs: 30000` = host default, Free
+      `monthlyMinutes: null` = no monthly minute cap, no billing; the 30-min session cap, Free slot cap
+      and idle stay in force). Inert until an owner-approved install; install a root-owned copy, never
+      reference the repo path. Tested by `runtime/plans/tests/sim-plans-beta-config.test.ts`.
 - [ ] Plans config JSON, owned by root, readable by `<user>` only, at most 1 MiB:
       `metering.enabled: true`; `sim.leaseMs` equal to the host's `TBI_HOST_LEASE_MS` (default 30000);
       `queue.freeCapMode: "fixed"`; `sim.maxConcurrentPerPrincipal: 1` if any plan has minute caps.
@@ -55,7 +60,9 @@ template, `<user>` = the Session Host's user).
       bundle) as `<user>` with exactly the unit's environment:
       `sudo -u <user> env TBI_HOST_SIM_PLANS_CONFIG=... TBI_HOST_SIM_PLANS_STATE=... TBI_HOST_SIM_PLAN_MAP=... TBI_POLICY_FILE=... [TBI_HOST_LEASE_MS=...] <node> <bundles>/sim-config-validate.mjs`
       -> must exit 0 (1 = fix every listed problem; 78 = no sim flag reached it). It writes nothing.
-- [ ] Plan map: `TBI_HOST_SIM_PLAN_MAP=preview=legacy,system=legacy` (every policy plan mapped, no
+- [ ] Plan map: beta (with `policy.beta.json`, plans free/preview/system):
+      `TBI_HOST_SIM_PLAN_MAP=free=free,preview=legacy,system=legacy`. With the older two-plan policy:
+      `preview=legacy,system=legacy` (every policy plan mapped, no
       unknown names; check against the installed policy file).
 - [ ] Intervals left at defaults unless measured: beat `floor(leaseMs/3)`, adapter housekeeping
       5000 ms, poll 15 s (`< queue.vanishMs`). Shutdown end wait is 8000 ms (bound 12000,

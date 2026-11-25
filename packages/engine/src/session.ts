@@ -1569,8 +1569,12 @@ export class EngineSession {
                       replaced = null;
                       void circuit.nodes();
                     };
+                    // The size cap was applied to the circuit itself by the main solve. A corner
+                    // keeps its nodes (sinks and ideal sources use existing ones) and adds at
+                    // most one branch per replaced stage: exactly that much more is allowed.
+                    const cap = { maxUnknowns: xSolution.length + replace.size };
                     try {
-                      const r = step ? c.solveStep(step) : c.solve();
+                      const r = step ? c.solveStep(step, cap) : c.solve(cap);
                       const x = r.x;
                       return {
                         x,
