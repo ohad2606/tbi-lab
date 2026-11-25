@@ -174,10 +174,10 @@ export function Signups() {
   // `spoken` counts announcements and reloads, so a reload that was overtaken stays silent.
   const spoken = useRef(0);
   const say = (text: string) => {
-    spoken.current++;
+    const n = ++spoken.current;
     setAnnounce('');
     requestAnimationFrame(() => {
-      if (alive.current) setAnnounce(text);
+      if (alive.current && n === spoken.current) setAnnounce(text);
     });
   };
 
@@ -203,6 +203,13 @@ export function Signups() {
       ]);
       if (!alive.current || turn !== spoken.current) return;
       say(st && !st.ok ? `${count}. ${t('console.signups.auto.unavailable')}` : count);
+      if (st) return;
+      // The status was not waited for: a failure arriving later is shown, so it is also spoken,
+      // unless a newer announcement or reload came first.
+      const after = spoken.current;
+      const late = await status;
+      if (alive.current && !late.ok && after === spoken.current)
+        say(t('console.signups.auto.unavailable'));
     }
   };
   useEffect(() => {
@@ -265,8 +272,11 @@ export function Signups() {
       // focus: no live announcement then (it would be read twice). Every other outcome is spoken
       // by the live region (the row is gone, or focus is on a button).
       const messageFocused = !v.removed && signupRowKind(v.record ?? r) === 'queued';
-      if (messageFocused) setAnnounce('');
-      else say(text);
+      if (messageFocused) {
+        // Silence counts as an announcement: a pending one (e.g. a late status) must not follow.
+        spoken.current++;
+        setAnnounce('');
+      } else say(text);
       if (v.removed) {
         focusId.current = focusAfterRemoval(ids, r.id);
         setList({ ok: true, value: list.value.filter((x) => x.id !== r.id) });

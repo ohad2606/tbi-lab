@@ -403,7 +403,13 @@ describe('kill switch', () => {
     expect(await a.sweep()).toMatchObject({ claimed: 0, stopped: 'paused' });
     expect((await r.store.get(id!)).status).toBe('pending');
     rmSync(join(r.dir, AUTO_PAUSE_FILE));
+    // A paused first run is no longer a first run: the request of the pause stays manual.
+    expect((await a.sweep()).claimed).toBe(0);
+    expect((await r.store.get(id!)).status).toBe('pending');
+    r.clock.t += 5_000;
+    const [fresh] = await createN(r, 1, 1);
     expect((await a.sweep()).claimed).toBe(1);
+    expect((await r.store.get(fresh!)).status).toBe('email_sent');
     expect(r.logs).toEqual(
       expect.arrayContaining(['signup: auto-approve paused', 'signup: auto-approve resumed']),
     );
@@ -713,7 +719,8 @@ describe('idempotency, double submit, concurrency, restart', () => {
     expect((await a.sweep()).stopped).toBe('no_owner');
     expect((await a.sweep()).stopped).toBe('no_owner');
     expect(r.logs.filter((l) => /owner principal not recorded/.test(l))).toHaveLength(1);
-    expect(existsSync(join(r.dir, AUTO_STATE_FILE))).toBe(false);
+    expect(counter(r.dir)).toMatchObject({ active: false }); // no longer a first run
+    expect(counter(r.dir).since).toBeUndefined();
   });
 });
 
@@ -891,12 +898,15 @@ describe('ops review follow-up (slice 2)', () => {
     const r = await rig();
     const sd = join(r.dir, '..', 'auto-state');
     mkdirSync(sd, { mode: 0o700 });
-    await createN(r, 2);
     writeFileSync(join(sd, AUTO_PAUSE_FILE), '');
     expect((await r.auto({ stateDir: sd }).sweep()).stopped).toBe('paused');
     rmSync(join(sd, AUTO_PAUSE_FILE));
     writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
-    expect((await r.auto({ stateDir: sd }).sweep()).claimed).toBe(2);
+    const b = r.auto({ stateDir: sd });
+    expect((await b.sweep()).claimed).toBe(0); // resume resets the cut-off to now
+    r.clock.t += 5_000;
+    await createN(r, 2);
+    expect((await b.sweep()).claimed).toBe(2);
     expect(counter(sd).count).toBe(2);
     expect(existsSync(join(r.dir, AUTO_STATE_FILE))).toBe(false);
   });
@@ -1498,5 +1508,107 @@ describe('BETA-G1 follow-up: every process starts unconfirmed (cut-off reset bef
     expect(out).toEqual({ claimed: 0, attempted: 0 });
     for (const st of [s1, s2]) expect(st.cutoff).not.toBe(new Date(OLD).toISOString());
     expect((await a.status()).cutoff).toBe(new Date(NOON_IL).toISOString());
+  });
+});
+
+describe('BETA-G1 QA: a paused or no_owner first run is no longer a first run', () => {
+  const ENV = NOON_IL - DAY_MS; // TBI_SIGNUP_AUTO_SINCE one day back
+  const resets = (r: Rig) => r.logs.filter((l) => /cut-off reset/.test(l));
+
+  it('paused first run (backdated env): persists active:false; a request during the pause stays pending after resume, also across restart', async () => {
+    const r = await rig();
+    writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+    const a = r.auto({ since: ENV });
+    expect((await a.sweep()).stopped).toBe('paused');
+    expect(counter(r.dir)).toMatchObject({ active: false });
+    expect(counter(r.dir).since).toBeUndefined();
+    r.clock.t += 10_000;
+    const [during] = await createN(r, 1);
+    r.clock.t += 10_000;
+    rmSync(join(r.dir, AUTO_PAUSE_FILE));
+    const b = r.auto({ since: ENV }); // restart after the pause
+    expect(await b.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect((await r.store.get(during!)).status).toBe('pending');
+    expect(counter(r.dir)).toMatchObject({
+      since: new Date(r.clock.t).toISOString(),
+      active: true,
+    });
+    expect(resets(r)).toHaveLength(1);
+    expect(r.added).toEqual([]);
+  });
+
+  it('paused first run, resume in the same process: the request of the pause stays pending', async () => {
+    const r = await rig();
+    writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+    const a = r.auto({ since: ENV });
+    expect((await a.sweep()).stopped).toBe('paused');
+    r.clock.t += 10_000;
+    const [during] = await createN(r, 1);
+    rmSync(join(r.dir, AUTO_PAUSE_FILE));
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect((await r.store.get(during!)).status).toBe('pending');
+    expect(r.added).toEqual([]);
+  });
+
+  it('no_owner first run (backdated env): persists active:false; once the owner is recorded (restart) the waiting request stays pending', async () => {
+    const r = await rig();
+    const a = r.auto({ since: ENV, noOwner: true });
+    expect((await a.sweep()).stopped).toBe('no_owner');
+    expect(counter(r.dir)).toMatchObject({ active: false });
+    r.clock.t += 10_000;
+    const [during] = await createN(r, 1);
+    expect((await a.sweep()).stopped).toBe('no_owner');
+    r.clock.t += 10_000;
+    const b = r.auto({ since: ENV });
+    expect(await b.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect((await r.store.get(during!)).status).toBe('pending');
+    expect(counter(r.dir).since).toBe(new Date(r.clock.t).toISOString());
+    expect(r.added).toEqual([]);
+  });
+
+  it('a true first approving run with a backdated env still honours it, within the cap', async () => {
+    const r = await rig();
+    const ids = await createN(r, 4); // all after ENV
+    const a = r.auto({ since: ENV, cap: 3 });
+    expect((await a.sweep()).claimed).toBe(3);
+    expect((await r.store.get(ids[3]!)).status).toBe('pending');
+    expect(counter(r.dir)).toMatchObject({
+      count: 3,
+      since: new Date(ENV).toISOString(),
+      active: true,
+    });
+    expect(r.logs.filter((l) => /cut-off recorded/.test(l))).toHaveLength(1);
+  });
+
+  it('paused with an unreadable state: fails closed (stopped, nothing approved, file not rewritten)', async () => {
+    const r = await rig();
+    await createN(r, 1);
+    writeFileSync(join(r.dir, AUTO_STATE_FILE), 'not json', { mode: 0o600 });
+    writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+    const a = r.auto({ since: ENV });
+    const out = await a.sweep();
+    expect(out.claimed).toBe(0);
+    expect(out.stopped).toBeDefined();
+    expect(readFileSync(join(r.dir, AUTO_STATE_FILE), 'utf8')).toBe('not json');
+    rmSync(join(r.dir, AUTO_PAUSE_FILE));
+    expect((await a.sweep()).claimed).toBe(0);
+    expect(r.added).toEqual([]);
+  });
+
+  it('state_dir_unsafe makes the process unconfirmed: the next safe sweep resets the cut-off', async () => {
+    const r = await rig();
+    const sd = join(r.dir, '..', 'sd');
+    mkdirSync(sd, { mode: 0o700 });
+    const a = r.auto({ since: null, stateDir: sd });
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 }); // first enable, confirmed
+    chmodSync(sd, 0o770);
+    expect((await a.sweep()).stopped).toBe('state_dir_unsafe');
+    r.clock.t += 10_000;
+    const [during] = await createN(r, 1);
+    chmodSync(sd, 0o700);
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect((await r.store.get(during!)).status).toBe('pending');
+    expect(counter(sd).since).toBe(new Date(r.clock.t).toISOString());
+    expect(resets(r)).toHaveLength(1);
   });
 });

@@ -104,7 +104,7 @@ describe('finding 8: flag off builds no sign-up page', () => {
 describe('gate G1 a11y minors: heard hint, email message, visible sending text', () => {
   const HINT = { he: 'עד 80 תווים.', en: 'Up to 80 characters.' };
   const CHARS = {
-    he: 'השתמשו באותיות באנגלית, ספרות וסימנים.',
+    he: 'השתמשו באותיות באנגלית, בספרות ובסימנים.',
     en: 'Use English letters, digits and symbols.',
   };
   it.each(['he', 'en'])('%s: the heard input is described by a visible length hint', (l) => {

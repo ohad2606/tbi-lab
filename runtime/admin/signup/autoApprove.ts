@@ -557,12 +557,16 @@ export class AutoApprover {
    * A paused or `no_owner` sweep: this process becomes unconfirmed (in memory, always) and the
    * state file records `active: false` (secondary: a failed write still stops the sweep, the
    * error propagates, and the in-memory flag makes the next approving sweep reset).
+   * Written whenever `active` is not already false, also on an absent state: a paused or
+   * `no_owner` first run is then no longer a first run, so a backdated TBI_SIGNUP_AUTO_SINCE
+   * cannot approve requests that arrived meanwhile (also across a restart). An unreadable state
+   * propagates (fail closed, nothing rewritten).
    */
   private markInactive(): Promise<void> {
     this.unconfirmed = true;
     return exclusive(this.d.dir, async () => {
       const s = await this.readState(this.today());
-      if (s.active === true) await this.writeState({ ...s, active: false });
+      if (s.active !== false) await this.writeState({ ...s, active: false });
     });
   }
 
@@ -768,7 +772,11 @@ export class AutoApprover {
   }
 
   private async sweepInner(out: SweepResult): Promise<SweepResult> {
-    if (await this.checkStateDir()) return { ...out, stopped: 'state_dir_unsafe' };
+    if (await this.checkStateDir()) {
+      // Like a pause (the state is not touched: the dir is not trusted): reset on recovery.
+      this.unconfirmed = true;
+      return { ...out, stopped: 'state_dir_unsafe' };
+    }
     if (await this.paused()) {
       await this.markInactive();
       return { ...out, stopped: 'paused' };
