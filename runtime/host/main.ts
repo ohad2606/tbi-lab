@@ -8,7 +8,10 @@
  *   TBI_ARTIFACTS      artifact directory override (Sprint 7: the content-addressed store the
  *                      build service publishes to); default $TBI_RUNTIME_HOME/artifacts. Only
  *                      the location changes: lookup, re-hash and private copy are unchanged.
- *   TBI_HOST_*_MS etc. operator-tunable limits (see TUNABLE below)
+ *   TBI_HOST_*_MS etc. operator-tunable limits (config.ts HOST_TUNABLE_ENV)
+ *   TBI_HOST_IDLE_MS   K3 idle limit. Unset, empty or 0: off. Any other value that is not a whole
+ *                      number of ms (digits only), is below 120000 or is beyond the safe integers
+ *                      refuses to start: exit 78 (no restart).
  *   TBI_SOCKET_GID     the API socket's group (Sprint 23B: tbi-sock-runtime, shared with the proxy only)
  *   TBI_HOST_HEALTH_LISTEN, TBI_HOST_HEALTH_SOCKET_GID   a GET /health-only socket (build service)
  *   TBI_REPORTS_DIR    Sprint 14 problem reports (reports.ts); unset: the feature is off
@@ -73,7 +76,15 @@ const healthWhere = process.env.TBI_HOST_HEALTH_LISTEN
 const healthGid = socketGidFromEnv('TBI_HOST_HEALTH_SOCKET_GID');
 const identity = identityFromEnv();
 /** Operator-tunable engineering controls (config.ts HOST_TUNABLE_ENV; never client-controlled). */
-const overrides = hostTunablesFromEnv(process.env);
+let overrides: ReturnType<typeof hostTunablesFromEnv>;
+try {
+  overrides = hostTunablesFromEnv(process.env);
+} catch (e) {
+  // K3: a bad TBI_HOST_IDLE_MS (the only refusal there) cannot be fixed by restarting: exit 78, like
+  // the sim refusal below, before any side effect. The message carries no value.
+  process.stderr.write(`tbi-session-host: ${(e as Error).message}; refusing to start\n`);
+  process.exit(HOST_SIM_REFUSED_EXIT);
+}
 const ticketFile = process.env.TBI_TICKET_KEY_FILE;
 if (!ticketFile) throw new Error('TBI_TICKET_KEY_FILE is required');
 // Sprint 8 containment: QEMU as a sandboxed per-session unit, sessions on disk.

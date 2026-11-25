@@ -14,6 +14,7 @@ import { Editor } from './Editor.js';
 import { EnvironmentNotes } from './EnvironmentNotes.js';
 import { Home } from './Home.js';
 import { NoticeBar } from './NoticeBar.js';
+import { IdleHost } from './IdleDialog.js';
 import { TopBar } from './TopBar.js';
 import { SignInBanner } from './SignInBanner.js';
 import { UpdateBanner } from './UpdateBanner.js';
@@ -111,6 +112,7 @@ export function App() {
       <SignInBanner />
       <UpdateBanner />
       <NoticeBar />
+      <IdleHost />
       {state.screen === 'editor' && state.doc ? <Editor /> : <Home />}
       <VersionStatus />
       <CapabilitiesHost />

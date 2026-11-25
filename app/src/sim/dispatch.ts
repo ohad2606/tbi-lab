@@ -69,6 +69,10 @@ export class SimulationDispatcher implements SimulationHost {
     this.current.stop();
   }
 
+  stillHere(): Promise<boolean> {
+    return this.current.stillHere?.() ?? Promise.resolve(false);
+  }
+
   dispose(): void {
     this.local.dispose();
     this.mcu.dispose();

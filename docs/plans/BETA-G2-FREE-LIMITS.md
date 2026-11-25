@@ -75,6 +75,15 @@ policy file), the plan map, and the pause file (absent = off).
 - Real Free/paid resolution from entitlements (O-1): today only the policy-name map.
 - tbi-docs review of the HE/EN draft wording (marked NEEDS DOCS REVIEW).
 
+## 5a. Beta config in the repo (K2-a, inert)
+
+`deploy/dev-lab/s8/sim-plans.beta.json` is the prepared plans config for the beta: `metering.enabled: true`,
+`sim.leaseMs: 30000` (equals the host default), Free `monthlyMinutes: null` (class-B default for owner
+question 1 of the K2/K3 plan: no monthly minute cap until 15.12, no billing). Plan map for
+`policy.beta.json`: `TBI_HOST_SIM_PLAN_MAP=free=free,preview=legacy,system=legacy`. Nothing is installed or
+enabled by this file; see `docs/plans/S3D-STAGING-ENABLE-CHECKLIST.md` section 1. Test:
+`runtime/plans/tests/sim-plans-beta-config.test.ts`.
+
 ## 6. Open owner questions
 
 - Q1 The Free session lifetime value (the default policy lifetime is 30 min for every plan).

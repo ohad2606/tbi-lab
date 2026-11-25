@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { simLimitText, simLimitUi } from '../runtime/limits.js';
 import { LearnMore, sectionForFailure } from './Capabilities.js';
 import { PREVIEW_NAME } from '../deployment.js';
@@ -9,6 +9,7 @@ import { engineErrorParts, groupByComponent, ratingRow, simFailureMessage } from
 import { warningsFor } from '../sim/ratings.js';
 import { useAppState, useStore, useT } from './context.js';
 import { TOOLBAR_BUILD_ID, programBoardOf, requestCodeView } from './buildAction.js';
+import { TabOutdatedBanner } from './StorageNotices.js';
 
 const damage = (w: RatingWarning[]) => w.filter((x) => x.kind === 'absolute');
 const operating = (w: RatingWarning[]) => w.filter((x) => x.kind !== 'absolute');
@@ -28,6 +29,10 @@ export function NoticeBar() {
   const running = sim.status === 'running' ? sim.outcome : null;
   return (
     <div class="banners">
+      {/* K11 live regions live INSIDE this one grid row: as separate children of .app (an explicit
+          grid-template-rows) their empty wrappers would take grid cells and push the workspace
+          out of the 1fr row. Empty, they have no height; they stay in the accessibility tree. */}
+      <TabOutdatedBanner />
       {/* A preview deployment says so on every screen (deployment.ts), never in the top bar's
           space, which the editor's controls need. */}
       {PREVIEW_NAME && (
@@ -254,7 +259,19 @@ export function LimitNotice() {
   const store = useStore();
   const t = useT();
   const soft = softLimit(sim);
-  const text = soft ? simLimitText(locale, soft.limit) : null;
+  // K3-3: the idle end arrives while "Still there?" is still modal and the region inert. Its text is
+  // inserted one tick later, once the dialog is gone, so it is announced (once).
+  const late = soft?.limit.code === 'session_idle';
+  const [released, setReleased] = useState(false);
+  useEffect(() => {
+    if (!late) return;
+    const timer = setTimeout(() => setReleased(true));
+    return () => {
+      clearTimeout(timer);
+      setReleased(false);
+    };
+  }, [late]);
+  const text = soft && (!late || released) ? simLimitText(locale, soft.limit) : null;
   // A restart in flight: ignores further clicks; focus is settled once the outcome is known.
   const pending = useRef(false);
   useEffect(() => {

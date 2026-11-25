@@ -1,0 +1,9 @@
+{
+  "metering": { "enabled": true },
+  "sim": {
+    "leaseMs": 30000,
+    "plans": {
+      "free": { "monthlyMinutes": null, "dailyMinutes": null }
+    }
+  }
+}

@@ -88,6 +88,16 @@ export interface HostConfig {
   killGraceMs: number;
   /** A session with no attached event stream and no request for this long is terminated. */
   leaseMs: number;
+  /**
+   * K3-1: a session whose user has not interacted for this long (wall ms) is ended `idle_timeout`,
+   * even with its event stream attached. Interaction = `run`, an ACCEPTED command (202), or
+   * `POST /sessions/:id/presence`; status reads, the event stream and lease refreshes never count.
+   * Absent or 0: off (the host answers exactly as without it). On, it must be a safe integer above
+   * `housekeepingMs` (`checkIdleBounds`, enforced at construction = boot). It is expected to be far
+   * above `leaseMs` (5 min vs 30 s): the lease ends a session whose client is GONE, the idle limit
+   * one whose client is connected but unattended, so idleMs >= leaseMs is the normal configuration.
+   */
+  idleMs?: number;
   /** A terminal session's status and final events stay readable for this long. */
   retainEndedMs: number;
   /** Runtime events are coalesced and published at this simulation-time interval. */
@@ -159,11 +169,20 @@ export const HOST_TUNABLE_ENV: Readonly<Record<string, keyof HostConfig>> = {
   TBI_HOST_STALL_TIMEOUT_MS: 'stallTimeoutMs',
   TBI_HOST_RETAIN_ENDED_MS: 'retainEndedMs',
   TBI_HOST_MAX_LIFETIME_MS: 'maxLifetimeMs',
+  // K3-1: unset, empty or 0 = off; any other non-digit value is refused
+  TBI_HOST_IDLE_MS: 'idleMs',
 };
+
+/** The smallest idle limit an operator may set: the app's prompt shows 60 s before the end. */
+export const MIN_IDLE_ENV_MS = 120_000;
 
 /**
  * The tunable overrides `main.ts` applies (s3d-8: shared with the offline sim config validator so both
- * read TBI_HOST_LEASE_MS identically). A value that is not all digits is ignored (default kept).
+ * read TBI_HOST_LEASE_MS identically). A value that is not all digits is ignored (default kept),
+ * except TBI_HOST_IDLE_MS: K3 throws on a set, non-empty value that is not all digits (idle would
+ * otherwise stay silently off), is non-zero below `MIN_IDLE_ENV_MS` (the host would otherwise keep the
+ * "Still there?" prompt on screen) or is beyond the safe integers (`checkIdleBounds` could only refuse
+ * it later, after boot side effects). The message names the variable and the rule, no value.
  */
 export function hostTunablesFromEnv(env: Record<string, string | undefined>): Partial<HostConfig> {
   const overrides: Partial<HostConfig> = {};
@@ -171,7 +190,29 @@ export function hostTunablesFromEnv(env: Record<string, string | undefined>): Pa
     const v = env[name];
     if (v !== undefined && /^\d+$/.test(v)) (overrides as Record<string, number>)[key] = Number(v);
   }
+  // from the raw value: a non-digit one is NaN here (never in `overrides`) and refused
+  const raw = env.TBI_HOST_IDLE_MS;
+  const idle = raw ? (overrides.idleMs ?? NaN) : 0;
+  if (idle !== 0 && !(Number.isSafeInteger(idle) && idle >= MIN_IDLE_ENV_MS))
+    throw new Error(
+      `TBI_HOST_IDLE_MS must be 0 (off) or a whole number of ms, at least ${MIN_IDLE_ENV_MS} (a safe integer)`,
+    );
   return overrides;
+}
+
+/** K3-1: is the idle limit on (a positive `idleMs`)? */
+export const idleOn = (config: Pick<HostConfig, 'idleMs'>): boolean =>
+  typeof config.idleMs === 'number' && config.idleMs > 0;
+
+/**
+ * K3-1: fail closed on an idle limit housekeeping cannot enforce: when on, `idleMs` must be a safe
+ * integer above `housekeepingMs`. Off (absent or 0): nothing is checked.
+ */
+export function checkIdleBounds(config: Pick<HostConfig, 'idleMs' | 'housekeepingMs'>): void {
+  const v = config.idleMs;
+  if (v === undefined || v === 0) return;
+  if (!Number.isSafeInteger(v) || v <= config.housekeepingMs)
+    throw new Error('idleMs must be 0 (off) or a whole number of ms above housekeepingMs');
 }
 
 /** The per-session directory for a session id (ids are host-generated hex, never client text). */
