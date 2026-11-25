@@ -180,7 +180,8 @@ export const MIN_IDLE_ENV_MS = 120_000;
  * The tunable overrides `main.ts` applies (s3d-8: shared with the offline sim config validator so both
  * read TBI_HOST_LEASE_MS identically). A value that is not all digits is ignored (default kept).
  * K3-3: throws on a set, non-zero TBI_HOST_IDLE_MS below `MIN_IDLE_ENV_MS` (the host would otherwise
- * keep the "Still there?" prompt on screen).
+ * keep the "Still there?" prompt on screen) or beyond the safe integers (`checkIdleBounds` could only
+ * refuse it later, after boot side effects). The message names the variable and the rule, no value.
  */
 export function hostTunablesFromEnv(env: Record<string, string | undefined>): Partial<HostConfig> {
   const overrides: Partial<HostConfig> = {};
@@ -189,8 +190,10 @@ export function hostTunablesFromEnv(env: Record<string, string | undefined>): Pa
     if (v !== undefined && /^\d+$/.test(v)) (overrides as Record<string, number>)[key] = Number(v);
   }
   const idle = overrides.idleMs;
-  if (idle !== undefined && idle > 0 && idle < MIN_IDLE_ENV_MS)
-    throw new Error(`TBI_HOST_IDLE_MS must be 0 (off) or at least ${MIN_IDLE_ENV_MS} ms`);
+  if (idle !== undefined && idle !== 0 && !(Number.isSafeInteger(idle) && idle >= MIN_IDLE_ENV_MS))
+    throw new Error(
+      `TBI_HOST_IDLE_MS must be 0 (off) or at least ${MIN_IDLE_ENV_MS} ms (a safe integer)`,
+    );
   return overrides;
 }
 
