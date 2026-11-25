@@ -112,10 +112,20 @@ added. This is tested.
     (`spoolId`) for the operator. Polling the earlier request instead of resubmitting is a possible later change.
   - Finished claims (mail attempted, email sent/queued/failed, rejected, back to `pending` with an error, or the
     record gone) are dropped from the set at the next sweep.
-- **Cut-off (Q5, L2).** Only requests created after `TBI_SIGNUP_AUTO_SINCE` are taken. Unset, the first sweep
-  writes the current time as `since` into the state file (one log line `auto-approve cut-off recorded`), so the
-  existing backlog is **not** approved when the flag is first turned on; it stays for the owner. Deleting the state
-  file moves the cut-off to the next sweep's time (fewer requests from the backlog).
+- **Cut-off (Q5, L2).** Only requests created after the cut-off are taken. The very first run (no state file)
+  writes `TBI_SIGNUP_AUTO_SINCE`, or unset the current time, as `since` (one log line `auto-approve cut-off
+  recorded`), so the existing backlog is **not** approved when the flag is first turned on; it stays for the owner.
+- **Reset on every start, re-enable and resume (G1 follow-up).** Every admin process starts unconfirmed. Its first
+  sweep that may approve (not paused, owner principal recorded) first persists `since = max(now, stored since,
+  TBI_SIGNUP_AUTO_SINCE)` (one log line `auto-approve cut-off reset`), under the state-dir mutex, before any retry
+  or claim. A paused or `no_owner` sweep makes the process unconfirmed again (and writes `active: false`). So any
+  restart, env/drop-in off -> on, pause -> resume or owner recorded after `no_owner` leaves the requests created
+  before it for the owner (manual). The cut-off only moves forward (a clock step back never moves it earlier).
+  Cost: a restart for an unrelated reason also leaves the requests created before it for manual approval. A reset
+  that cannot be written approves nothing (`stopped: reset_failed`, logged at most once an hour per class) and is
+  retried by the next sweep; the count, retries and claims are written back unchanged. Until the reset, the status
+  route answers `cutoff` and `waitingBacklog` as `unknown` with the reason `reset_pending`. Never delete or edit the
+  state file while auto-approve is on.
 - **Deleting the state file resets today's count** (and clears the claim set): the cap is only as strong as the
   integrity of the admin-only state dir. Only root or the admin service user can do it; the runbook must say so.
 - An unreadable or corrupt state file, or one whose `day` is **after** today (a clock stepped back across
@@ -332,6 +342,7 @@ It never writes, takes no lock, writes no log line and does not change the sweep
     listing of the store, like the owner's list.
   - **Explicit failure:** a value that cannot be read is the string `"unknown"`, never a guessed number, and
     `unknownReasons.<field>` names why: an errno name, `corrupt`, `future_day`, `state_dir_unsafe`, or
-    `not_recorded` (no sweep has recorded the default cut-off yet).
+    `not_recorded` (no sweep has recorded the default cut-off yet), `reset_pending` (this process has not reset
+    the cut-off yet: before its first approving sweep, or while paused / without the owner principal).
 - The answer holds counts, the cap, booleans, the day, the cut-off time and fixed codes only: no id, name, address,
   path or secret (tested).
