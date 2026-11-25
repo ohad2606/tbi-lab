@@ -74,6 +74,8 @@ function IdleDialog() {
       aria-describedby="idle-body"
       onKeyDown={(e) => {
         e.stopPropagation(); // app shortcuts stay behind the modal
+        // A held key is not a decision: auto-repeat must not activate a button.
+        if (e.repeat && (e.key === 'Enter' || e.key === ' ')) return e.preventDefault();
         trapTab(e);
         if (e.key !== 'Escape') return;
         // Handled here: the browser may close a dialog on a repeated Esc despite `cancel`.
@@ -84,8 +86,12 @@ function IdleDialog() {
         e.preventDefault();
         keep();
       }}
-      // Closed by the browser while the warning stands: show it again.
-      onClose={() => open.current && !dialog.current?.open && dialog.current?.showModal()}
+      // Closed by the browser while the warning stands: show it again, on "Keep running".
+      onClose={() => {
+        if (!open.current || dialog.current?.open) return;
+        dialog.current?.showModal();
+        keepButton.current?.focus();
+      }}
     >
       <h2 id="idle-title">{t('sim.idle.title')}</h2>
       <p id="idle-body">{t('sim.idle.body')}</p>

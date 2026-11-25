@@ -97,6 +97,26 @@ test.afterEach(async ({ request }) => {
   await idle(request);
 });
 
+/** Record each change of the end notice's live region, relative to the dialog leaving the DOM. */
+const watchEndNotice = (page: Page) =>
+  page.evaluate(() => {
+    const seen: { dialog: boolean; closedInSameBatch: boolean }[] = [];
+    (window as any).__endNotice = seen;
+    let last = '';
+    new MutationObserver((records) => {
+      const text = document.querySelector('[data-testid="limit-status"]')?.textContent ?? '';
+      if (text === last) return;
+      last = text;
+      const closedInSameBatch = records.some((r) =>
+        [...r.removedNodes].some(
+          (n) => n instanceof Element && n.matches('[data-testid="idle-dialog"]'),
+        ),
+      );
+      const dialog = !!document.querySelector('[data-testid="idle-dialog"]');
+      seen.push({ dialog, closedInSameBatch });
+    }).observe(document.body, { childList: true, characterData: true, subtree: true });
+  });
+
 for (const locale of ['en', 'he'] as const) {
   const T = TEXT[locale];
 
@@ -148,6 +168,38 @@ for (const locale of ['en', 'he'] as const) {
     expect(await presences(request)).toBe(3);
   });
 
+  test(`${locale}: a held Enter or Space does not decide; a browser re-open keeps focus on Keep running`, async ({
+    page,
+    request,
+  }) => {
+    await run(page, locale);
+    // Held down before the prompt: what reaches the dialog afterwards is auto-repeat.
+    await page.keyboard.down('Enter');
+    await page.keyboard.down('Space');
+    await warned(page);
+    // The first keydown, before the prompt, was ordinary activity; count from here.
+    const before = await presences(request);
+    await page.keyboard.down('Enter');
+    await page.keyboard.down('Space');
+    await page.keyboard.up('Space');
+    await page.keyboard.up('Enter');
+    const dialog = page.getByTestId('idle-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(page.getByTestId('idle-keep')).toBeFocused();
+    expect(await presences(request)).toBe(before);
+
+    // Closed by the browser while the warning stands: modal again, focus on Keep running.
+    await dialog.evaluate((el: HTMLDialogElement) => el.close());
+    await expect.poll(() => dialog.evaluate((el) => el.matches(':modal'))).toBe(true);
+    await expect(page.getByTestId('idle-keep')).toBeFocused();
+    expect(await presences(request)).toBe(before);
+
+    // A fresh press still decides.
+    await page.keyboard.press('Space');
+    await expect(dialog).toHaveCount(0);
+    expect(await presences(request)).toBe(before + 1);
+  });
+
   test(`${locale}: Stop now ends the run and leaves focus on Run`, async ({ page, request }) => {
     await run(page, locale);
     await warned(page);
@@ -194,12 +246,17 @@ for (const locale of ['en', 'he'] as const) {
   }) => {
     await run(page, locale);
     await warned(page);
+    await watchEndNotice(page);
     await request.post(`${FAKE}/__test/end-all?reason=idle_timeout`);
     await expect(page.getByTestId('idle-dialog')).toHaveCount(0, { timeout: 10_000 });
     await expect(page.getByTestId('sim-run')).toBeFocused();
     const region = page.getByTestId('limit-status');
     await expect(region).toHaveAttribute('role', 'status');
     await expect(region).toContainText(T.ended);
+    // 4.1.3: one text insertion, after the modal is gone (not in the same DOM update).
+    expect(await page.evaluate(() => (window as any).__endNotice)).toEqual([
+      { dialog: false, closedInSameBatch: false },
+    ]);
     await expect(page.getByTestId('sim-error')).toHaveCount(0); // not a red alert
     expect(await axe(page, '[data-testid="limit-notice"]')).toEqual([]);
     const retry = page.getByTestId('limit-retry');

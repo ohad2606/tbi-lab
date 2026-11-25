@@ -173,9 +173,14 @@ export const HOST_TUNABLE_ENV: Readonly<Record<string, keyof HostConfig>> = {
   TBI_HOST_IDLE_MS: 'idleMs',
 };
 
+/** The smallest idle limit an operator may set: the app's prompt shows 60 s before the end. */
+export const MIN_IDLE_ENV_MS = 120_000;
+
 /**
  * The tunable overrides `main.ts` applies (s3d-8: shared with the offline sim config validator so both
  * read TBI_HOST_LEASE_MS identically). A value that is not all digits is ignored (default kept).
+ * K3-3: throws on a set, non-zero TBI_HOST_IDLE_MS below `MIN_IDLE_ENV_MS` (the host would otherwise
+ * keep the "Still there?" prompt on screen).
  */
 export function hostTunablesFromEnv(env: Record<string, string | undefined>): Partial<HostConfig> {
   const overrides: Partial<HostConfig> = {};
@@ -183,6 +188,9 @@ export function hostTunablesFromEnv(env: Record<string, string | undefined>): Pa
     const v = env[name];
     if (v !== undefined && /^\d+$/.test(v)) (overrides as Record<string, number>)[key] = Number(v);
   }
+  const idle = overrides.idleMs;
+  if (idle !== undefined && idle > 0 && idle < MIN_IDLE_ENV_MS)
+    throw new Error(`TBI_HOST_IDLE_MS must be 0 (off) or at least ${MIN_IDLE_ENV_MS} ms`);
   return overrides;
 }
 

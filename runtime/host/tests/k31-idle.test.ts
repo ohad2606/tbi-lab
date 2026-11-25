@@ -161,6 +161,15 @@ describe('K3-1: configuration', () => {
     expect(hostTunablesFromEnv({ TBI_HOST_IDLE_MS: '300000' })).toEqual({ idleMs: 300_000 });
   });
 
+  it('TBI_HOST_IDLE_MS set below two minutes is refused at config load (0 stays off)', () => {
+    for (const v of ['1', '60000', '119999'])
+      expect(() => hostTunablesFromEnv({ TBI_HOST_IDLE_MS: v })).toThrow(
+        /TBI_HOST_IDLE_MS.*120000/,
+      );
+    expect(hostTunablesFromEnv({ TBI_HOST_IDLE_MS: '120000' })).toEqual({ idleMs: 120_000 });
+    expect(hostTunablesFromEnv({ TBI_HOST_IDLE_MS: '0' })).toEqual({ idleMs: 0 });
+  });
+
   it('fails closed at construction when on and idleMs <= housekeepingMs (or not a safe integer); 0/absent boot', async () => {
     expect(() => fakeHost('normal', { tmpParent: parent, idleMs: 50 })).toThrow(/idleMs/);
     expect(() => fakeHost('normal', { tmpParent: parent, idleMs: 10 })).toThrow(/idleMs/);

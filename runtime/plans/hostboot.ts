@@ -559,6 +559,7 @@ export type SimProblemCode =
   | 'max_concurrent'
   | 'no_policy'
   | 'policy_unusable'
+  | 'idle_limit_invalid'
   | 'plan_map_invalid'
   | 'plan_map_unmapped'
   | 'plan_map_unknown_policy_plan'

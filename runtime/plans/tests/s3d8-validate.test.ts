@@ -214,6 +214,7 @@ describe('validateSimConfig', () => {
       ON,
       'policy_unusable',
     ],
+    ['idle limit below the floor', { TBI_HOST_IDLE_MS: '60000' }, ON, 'idle_limit_invalid'],
     ['state dir relative', { TBI_HOST_SIM_PLANS_STATE: 'rel/state' }, ON, 'state_dir_path'],
   ])('%s -> %s', async (_n, over, cfg, code) => {
     const r = await validate(env(over, cfg));
