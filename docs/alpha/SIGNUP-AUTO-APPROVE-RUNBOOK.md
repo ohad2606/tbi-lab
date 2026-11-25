@@ -62,6 +62,8 @@ sudo stat -c '%U:%G %a %F' /var/lib/<N>-admin-auto
    existing backlog stays for you to handle by hand. A past `TBI_SIGNUP_AUTO_SINCE` is honoured only if that
    first sweep may approve: if it is paused or the owner principal is not recorded yet, the cut-off becomes the
    time of the first approving sweep instead.
+   Exception: if the first start finds the state directory unsafe, nothing is recorded, so after the fix a past
+   `TBI_SIGNUP_AUTO_SINCE` still applies (within the daily cap). Remove or update it before you restart.
 4. The admin app's sign-up screen shows the auto-approve status block (count and cap, paused, cut-off).
 
 If the log says `auto-approve off (config: ...)`, the flag or cap value is wrong. Fix the drop-in and restart.
