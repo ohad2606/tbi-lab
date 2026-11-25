@@ -420,3 +420,22 @@ export function signupCountKey(
 ): 'console.signups.count.one' | 'console.signups.count.other' {
   return n === 1 ? 'console.signups.count.one' : 'console.signups.count.other';
 }
+
+/**
+ * The count line of the sign-up list: only rows that need the owner (decide, retry, resend). A
+ * queued row (its email waits for quiet hours) needs nothing, so it is not counted; when only
+ * queued rows are open, a neutral sentence names them instead of "waiting for you".
+ */
+export function signupCountView(rows: readonly SignupRecord[]): {
+  key:
+    | 'console.signups.count.one'
+    | 'console.signups.count.other'
+    | 'console.signups.count.queuedOnly';
+  count: number;
+} {
+  const kinds = rows.map(signupRowKind);
+  const action = kinds.filter((k) => k !== 'queued').length;
+  const queued = kinds.length - action;
+  if (action === 0 && queued > 0) return { key: 'console.signups.count.queuedOnly', count: queued };
+  return { key: signupCountKey(action), count: action };
+}

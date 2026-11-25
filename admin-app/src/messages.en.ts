@@ -123,6 +123,7 @@ export const consoleEn = {
     'People who asked to join, and approved requests whose email has not gone out yet. Approve adds the account and sends the welcome email.',
   'console.signups.count.one': '1 request waiting for you',
   'console.signups.count.other': '{count} requests waiting for you',
+  'console.signups.count.queuedOnly': 'No requests need your action. Scheduled emails: {count}',
   'console.signups.empty': 'No open sign-up requests.',
   'console.signups.unavailable': 'Sign-up requests are not available right now.',
   'console.signups.refresh': 'Refresh requests',

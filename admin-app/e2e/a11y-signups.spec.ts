@@ -595,9 +595,10 @@ test.describe('signups: the real list', () => {
       const queued = rowOf(page, 'queued');
       await expect(queued.getByTestId('signup-send-after')).toBeVisible();
       await expect(queued.locator('button')).toHaveCount(0);
-      await expect(page.getByTestId('signups-live')).toContainText(
-        lang === 'he' ? '4' : '4 requests waiting for you',
-      );
+      // Only the three rows that need the owner are counted; the queued email needs nothing.
+      const count = lang === 'he' ? '3 בקשות ממתינות לך' : '3 requests waiting for you';
+      await expect(page.getByTestId('signups-live')).toContainText(count);
+      await expect(page.getByTestId('signups-count')).toHaveText(count);
     });
 
   test('Resend: a failure keeps the row and focus; a success removes it and focus moves on', async ({

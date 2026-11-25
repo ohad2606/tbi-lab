@@ -16,7 +16,7 @@ import {
   autoStateClass,
   focusAfterRemoval,
   isAutoApproved,
-  signupCountKey,
+  signupCountView,
   signupSource,
   signupOutcomeView,
   signupRowKind,
@@ -185,7 +185,10 @@ export function Signups() {
     setList(v);
     setMessages({});
     setConfirming(null);
-    if (v.ok) say(t(signupCountKey(v.value.length), { count: v.value.length }));
+    if (v.ok) {
+      const c = signupCountView(v.value);
+      say(t(c.key, { count: c.count }));
+    }
   };
   useEffect(() => {
     alive.current = true;
@@ -266,6 +269,8 @@ export function Signups() {
     }
   };
 
+  // Only rows that need the owner are counted (a queued email needs nothing).
+  const countLine = list?.ok ? signupCountView(list.value) : null;
   return (
     <section aria-labelledby="signups-h" class="stack">
       <h1 id="signups-h">{t('console.signups.heading')}</h1>
@@ -300,7 +305,7 @@ export function Signups() {
       ) : (
         <>
           <p class="muted small" data-testid="signups-count">
-            {t(signupCountKey(list.value.length), { count: list.value.length })}
+            {t(countLine!.key, { count: countLine!.count })}
           </p>
           <ul class="list" data-testid="signups-list">
             {list.value.map((r) => {

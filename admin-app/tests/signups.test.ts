@@ -17,6 +17,7 @@ import {
   isOpenSignup,
   signupRowKind,
   signupCountKey,
+  signupCountView,
   parseRoute,
   section,
   signupOutcomeView,
@@ -141,6 +142,39 @@ describe('sign-up requests view logic', () => {
       expect(l.messages['console.signups.count.one']).not.toContain('{count}');
       expect(l.messages['console.signups.count.other']).toContain('{count}');
     }
+  });
+  it('count counts only rows that need the owner (decide/retry/resend), never queued emails', () => {
+    const decide = rec('pending');
+    const retry = rec('approved');
+    const resend = rec('email_failed', true);
+    const queued = rec('email_queued', true);
+    expect([decide, retry, resend, queued].map(signupRowKind)).toEqual([
+      'decide',
+      'retry',
+      'resend',
+      'queued',
+    ]);
+    expect(signupCountView([decide, retry, resend, queued])).toEqual({
+      key: 'console.signups.count.other',
+      count: 3,
+    });
+    expect(signupCountView([queued, decide])).toEqual({
+      key: 'console.signups.count.one',
+      count: 1,
+    });
+    // Only queued rows: a neutral sentence (nothing to do), never "N waiting for you".
+    expect(signupCountView([queued, queued])).toEqual({
+      key: 'console.signups.count.queuedOnly',
+      count: 2,
+    });
+    expect(signupCountView([])).toEqual({ key: 'console.signups.count.other', count: 0 });
+    const m = (c: string) => LOCALES.find((l) => l.code === c)!.messages as Record<string, string>;
+    expect(m('en')['console.signups.count.queuedOnly']).toBe(
+      'No requests need your action. Scheduled emails: {count}',
+    );
+    expect(m('he')['console.signups.count.queuedOnly']).toBe(
+      'אין בקשות שדורשות פעולה ממך. מיילים מתוזמנים: {count}',
+    );
   });
   it('focus after removal: next row, else previous, else none', () => {
     expect(focusAfterRemoval(['a', 'b', 'c'], 'b')).toBe('c');
