@@ -408,6 +408,28 @@ for (const lang of ['he', 'en'] as const) {
     await expect(page.getByTestId('auto-unavailable')).toHaveCount(0);
   });
 
+  test(`signups (${lang}): Refresh announces the count and the unavailable status together`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list', {}, { status: 200, json: AUTO_ON });
+    await open(page, context, baseURL!, lang);
+    const live = page.getByTestId('signups-live');
+    const count = lang === 'he' ? '3 בקשות ממתינות לך' : '3 requests waiting for you';
+    await expect(live).toHaveText(count);
+    await page.unroute('**/admin-api/signups/**');
+    await mock(page, 'list', {}, { status: 500, json: { error: 'x' } });
+    // The status answers after the list: the one announcement still carries both sentences.
+    await page.route('**/admin-api/signups/auto-approve', async (r) => {
+      await new Promise((done) => setTimeout(done, 400));
+      await r.fulfill({ status: 500, json: { error: 'x' } });
+    });
+    await page.getByTestId('signups-refresh').click();
+    await expect(live).toHaveText(`${count}. ${x.unavailable}`);
+    await expect(page.getByTestId('signups-refresh')).toBeFocused();
+  });
+
   test(`signups (${lang}): 320 px, the status block does not overflow`, async ({
     page,
     context,

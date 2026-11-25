@@ -335,10 +335,12 @@ export function initSignup(doc = document, fetchFn = (...a) => fetch(...a)) {
 
   function setBusy(on) {
     // aria-disabled (not disabled) so keyboard focus stays on the button while sending. The label stays the same:
-    // the polite status region is the single announcement channel for "sending".
+    // the polite status region is the single announcement channel for "sending" (#su-sending is its visible,
+    // aria-hidden copy).
     btn.setAttribute('aria-disabled', on ? 'true' : 'false');
     btn.setAttribute('aria-busy', on ? 'true' : 'false');
     form.classList.toggle('is-sending', on);
+    $('su-sending').hidden = !on;
   }
 
   function success() {

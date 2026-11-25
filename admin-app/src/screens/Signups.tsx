@@ -46,6 +46,9 @@ const rowFocus = (id: string) =>
   document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`) ??
   document.querySelector<HTMLElement>(`[data-signup-id="${id}"][tabindex="-1"]`);
 
+/** How long the count announcement waits for the auto-approve status before it is spoken alone. */
+const STATUS_WAIT_MS = 3000;
+
 const N_SLOT = '\uE000';
 const C_SLOT = '\uE001';
 
@@ -168,7 +171,10 @@ export function Signups() {
 
   // A live region only speaks when its text changes: clear it, then set it on the next frame, so
   // the same sentence twice in a row is announced twice.
+  // `spoken` counts announcements and reloads, so a reload that was overtaken stays silent.
+  const spoken = useRef(0);
   const say = (text: string) => {
+    spoken.current++;
     setAnnounce('');
     requestAnimationFrame(() => {
       if (alive.current) setAnnounce(text);
@@ -177,8 +183,10 @@ export function Signups() {
 
   const reload = async () => {
     // The status is independent of the list: its failure shows its own message and never blocks it.
-    void loadAutoApproveStatus(api).then((st) => {
+    const turn = ++spoken.current;
+    const status = loadAutoApproveStatus(api).then((st) => {
       if (alive.current) setAutoStatus(st);
+      return st;
     });
     const v = await loadOpenSignups(api);
     if (!alive.current) return;
@@ -187,7 +195,14 @@ export function Signups() {
     setConfirming(null);
     if (v.ok) {
       const c = signupCountView(v.value);
-      say(t(c.key, { count: c.count }));
+      const count = t(c.key, { count: c.count });
+      // One announcement for both: a failed status is added to the count (a hung one is not waited for).
+      const st = await Promise.race([
+        status,
+        new Promise<null>((r) => setTimeout(() => r(null), STATUS_WAIT_MS)),
+      ]);
+      if (!alive.current || turn !== spoken.current) return;
+      say(st && !st.ok ? `${count}. ${t('console.signups.auto.unavailable')}` : count);
     }
   };
   useEffect(() => {
