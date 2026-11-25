@@ -7,11 +7,12 @@ import type { LimitError } from './limits.js';
 
 export type Lang = 'he' | 'en';
 
-// NEEDS DOCS REVIEW (tbi-docs), FABLE-REVIEW 14: the Hebrew register is now plural ("שלכם", "הגעתם",
-// "רוצים", "יש לכם"), matching the company voice "we"; the meaning is unchanged. The texts that offer to
-// buy extra credits / hours or to upgrade (ai.credits_out*, ai.deep_not_in_plan, pack.needs_plan,
-// sim.minutes_out*) are kept as they were: whether that offer may be shown is the PR #43 / tbi-docs
-// decision, to be taken BEFORE these texts are wired to a screen.
+// FABLE-REVIEW 14: the Hebrew register is plural ("שלכם", "הגעתם", "רוצים", "יש לכם"), matching the
+// company voice "we". The sim queue, daily and pause texts are identical to the app copies (sim.limit.*)
+// and offer no purchase, upgrade or priority. Native-speaker review of the Hebrew is still pending.
+// The texts that offer to buy extra credits / hours or to upgrade (ai.credits_out*,
+// ai.deep_not_in_plan, pack.needs_plan, sim.minutes_out*) are kept as they were: whether that offer may
+// be shown is the PR #43 / tbi-docs decision, to be taken BEFORE these texts are wired to a screen.
 export const MESSAGES: Record<Lang, Record<string, string>> = {
   he: {
     'limit.ai.credits_out':
@@ -38,20 +39,15 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
       'הגעתם למגבלה היומית של דקות הסימולציה. היא תתאפס מחר. עדיין אפשר לערוך ולחבר רכיבים.',
     'limit.sim.queue':
       'כל מקומות ההרצה תפוסים כרגע. אתם במקום {n} בתור. ההרצה תתחיל אוטומטית כשיתפנה מקום. אפשר להמשיך לערוך בינתיים.',
-    'limit.sim.queue_timeout':
-      'לא התפנה מקום הרצה בזמן סביר. נסו שוב בעוד כמה דקות. משתמשי מתקדם ו-Pro מקבלים עדיפות בתור.',
+    'limit.sim.queue_timeout': 'לא התפנה מקום הרצה בזמן סביר. נסו שוב בעוד כמה דקות.',
     'limit.sim.cooldown': 'אפשר להתחיל הרצה חינמית חדשה בעוד {n} שניות. אפשר להמשיך לערוך בינתיים.',
-    // NEEDS DOCS REVIEW (tbi-docs): queue_full and concurrent, draft wording.
-    'limit.sim.queue_full':
-      'תור ההרצה מלא כרגע. נסו שוב בעוד כמה דקות. משתמשי מתקדם ו-Pro מקבלים עדיפות בתור.',
+    'limit.sim.queue_full': 'תור ההרצה מלא כרגע. נסו שוב בעוד כמה דקות.',
     'limit.sim.concurrent':
       'כבר יש לכם הרצה פעילה. אפשר לעצור אותה או לחכות שתסתיים, ואז להתחיל הרצה חדשה.',
-    // NEEDS DOCS REVIEW (tbi-docs): queue_replaced, placeholder wording from the s3d design (section 4).
     'limit.sim.queue_replaced':
       'המקום שלכם בתור הועבר ללשונית אחרת. אפשר לסגור את הלשונית הזו ולחזור ללשונית השנייה.',
-    // NEEDS DOCS REVIEW (tbi-docs): BETA-G2 free_paused, draft wording.
     'limit.sim.free_paused':
-      'הרצות חינמיות מושהות כרגע. נסו שוב מאוחר יותר. אפשר להמשיך לערוך ולחבר רכיבים בינתיים.',
+      'הרצות חדשות מושהות כרגע. נסו שוב מאוחר יותר. אפשר להמשיך לערוך ולחבר רכיבים בינתיים.',
   },
   en: {
     'limit.ai.credits_out':
@@ -76,24 +72,20 @@ export const MESSAGES: Record<Lang, Record<string, string>> = {
     'limit.sim.minutes_out_free':
       'You have used your free ESP32 simulation minutes for this month. They renew on {date}. You can still edit and wire parts. Want more run time? You can upgrade to Advanced.',
     'limit.sim.daily':
-      "You have reached today's simulation minutes limit. It resets tomorrow. You can still edit and wire parts.",
+      'You have reached the daily limit of simulation minutes. It resets tomorrow. You can still edit and wire parts.',
     'limit.sim.queue':
-      'All run slots are busy right now. You are number {n} in the queue. Your run starts automatically when a slot is free. You can keep editing meanwhile.',
+      'All run slots are busy right now. You are number {n} in the queue. The run starts automatically when a slot is free. You can keep editing meanwhile.',
     'limit.sim.queue_timeout':
-      'No run slot became free in a reasonable time. Please try again in a few minutes. Advanced and Pro users get queue priority.',
+      'No run slot became free in a reasonable time. Try again in a few minutes.',
     'limit.sim.cooldown':
       'You can start a new free run in {n} seconds. You can keep editing meanwhile.',
-    // NEEDS DOCS REVIEW (tbi-docs): queue_full and concurrent, draft wording.
-    'limit.sim.queue_full':
-      'The run queue is full right now. Please try again in a few minutes. Advanced and Pro users get queue priority.',
+    'limit.sim.queue_full': 'The run queue is full right now. Please try again in a few minutes.',
     'limit.sim.concurrent':
       'You already have a run in progress. Stop it or wait until it ends, then start a new run.',
-    // NEEDS DOCS REVIEW (tbi-docs): queue_replaced, placeholder wording from the s3d design (section 4).
     'limit.sim.queue_replaced':
       'Your place in the queue is now held by another tab. Close this tab or return to the other one.',
-    // NEEDS DOCS REVIEW (tbi-docs): BETA-G2 free_paused, draft wording.
     'limit.sim.free_paused':
-      'Free runs are paused right now. Please try again later. You can keep editing and wiring parts meanwhile.',
+      'New runs are paused right now. Please try again later. You can keep editing and wiring parts meanwhile.',
   },
 };
 
