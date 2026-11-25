@@ -324,7 +324,9 @@ describe('K3-1: on', () => {
       () =>
         void w
           .presence(c.body.sessionId, c.body.token)
-          .then(async (r) => answers.push(r.status) && (await r.text())),
+          .then(async (r) => answers.push(r.status) && (await r.text()))
+          // a request still in flight at server close must not become an unhandled rejection
+          .catch(() => undefined),
       100,
     );
     await sleep(IDLE * 3);
@@ -362,7 +364,11 @@ describe('K3-1: on', () => {
     expect(dup.status).toBe(409);
     expect(s.lastInteraction).toBe(after);
     // commands keep it alive past idleMs
-    const keep = setInterval(() => void w.command(c.body.sessionId, c.body.token), 100);
+    // a request still in flight at server close must not become an unhandled rejection
+    const keep = setInterval(
+      () => void w.command(c.body.sessionId, c.body.token).catch(() => undefined),
+      100,
+    );
     await sleep(IDLE * 2);
     clearInterval(keep);
     expect(s.state).toBe('running');
