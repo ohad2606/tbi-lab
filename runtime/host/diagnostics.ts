@@ -70,6 +70,8 @@ export const REASON_CLASS: Readonly<
   // TBI-018 s3d-4: the sim meter ended the run (allowance used up / meter unavailable, fail closed)
   sim_minutes: { category: 'timeout', severity: 'info' },
   sim_unavailable: { category: 'internal', severity: 'warning' },
+  // K3-1: the user did not interact for the host's idleMs (slot hygiene, an orderly end)
+  idle_timeout: { category: 'timeout', severity: 'info' },
   // failed: what the user's project or firmware asked for (not host faults)
   unsupported_feature: { category: 'user_content', severity: 'info' },
   invalid_attachment: { category: 'user_content', severity: 'info' },

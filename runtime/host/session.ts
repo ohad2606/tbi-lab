@@ -51,7 +51,7 @@ import type { Principal } from '../identity/principal.js';
 import type { PlanId } from '../plans/config.js';
 import type { TicketFeatures } from '../identity/ticket.js';
 import type { HostConfig } from './config.js';
-import { sessionDir } from './config.js';
+import { idleOn, sessionDir } from './config.js';
 import { RUNTIME_DEVICE_TYPES, RuntimeDevices } from './devices.js';
 import { emitSessionEnd, stderrSink } from './diagnostics.js';
 import { EventLog } from './eventLog.js';
@@ -153,6 +153,11 @@ export interface SessionStatus {
     pacedMs: number;
     tickGapMs: { count: number; p99: number | null; max: number };
   };
+  /**
+   * K3-1: the host's idle limit (ms without run, accepted command or presence), only when it is on.
+   * Absent when off, so the body is exactly the previous one.
+   */
+  idleMs?: number;
 }
 
 /** Sprint 30 (M3 POC): one timing-trace entry (see HostSession.timingTrace). */
@@ -187,6 +192,12 @@ export class HostSession {
   readonly createdAt = new Date();
   endedAt: Date | null = null;
   lastActivity = performance.now();
+  /**
+   * K3-1: the user's last interaction (run, accepted command, presence), for the idle limit only.
+   * Distinct from `lastActivity` (the lease): status reads, streams and lease refreshes never write it.
+   * Starts at creation, so a session left `ready` idles out too.
+   */
+  lastInteraction = performance.now();
   streams = 0;
   /**
    * Sprint 23B: the email tag of the gate identity that created the session (null when access
@@ -565,6 +576,7 @@ export class HostSession {
     if (this.sm.state !== 'ready') return { ok: false, error: `cannot run from ${this.sm.state}` };
     this.sm.to('running');
     this.runStartedAt = performance.now();
+    this.lastInteraction = this.runStartedAt; // K3-1: run is interaction
     this.emitState();
     this.runPromise = this.execute();
     return { ok: true };
@@ -1730,6 +1742,7 @@ export class HostSession {
       runtime: { pid: this.pid, outcome: this.outcome },
       revisions: this.revisions(),
       pace: this.pace(),
+      ...(idleOn(this.config) ? { idleMs: this.config.idleMs } : {}),
     };
   }
 

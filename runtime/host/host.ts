@@ -27,7 +27,7 @@ import {
   type HostBeat,
   type HostHousekeeping,
 } from '../plans/simhost.js';
-import type { HostConfig, SimAdmissionConfig } from './config.js';
+import { checkIdleBounds, idleOn, type HostConfig, type SimAdmissionConfig } from './config.js';
 import { validateCommand, validateCreate, type EndReason, type FailReason } from './protocol.js';
 import { newQueueTicket, type TicketState } from './queueTickets.js';
 import { HostSession, SESSION_ID_RE, newSessionId, type SessionStatus } from './session.js';
@@ -184,6 +184,8 @@ export class SessionHost {
     // the admission wiring could not admit correctly, so it is refused before anything is created.
     if (config.simPlans?.enabled && (!config.policy || !config.simAdmission))
       throw new Error('an enabled sim adapter needs a policy and the sim admission config');
+    // K3-1: an idle limit housekeeping cannot enforce refuses to boot (before anything is created)
+    checkIdleBounds(config);
     // A host that was killed outright cannot clean up: its runtimes exit on their own (the
     // bridge connection drops), but its private root would remain. Remove any root whose
     // owning host process no longer exists.
@@ -828,7 +830,20 @@ export class SessionHost {
   command(s: HostSession, body: unknown): HostResult<{ accepted: boolean; reason?: string }> {
     const v = validateCommand(body);
     if (!v.ok) return { ok: false, status: 400, error: v.error };
-    return { ok: true, value: s.submit(v.value) };
+    const r = s.submit(v.value);
+    // K3-1: only an ACCEPTED command (202) is interaction; a rejected one (409) is not
+    if (r.accepted) s.lastInteraction = performance.now();
+    return { ok: true, value: r };
+  }
+
+  /**
+   * K3-1: `POST /sessions/:id/presence` (the client saw real user input). Resets ONLY the idle clock:
+   * never the lease, the lifetime or a meter timer. Off, or a terminal session: a no-op (nothing is
+   * resurrected, no timer, no event). Nothing is logged.
+   */
+  presence(s: HostSession): void {
+    if (!idleOn(this.config) || isTerminal(s.state)) return;
+    s.lastInteraction = performance.now();
   }
 
   private housekeeping(): void {
@@ -844,6 +859,12 @@ export class SessionHost {
       }
       if (s.streams === 0 && now - s.lastActivity > this.config.leaseMs) {
         void s.terminate('lease_expired');
+        continue;
+      }
+      // K3-1: no run, accepted command or presence for idleMs (stream attached or not). terminate is
+      // idempotent and its first reason wins, so a later pass or the lease never ends it twice.
+      if (idleOn(this.config) && now - s.lastInteraction > this.config.idleMs!) {
+        void s.terminate('idle_timeout');
         continue;
       }
       if (s.storageBytes() > this.config.maxSessionStorageBytes) void s.failNow('storage_limit');
