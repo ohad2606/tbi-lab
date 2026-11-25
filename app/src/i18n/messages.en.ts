@@ -1488,15 +1488,15 @@ export const en = {
   // K3-3 (NEEDS DOCS REVIEW, tbi-docs): the "Still there?" prompt and the idle end.
   'sim.idle.title': 'Still there?',
   'sim.idle.body':
-    'We have not seen any activity for a few minutes. To free the slot for other users, the run will stop in about a minute. Your project is saved.',
+    'We have not seen any activity on this page for a while. To free a run slot for other users, the run will stop in about a minute unless you choose “Keep running”. Stopping the run does not change your project.',
   'sim.idle.continue': 'Keep running',
   'sim.idle.stop': 'Stop now',
   'sim.idle.failed':
-    'We could not confirm this with the server. Try “Keep running” again, or stop now. Without a confirmation the run will stop soon.',
+    'We could not confirm with the server that you are still here. Choose “Keep running” again, or “Stop now”. If we cannot confirm it, the run may stop soon.',
   'sim.limit.session_idle':
-    'The run was stopped after {minutes} min without activity, to free the slot for others. Your project is saved. Press Run to start again.',
+    'The run was stopped after {minutes} min without activity, to free a run slot for others. Stopping it did not change your project. Press Run to start again.',
   'sim.limit.session_idle.one':
-    'The run was stopped after a minute without activity, to free the slot for others. Your project is saved. Press Run to start again.',
+    'The run was stopped after a minute without activity, to free a run slot for others. Stopping it did not change your project. Press Run to start again.',
   'sim.limit.retry': 'Try again',
   'sim.limit.region_label': 'Run status message',
   'sim.queue.cancel': 'Cancel',
