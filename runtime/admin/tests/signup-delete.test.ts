@@ -145,4 +145,40 @@ describe('PendingStore.deleteNow', () => {
     const audit = readFileSync(join(s.dir, 'audit.log'), 'utf8');
     expect(audit).toMatch(new RegExp(`${r.id} approve ok\\n.* ${r.id} delete ok\\n$`));
   });
+  it('a web record: deleteNow removes <id>.web before the record and frees the web sub-cap', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tbi-signup-delete-'));
+    roots.push(root);
+    const dir = join(root, 'p');
+    const store = new PendingStore(dir, { now: () => T0, maxWebRecords: 1 });
+    await store.init();
+    const { record: r } = await store.createIfNew(INPUT, { origin: 'web' });
+    expect(existsSync(join(dir, `${r.id}.web`))).toBe(true);
+    // The sub-cap is full: a second web request is refused.
+    await expect(
+      store.createIfNew({ ...INPUT, email: 'second@example.com' }, { origin: 'web' }),
+    ).rejects.toMatchObject({ code: 'full' });
+    expect(await store.deleteNow(r.id)).toBe('deleted');
+    expect(existsSync(join(dir, `${r.id}.web`))).toBe(false);
+    expect(readdirSync(dir).filter((f) => f.endsWith('.web'))).toEqual([]);
+    // The slot is free again.
+    const again = await store.createIfNew(
+      { ...INPUT, email: 'second@example.com' },
+      { origin: 'web' },
+    );
+    expect(again.created).toBe(true);
+  });
+
+  it('an orphan <id>.web marker (no record) is cleared on not_found and on already_deleted', async () => {
+    const s = await setup();
+    const { record: r } = await s.store.createIfNew(INPUT, { origin: 'web' });
+    expect(await s.store.deleteNow(r.id)).toBe('deleted');
+    // A crash-style leftover: the marker without its record, after the delete.
+    writeFileSync(join(s.dir, `${r.id}.web`), '');
+    expect(await s.store.deleteNow(r.id)).toBe('already_deleted');
+    expect(existsSync(join(s.dir, `${r.id}.web`))).toBe(false);
+    const unknown = '01KZZZZZZZZZZZZZZZZZZZZZZZ';
+    writeFileSync(join(s.dir, `${unknown}.web`), '');
+    expect(await s.store.deleteNow(unknown)).toBe('not_found');
+    expect(existsSync(join(s.dir, `${unknown}.web`))).toBe(false);
+  });
 });

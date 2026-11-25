@@ -1,4 +1,4 @@
-// QA scratch (uncommitted): proves signup_submitted counts once per NEW record via both routes.
+// BETA-G1: signup_submitted counts once per NEW record, via both the Apps Script and the web route.
 import { mkdtempSync, rmSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
