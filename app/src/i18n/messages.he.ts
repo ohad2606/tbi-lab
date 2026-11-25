@@ -1432,6 +1432,9 @@ export const he: Record<MessageKey, string> = {
     'סשן ה-ESP32 הופסק כי הגישה ל-TBI Lab הסתיימה עבור החשבון הזה. הפרויקט שמור בדפדפן הזה.',
   'sim.error.runtime.session_expired':
     'סשן ה-ESP32 הגיע למשך המרבי שלו והסתיים. לחצו על הרצה לסשן חדש.',
+  // K3-2 (NEEDS DOCS REVIEW, tbi-docs): the host ended an unattended run.
+  'sim.error.runtime.session_idle':
+    'ההרצה נעצרה אחרי {minutes} דקות ללא פעילות, כדי לפנות מקום לאחרים. הפרויקט שמור. לחצו על הרצה כדי להתחיל מחדש.',
   'sim.error.runtime.mirror_failed':
     'סשן ה-ESP32 הפעיל לא הצליח להחיל את השינוי שלכם ולכן נעצר. הפרויקט שומר על השינוי.',
   'sim.error.runtime.command_refused':
