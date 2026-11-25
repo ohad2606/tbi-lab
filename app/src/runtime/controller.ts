@@ -68,6 +68,8 @@ export interface McuDeps {
    */
   lease?: (firmware: ResolvedFirmware, board: ComponentInstance) => Promise<string | null>;
   now?: () => number;
+  /** K3-2: where user input is observed. Default: the page's window and visibility. */
+  input?: UserInput;
   /** After Stop, how long to wait for the orderly end before terminating. */
   stopTimeoutMs?: number;
 }
@@ -78,6 +80,59 @@ export interface McuDeps {
  * end the host ends it (`lifetime_exceeded` -> `session_expired`) and the next Run is a new one.
  */
 export const EXPIRY_WARNING_MS = 60_000;
+
+/** K3-2: warn this long before the host's idle limit would end the session. */
+export const IDLE_WARNING_MS = 60_000;
+/** K3-2: input sends at most one presence POST per this interval (never from a timer). */
+export const PRESENCE_THROTTLE_MS = 30_000;
+/** K3-3: an explicit "keep running" without an answer after this long counts as not confirmed. */
+export const PRESENCE_ANSWER_MS = 10_000;
+
+export interface UserInput {
+  target: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>;
+  hidden: () => boolean;
+}
+
+const INPUT_EVENTS = ['keydown', 'pointerdown', 'pointermove', 'wheel'] as const;
+const INPUT_OPTIONS = { capture: true, passive: true };
+/** The longest delay setTimeout takes; a later warning is simply re-armed. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
+const pageInput = (): UserInput | null =>
+  typeof window === 'undefined'
+    ? null
+    : { target: window, hidden: () => document.visibilityState === 'hidden' };
+
+/** A deliberate action of the user: never script-made, a held-down key or a motionless pointer. */
+function isUserInput(e: Event): boolean {
+  if (!e.isTrusted) return false;
+  if (e.type === 'keydown') return !(e as KeyboardEvent).repeat;
+  if (e.type !== 'pointermove') return true;
+  const m = e as PointerEvent;
+  return Boolean(m.movementX || m.movementY);
+}
+
+/** K3-2: the idle watch of one running session, only when the host reports an idle limit. */
+interface IdleWatch {
+  session: RuntimeSession;
+  idleMs: number;
+  /** Local send time of the latest interaction the host accepted (the host's clock starts later). */
+  since: number;
+  /** Local send time of the latest presence POST, accepted or not (throttle). */
+  sentAt: number;
+  pending: boolean;
+  /** K3-3: the explicit answer in flight, shared by repeated clicks. */
+  answer: Promise<boolean> | null;
+  timer: ReturnType<typeof setTimeout> | null;
+  input: UserInput;
+  listener: (e: Event) => void;
+}
+
+/** The host's idle limit of a session, or null when it is off or unknown (never guessed). */
+function idleLimit(session: RuntimeSession | null): number | null {
+  const ms = session?.created.idleMs;
+  return typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? ms : null;
+}
 
 /** Host failure reasons -> product error codes. */
 const FAIL: Record<FailReason, RuntimeFailCode> = {
@@ -161,6 +216,7 @@ export class McuSimulation implements SimulationHost {
   private createAbort: AbortController | null = null;
   private stopTimer: ReturnType<typeof setTimeout> | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private idle: IdleWatch | null = null;
   private startedAt = 0;
   private readonly now: () => number;
 
@@ -276,8 +332,10 @@ export class McuSimulation implements SimulationHost {
       (s) => runId === this.runId && this.onStream(s),
     );
     if (session.created.state === 'failed') return; // the stream reports why
+    const runSentAt = this.now();
     try {
       await session.run();
+      if (runId === this.runId && !this.stopRequested) this.startIdleWatch(session, runSentAt);
     } catch (e) {
       if (runId === this.runId && !this.stopRequested) this.failAndRelease(transportFailure(e));
     }
@@ -321,11 +379,13 @@ export class McuSimulation implements SimulationHost {
       this.pendingMirrors.delete(component);
       if (pending) this.control(component, pending.control, pending.projectRevision);
     };
+    const sentAt = this.now();
     void session
       .command({ category: 'mirror', projectRevision, component, control })
       .then((r) => {
         if (runId !== this.runId) return;
         if (!r.accepted) return this.failAndRelease(commandRejection(r.reason));
+        this.interacted(sentAt);
         next();
       })
       .catch((e) => runId === this.runId && this.failAndRelease(commandFailure(e)));
@@ -341,10 +401,12 @@ export class McuSimulation implements SimulationHost {
     else this.pressed.delete(component);
     this.publish();
     const runId = this.runId;
+    const sentAt = this.now();
     void session
       .command({ category: 'transient', action: pressed ? 'press' : 'release', component })
       .then((r) => {
-        if (runId !== this.runId || r.accepted) return;
+        if (runId !== this.runId) return;
+        if (r.accepted) return this.interacted(sentAt);
         if (pressed) this.pressed.delete(component);
         if (r.reason === 'rate_limited')
           return this.failAndRelease({ kind: 'runtime', code: 'commands_rate_limited' });
@@ -352,6 +414,26 @@ export class McuSimulation implements SimulationHost {
       })
       .catch((e) => runId === this.runId && this.failAndRelease(commandFailure(e)));
     return true;
+  }
+
+  /**
+   * K3-2: the user's explicit "I am still here" (answer to `view.idleSoon`), sent even inside the
+   * input throttle; one answer at a time. K3-3: true only once the host accepted it; false when it
+   * refused, did not answer within PRESENCE_ANSWER_MS, or there is no warning to answer.
+   */
+  stillHere(): Promise<boolean> {
+    const idle = this.idle;
+    if (!idle || !this.view?.idleSoon || idle.input.hidden()) return Promise.resolve(false);
+    idle.answer ??= new Promise<boolean>((resolve) => {
+      const done = (ok: boolean) => {
+        clearTimeout(timer);
+        idle.answer = null;
+        resolve(ok);
+      };
+      const timer = setTimeout(done, PRESENCE_ANSWER_MS, false);
+      void this.sendPresence(idle).then(done);
+    });
+    return idle.answer;
   }
 
   /** Stop: end the session for good. The next Run creates a fresh one. */
@@ -376,6 +458,7 @@ export class McuSimulation implements SimulationHost {
     }
     if (s === 'stopping') return;
     this.stopRequested = true;
+    this.endIdleWatch();
     this.set({ status: 'stopping', ...(this.view ? { runtime: { ...this.view } } : {}) });
     const runId = this.runId;
     void session.stop().catch(() => session.terminate().catch(() => undefined));
@@ -403,6 +486,7 @@ export class McuSimulation implements SimulationHost {
     this.stopTimer = null;
     if (this.expiryTimer) clearTimeout(this.expiryTimer);
     this.expiryTimer = null;
+    this.endIdleWatch();
     this.session?.close();
     this.session = null;
   }
@@ -442,6 +526,85 @@ export class McuSimulation implements SimulationHost {
       },
       Math.max(0, lifetimeMs - EXPIRY_WARNING_MS),
     );
+  }
+
+  /**
+   * K3-2: from the accepted `run` on, watch for real user input and warn IDLE_WARNING_MS before
+   * the host's idle limit. Without `idleMs` from the host there is no listener, timer or POST.
+   */
+  private startIdleWatch(session: RuntimeSession, since: number): void {
+    const idleMs = idleLimit(session);
+    const input = this.deps.input ?? pageInput();
+    if (idleMs === null || !input) return;
+    const listener = (e: Event) => {
+      // K3-3: while the warning shows, only its explicit answer counts: a Tab, an Esc or the
+      // press on "Stop now" must not dismiss the prompt before the action lands.
+      const idle = this.idle;
+      if (!idle || this.view?.idleSoon || !isUserInput(e) || idle.input.hidden()) return;
+      if (!idle.pending && this.now() - idle.sentAt >= PRESENCE_THROTTLE_MS)
+        void this.sendPresence(idle);
+    };
+    for (const type of INPUT_EVENTS) input.target.addEventListener(type, listener, INPUT_OPTIONS);
+    this.idle = {
+      session,
+      idleMs,
+      since,
+      sentAt: -Infinity,
+      pending: false,
+      answer: null,
+      timer: null,
+      input,
+      listener,
+    };
+    this.armIdleWarning();
+  }
+
+  private endIdleWatch(): void {
+    const idle = this.idle;
+    if (this.view) this.view.idleSoon = null;
+    if (!idle) return;
+    this.idle = null;
+    if (idle.timer) clearTimeout(idle.timer);
+    for (const type of INPUT_EVENTS)
+      idle.input.target.removeEventListener(type, idle.listener, INPUT_OPTIONS);
+  }
+
+  /** Called only by user actions. Resolves whether the host accepted; a refusal changes nothing. */
+  private sendPresence(idle: IdleWatch): Promise<boolean> {
+    const sentAt = this.now();
+    idle.sentAt = sentAt;
+    idle.pending = true;
+    return idle.session
+      .presence()
+      .then(() => {
+        if (this.idle !== idle) return false;
+        this.interacted(sentAt);
+        return true;
+      })
+      .catch(() => false)
+      .finally(() => (idle.pending = false));
+  }
+
+  /** The host accepted an interaction sent at `sentAt`: its idle clock restarted no earlier. */
+  private interacted(sentAt: number): void {
+    if (!this.idle || sentAt <= this.idle.since) return;
+    this.idle.since = sentAt;
+    this.armIdleWarning();
+  }
+
+  /** Show or clear the warning for the current clock; one timer, re-checked when it fires. */
+  private armIdleWarning(): void {
+    const idle = this.idle;
+    if (!idle || !this.view) return;
+    if (idle.timer) clearTimeout(idle.timer);
+    idle.timer = null;
+    const wait = idle.since + idle.idleMs - IDLE_WARNING_MS - this.now();
+    const soon = wait <= 0;
+    if (soon !== Boolean(this.view.idleSoon)) {
+      this.view.idleSoon = soon ? { idleMs: idle.idleMs } : null;
+      this.publish();
+    }
+    if (!soon) idle.timer = setTimeout(() => this.armIdleWarning(), Math.min(wait, MAX_TIMER_MS));
   }
 
   private warn(code: string, detail?: unknown): void {
@@ -491,6 +654,8 @@ export class McuSimulation implements SimulationHost {
           if (this.stopRequested) return this.finishStopped();
           const metered = meterStop(e.reason, e.detail);
           if (metered) return this.fail(metered);
+          const idle = idleStop(e.reason, idleLimit(this.session));
+          if (idle) return this.fail(idle);
           const code =
             e.reason === 'lifetime_exceeded'
               ? 'session_expired'
@@ -629,6 +794,14 @@ function meterStop(reason: unknown, detail: unknown): SimFailure | null {
       ? { code: d.code as string, params: limitParams(d.params) }
       : undefined;
   return { kind: 'runtime', code: reason, detail: reason, ...(limit ? { limit } : {}) };
+}
+
+/** K3-2: the host's idle end. Without the session's `idleMs` it stays the generic lost session. */
+function idleStop(reason: unknown, idleMs: number | null): SimFailure | null {
+  if (reason !== 'idle_timeout' || idleMs === null) return null;
+  const minutes = Math.max(1, Math.floor(idleMs / 60_000));
+  const limit = { code: 'session_idle', params: { minutes } };
+  return { kind: 'runtime', code: 'session_idle', detail: reason, limit };
 }
 
 function limitParams(p: unknown): Record<string, string | number> {

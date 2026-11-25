@@ -1004,6 +1004,14 @@ export const en = {
   'footer.supportLabel': 'Email support: {email}',
   'update.available': 'A new version is available',
   'update.reload': 'Reload',
+  'storage.tabOutdated':
+    'This tab is out of date: another tab updated the local storage. Reload to keep working. Changes made in this tab since then may not be saved.',
+  'storage.reload': 'Reload',
+  'storage.reloadTab': 'Reload this tab',
+  'storage.exportReminder':
+    'Your browser may clear local data. Export your project to keep a copy.',
+  'storage.exportAction': 'Export project',
+  'storage.exportDismiss': 'Dismiss',
   'update.later': 'Later',
   'update.busySimulation': 'Stop the simulation to reload.',
   'update.busyBuild': 'Reload when the build has finished.',
@@ -1477,6 +1485,18 @@ export const en = {
   // BETA-G2 (NEEDS DOCS REVIEW, tbi-docs): the Free kill switch; copy of server key limit.sim.free_paused.
   'sim.limit.free_paused':
     'New runs are paused right now. Please try again later. You can keep editing and wiring parts meanwhile.',
+  // K3-3 (NEEDS DOCS REVIEW, tbi-docs): the "Still there?" prompt and the idle end.
+  'sim.idle.title': 'Still there?',
+  'sim.idle.body':
+    'We have not seen any activity on this page for a while. To free a run slot for other users, the run will stop in about a minute unless you choose “Keep running”. Stopping the run does not change your project.',
+  'sim.idle.continue': 'Keep running',
+  'sim.idle.stop': 'Stop now',
+  'sim.idle.failed':
+    'We could not confirm with the server that you are still here. Choose “Keep running” again, or “Stop now”. If we cannot confirm it, the run may stop soon.',
+  'sim.limit.session_idle':
+    'The run was stopped after {minutes} min without activity, to free a run slot for others. Stopping it did not change your project. Press Run to start again.',
+  'sim.limit.session_idle.one':
+    'The run was stopped after a minute without activity, to free a run slot for others. Stopping it did not change your project. Press Run to start again.',
   'sim.limit.retry': 'Try again',
   'sim.limit.region_label': 'Run status message',
   'sim.queue.cancel': 'Cancel',

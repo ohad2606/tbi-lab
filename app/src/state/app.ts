@@ -1133,6 +1133,11 @@ export class AppStore {
     this.deps.simulation?.stop();
   }
 
+  /** K3-3: "keep running" on the idle warning; true once the Session Host accepted it. */
+  stillHere(): Promise<boolean> {
+    return this.deps.simulation?.stillHere?.() ?? Promise.resolve(false);
+  }
+
   /**
    * Rename the open project. Refused, with nothing written, when the new name reads the same
    * as another project's name in the library.

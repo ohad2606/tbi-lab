@@ -17,6 +17,10 @@
  *                                           with an enabled sim adapter; flag-off it is 404 as before
  *   DELETE /sessions/:id                    terminate; responds once resources are released
  *   POST   /sessions/:id/commands           one SessionCommand (mirror | transient)
+ *   POST   /sessions/:id/presence           K3-1: the user is there (real input seen by the client)
+ *                                           -> 204 empty; body and query ignored, never parsed.
+ *                                           Resets only the idle clock; idle limit off or a terminal
+ *                                           session: the same 204, nothing changes
  *   GET    /sessions/:id/events             Server-Sent Events, ordered; resume with
  *                                           Last-Event-ID (or ?after=): 400 if malformed,
  *                                           409 if ahead of the stream, `resync` first if
@@ -140,6 +144,20 @@ function readBody(req: IncomingMessage, limit: number): Promise<unknown> {
     });
     req.on('error', () => reject(new HttpError(400, 'request error')));
   });
+}
+
+/**
+ * K3-1: a body nobody reads (presence) is drained, never parsed or kept; beyond MAX_COMMAND_BYTES the
+ * request is destroyed so a client cannot stream into the host for free.
+ */
+function discardBody(req: IncomingMessage): void {
+  let size = 0;
+  req.on('error', () => {});
+  req.on('data', (c: Buffer) => {
+    size += c.length;
+    if (size > MAX_COMMAND_BYTES) req.destroy();
+  });
+  req.resume();
 }
 
 /**
@@ -425,6 +443,12 @@ async function handle(
     const r = host.command(s, body);
     if (!r.ok) throw new HttpError(r.status, r.error);
     return send(res, r.value.accepted ? 202 : 409, r.value);
+  }
+  if (action === 'presence' && method === 'POST' && parts.length === 3) {
+    // K3-1: after the access decision, the request rate and host.get (same 404s as every route)
+    host.presence(s);
+    discardBody(req);
+    return sendNoContent(res);
   }
   if (action === 'events' && method === 'GET' && parts.length === 3)
     return stream(req, res, s, url);

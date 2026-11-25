@@ -981,6 +981,13 @@ export const he: Record<MessageKey, string> = {
   'footer.supportLabel': 'שליחת דוא״ל לתמיכה: {email}',
   'update.available': 'גרסה חדשה זמינה',
   'update.reload': 'טעינה מחדש',
+  'storage.tabOutdated':
+    'הלשונית הזו אינה מעודכנת: לשונית אחרת עדכנה את האחסון המקומי. טענו מחדש כדי להמשיך לעבוד. שינויים שנעשו בלשונית הזו מאז עשויים לא להישמר.',
+  'storage.reload': 'טעינה מחדש',
+  'storage.reloadTab': 'טעינה מחדש של הלשונית',
+  'storage.exportReminder': 'הדפדפן עשוי למחוק נתונים מקומיים. ייצאו את הפרויקט כדי לשמור עותק.',
+  'storage.exportAction': 'ייצוא הפרויקט',
+  'storage.exportDismiss': 'סגירה',
   'update.later': 'אחר כך',
   'update.busySimulation': 'יש לעצור את הסימולציה כדי לטעון מחדש.',
   'update.busyBuild': 'אפשר לטעון מחדש בסיום הבנייה.',
@@ -1413,6 +1420,18 @@ export const he: Record<MessageKey, string> = {
   // BETA-G2 (NEEDS DOCS REVIEW, tbi-docs): the Free kill switch; copy of server key limit.sim.free_paused.
   'sim.limit.free_paused':
     'הרצות חדשות מושהות כרגע. נסו שוב מאוחר יותר. אפשר להמשיך לערוך ולחבר רכיבים בינתיים.',
+  // K3-3 (NEEDS DOCS REVIEW, tbi-docs): the "Still there?" prompt and the idle end.
+  'sim.idle.title': 'עדיין כאן?',
+  'sim.idle.body':
+    'כבר זמן מה לא זיהינו פעילות בדף הזה. כדי לפנות מקום הרצה למשתמשים אחרים, ההרצה תיעצר בעוד כדקה, אלא אם תבחרו ״להמשיך בהרצה״. עצירת ההרצה לא משנה את הפרויקט.',
+  'sim.idle.continue': 'להמשיך בהרצה',
+  'sim.idle.stop': 'לעצור עכשיו',
+  'sim.idle.failed':
+    'לא הצלחנו לאשר מול השרת שאתם עדיין כאן. בחרו שוב ״להמשיך בהרצה״, או ״לעצור עכשיו״. אם לא נצליח לאשר זאת, ייתכן שההרצה תיעצר בקרוב.',
+  'sim.limit.session_idle':
+    'ההרצה נעצרה אחרי {minutes} דקות ללא פעילות, כדי לפנות מקום הרצה לאחרים. עצירת ההרצה לא שינתה את הפרויקט. לחצו על הרצה כדי להתחיל מחדש.',
+  'sim.limit.session_idle.one':
+    'ההרצה נעצרה אחרי דקה ללא פעילות, כדי לפנות מקום הרצה לאחרים. עצירת ההרצה לא שינתה את הפרויקט. לחצו על הרצה כדי להתחיל מחדש.',
   'sim.limit.retry': 'נסו שוב',
   'sim.limit.region_label': 'הודעת מצב הרצה',
   'sim.queue.cancel': 'ביטול',

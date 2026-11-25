@@ -489,7 +489,9 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
      `state_dir_missing`, `state_dir_unusable`, `state_dir_not_dir`, `state_dir_owner`,
      `state_dir_mode` (anything but 0700, e.g. world-readable), `state_dir_symlink`,
      `state_dir_not_writable`, `state_lock` (malformed lock, stale lock + leftover takeover mutex),
-     `state_locked` (a live process holds `host.lock`), `journal_torn`, `journal_corrupt`.
+     `state_locked` (a live process holds `host.lock`), `journal_torn`, `journal_corrupt`,
+     `idle_limit_invalid` (`TBI_HOST_IDLE_MS` set, non-empty and either not all digits, or non-zero and
+     below 120000 or beyond the safe integers).
    - *Stricter than the host, by design:* a missing state directory is a problem (the host would create
      it 0700; create it beforehand with `install -d -m 0700`); a live lock is a problem (run with the
      host stopped, or expect `state_locked`).

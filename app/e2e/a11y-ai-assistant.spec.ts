@@ -171,10 +171,13 @@ async function tabTo(page: Page, testId: string, max = 25) {
   throw new Error(`${testId} not reached by Tab`);
 }
 
+/** Opens the panel by keyboard, with the AI on (the mock service's status is active + allowed). */
 async function openPanelByKeyboard(page: Page) {
   await page.getByTestId('assist-open').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#assist-title')).toBeFocused();
+  // Ask is rendered only once the status has answered: Tab before that walks past its place.
+  await expect(page.getByTestId('ai-ask')).toBeVisible();
 }
 
 const live = (page: Page) => page.getByTestId('assist-live');

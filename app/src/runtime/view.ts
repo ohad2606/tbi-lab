@@ -56,6 +56,11 @@ export interface RuntimeView {
    */
   expiresSoon: { lifetimeMs: number } | null;
   /**
+   * K3-2: set about a minute before the host would end the session for lack of user activity (only
+   * when the host reports `idleMs`). Real input, an accepted command or `stillHere()` clears it.
+   */
+  idleSoon: { idleMs: number } | null;
+  /**
    * Sprint 14: the host's id of this session, once created. Only a problem report sends it; the
    * host associates it only with the same user's own session.
    */
@@ -82,6 +87,7 @@ export function emptyView(board: string, firmware: string): RuntimeView {
     stale: false,
     trace: { events: 0, hash: '', checkpoints: [] },
     expiresSoon: null,
+    idleSoon: null,
   };
 }
 
@@ -105,6 +111,8 @@ export type RuntimeFailCode =
   | 'stalled'
   | 'session_lost'
   | 'session_expired'
+  /** K3-2: the host ended the run for lack of user activity (`idle_timeout`). */
+  | 'session_idle'
   /** Sprint 23B: the owner disabled the account; the host ended the session. */
   | 'account_disabled'
   | 'mirror_failed'

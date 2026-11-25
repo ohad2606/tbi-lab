@@ -24,6 +24,11 @@
  *                                        ends `lifetime_exceeded`); without ms: unbounded
  *     POST /__test/reset-builds[?capImages=N]  fresh fake build service (empty store, no
  *                                        records); with N, a store of N images that evicts
+ *     POST /__test/idle?ms=N&fail=1      K3-3: new sessions report `idleMs` N (without ms: idle
+ *                                        off); with fail=1 presence answers HTTP 500. Resets the
+ *                                        presence count. The idle END is scripted with
+ *                                        /__test/end-all?reason=idle_timeout
+ *     GET  /__test/idle-state            { presences } received since the last /__test/idle
  *   Sprint 14 problem reports (the REAL report store, runtime/host/reports.ts, in a private
  *   temporary directory):
  *     POST /__test/reset-reports         delete every stored report; fresh rate windows
@@ -110,6 +115,10 @@ const queueState = { polls: 0, cancels: 0, ticketHeaders: [] as string[] };
 let pausedUntil = 0;
 /** Alpha (Phase D): the maximum lifetime of new sessions (ms), like the real host; null: none. */
 let lifetimeMs: number | null = null;
+/** K3-3: the idle limit new sessions report (null: off), and the presence POSTs seen. */
+let idleMs: number | null = null;
+let failPresence = false;
+let presences = 0;
 
 class FakeSession {
   readonly id = randomBytes(16).toString('hex');
@@ -127,6 +136,7 @@ class FakeSession {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lifetimeTimer: ReturnType<typeof setTimeout> | null = null;
   readonly lifetimeMs = lifetimeMs;
+  readonly idleMs = idleMs;
   private engine: EngineSession | null = null;
   private inputs = new Map<number, DigitalLevel>();
   private outputs = new Map<number, 0 | 1>();
@@ -191,6 +201,7 @@ class FakeSession {
       createdAt: new Date().toISOString(),
       endedAt: null,
       lifetimeMs: this.lifetimeMs,
+      ...(this.idleMs === null ? {} : { idleMs: this.idleMs }),
       runtime: { pid: null, outcome: null },
       revisions: {
         snapshot: this.req.circuit.projectRevision,
@@ -464,6 +475,10 @@ const host = {
     if (!v.ok) return { ok: false, status: 400, error: v.error };
     return { ok: true, value: s.submit(v.value) };
   },
+  presence() {
+    presences++;
+    if (failPresence) throw new Error('injected');
+  },
   async terminate(s: FakeSession) {
     s.terminate();
   },
@@ -583,6 +598,13 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     case '/__test/lifetime':
       lifetimeMs = url.searchParams.has('ms') ? Number(url.searchParams.get('ms')) : null;
       return reply({ ok: true });
+    case '/__test/idle':
+      idleMs = url.searchParams.has('ms') ? Number(url.searchParams.get('ms')) : null;
+      failPresence = url.searchParams.get('fail') === '1';
+      presences = 0;
+      return reply({ ok: true });
+    case '/__test/idle-state':
+      return reply({ presences });
     case '/__test/reset-reports':
       rmSync(reportsDir, { recursive: true, force: true });
       inner = newInner();
