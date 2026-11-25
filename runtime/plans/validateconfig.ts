@@ -131,7 +131,15 @@ export async function validateSimConfig(
     return { status: 'off', problems: [], notes };
 
   // Host facts exactly as main.ts builds them (tunables, defaults, policy).
-  const tunables = hostTunablesFromEnv(env);
+  const problems: SimProblem[] = [];
+  let tunables: Partial<HostConfig>;
+  try {
+    tunables = hostTunablesFromEnv(env);
+  } catch (e) {
+    problems.push({ code: 'idle_limit_invalid', message: (e as Error).message });
+    // Validate everything else as with the limit off.
+    tunables = hostTunablesFromEnv({ ...env, TBI_HOST_IDLE_MS: undefined });
+  }
   const lease = env.TBI_HOST_LEASE_MS;
   if (lease !== undefined && tunables.leaseMs === undefined)
     notes.push('TBI_HOST_LEASE_MS is not a whole number: the host ignores it and uses its default');
@@ -144,7 +152,6 @@ export async function validateSimConfig(
     ticketKey: Buffer.alloc(0),
     ...tunables,
   });
-  const problems: SimProblem[] = [];
   let policyPlanNames: string[] | undefined;
   try {
     policyPlanNames = Object.keys(Policy.fromEnv(env as NodeJS.ProcessEnv).config.plans);

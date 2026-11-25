@@ -354,6 +354,15 @@ select {
   flex: 1 1 14rem;
   min-inline-size: 0;
 }
+/* K3-3: the "Still there?" prompt (wraps at 320 CSS px). */
+.idle-dialog .dialog-actions {
+  flex-wrap: wrap;
+}
+.idle-dialog [role='status']:not(:empty) {
+  margin-block-start: 0.75rem;
+  color: var(--danger);
+}
+.idle-dialog .button,
 .limit-notice .button,
 .queue-status .button {
   min-block-size: 24px;
