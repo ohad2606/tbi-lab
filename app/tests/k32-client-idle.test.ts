@@ -439,6 +439,24 @@ describe('K3-3 the "Still there?" prompt: only explicit answers decide', () => {
     }
   });
 
+  it('the prompt texts quote the exact button names and claim no save state', () => {
+    for (const m of [en, he]) {
+      const quoted = (text: string) => [...text.matchAll(/[“״]([^”״]+)[”״]/g)].map((q) => q[1]);
+      expect(quoted(m['sim.idle.body'])).toEqual([m['sim.idle.continue']]);
+      expect(quoted(m['sim.idle.failed'])).toEqual([m['sim.idle.continue'], m['sim.idle.stop']]);
+    }
+    for (const key of [
+      'sim.idle.body',
+      'sim.limit.session_idle',
+      'sim.limit.session_idle.one',
+    ] as const) {
+      expect(en[key]).toMatch(/(does|did) not change your project/);
+      expect(en[key]).not.toContain('saved');
+      expect(he[key]).toMatch(/עצירת ההרצה לא (משנה|שינתה) את הפרויקט/);
+      expect(he[key]).not.toContain('שמור');
+    }
+  });
+
   it('the dispatcher forwards stillHere() to the active host only', async () => {
     const host = (over: object) =>
       ({ subscribe: () => () => undefined, ...over }) as unknown as SimulationHost;

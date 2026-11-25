@@ -293,6 +293,45 @@ test('he: the dialog and the end notice fit 320 CSS px', async ({ page, request 
   expect(await notice.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
 });
 
+for (const locale of ['en', 'he'] as const) {
+  for (const [size, rootPx] of [
+    ['100%', null],
+    ['200% text', 30],
+  ] as const) {
+    test(`${locale}: at 1024x768, ${size}, the whole description and both buttons are reachable`, async ({
+      page,
+      request,
+    }) => {
+      await page.setViewportSize({ width: 1024, height: 768 });
+      await idle(request, `?ms=${IDLE_MS}&fail=1`);
+      await run(page, locale);
+      // The app's root size is 15px and its text is in rem.
+      if (rootPx) await page.addStyleTag({ content: `:root { font-size: ${rootPx}px }` });
+      await warned(page);
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('idle-failed')).toContainText(TEXT[locale].failed);
+      const dialog = page.getByTestId('idle-dialog');
+      await expect(dialog).toHaveAttribute('aria-describedby', 'idle-body');
+      await expect(dialog).toHaveAccessibleDescription(new RegExp(TEXT[locale].body));
+      const box = (await dialog.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(1024);
+      expect(box.y + box.height).toBeLessThanOrEqual(768);
+      // No scrolling needed in either direction: nothing is clipped.
+      const over = await dialog.evaluate((el) => [
+        el.scrollWidth - el.clientWidth,
+        el.scrollHeight - el.clientHeight,
+      ]);
+      expect(Math.max(...over)).toBeLessThanOrEqual(0);
+      for (const id of ['idle-body', 'idle-failed', 'idle-stop', 'idle-keep']) {
+        const part = id === 'idle-body' ? dialog.locator('#idle-body') : page.getByTestId(id);
+        await expect(part).toBeInViewport({ ratio: 1 });
+      }
+    });
+  }
+}
+
 test('without a host idle limit there is no prompt and no presence', async ({ page, request }) => {
   await idle(request);
   await run(page, 'en');
