@@ -267,7 +267,6 @@ const en = {
           ul: [
             'Projects are saved in your browser as you work.',
             'The interface is available in Hebrew and English. Switching language never changes the circuit.',
-            'Keyboard and mouse can both be used to work; some actions are still easier with a mouse.',
           ],
         },
         {
@@ -627,7 +626,6 @@ const he = {
           ul: [
             'פרויקטים נשמרים בדפדפן שלכם תוך כדי עבודה.',
             'הממשק זמין בעברית ובאנגלית. החלפת שפה לא משנה את המעגל.',
-            'אפשר לעבוד עם מקלדת ועם עכבר; חלק מהפעולות עדיין נוחות יותר בעכבר.',
           ],
         },
         {

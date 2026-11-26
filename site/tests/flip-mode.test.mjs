@@ -9,7 +9,7 @@ import { content } from '../content.mjs';
 // sha256 over (relative path, bytes) of the whole flag=false build, as of the merge of the PR #94 review fixes
 // (797594d: no sign-up page or script while the flag is off) into BETA-G1 s11; byte-identical to a build of 797594d.
 // If you change the flag=false site on purpose, update this value in the same commit.
-const FLAG_FALSE_HASH = 'cb4c8c20f02667b114416fd5025695eac489108ff1d9408f397c65a74389c76a';
+const FLAG_FALSE_HASH = '0b4b9aa57cef5aa81a8d2ee09887808cf88c55d44744c3840770298aeee3adc5';
 
 const walk = (d) =>
   readdirSync(d)
