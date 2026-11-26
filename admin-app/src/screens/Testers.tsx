@@ -11,6 +11,7 @@ import {
 } from '@tbi-lab/admin-client';
 import { BackButton, BarChart, Confirm, Icon, Loading, Num, Problem, useWide } from '../common.js';
 import { api, useConsole, useT } from '../context.js';
+import { rescueFocus } from '../focus-rescue.js';
 import {
   accountLabel,
   accountSeries,
@@ -226,6 +227,10 @@ const CHART_METRICS: UsageMetric[] = ['runs', 'builds', 'simSeconds', 'signIns']
 
 type Pending = { kind: 'disable' | 'reactivate' } | { kind: 'rename' } | null;
 
+/** The button now standing where an action on the shown tester started. */
+const actionButton = (...ids: string[]) =>
+  document.querySelector<HTMLElement>(ids.map((id) => `[data-testid="tester-${id}"]`).join());
+
 /** One tester: account data, 30 days of usage, and the owner's actions on the record. */
 export function TesterDetail({ target }: { target: string }) {
   const t = useT();
@@ -242,6 +247,17 @@ export function TesterDetail({ target }: { target: string }) {
     if (renaming) renameField.current?.focus();
   }, [renaming]);
   const { accounts, usage } = data;
+  // A closed editor or confirmation takes the focused control with it (a successful reload leaves
+  // no opener to return to): focus goes to the button that replaced it.
+  const lastAction = useRef<Pending>(null);
+  useEffect(() => {
+    const closed = lastAction.current;
+    lastAction.current = action;
+    if (!closed || action) return;
+    rescueFocus(() =>
+      closed.kind === 'rename' ? actionButton('rename') : actionButton('disable', 'reactivate'),
+    );
+  }, [action]);
   // Back: to the list as it was when this tester was opened from it (the browser's own history
   // entry, so the phone's back gesture agrees); opened any other way, to the default list.
   const back = (

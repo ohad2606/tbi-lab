@@ -3,7 +3,10 @@
  * (WCAG 4.1.3), and focus is not dropped to <body> when a reload fails and replaces the content
  * that held it (WCAG 2.4.3). It is not moved on a first load, or while it is still somewhere
  * valid. Structure and DOM focus only: what a screen reader actually says needs a manual check.
- * The services are the same fakes as admin-app.spec.ts. Synthetic identities only.
+ * After a SUCCESSFUL action that replaces or removes the focused control, focus goes to the
+ * control that took its place on the same tester (or row).
+ * The services are the same fakes as admin-app.spec.ts; the sign-up requests are mocked in the
+ * page. Synthetic identities only.
  */
 import { createHash } from 'node:crypto';
 import {
@@ -53,6 +56,35 @@ const focused = (page: Page) =>
   });
 /** Long enough for any deferred focus move or announcement to have happened. */
 const settled = (page: Page) => page.waitForTimeout(500);
+const button = (page: Page, id: string) => page.getByTestId(`tester-${id}`);
+
+/** Opens the tester and confirms Disable by keyboard. */
+async function disable(page: Page) {
+  await button(page, 'disable').press('Enter');
+  await page.getByTestId('confirm-ok').press('Enter');
+}
+
+/** Two open sign-up requests, held in the page: an action removes its row. */
+async function mockSignups(page: Page) {
+  let rows = ['r1', 'r2'].map((id) => ({
+    id,
+    name: `Test ${id}`,
+    email: `${id}@example.invalid`,
+    role: 'Teacher',
+    lang: 'en',
+    status: 'pending',
+    accountAdded: false,
+    emailAttempts: 0,
+    lastError: null,
+    createdAt: '2026-11-01T10:00:00Z',
+  }));
+  await page.route('**/admin-api/signups/**', async (route) => {
+    const [, , , id] = new URL(route.request().url()).pathname.split('/');
+    if (id === 'open') return route.fulfill({ json: { signups: rows } });
+    rows = rows.filter((r) => r.id !== id);
+    return route.fulfill({ json: { record: null } });
+  });
+}
 
 /** Every change of the status region's text, from the moment it is in the page. */
 const record = (context: BrowserContext) =>
@@ -297,5 +329,119 @@ for (const lang of ['he', 'en'] as const) {
       ).toBeVisible();
       await settled(page);
       expect(await focused(page)).toBe('BODY');
+    });
+
+  test(`(${lang}) disable, then enable: focus goes to the button that took its place`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    await open(page, `#/testers/${ALEX}`);
+    await disable(page);
+    await expect(button(page, 'reactivate')).toBeFocused();
+    await button(page, 'reactivate').press('Enter');
+    await page.getByTestId('confirm-ok').press('Enter');
+    await expect(button(page, 'disable')).toBeFocused();
+  });
+
+  for (const how of ['Enter in the field', 'the Save button', 'Cancel'] as const)
+    test(`(${lang}) rename closed by ${how}: focus returns to Rename`, async ({
+      page,
+      context,
+    }) => {
+      await signIn(context, lang);
+      await open(page, `#/testers/${ALEX}`);
+      await button(page, 'rename').press('Enter');
+      const field = page.getByTestId('rename-input');
+      await field.fill('Test R.');
+      if (how === 'Enter in the field') await field.press('Enter');
+      else if (how === 'the Save button') await page.getByTestId('rename-save').press('Enter');
+      else await page.locator('form .actions button[type="button"]').press('Enter');
+      await expect(field).toHaveCount(0);
+      if (how !== 'Cancel') await expect(page.getByTestId('tester-title')).toHaveText('Test R.');
+      await expect(button(page, 'rename')).toBeFocused();
+    });
+
+  test(`(${lang}) a pending disable that succeeds replaces the focused button: its successor`, async ({
+    page,
+    context,
+    request,
+  }) => {
+    await signIn(context, lang);
+    await disablePending(page, request);
+    await button(page, 'disable').focus();
+    await request.post(`${FAKE}/__test/admin-hold?on=0`);
+    await expect(button(page, 'reactivate')).toBeVisible({ timeout: 15_000 });
+    await expect(button(page, 'reactivate')).toBeFocused();
+  });
+
+  for (const action of ['disable', 'rename'] as const) {
+    const act = async (page: Page) => {
+      await open(page, `#/testers/${ALEX}`);
+      await expect(button(page, action)).toBeVisible();
+      const accounts = await hold(page, '**/admin-api/accounts');
+      if (action === 'disable') await disable(page);
+      else {
+        await button(page, 'rename').press('Enter');
+        await page.getByTestId('rename-input').fill('Test R.');
+        await page.getByTestId('rename-input').press('Enter');
+      }
+      return accounts;
+    };
+    const done = (page: Page) =>
+      action === 'disable'
+        ? expect(button(page, 'reactivate')).toBeVisible()
+        : expect(button(page, 'rename')).toBeVisible();
+
+    test(`(${lang}) ${action}: focus moved elsewhere during the reload stays there`, async ({
+      page,
+      context,
+    }) => {
+      await signIn(context, lang);
+      const accounts = await act(page);
+      await page.getByTestId('refresh').focus();
+      accounts('continue');
+      await done(page);
+      await settled(page);
+      await expect(page.getByTestId('refresh')).toBeFocused();
+    });
+
+    test(`(${lang}) ${action}: focus given up during the reload is not taken back`, async ({
+      page,
+      context,
+    }) => {
+      await signIn(context, lang);
+      const accounts = await act(page);
+      await page.getByTestId('refresh').focus();
+      await page.getByTestId('refresh').blur();
+      accounts('continue');
+      await done(page);
+      await settled(page);
+      expect(await focused(page)).toBe('BODY');
+    });
+  }
+
+  for (const action of ['approve', 'reject'] as const)
+    test(`(${lang}) sign-up ${action} succeeds: focus goes to the next row's action`, async ({
+      page,
+      context,
+    }) => {
+      await signIn(context, lang);
+      await mockSignups(page);
+      await open(page, '#/signups');
+      const rows = page.getByTestId('signup-row');
+      await expect(rows).toHaveCount(2);
+      for (const left of [1, 0]) {
+        const primary = rows.first().locator('button[data-primary]');
+        if (action === 'approve') await primary.press('Enter');
+        else {
+          await rows.first().locator('button[data-act="reject"]').press('Enter');
+          await page.getByTestId('confirm-ok').press('Enter');
+        }
+        await expect(rows).toHaveCount(left);
+        await expect(
+          left ? rows.first().locator('button[data-primary]') : page.getByTestId('signups-refresh'),
+        ).toBeFocused();
+      }
     });
 }
