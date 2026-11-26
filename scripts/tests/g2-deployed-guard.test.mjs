@@ -3,7 +3,19 @@
  * not staging, and refuses (does not skip) a half-configured opt-in. No service, no lock, no network.
  */
 import { describe, expect, it } from 'vitest';
-import { g2Decision } from '../../runtime/tests/g2-guard.ts';
+import { DEFAULT_CONFIG } from '../../runtime/plans/config.ts';
+import { DEFAULT_SIM_HOUSEKEEPING_MS } from '../../runtime/plans/hostboot.ts';
+import { defaultConfig } from '../../runtime/host/config.ts';
+import {
+  g2Decision,
+  g2FailedReport,
+  g2FreeUsers,
+  pollUntil,
+  G2_FREE_LIVE,
+  G2_PAUSE_PROBE,
+  G2_PAUSE_REMOVAL_MS,
+  G2_QUEUED,
+} from '../../runtime/tests/g2-guard.ts';
 
 const locked = () => true;
 const unlocked = () => false;
@@ -54,5 +66,54 @@ describe('g2-deployed guard', () => {
       instance: 'tbi-s8',
       previewUsers: ['p1', 'p2'],
     });
+  });
+});
+
+describe('g2-deployed drill helpers', () => {
+  const clock = () => {
+    let t = 0;
+    return { now: () => t, sleep: async (ms) => void (t += ms) };
+  };
+  const zero = (v) => v === 0;
+
+  it('has a Free identity for every index the drill uses (live, queued, pause probe)', () => {
+    const free = g2FreeUsers('r1');
+    expect(G2_PAUSE_PROBE).toBe(G2_FREE_LIVE + G2_QUEUED); // outside the live and queued slices
+    expect(free[G2_PAUSE_PROBE]).toBeDefined();
+    expect(new Set(free).size).toBe(G2_PAUSE_PROBE + 1);
+  });
+
+  it('removal bound exceeds a housekeeping interval and ends before a waiter can vanish', () => {
+    const host = defaultConfig({ qemu: '', artifactsDir: '', ticketKey: Buffer.alloc(32) });
+    expect(G2_PAUSE_REMOVAL_MS).toBeGreaterThan(DEFAULT_SIM_HOUSEKEEPING_MS + host.housekeepingMs);
+    expect(G2_PAUSE_REMOVAL_MS).toBeLessThan(DEFAULT_CONFIG.queue.vanishMs);
+  });
+
+  it('poll returns on the first match, fails at the deadline, rejects a late match', async () => {
+    const c = clock();
+    const late = await pollUntil(async () => (c.now() >= 5250 ? 0 : 9), zero, 10_000, c);
+    expect(late).toEqual({ ok: true, value: 0, atMs: 5500 });
+    const never = await pollUntil(async () => 9, zero, 6700, c);
+    expect(never).toEqual({ ok: false, value: 9, atMs: 6700 });
+    const slow = async () => (await c.sleep(2000), 0);
+    expect((await pollUntil(slow, zero, 7000, c)).ok).toBe(false);
+  });
+
+  it('failed report is marked FAILED, drops unlisted fields and fakes no maximum', () => {
+    const progress = {
+      instance: 'tbi-s8',
+      phase: 'pause',
+      seconds: 40,
+      admitted: [201],
+      builds: [{ user: 'secret-user', sha: 'x', status: 200, ms: 5 }],
+      promotedPositions: [1],
+      samples: [{ freeLive: 4, hostLive: 6 }],
+      token: 'secret-token',
+    };
+    const report = g2FailedReport(progress);
+    expect(report).toMatchObject({ result: 'FAILED', failedPhase: 'pause', maxHostLive: 6 });
+    expect(report.builds).toEqual([{ status: 200, ms: 5 }]);
+    expect(JSON.stringify(report)).not.toContain('secret');
+    expect(g2FailedReport({ ...progress, samples: [] }).maxFreeLive).toBeNull();
   });
 });
