@@ -17,7 +17,8 @@
  *     so seats free themselves; every waiter is promoted (201) in FIFO order, the head within
  *     pollAfterS + 30 s of a free seat.
  *  6. Clean-up: every session ended; `waiting` back to 0; no principal, token or ticket in the journal.
- *  A failed run writes results/g2-deployed-<run>-FAILED.json (counts and timings only).
+ *  A run that fails after preflight and relay setup writes results/g2-deployed-<run>-FAILED.json
+ *  (counts and timings only); an earlier failure writes no report.
  *  Idle drill (idle_timeout, presence): TODO until K3-1 (idle) exists, see it.todo below.
  * Light workload only (TBI_C5_WORKLOAD=gpio, the default here).
  *
@@ -32,7 +33,8 @@
  *   4. Without TBI_G2_DEPLOYED the file does nothing. With it set, a wrong instance, a missing mutation
  *      opt-in, no lock or wrong preview list FAILS the test (g2-guard.ts, unit-tested offline in
  *      scripts/tests/g2-deployed-guard.test.mjs). The only mutation is creating/removing the pause file
- *      (and the harness's own sessions); the file is removed again in a finally block.
+ *      (and the harness's own sessions); the file is removed again in a finally block and, for a test
+ *      timeout, in onTestFailed.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -142,8 +144,10 @@ describe('G2 deployed: queue under load on staging', () => {
         promotedPositions: [],
         samples: [],
       };
+      let pauseCreated = false;
       // Also covers failed builds and a test timeout, which a finally block would not.
       onTestFailed(() => {
+        if (pauseCreated) sudo('rm', '-f', PAUSE_FILE);
         progress.seconds = Math.round((performance.now() - t00) / 1000);
         recordEvidence(`g2-deployed-${RUN}-FAILED`, g2FailedReport(progress));
       });
@@ -279,7 +283,6 @@ describe('G2 deployed: queue under load on staging', () => {
         );
       };
 
-      let pauseCreated = false;
       try {
         // ---- 2. admission
         progress.phase = 'admission';
@@ -345,6 +348,12 @@ describe('G2 deployed: queue under load on staging', () => {
           removed.ok,
           `waiting Free removed by the pause: waiting=${removed.value}, ${Math.round(removed.atMs - tPause)} ms after the pause, ${Math.round(removed.atMs - firstJoinAt)} ms after the first join`,
         ).toBe(true);
+        // a waiter that merely vanished answers queue_timeout: only the pause answers free_paused
+        const dropped = await create(waiters[0]!.user, waiters[0]!.ticket);
+        expect([dropped.status, dropped.body.error], 'removed ticket poll').toEqual([
+          429,
+          'free_paused',
+        ]);
         await sample(); // running Free and preview sessions are untouched (still counted, none ended)
         expect(
           mine.filter(
@@ -439,7 +448,7 @@ describe('G2 deployed: queue under load on staging', () => {
         recordEvidence(`g2-deployed-${RUN}`, {
           instance: INSTANCE,
           admitted,
-          unique,
+          unique: unique.map((b) => ({ status: b.status, ms: b.ms })),
           others,
           positions,
           headPromotionGapS: gapS,
