@@ -162,6 +162,9 @@ describe('g2-deployed drill helpers', () => {
       { idleStreamEnded: 0 },
       { idleStreamEnded: undefined },
       { heldStreamOpenMs: NaN },
+      { heldStreamOpenMs: Infinity },
+      { heldStreamOpenMs: 0 },
+      { heldStreamOpenMs: 302_000 }, // the idle limit plus its tolerance: not past it yet
     ])
       expect(() => g2Report({ ...p, metrics: { ...p.metrics, ...o } }, 'PASSED')).toThrow(
         'open event stream',

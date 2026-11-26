@@ -20,6 +20,9 @@ export const G2_PREVIEW_ENV = 'TBI_G2_PREVIEW_USERS';
 /** Free users 4 (plan cap) + preview 2 = 6 live; 10 more Free queue. */
 export const G2_FREE_LIVE = 4;
 export const G2_PREVIEW = 2;
+/** DEC-31: the idle limit the instance must report, and the allowed error of its end */
+export const G2_IDLE_MS = 300_000;
+export const G2_IDLE_TOLERANCE_MS = 2000;
 export const G2_QUEUED = 10;
 /** Index of the extra Free identity the pause drill uses: neither live nor queued. */
 export const G2_PAUSE_PROBE = G2_FREE_LIVE + G2_QUEUED;
@@ -119,7 +122,11 @@ export function g2Report(p: G2Progress, result: 'PASSED' | 'FAILED') {
     throw new Error('g2 report: PASSED needs the build counts');
   if (
     result === 'PASSED' &&
-    !(p.metrics?.idleStreamEnded === 1 && Number.isFinite(p.metrics.heldStreamOpenMs))
+    !(
+      p.metrics?.idleStreamEnded === 1 &&
+      Number.isFinite(p.metrics.heldStreamOpenMs) &&
+      p.metrics.heldStreamOpenMs! > G2_IDLE_MS + G2_IDLE_TOLERANCE_MS
+    )
   )
     throw new Error('g2 report: PASSED needs the open event stream idle drill');
   return {

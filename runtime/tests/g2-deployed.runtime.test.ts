@@ -882,7 +882,11 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         expect(settled.value.reason, 'end reason of the silent session').toBe('idle_timeout');
         await Promise.race([silentTab.done, sleep(FETCH_MS)]);
         metrics.idleStreamEnded = L.g2IdleStreamOk(silentTab.state) ? 1 : 0;
-        expect(metrics.idleStreamEnded, 'idle_timeout delivered on the open event stream').toBe(1);
+        expect(
+          metrics.idleStreamEnded,
+          'idle_timeout delivered on the open event stream ' +
+            `(stream closedAtMs ${silentTab.state.closedAtMs}, idle end at ${idleEndAt})`,
+        ).toBe(1);
         expect(L.g2IdleOnTime(metrics.idleEndMs), `idle end after ${metrics.idleEndMs} ms`).toBe(
           true,
         );
@@ -993,11 +997,13 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           ),
           `queue_timeout: ${timedOut.status} ${timedOut.error} after ${metrics.queueTimeoutMs} ms`,
         ).toBe(true);
-        const heldStreamMs = performance.now() - presentTabAt;
-        metrics.heldStreamOpenMs = Math.round(heldStreamMs);
+        const heldAt = performance.now();
+        metrics.heldStreamOpenMs = Math.round(heldAt - presentTabAt);
+        const { lastChunkAtMs, closedAtMs } = presentTab.state;
         expect(
-          L.g2HeldStreamOk(presentTab.state, heldStreamMs),
-          `present session's event stream still open after ${metrics.heldStreamOpenMs} ms`,
+          L.g2HeldStreamOk(presentTab.state, metrics.heldStreamOpenMs, heldAt),
+          `present session's event stream still open after ${metrics.heldStreamOpenMs} ms ` +
+            `(last chunk at ${lastChunkAtMs}, closed at ${closedAtMs}, checked at ${heldAt})`,
         ).toBe(true);
         keep = false;
         await keeper;

@@ -134,9 +134,11 @@ const list = (value) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
+/** http(s) with an explicit port (URL drops a scheme's default one) that no fake service uses. */
 function realProxy(value) {
   try {
-    return !FAKE_PORTS.includes(new URL(value).port);
+    const { protocol, port } = new URL(value);
+    return ['http:', 'https:'].includes(protocol) && port !== '' && !FAKE_PORTS.includes(port);
   } catch {
     return false;
   }

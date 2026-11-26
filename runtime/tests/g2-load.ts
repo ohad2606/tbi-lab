@@ -5,7 +5,14 @@
  */
 import { DEFAULT_CONFIG, type PlansConfig } from '../plans/config.js';
 import { SIM_JOURNAL_FILE } from '../plans/hostboot.js';
-import { G2_FREE_LIVE, G2_PAUSE_PROBE, G2_PREVIEW, G2_STAGING } from './g2-guard.js';
+import {
+  G2_FREE_LIVE,
+  G2_IDLE_MS,
+  G2_IDLE_TOLERANCE_MS,
+  G2_PAUSE_PROBE,
+  G2_PREVIEW,
+  G2_STAGING,
+} from './g2-guard.js';
 
 // ---- paths and units of the staging instance (deploy/dev-lab/s8/*.service.in)
 export const G2_STATE_DIR = `/var/lib/${G2_STAGING}-runtime/state/sim`;
@@ -53,9 +60,9 @@ export const G2_LIMITS = {
 export const G2_MAX_GAP_MS = 3 * G2_LIMITS.sampleMs + G2_LIMITS.tickDeadlineMs;
 /** a waiter not polled for this long is polled again; far below queue.vanishMs (30 s) */
 export const G2_KEEP_MS = 10_000;
-/** DEC-31: the idle limit the instance must report, and the allowed error of its end */
-export const G2_IDLE_MS = 300_000;
-export const G2_IDLE_TOLERANCE_MS = 2000;
+export { G2_IDLE_MS, G2_IDLE_TOLERANCE_MS };
+/** the host's event stream keepalive interval (KEEPALIVE_MS in runtime/host/http.ts) */
+export const G2_KEEPALIVE_MS = 15_000;
 export const G2_PRESENCE_MS = 60_000;
 /** DEC-32: builds are held up to 10 min (policy maxQueueWaitMs); +10 s for pump and poll latency */
 export const G2_BUILD_CAP_MS = 600_000 + 10_000;
@@ -420,15 +427,17 @@ export const g2IdleOnTime = (ms: number): boolean =>
 
 /**
  * Follows a session's event stream the way a left-open tab holds it: consumes it, and records the
- * terminal state it delivered and when it closed (a cut or aborted stream is closed too).
+ * terminal state it delivered, when it last received anything (keepalives included) and when it
+ * closed (a cut or aborted stream is closed too).
  */
 export function g2FollowStream(body: ReadableStream<Uint8Array>, now: () => number) {
-  const state: { endReason?: string; closedAtMs?: number } = {};
+  const state: { endReason?: string; lastChunkAtMs?: number; closedAtMs?: number } = {};
   const done = (async () => {
     const decoder = new TextDecoder();
     let tail = '';
     try {
       for await (const chunk of body) {
+        state.lastChunkAtMs = now();
         const lines = (tail + decoder.decode(chunk, { stream: true })).split('\n');
         tail = lines.pop()!;
         for (const line of lines) {
@@ -450,8 +459,13 @@ export type G2Stream = ReturnType<typeof g2FollowStream>['state'];
 /** The silent tab: only a stream that was still attached receives the idle end itself. */
 export const g2IdleStreamOk = (s: G2Stream): boolean => s.endReason === 'idle_timeout';
 
-/** The present tab: its stream is still open after longer than the idle limit. */
-export const g2HeldStreamOk = (s: G2Stream, openMs: number): boolean =>
+/**
+ * The present tab: its stream is still open after longer than the idle limit, and still alive: it
+ * received something within two keepalive intervals (a dead connection need not close).
+ */
+export const g2HeldStreamOk = (s: G2Stream, openMs: number, nowMs: number): boolean =>
+  s.lastChunkAtMs !== undefined &&
+  nowMs - s.lastChunkAtMs <= 2 * G2_KEEPALIVE_MS &&
   s.closedAtMs === undefined &&
   s.endReason === undefined &&
   openMs > G2_IDLE_MS + G2_IDLE_TOLERANCE_MS;
