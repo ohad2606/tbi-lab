@@ -28,6 +28,7 @@ import {
   type SchPart,
   type SchematicLayout,
 } from '../views/schematic/layout.js';
+import { revealDelta } from './revealDelta.js';
 import { SCHEMATIC_SYMBOLS, type SchematicSymbolKey } from '../views/schematic/symbols.js';
 
 interface Camera {
@@ -39,16 +40,8 @@ interface Camera {
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 5;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-/** Screen pixels kept between a part brought into view and the edges or overlays. */
-const FOCUS_MARGIN = 8;
 /** Drawing units between a module's body and its focus ring. */
 const RING_GAP = 5;
-/** How far to move [a, b] so it lies inside [lo, hi]; a span too long to fit is centred. */
-function intoRange(a: number, b: number, lo: number, hi: number): number {
-  if (b - a > hi - lo) return (a + b - lo - hi) / 2;
-  return a < lo ? a - lo : b > hi ? b - hi : 0;
-}
-
 export function SchematicView() {
   const { doc, selection, locale } = useAppState();
   const store = useStore();
@@ -125,25 +118,14 @@ export function SchematicView() {
    */
   const reveal = (el: SVGGElement) => {
     if (drag.current || !el.matches(':focus-visible')) return;
-    const frame = el.ownerSVGElement!.getBoundingClientRect();
-    const part = el.getBoundingClientRect();
-    const overlays = [controls.current!, note.current!].map((o) => o.getBoundingClientRect());
-    const inside =
-      part.left >= frame.left &&
-      part.right <= frame.right &&
-      part.top >= frame.top &&
-      part.bottom <= frame.bottom;
-    const covered = overlays.some(
-      (o) =>
-        part.left < o.right && o.left < part.right && part.top < o.bottom && o.top < part.bottom,
+    const { dx, dy } = revealDelta(
+      el.getBoundingClientRect(),
+      el.ownerSVGElement!.getBoundingClientRect(),
+      controls.current!.getBoundingClientRect(),
+      note.current!.getBoundingClientRect(),
+      short,
     );
-    if (inside && !covered) return;
-    const [bar, foot] = overlays as [DOMRect, DOMRect];
-    // The controls are a column at the right edge or, in a short view, a row along the top.
-    const right = short ? frame.right : bar.left;
-    const top = short ? bar.bottom : frame.top;
-    const dx = intoRange(part.left, part.right, frame.left + FOCUS_MARGIN, right - FOCUS_MARGIN);
-    const dy = intoRange(part.top, part.bottom, top + FOCUS_MARGIN, foot.top - FOCUS_MARGIN);
+    if (!dx && !dy) return;
     setCamera({ scale: cam.scale, x: cam.x + dx / cam.scale, y: cam.y + dy / cam.scale });
   };
   const selected = new Set(selection.components);

@@ -923,6 +923,15 @@ select {
   margin-inline-start: auto;
 }
 
+/* 2.4.11: the hint never covers the view controls: it stays beside their column, below them. */
+.canvas-wrap > .canvas-controls {
+  z-index: 1;
+}
+
+.canvas-wrap:not(.view-short) > .canvas-hint {
+  max-width: calc(100% - 6rem);
+}
+
 .control-icon {
   fill: none;
   stroke: currentColor;
@@ -3086,6 +3095,27 @@ select {
 .view3d-wrap.view-short .view3d-presets,
 .view3d-wrap.view-short .view-note {
   max-inline-size: calc(100% - 10.5rem);
+}
+
+/* 2.4.11: long hints and notes are capped (and scroll in short views); the preset buttons are
+   painted above the 3D note. */
+.canvas-wrap > .canvas-hint,
+.view3d-wrap > .view-note {
+  max-block-size: 50%;
+  overflow-y: auto;
+}
+
+.view-short > .canvas-hint {
+  max-block-size: calc(100% - 4.5rem);
+  pointer-events: auto;
+}
+
+.view3d-wrap.view-short > .view-note {
+  pointer-events: auto;
+}
+
+.view3d-wrap > .view3d-presets {
+  z-index: 1;
 }
 
 .sch-wire {

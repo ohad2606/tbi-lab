@@ -9,6 +9,7 @@
 
 import type { MutableRef } from 'preact/hooks';
 import { PanButtons, SHORT_VIEW_PX } from './PanButtons.js';
+import { revealDelta, type Box } from './revealDelta.js';
 import { panCamera } from './viewPan.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
@@ -71,7 +72,6 @@ import {
 import { bodyOverlaps } from '../geometry/overlap.js';
 import {
   distanceCells,
-  panIntoView,
   pinsOf,
   reduceWireKeyboard,
   stepWireSelection,
@@ -158,6 +158,8 @@ type Mode =
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 4;
 const DRAG_THRESHOLD_PX = 4;
+/** World units kept clear around the keyboard wiring candidate. */
+const KB_TARGET_MARGIN = 40;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -1082,7 +1084,22 @@ export function Canvas({
     return true;
   };
 
-  // Focus follows the roving pin; the candidate is panned into view when it is outside.
+  /** Pans so that `item` (screen pixels) is inside the view and clear of its overlays. */
+  const reveal = (item: Box) => {
+    const wrap = svgRef.current?.parentElement;
+    if (!wrap || size.w <= 0) return;
+    const rectOf = (selector: string) => wrap.querySelector(selector)?.getBoundingClientRect();
+    const { dx, dy } = revealDelta(
+      item,
+      svgRef.current!.getBoundingClientRect(),
+      rectOf(':scope > .canvas-controls')!,
+      rectOf(':scope > .canvas-hint'),
+      size.h < SHORT_VIEW_PX,
+    );
+    if (dx || dy) setCamera((c) => ({ ...c, x: c.x + dx / c.scale, y: c.y + dy / c.scale }));
+  };
+
+  // Focus follows the roving pin; it and the candidate are panned clear when hidden.
   const kbPinKey =
     kb.mode === 'pins'
       ? `${kb.component}\u0000${pinsOf(doc, kb.component)[kb.index]?.terminal}`
@@ -1096,6 +1113,8 @@ export function Canvas({
       `[data-hit="terminal"][data-component="${component}"][data-terminal="${terminal}"]`,
     ) as SVGElement | null;
     el?.focus({ preventScroll: true });
+    // While wiring, the candidate (below) is what the user is looking at.
+    if (el && kb.mode === 'pins') reveal(el.getBoundingClientRect());
   }, [kbPinKey]);
   const kbRepickDoc = useRef<typeof doc | null>(null);
   const kbCandidate =
@@ -1118,14 +1137,12 @@ export function Canvas({
     kbCandidate?.target.kind === 'junction' ? kbCandidate.target.junction : undefined;
   const kbWirePoint = kbCandidate?.target.kind === 'wire' ? kbCandidate.target : undefined;
   useEffect(() => {
-    if (!kbCandidatePos || size.w <= 0) return;
-    const { dx, dy } = panIntoView(
-      camera,
-      { w: size.w / camera.scale, h: size.h / camera.scale },
-      kbCandidatePos,
-      40,
-    );
-    if (dx || dy) setCamera((c) => ({ ...c, x: c.x + dx, y: c.y + dy }));
+    if (!kbCandidatePos) return;
+    const frame = svgRef.current!.getBoundingClientRect();
+    const x = frame.left + (kbCandidatePos.x - camera.x) * camera.scale;
+    const y = frame.top + (kbCandidatePos.y - camera.y) * camera.scale;
+    const m = KB_TARGET_MARGIN * camera.scale;
+    reveal({ left: x - m, right: x + m, top: y - m, bottom: y + m });
   }, [kbCandidatePos?.x, kbCandidatePos?.y]);
   // Leaving the document state (simulation start, component removed) ends keyboard wiring.
   useEffect(() => {
@@ -1512,7 +1529,12 @@ export function Canvas({
                 ref: c.id,
                 type: catalogText(state.locale, CATALOG[c.type].nameKey),
               })}
-              onFocus={() => {
+              onFocus={(el) => {
+                // A pointer focus never moves the view. After the render: the hint may change.
+                if (!pointerDown.current && el.matches(':focus-visible'))
+                  requestAnimationFrame(() =>
+                    reveal(el.querySelector('.focus-ring')!.getBoundingClientRect()),
+                  );
                 if (!pointerDown.current && !selected.components.has(c.id)) {
                   store.select({ ...emptySelection(), components: [c.id] });
                 }
@@ -1884,7 +1906,7 @@ function ComponentView({
   component: ComponentInstance;
   selected: boolean;
   label: string;
-  onFocus(): void;
+  onFocus(el: SVGGElement): void;
   /** Solved values while a simulation runs; runtime state, never part of the document. */
   result: ComponentResult | undefined;
   showRuntime: boolean;
@@ -1958,7 +1980,7 @@ function ComponentView({
           ? String(symbolState.servoAngle ?? SERVO_REST_DEG)
           : undefined
       }
-      onFocus={onFocus}
+      onFocus={(e) => onFocus(e.currentTarget)}
     >
       <rect
         class="focus-ring"
