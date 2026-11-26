@@ -161,7 +161,8 @@ function rows(reports) {
 function format(table, csv) {
   const lines = [COLUMNS, ...table].map((r) => r.map(String));
   if (csv) return lines.map((r) => `${r.join(',')}\n`).join('');
-  const width = COLUMNS.map((_, c) => Math.max(...lines.map((r) => r[c].length)));
+  // reduce, not Math.max(...spread): a large report has more lines than a call takes arguments.
+  const width = COLUMNS.map((_, c) => lines.reduce((w, r) => Math.max(w, r[c].length), 0));
   return lines
     .map(
       (r) => `${r.map((v, c) => (c < 2 ? v.padEnd(width[c]) : v.padStart(width[c]))).join('  ')}\n`,

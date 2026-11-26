@@ -140,9 +140,12 @@ export class SignupIntake {
    *
    * K12: each 200 counts `signup_form_view`, which means FORM TOKENS ISSUED, not people and not
    * distinct visits. The page (site/signup.mjs) fetches a token when it loads (so again after a
-   * reload), on focus or submit when it has none still fresh (failed, or close to expiry; there is
-   * no timer), and after a 401. A bot can raise it to the daily cap (10 000) while staying within
-   * the per-source token limit; accepted for an indicative number (nothing is kept per source).
+   * reload), on focus or submit when it has none still fresh (failed, close to expiry, or
+   * discarded; there is no timer), and after a 401. A refused submit that discards the token (a 400
+   * other than `too_fast`, 403, 500 and other statuses except 429 and 503, a second 401) focuses
+   * the error summary inside the form, so a new token is fetched at once. A bot can raise it to the
+   * daily cap (10 000) while staying within the per-source token limit; accepted for an indicative
+   * number (nothing is kept per source).
    */
   issueWebToken(source: string): TokenOutcome {
     const w = this.d.web;

@@ -255,6 +255,23 @@ describe('report', () => {
     expect(source).not.toMatch(/O_WRONLY|O_RDWR|O_CREAT|O_TRUNC|O_APPEND/);
   });
 
+  it('text mode handles about 66k days (more lines than a call takes arguments)', () => {
+    const base = root();
+    const dirs = [0, 1].map((n) => {
+      const days = {};
+      for (let i = 0; i < 33_000; i++)
+        days[
+          new Date(Date.UTC(1900, 0, 1) + (n * 33_000 + i) * 86_400_000).toISOString().slice(0, 10)
+        ] = {};
+      return dir(file(days), base, `d${n}`);
+    });
+    const r = cli.report(['--dir', dirs[0], '--dir', dirs[1]]);
+    expect([r.code, r.stderr]).toEqual([0, '']);
+    const lines = r.stdout.split('\n');
+    expect(lines).toHaveLength(1 + 66_000 * 2 + 1);
+    expect(new Set(lines.slice(0, -1).map((l) => l.length)).size).toBe(1);
+  });
+
   it('runs through a symlink to the script', () => {
     const base = root();
     const alias = join(base, 'report');

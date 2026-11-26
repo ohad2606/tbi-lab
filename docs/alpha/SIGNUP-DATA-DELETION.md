@@ -113,7 +113,10 @@ Funnel counters (section 3) hold no personal data and need no step.
 **The numbers are indicative.** They exist to see roughly how many sign-ups were submitted and
 approved per day. Never use them for billing, credits, usage limits, quotas or any decision about a
 person: a write can fail (the count is then kept in memory and retried, and lost if the process stops
-first), a day is capped at 10 000 per event, and duplicates of an address are not counted.
+first), a day is capped at 10 000 per event, and duplicates of an address are not counted. Writes
+start at least 5 seconds apart (a stop by SIGTERM / SIGINT writes at once); a crash or a forced kill
+loses the counts not yet written, at most that window while writes succeed. Once a service has seen an
+event at the cap, further ones that day are refused without writing.
 
 - Stored: per UTC day and event, one integer. Events (fixed allow-list): `landing_view`,
   `signup_form_view`, `signup_submitted`, `signup_approved`, `first_session`. Three are counted
@@ -121,7 +124,10 @@ first), a day is capped at 10 000 per event, and duplicates of an address are no
   - `signup_form_view` (the intake, web route only): **form tokens issued**, one per successful
     `GET /signup/form-token`; refused requests are not counted. The page fetches a token when it
     loads (so again after a reload), on focus or submit when it has none still fresh (the fetch
-    failed, or the token is close to expiry; there is no timer) and after a 401. It is **not** a
+    failed, the token is close to expiry, or it was discarded; there is no timer) and after a 401.
+    A refused submit that discards the token (a 400 other than `too_fast`, 403, 500 and other
+    statuses except 429 and 503, a second 401) moves focus to the error summary inside the form,
+    so a new token is fetched at once. It is **not** a
     number of people or visits, and dividing sign-ups by it does not give a conversion rate. A bot
     can raise it to the daily cap (10 000) while staying within the per-source token limit; accepted
     for an indicative number (nothing is stored per source).
