@@ -32,7 +32,6 @@ Based on an internal review of a pre-public release and a later check of the cur
 - A "Connections (text list)" panel lists the parts and which pins are connected together. It does not announce changes to the connections. Neither this panel nor keyboard wiring has been tested with screen readers. Screen-reader support of the circuit drawing itself is not promised.
 - Moving a part with a pointer requires dragging. The arrow keys move a selected part, but there is no single-pointer alternative.
 - Circuit view: panning with a pointer requires dragging (the middle button, or holding the space bar while dragging). The arrow keys pan when nothing is selected. There are no pan buttons.
-- Schematic view: panning is possible only by dragging. There is no keyboard panning and there are no pan buttons. Zoom and "Fit to view" buttons are available.
 - 3D view: panning requires dragging or `Shift` with the arrow keys; there are no pan buttons. The "Top", "Front", "Side" and "Rear" buttons give fixed viewing angles; tilting the view freely requires dragging.
 
 **Code editor**
