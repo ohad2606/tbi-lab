@@ -12,7 +12,7 @@ We aim to build the public site and the Lab to **WCAG 2.2 level AA**. We also ai
 A target is not a result. **We do not claim that the site or the Lab conforms to WCAG 2.2 AA or to IS 5568.**
 
 ## 3. Current conformance status
-- The public site: **[NOT YET REVIEWED]**. Its code (Hebrew and English pages) exists and has automated checks: axe-core, page language and text direction, keyboard order and skip link, and reflow at a width of 320 pixels. It has not had an independent audit and has not been tested with screen readers. Our own sign-up page is built but switched off in the current code. **[TBD]** Which version of the site is published on the date of this statement.
+- The public site: **[NOT YET REVIEWED]**. Its code (Hebrew and English pages) exists and has automated checks: axe-core, page language and text direction, keyboard order (checked on the English pages) and skip link, and reflow at a width of 320 pixels. It has not had an independent audit and has not been tested with screen readers. Our own sign-up page is built but switched off in the current code. **[TBD]** Which version of the site is published on the date of this statement.
 - The Lab (the engineering workspace): partly accessible, with significant known gaps listed below.
 - Automated checks cover only part of the requirements. They do not prove conformance.
 - We have not yet verified behaviour with screen readers such as NVDA, JAWS, VoiceOver or TalkBack. **[TBD]** Which assistive technologies and browsers will be tested.
@@ -29,6 +29,8 @@ Based on an internal review of a pre-public release and a later check of the cur
 
 **Circuit editor and other views**
 - You can create, select, delete and reconnect wires with the keyboard, and a "Wires" list lets you select a wire. A new wire made with the keyboard starts at a part's pin. Moving the end of an existing wire with the keyboard can only move it to a pin. Shaping a single segment of a wire's route requires dragging.
+- Placing a measurement probe requires a pointer (mouse or touch). There is no keyboard way to place a probe.
+- Wire junctions cannot be selected or moved with the keyboard, and adding bends while drawing a wire requires a pointer.
 - A "Connections (text list)" panel lists the parts and which pins are connected together. It does not announce changes to the connections. Neither this panel nor keyboard wiring has been tested with screen readers. Screen-reader support of the circuit drawing itself is not promised.
 - Moving a part with a pointer requires dragging. The arrow keys move a selected part, but there is no single-pointer alternative.
 - Circuit view: panning with a pointer requires dragging (the middle button, or holding the space bar while dragging). The arrow keys pan when nothing is selected. There are no pan buttons.
