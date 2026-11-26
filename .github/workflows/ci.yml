@@ -40,7 +40,8 @@ jobs:
   browser:
     name: Browser acceptance (Chromium)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # The browser suites took 24m41s on co/main (2026-11-26); at 25 the job was cancelled mid-suite.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
