@@ -23,9 +23,12 @@
  * never silently reset or overwritten.
  *
  * Write rate: at least `FUNNEL_WRITE_INTERVAL_MS` between write starts; increments in between are
- * kept in memory and written together. `flush()` (SIGTERM / SIGINT) writes at once. A crash or a
- * kill without a flush loses the counts not yet written: at most that window while writes succeed
- * (more while they fail, see below).
+ * kept in memory and written together. `flush()` (SIGTERM / SIGINT) writes at once; a busy lock
+ * is retried every `FUNNEL_LOCK_RETRY_MS` (at most `FUNNEL_LOCK_RETRIES` attempts) until its
+ * deadline (`FUNNEL_FLUSH_MS` by default), and a flush that still cannot write logs ONE line (error
+ * class and the number of counts not written, nothing else). A crash or a kill without a flush
+ * loses the counts not yet written: at most that window while writes succeed (more while they
+ * fail, see below).
  *
  * Failure: `increment` is synchronous, O(1), never throws and never waits for I/O. The write runs
  * later; a failing write (unwritable or full disk) keeps the deltas in memory (bounded by the cap
@@ -61,6 +64,8 @@ export const FUNNEL_LOCK_STALE_MS = 30_000;
 /** Lock busy: retry the write after this long, at most `FUNNEL_LOCK_RETRIES` times in a row. */
 export const FUNNEL_LOCK_RETRY_MS = 100;
 export const FUNNEL_LOCK_RETRIES = 20;
+/** Default deadline of `flush()` (shutdown): well below the units' stop timeout. */
+export const FUNNEL_FLUSH_MS = 1_000;
 /** At most one log line per error class per this interval. */
 export const FUNNEL_LOG_EVERY_MS = 10 * 60_000;
 
@@ -79,6 +84,13 @@ export class FunnelError extends Error {
   }
 }
 
+/** A write error after the file may already have been replaced: its deltas are not re-added. */
+class AfterRename extends Error {
+  constructor(readonly original: unknown) {
+    super('after_rename');
+  }
+}
+
 /** What the sign-up hooks depend on (the counters, or nothing when off). */
 export interface FunnelSink {
   /** Counts one event for today; false when not counted (unknown event, cap). Never throws. */
@@ -92,6 +104,7 @@ export function isFunnelEvent(v: unknown): v is FunnelEvent {
 /** Error class for the log: our code, a node `E...` code, or `error`. Never a message or path. */
 function errClass(e: unknown): string {
   if (e instanceof FunnelError) return e.code;
+  if (e instanceof AfterRename) return errClass(e.original);
   const code = (e as { code?: unknown } | null)?.code;
   return typeof code === 'string' && /^E[A-Z]{2,15}$/.test(code) ? code : 'error';
 }
@@ -143,6 +156,8 @@ export class FunnelCounters implements FunnelSink {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly lastLog = new Map<string, number>();
   private ready = false;
+  /** Error class of the last failed write attempt; null after a successful one. */
+  private lastFailure: string | null = null;
 
   constructor(
     private readonly dir: string,
@@ -245,13 +260,38 @@ export class FunnelCounters implements FunnelSink {
   }
 
   /**
-   * Writes the deltas known now at once (no interval wait) and waits for that attempt. Never
-   * throws.
+   * Writes the deltas known now at once (no interval wait) and waits for it. A busy lock is retried
+   * within `withinMs` (bounded attempts; a fresh foreign lock is never removed). Still not written:
+   * one log line with the error class and the count only; the deltas stay in memory (counted at
+   * most once). Never throws.
    */
-  async flush(): Promise<void> {
-    this.stop();
-    if (this.pending.size > 0) this.schedule(true);
-    await this.chain;
+  async flush(withinMs: number = FUNNEL_FLUSH_MS): Promise<void> {
+    const start = performance.now();
+    for (let attempt = 1; ; attempt++) {
+      this.stop();
+      if (this.pending.size > 0) this.schedule(true);
+      await this.chain;
+      // Lock retries are driven from here while flushing (the retry timer is not waited for).
+      this.stop();
+      if (this.pending.size === 0) return;
+      const left = withinMs - (performance.now() - start);
+      if (
+        this.lastFailure !== 'lock_busy' ||
+        attempt >= FUNNEL_LOCK_RETRIES ||
+        left < FUNNEL_LOCK_RETRY_MS
+      )
+        break;
+      await new Promise<void>((r) => setTimeout(r, FUNNEL_LOCK_RETRY_MS).unref?.());
+    }
+    // Other error classes were already logged by the write itself (throttled, class only).
+    if (this.lastFailure !== 'lock_busy') return;
+    let n = 0;
+    for (const v of this.pending.values()) n += v;
+    try {
+      this.opts.log?.(`funnel: flush gave up (lock_busy), ${n} not written`);
+    } catch {
+      /* a broken logger never breaks the caller */
+    }
   }
 
   /** Stops the pending timers: delayed write and lock retry (shutdown, tests). */
@@ -291,6 +331,7 @@ export class FunnelCounters implements FunnelSink {
     const previousStart = this.lastWriteStart;
     this.lastWriteStart = Date.now();
     let locked = false;
+    let written = false;
     try {
       locked = await this.lock();
       if (!locked) throw new FunnelError('lock_busy');
@@ -304,6 +345,7 @@ export class FunnelCounters implements FunnelSink {
         this.inflight = new Map();
         this.learn(days);
         this.retries = 0;
+        this.lastFailure = null;
         return;
       }
       for (const [k, n] of deltas) {
@@ -314,11 +356,16 @@ export class FunnelCounters implements FunnelSink {
       const oldest = this.oldestKeptDay();
       for (const day of Object.keys(days)) if (day < oldest) delete days[day];
       await this.writeAtomic({ v: 1, days: sortDays(days) });
+      // Renamed into place: these deltas are in the file and are never added back.
+      written = true;
       this.inflight = new Map();
+      this.lastFailure = null;
       this.learn(days);
       this.retries = 0;
     } catch (e) {
       this.inflight = new Map();
+      if (written || e instanceof AfterRename) throw e;
+      this.lastFailure = errClass(e);
       // Deltas outside the kept window are dropped; the rest wait for the next attempt.
       const oldest = this.oldestKeptDay();
       for (const k of [...deltas.keys()]) if (k.slice(0, 10) < oldest) deltas.delete(k);
@@ -395,6 +442,15 @@ export class FunnelCounters implements FunnelSink {
       }
       await (this.opts.io?.rename ?? rename)(tmp, this.file);
     } catch (e) {
+      // The rename failed but the temp file is gone: it may have taken effect. Never re-add
+      // these deltas (a count is written at most once; under-counting is the safe side).
+      if (
+        await lstat(tmp).then(
+          () => false,
+          () => true,
+        )
+      )
+        throw new AfterRename(e);
       await unlink(tmp).catch(() => undefined);
       throw e;
     }

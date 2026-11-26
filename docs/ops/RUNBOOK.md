@@ -70,6 +70,13 @@ After any rollback: `/health`, `version.json`, one example Run (§5).
 | Gate down | `systemctl status caddy oauth2-proxy`; restart only with owner approval (they serve all routes) |
 | Testers report "simulator busy" | Expected above capacity (policy `maxLiveSessions`); check `/health` sessions |
 
+Sign-up shutdown (funnel counters on, `TBI_FUNNEL_COUNTERS=1`): on SIGTERM the intake closes, then flushes its
+counters, under one 1.5 s deadline (a hanging close is given up after 1 s); the admin service flushes after its
+drain (at most 5 s, unchanged) has finished or timed out, at most 1 s more. A busy counter lock is retried within
+that bound and never removed unless stale; `funnel: flush gave up (lock_busy), N not written` means N counts were
+lost. Counters off: shutdown is unchanged. Auto-approve after a lost state file: `auto-approve state missing,
+cut-off = now` (fail closed; see docs/alpha/SIGNUP-AUTO-APPROVE-RUNBOOK.md).
+
 ## 5. Smoke after any change
 
 The live acceptance script (Gate C), through a bounded relay to the gate:
