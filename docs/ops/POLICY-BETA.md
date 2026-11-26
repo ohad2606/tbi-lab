@@ -32,11 +32,52 @@ There is no environment toggle or bypass: the plan comes from the installed poli
 
 Deploying is a separate, owner-approved step; it is not part of this change.
 
+## Deployed acceptance tests on a beta instance
+
+Pass the repository file the instance was installed with, as for `install.sh`:
+`TBI_S8_POLICY=deploy/dev-lab/s8/policy.beta.json` (unset or empty: `policy.json`). Shared logic:
+`runtime/tests/s8-installed-policy.ts`.
+
+| Test | Without the mutation gate | With the mutation gate |
+|---|---|---|
+| `s8-deployed-policy` | asserts the `403 capability_disabled` refusal; the upload, session and defer cases are SKIPPED with a reason (not tested); the stale-health case is skipped as before | asserts the refusal, then runs every case under a temporary policy |
+| `alpha-deployed-recovery` | asserts the refusal; the recovery case is SKIPPED with a reason | asserts the refusal, then (only with at least 3 live sessions) runs under a temporary policy |
+| `s8-policy` | skipped, as before | installs its validation policy (plus the installed plan names, such as `free`) |
+| `s11-deployed` | no upload; reads limits from `TBI_S8_POLICY` | same |
+
+- The temporary policy is the installed file with one change, `defaultPlan: preview`. It applies to
+  **every unassigned principal** of the instance while the test runs, and the build service and
+  Session Host are restarted twice (live sessions end).
+- `s8-policy`, `s8-deployed-policy` and `alpha-deployed-recovery` first require the installed file to
+  equal the repository file **byte for byte**. If it differs, cannot be read or does not validate,
+  they fail before changing anything and print the recovery command. There is no override: an
+  instance whose policy was edited on the server cannot be tested this way. They then restore exactly
+  the saved bytes. Exception: `alpha-deployed-recovery` with fewer than 3 live sessions, where
+  neither the expected nor a readable installed default plan refuses prebuilt uploads, has nothing to
+  run and skips without this check.
+- A killed run (no `afterAll`) leaves the temporary policy installed; the next run fails on it.
+  Recover before anything else:
+  `sudo install -m 0400 <repository file> /etc/<instance>/policy.json`, then
+  `sudo systemctl restart <instance>-build.service <instance>-session-host.service`.
+- If a restore fails, the error names the saved copy (`policy.before.json`, in the system temporary
+  directory); install that and restart both services. The check compares the file only: if the
+  restore installed it but the restart failed, the services still need that restart.
+- `install.sh` without `TBI_S8_POLICY` installs `policy.json`: pass the variable on every reinstall.
+
+### A run with skips is not an acceptance pass
+
+For acceptance set `TBI_ACCEPTANCE_STRICT=1` (only `1` or `0`; other values are an error). In
+`s8-policy`, `s8-deployed-policy` and `alpha-deployed-recovery` every "refused / NOT TESTED" skip then
+fails: no instance named, no mutation gate (including the stale-health case), a refused upload case,
+or fewer than 3 live sessions. So on a host that admits fewer than 3, `alpha-deployed-recovery`
+cannot pass strictly. The other deployed tests (such as `s11-deployed`) do not read this variable:
+check their skip counts.
+
 ## Known follow-ups
 
-- The deployed acceptance tests `runtime/tests/s8-deployed-policy.runtime.test.ts` and
-  `runtime/tests/alpha-deployed-recovery.runtime.test.ts` upload an Advanced image as an
-  unassigned user, so they assume the default plan allows prebuilt
-  binaries. Run them against an instance installed with `policy.alpha.json`, or adapt them,
-  before an instance runs `policy.beta.json`.
+- **Not run on any instance:** none of the adapted deployed tests has run on staging or another
+  installed instance (they skip without one). Only the helper is unit-tested
+  (`runtime/policy/tests/s8-installed-policy.test.ts`).
+- Not checked: these tests and `capacity-acceptance.sh` on an instance with sim metering enabled
+  (its Free live-session cap and queue may change what they observe).
 - The app shows no dedicated message for `capability_disabled` yet (frontend follow-up).

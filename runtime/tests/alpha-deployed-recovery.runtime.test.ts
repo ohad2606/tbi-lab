@@ -7,6 +7,9 @@
  * - timeout: a session whose lifetime is shortened by the client (limits.maxLifetimeMs, only ever
  *   stricter than the host) ends `lifetime_exceeded` while the client is active, and is cleaned up.
  * Both run beside a third session that must keep running, unaffected.
+ * The sessions use an Advanced upload. If the installed default plan refuses it (policy.beta.json),
+ * the refusal is asserted, and the recovery case runs only behind the mutation gate under a temporary
+ * policy (default plan `preview`; services restarted; the saved bytes restored); else SKIPPED.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -14,6 +17,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { artifact } from '../harness/env.js';
 import { loadRequest } from './r2-support.js';
 import { deployedLimits } from './deployed-limits.js';
+import { mutationAllowed } from './mutation-gate.js';
+import {
+  InstalledPolicy,
+  notTested,
+  prebuiltMode,
+  previewDefaultPolicy,
+  repoPolicyFile,
+  skipNote,
+  strictAcceptance,
+} from './s8-installed-policy.js';
 
 const N = process.env.TBI_S8_INSTANCE ?? '';
 const sudo = (...args: string[]) => spawnSync('sudo', ['-n', ...args], { encoding: 'utf8' });
@@ -22,11 +35,15 @@ const HAVE =
   sudo('test', '-f', `/etc/systemd/system/${N}-session-host.service`).status === 0 &&
   sudo('true').status === 0;
 const SESSIONS = `/var/lib/${N}-runtime/sessions`;
-const REAL_POLICY =
-  process.env.TBI_S8_POLICY ??
-  new URL('../../deploy/dev-lab/s8/policy.json', import.meta.url).pathname;
+const REAL_POLICY = repoPolicyFile();
 /** Three concurrent sessions are needed (on the 1-vCPU DEV host the policy admits one: skipped). */
 const ENOUGH = HAVE && deployedLimits(N, REAL_POLICY).maxLive >= 3;
+const TOO_FEW = 'NOT TESTED: the installed policy admits fewer than 3 live sessions';
+notTested(!HAVE, 'NOT TESTED: no installed instance (TBI_S8_INSTANCE, sudo)');
+/** Throws on policy drift; undefined when nothing here would run (InstalledPolicy). */
+const INSTALLED = HAVE ? InstalledPolicy.captureForRecovery(N, ENOUGH) : undefined;
+const PREBUILT = INSTALLED ? prebuiltMode(INSTALLED.bytes, mutationAllowed(N)) : 'installed';
+const UNITS = [`${N}-build`, `${N}-session-host`];
 const R1_IMAGE = '5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af';
 const LEASE_MS = 30_000; // Session Host default leaseMs (not overridden by the unit)
 const run = Date.now().toString(36);
@@ -64,12 +81,15 @@ const status = async (s: S) =>
     reason?: string;
   };
 
+const upload = (user: string) =>
+  fetch(`${BUILD}/v1/artifacts`, {
+    method: 'POST',
+    headers: as(user),
+    body: readFileSync(artifact('TbiGpioProof').path),
+  });
+
 async function session(user: string, limits?: { maxLifetimeMs: number }): Promise<S> {
-  const bytes = readFileSync(artifact('TbiGpioProof').path);
-  expect(
-    (await fetch(`${BUILD}/v1/artifacts`, { method: 'POST', headers: as(user), body: bytes }))
-      .status,
-  ).toBe(200);
+  expect((await upload(user)).status).toBe(200);
   const l = (await (
     await fetch(`${BUILD}/v1/artifacts/${R1_IMAGE}/lease`, { method: 'POST', headers: as(user) })
   ).json()) as { ticket: string };
@@ -102,79 +122,118 @@ async function cleanedUp(s: S) {
   expect(dirExists(s), 'session dir').toBe(false);
 }
 
+const healthy = async () => {
+  for (let i = 0; i < 100; i++) {
+    try {
+      if ((await fetch(`${BUILD}/v1/health`)).ok && (await fetch(`${HOST}/health`)).ok) return;
+    } catch {
+      /* restarting */
+    }
+    await sleep(200);
+  }
+  throw new Error(`${N}: build service and Session Host not healthy after 100 attempts`);
+};
+/** The upload answer under the INSTALLED default plan, taken before any temporary policy. */
+let refusal: { status: number; body: unknown } | undefined;
+
 beforeAll(async () => {
   if (!HAVE) return;
   BUILD = await relay(`/run/${N}-build/api.sock`);
   HOST = await relay(`/run/${N}-runtime/api.sock`);
-}, 60_000);
+  if (PREBUILT === 'installed') return;
+  if (PREBUILT === 'refused') console.warn(skipNote(PREBUILT));
+  await healthy();
+  const r = await upload(u('free'));
+  refusal = { status: r.status, body: await r.json() };
+  if (PREBUILT === 'temporary' && ENOUGH) {
+    INSTALLED!.install(previewDefaultPolicy(INSTALLED!.bytes), UNITS);
+    await healthy();
+  }
+}, 180_000);
 afterAll(() => {
-  for (const r of relays) if (r.pid) sudo('pkill', '-TERM', '-P', String(r.pid));
+  try {
+    INSTALLED?.restore(UNITS); // nothing unless a temporary policy was installed
+  } finally {
+    for (const r of relays) if (r.pid) sudo('pkill', '-TERM', '-P', String(r.pid));
+  }
 });
 
-describe.skipIf(!ENOUGH)(`Alpha: disconnect and timeout recovery (${N})`, () => {
-  it('a cut client ends lease_expired; a lifetime ends lifetime_exceeded; a bystander is unaffected', async () => {
-    const live: S[] = [];
-    const streams: AbortController[] = [];
-    try {
-      const bystander = await session(u('ok'));
-      live.push(bystander);
-      // The bystander holds its event stream, as the real client does (it also holds its lease).
-      const hold = new AbortController();
-      streams.push(hold);
-      void fetch(`${HOST}/sessions/${bystander.id}/events?after=0`, {
-        headers: headers(bystander),
-        signal: hold.signal,
-      })
-        .then((r) => r.body?.cancel())
-        .catch(() => undefined);
-      const gone = await session(u('gone'));
-      live.push(gone);
-      const short = await session(u('short'), { maxLifetimeMs: 20_000 });
-      live.push(short);
-      expect(await status(short)).toMatchObject({ state: 'running' });
-      // The host reports the enforced (client-shortened) lifetime, from the release that adds
-      // `lifetimeMs` (Alpha Phase D); an older host omits it.
-      const reported = (
-        (await (
-          await fetch(`${HOST}/sessions/${short.id}`, { headers: headers(short) })
-        ).json()) as { lifetimeMs?: number }
-      ).lifetimeMs;
-      if (reported !== undefined) expect(reported).toBe(20_000);
-      console.log(`lifetimeMs reported by the host: ${String(reported)}`);
-      // The disconnecting client: an event stream that is cut, then silence.
-      const ac = new AbortController();
-      const stream = await fetch(`${HOST}/sessions/${gone.id}/events?after=0`, {
-        headers: headers(gone),
-        signal: ac.signal,
-      });
-      expect(stream.status).toBe(200);
-      await sleep(2000);
-      ac.abort();
-      const cutAt = Date.now();
-      // Meanwhile the other two clients stay active (polling holds their lease).
-      let shortEnded: { state: string; reason?: string } | null = null;
-      while (Date.now() - cutAt < LEASE_MS + 15_000) {
-        expect((await status(bystander)).state, 'bystander').toBe('running');
-        const st = await status(short);
-        if (!shortEnded && st.state === 'ended') shortEnded = st;
-        await sleep(2000);
-      }
-      expect(shortEnded).toMatchObject({ state: 'ended', reason: 'lifetime_exceeded' });
-      await cleanedUp(short);
-      // Only now does the disconnected client come back: its session ended with the lease.
-      expect(await status(gone)).toMatchObject({ state: 'ended', reason: 'lease_expired' });
-      await cleanedUp(gone);
-      // The host admits the returning user again; the bystander still runs.
-      const back = await session(u('gone'));
-      live.push(back);
-      await fetch(`${HOST}/sessions/${back.id}`, { method: 'DELETE', headers: headers(back) });
-      await cleanedUp(back);
-      expect((await status(bystander)).state).toBe('running');
-    } finally {
-      for (const s of live)
-        await fetch(`${HOST}/sessions/${s.id}`, { method: 'DELETE', headers: headers(s) });
-      for (const a of streams) a.abort();
-    }
-    for (const s of live) await cleanedUp(s);
-  }, 300_000);
+describe.runIf(PREBUILT !== 'installed')(`Alpha: prebuilt refusal (${N})`, () => {
+  it('the installed default plan refuses an Advanced upload: 403 capability_disabled', () => {
+    expect(refusal).toMatchObject({ status: 403, body: { error: 'capability_disabled' } });
+  });
 });
+
+// In strict mode the case is not skipped here: it fails with the reason.
+describe.skipIf(!ENOUGH && !strictAcceptance())(
+  `Alpha: disconnect and timeout recovery (${N})`,
+  () => {
+    it('a cut client ends lease_expired; a lifetime ends lifetime_exceeded; a bystander is unaffected', async (ctx) => {
+      ctx.skip(notTested(!ENOUGH, TOO_FEW), TOO_FEW);
+      ctx.skip(notTested(PREBUILT === 'refused', skipNote(PREBUILT)), skipNote(PREBUILT));
+      const live: S[] = [];
+      const streams: AbortController[] = [];
+      try {
+        const bystander = await session(u('ok'));
+        live.push(bystander);
+        // The bystander holds its event stream, as the real client does (it also holds its lease).
+        const hold = new AbortController();
+        streams.push(hold);
+        void fetch(`${HOST}/sessions/${bystander.id}/events?after=0`, {
+          headers: headers(bystander),
+          signal: hold.signal,
+        })
+          .then((r) => r.body?.cancel())
+          .catch(() => undefined);
+        const gone = await session(u('gone'));
+        live.push(gone);
+        const short = await session(u('short'), { maxLifetimeMs: 20_000 });
+        live.push(short);
+        expect(await status(short)).toMatchObject({ state: 'running' });
+        // The host reports the enforced (client-shortened) lifetime, from the release that adds
+        // `lifetimeMs` (Alpha Phase D); an older host omits it.
+        const reported = (
+          (await (
+            await fetch(`${HOST}/sessions/${short.id}`, { headers: headers(short) })
+          ).json()) as { lifetimeMs?: number }
+        ).lifetimeMs;
+        if (reported !== undefined) expect(reported).toBe(20_000);
+        console.log(`lifetimeMs reported by the host: ${String(reported)}`);
+        // The disconnecting client: an event stream that is cut, then silence.
+        const ac = new AbortController();
+        const stream = await fetch(`${HOST}/sessions/${gone.id}/events?after=0`, {
+          headers: headers(gone),
+          signal: ac.signal,
+        });
+        expect(stream.status).toBe(200);
+        await sleep(2000);
+        ac.abort();
+        const cutAt = Date.now();
+        // Meanwhile the other two clients stay active (polling holds their lease).
+        let shortEnded: { state: string; reason?: string } | null = null;
+        while (Date.now() - cutAt < LEASE_MS + 15_000) {
+          expect((await status(bystander)).state, 'bystander').toBe('running');
+          const st = await status(short);
+          if (!shortEnded && st.state === 'ended') shortEnded = st;
+          await sleep(2000);
+        }
+        expect(shortEnded).toMatchObject({ state: 'ended', reason: 'lifetime_exceeded' });
+        await cleanedUp(short);
+        // Only now does the disconnected client come back: its session ended with the lease.
+        expect(await status(gone)).toMatchObject({ state: 'ended', reason: 'lease_expired' });
+        await cleanedUp(gone);
+        // The host admits the returning user again; the bystander still runs.
+        const back = await session(u('gone'));
+        live.push(back);
+        await fetch(`${HOST}/sessions/${back.id}`, { method: 'DELETE', headers: headers(back) });
+        await cleanedUp(back);
+        expect((await status(bystander)).state).toBe('running');
+      } finally {
+        for (const s of live)
+          await fetch(`${HOST}/sessions/${s.id}`, { method: 'DELETE', headers: headers(s) });
+        for (const a of streams) a.abort();
+      }
+      for (const s of live) await cleanedUp(s);
+    }, 300_000);
+  },
+);

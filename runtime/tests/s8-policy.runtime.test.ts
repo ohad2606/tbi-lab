@@ -4,16 +4,18 @@
  * persistent rate windows. Skipped unless that instance is installed and sudo is available.
  *
  * For its duration the test installs a VALIDATION policy (the preview plan with limits small
- * enough to reach quickly) and restarts the two services; afterwards it restores the real policy
- * (deploy/dev-lab/s8/policy.json) and restarts them again.
+ * enough to reach quickly) and restarts the two services; afterwards it restores the policy that was
+ * installed before, byte for byte, and restarts them. It starts only if the installed policy equals
+ * the repository file (TBI_S8_POLICY, default policy.json); otherwise nothing is changed.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEFAULT_POLICY, type PolicyConfig } from '../policy/policy.js';
 import { loadRequest } from './r2-support.js';
 import { mutationAllowed, mutationSkipReason } from './mutation-gate.js';
+import { InstalledPolicy, notTested, withInstalledPlanNames } from './s8-installed-policy.js';
 
 // The instance must be named explicitly (TBI_S8_INSTANCE, e.g. tbi-s8): no default shared target.
 const N = process.env.TBI_S8_INSTANCE ?? '';
@@ -25,8 +27,9 @@ const HAVE =
   existsSync(`/etc/systemd/system/${N}-build.service`) &&
   sudo('true').status === 0 &&
   mutationAllowed(N);
-if (!HAVE) console.warn(mutationSkipReason(N, 's8-policy (policy install, service restarts)'));
-const REAL_POLICY = new URL('../../deploy/dev-lab/s8/policy.json', import.meta.url).pathname;
+const SKIPPED = mutationSkipReason(N, 's8-policy (policy install, service restarts)');
+if (!HAVE) console.warn(SKIPPED);
+notTested(!HAVE, `NOT TESTED: ${SKIPPED}`);
 const R1_IMAGE = '5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af';
 
 const relays: ChildProcess[] = [];
@@ -46,11 +49,13 @@ function validationPolicy(tweak: (c: PolicyConfig) => void = () => {}): PolicyCo
   return c;
 }
 
-function installPolicy(c: PolicyConfig | string, restart = [`${N}-build`, `${N}-session-host`]) {
-  const tmp = `/tmp/claude-1001/policy-${process.pid}.json`;
-  writeFileSync(tmp, typeof c === 'string' ? readFileSync(c, 'utf8') : JSON.stringify(c));
-  sudo('install', '-m', '0400', tmp, `/etc/${N}/policy.json`);
-  sudo('systemctl', 'restart', ...restart.map((u) => `${u}.service`));
+const UNITS = [`${N}-build`, `${N}-session-host`];
+/** The policy installed before this test (saved in beforeAll); what afterAll puts back. */
+let installed: InstalledPolicy | undefined;
+
+function installPolicy(c: PolicyConfig, restart = UNITS) {
+  const policy = withInstalledPlanNames(c, installed!.bytes);
+  installed!.install(JSON.stringify(policy), restart);
 }
 
 async function relay(socket: string): Promise<string> {
@@ -110,6 +115,7 @@ const waitHealthy = async () => {
     }
     await new Promise((r) => setTimeout(r, 200));
   }
+  throw new Error(`${N}: build service and Session Host not healthy after 50 attempts`);
 };
 const image = () =>
   readFileSync(join(process.env.TBI_RUNTIME_HOME ?? '', 'artifacts', `${R1_IMAGE}.bin`));
@@ -139,6 +145,7 @@ const end = (user: string, s: { body: Record<string, unknown> }) =>
 
 beforeAll(async () => {
   if (!HAVE) return;
+  installed = InstalledPolicy.capture(N); // throws before anything is changed
   installPolicy(validationPolicy());
   BUILD = await relay(`/run/${N}-build/api.sock`);
   HOST = await relay(`/run/${N}-runtime/api.sock`);
@@ -146,8 +153,11 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(() => {
   if (!HAVE) return;
-  installPolicy(REAL_POLICY); // the instance goes back to its real policy
-  for (const r of relays) if (r.pid) sudo('pkill', '-TERM', '-P', String(r.pid));
+  try {
+    installed?.restore(UNITS); // exactly the bytes that were installed before
+  } finally {
+    for (const r of relays) if (r.pid) sudo('pkill', '-TERM', '-P', String(r.pid));
+  }
 });
 
 describe.skipIf(!HAVE)(

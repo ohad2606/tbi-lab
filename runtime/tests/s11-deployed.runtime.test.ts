@@ -24,6 +24,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addComponent, addWire, createSnapshot, type ProjectDocument } from '@tbi-lab/domain';
 import { PROTOCOL, type CreateSessionRequest } from '../host/protocol.js';
 import { deployedLimits } from './deployed-limits.js';
+import { repoPolicyFile } from './s8-installed-policy.js';
 
 const N = process.env.TBI_S8_INSTANCE ?? '';
 const EXPECT = process.env.TBI_S11_EXPECT === 's10' ? 's10' : 'r1';
@@ -34,10 +35,7 @@ const HAVE =
   sudo('true').status === 0;
 const SESSIONS = `/var/lib/${N}-runtime/sessions`;
 /** The installed policy (install.sh TBI_S8_POLICY; default policy.json), resolved on the host. */
-const REAL_POLICY =
-  process.env.TBI_S8_POLICY ??
-  new URL('../../deploy/dev-lab/s8/policy.json', import.meta.url).pathname;
-const LIMITS = HAVE ? deployedLimits(N, REAL_POLICY) : { perUser: 1, maxLive: 1, deferAt: 1 };
+const LIMITS = HAVE ? deployedLimits(N, repoPolicyFile()) : { perUser: 1, maxLive: 1, deferAt: 1 };
 const run = Date.now().toString(36);
 const u = (name: string) => `s11-${name}-${run}`;
 
