@@ -702,7 +702,12 @@ export async function deleteSignup(fetchFn: Fetch, id: string): Promise<DeleteSi
   const b = isObj(r.body) ? r.body : {};
   if (r.status === 200 && b.deleted === true)
     return { kind: b.note === 'already_deleted' ? 'already_deleted' : 'deleted' };
-  if (r.status === 404) return { kind: 'not_found' };
+  // Only the service's own `not_found` means "no such request"; any other 404 (a proxy page, a
+  // missing route) deleted nothing and proves nothing.
+  if (r.status === 404)
+    return b.error === 'not_found'
+      ? { kind: 'not_found' }
+      : { kind: 'failed', error: 'unavailable' };
   if (r.status === 429) {
     const s = b.retryAfterS;
     return {

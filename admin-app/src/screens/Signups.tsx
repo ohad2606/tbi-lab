@@ -172,12 +172,19 @@ export function Signups() {
   const [storedVersion, setStoredVersion] = useState(0);
   const approving = useRef(new Set<string>());
   const keptId = useRef<string | null>(null);
+  // The list as it is now (an action's answer arrives later than its click), and the order of the
+  // list loads: an older answer never replaces a newer one.
+  const listRef = useRef(list);
+  listRef.current = list;
+  const listTurn = useRef(0);
 
   // A live region only speaks when its text changes: clear it, then set it on the next frame, so
   // the same sentence twice in a row is announced twice.
   // `spoken` counts announcements and reloads, so a reload that was overtaken stays silent.
   const spoken = useRef(0);
+  const said = useRef('');
   const say = (text: string) => {
+    said.current = text;
     const n = ++spoken.current;
     setAnnounce('');
     requestAnimationFrame(() => {
@@ -185,24 +192,45 @@ export function Signups() {
     });
   };
 
-  /** The open list again, silently: after a deletion, whose outcome is what gets announced. */
-  const reloadQuietly = async () => {
+  /** Adds a sentence to the latest announcement instead of replacing it. */
+  const alsoSay = (text: string) => {
+    const before = said.current.replace(/([^.!?…])$/, '$1.');
+    say(before ? `${before} ${text}` : text);
+  };
+
+  /**
+   * After a deletion on this screen: a request that is gone leaves the open list at once, then the
+   * list is loaded again silently (the deletion's outcome is what gets announced). A passing
+   * failure keeps the rows and an open confirmation.
+   */
+  const reloadQuietly = async (gone: string | null) => {
+    if (gone) {
+      setList((old) =>
+        old?.ok ? { ok: true, value: old.value.filter((x) => x.id !== gone) } : old,
+      );
+      setConfirming((c) => (c === gone ? null : c));
+    }
+    const mine = ++listTurn.current;
     const v = await loadOpenSignups(api);
-    if (!alive.current) return;
+    if (!alive.current || mine !== listTurn.current) return;
+    if (!v.ok && (v.error === 'network' || v.error === 'rate_limited') && listRef.current?.ok)
+      return;
     setList(v);
     setMessages({});
-    setConfirming(null);
+    setConfirming((c) => (v.ok && v.value.some((x) => x.id === c) ? c : null));
   };
 
   const reload = async () => {
     // The status is independent of the list: its failure shows its own message and never blocks it.
     const turn = ++spoken.current;
+    said.current = '';
+    const mine = ++listTurn.current;
     const status = loadAutoApproveStatus(api).then((st) => {
       if (alive.current) setAutoStatus(st);
       return st;
     });
     const v = await loadOpenSignups(api);
-    if (!alive.current) return;
+    if (!alive.current || mine !== listTurn.current) return;
     setList(v);
     setMessages({});
     setConfirming(null);
@@ -285,23 +313,31 @@ export function Signups() {
       setStoredVersion((n) => n + 1);
       const v = signupOutcomeView(o, action);
       const text = t(v.key as MessageKey, { name: isolate(r.name) });
-      const ids = list.value.map((x) => x.id);
+      // The list as it is now: a request deleted meanwhile must not come back.
+      const rows = listRef.current?.ok ? listRef.current.value : [];
+      const present = rows.some((x) => x.id === r.id);
+      const ids = (present ? rows : list.value).map((x) => x.id);
       // A row that stays without an action gets focus on its outcome sentence, which is read on
       // focus: no live announcement then (it would be read twice). Every other outcome is spoken
       // by the live region (the row is gone, or focus is on a button).
-      const messageFocused = !v.removed && signupRowKind(v.record ?? r) === 'queued';
+      const messageFocused = present && !v.removed && signupRowKind(v.record ?? r) === 'queued';
       if (messageFocused) {
         // Silence counts as an announcement: a pending one (e.g. a late status) must not follow.
         spoken.current++;
+        said.current = '';
         setAnnounce('');
       } else say(text);
       if (v.removed) {
         focusId.current = focusAfterRemoval(ids, r.id);
-        setList({ ok: true, value: list.value.filter((x) => x.id !== r.id) });
+        setList((old) =>
+          old?.ok ? { ok: true, value: old.value.filter((x) => x.id !== r.id) } : old,
+        );
       } else {
         if (v.record) {
           const rec = v.record;
-          setList({ ok: true, value: list.value.map((x) => (x.id === r.id ? rec : x)) });
+          setList((old) =>
+            old?.ok ? { ok: true, value: old.value.map((x) => (x.id === r.id ? rec : x)) } : old,
+          );
         }
         setMessages((m) => ({ ...m, [r.id]: { key: v.key as MessageKey, ok: v.ok } }));
         keptId.current = r.id;
@@ -507,9 +543,10 @@ export function Signups() {
       )}
       <StoredSignups
         say={say}
+        alsoSay={alsoSay}
         version={storedVersion}
         approving={approving.current}
-        onChanged={() => void reloadQuietly()}
+        onChanged={(gone) => void reloadQuietly(gone)}
       />
     </section>
   );

@@ -273,7 +273,7 @@ for (const lang of ['he', 'en'] as const) {
     [
       '429',
       { status: 429, json: { error: 'rate_limited', retryAfterS: 42 } },
-      word(/42 seconds/, /42.*שניות/),
+      word(/Seconds to wait: 42/, /שניות להמתנה: .?42/),
     ],
     ['403', { status: 403, json: { error: 'csrf' } }, word(/refused/, /דחה/)],
   ] as const)
@@ -320,7 +320,8 @@ for (const lang of ['he', 'en'] as const) {
       );
       await expect(rowOf(page, 3)).toHaveCount(0);
       await expect(del(page, 2)).toBeFocused();
-      expect(m.calls.filter((c) => c === 'GET')).toHaveLength(2);
+      // Opening the list, opening the confirmation, and after the answer.
+      expect(m.calls.filter((c) => c === 'GET')).toHaveLength(3);
     });
 
   test(`stored (${lang}): sign-up admin off: "unavailable", no filter and no Delete`, async ({
@@ -335,6 +336,141 @@ for (const lang of ['he', 'en'] as const) {
     await expect(page.getByTestId('stored-delete')).toHaveCount(0);
     await expect(page.getByTestId('stored-filter')).toHaveCount(0);
     expect(m.calls.filter((c) => c.startsWith('GET /') && c.includes('pending'))).toEqual([]);
+  });
+}
+
+for (const lang of ['he', 'en'] as const) {
+  const word = (en: RegExp, he: RegExp) => (lang === 'he' ? he : en);
+  const stale = word(/may be out of date/, /לא מעודכנת/);
+
+  test(`stored (${lang}): an approve answered late does not bring a deleted request back`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page);
+    let open2 = [row(1, 'alpha'), row(2, 'bravo')];
+    await page.route('**/admin-api/signups/open', (r) => r.fulfill({ json: { signups: open2 } }));
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    await page.route('**/admin-api/signups/*/approve', async (r) => {
+      await hold;
+      await r.fulfill({ json: { record: row(2, 'bravo', 'email_sent', true) } });
+    });
+    await open(page, context, baseURL!, lang);
+    await page
+      .locator(`[data-signup-id="${id(2)}"]`)
+      .getByTestId('signup-approve')
+      .click();
+    open2 = [row(2, 'bravo')];
+    await del(page, 1).click();
+    await page.getByTestId('delete-ok').click();
+    await expect(page.getByTestId('signup-row')).toHaveCount(1);
+    release();
+    // The approved row leaves; the deleted one stays gone.
+    await expect(page.getByTestId('signups-empty')).toBeVisible();
+    await expect(page.locator(`[data-signup-id="${id(1)}"]`)).toHaveCount(0);
+  });
+
+  test(`stored (${lang}): a failed reload after a delete is announced with the outcome`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mock(page);
+    await open(page, context, baseURL!, lang);
+    await del(page, 1).click();
+    await expect(page.getByTestId('delete-cancel')).toBeFocused();
+    await expect.poll(() => m.calls.filter((c) => c === 'GET').length).toBe(2);
+    m.listStatus = 500;
+    await page.getByTestId('delete-ok').click();
+    await expect(page.getByTestId('stored-stale')).toBeVisible();
+    await expect(live(page)).toContainText(id(1));
+    await expect(live(page)).toContainText(stale);
+    // Refresh: the open list's count never replaces the stale notice.
+    await page.getByTestId('signups-refresh').click();
+    await expect(live(page)).toContainText(stale);
+    await page.waitForTimeout(500);
+    await expect(live(page)).toContainText(stale);
+  });
+
+  test(`stored (${lang}): a warning that appears in the open dialog is announced there`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page);
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('stored-row')).toHaveCount(3);
+    await page.route('**/admin-api/signups', (r) =>
+      r.fulfill({ json: { signups: [row(1, 'alpha', 'email_sent', true)] } }),
+    );
+    await del(page, 1).click();
+    await expect(page.getByTestId('delete-warning')).toHaveAttribute('data-warning', 'account');
+    await expect(page.getByTestId('delete-dialog-live')).toContainText(
+      word(/it stays/, /הוא נשאר/),
+    );
+    await expect(page.getByTestId('delete-cancel')).toBeFocused();
+  });
+
+  test(`stored (${lang}): a row gone while confirming closes the dialog, says so`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mock(page);
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('stored-row')).toHaveCount(3);
+    await page.route('**/admin-api/signups', (r) =>
+      r.fulfill({ json: { signups: [row(2, 'bravo')] } }),
+    );
+    await del(page, 1).click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(live(page)).toContainText(word(/already gone/, /כבר לא קיימת/));
+    await expect(page.getByTestId('delete-result')).toContainText(id(1));
+    await expect(page.getByTestId('stored-filter')).toBeFocused();
+    expect(deletes(m)).toEqual([]);
+  });
+
+  test(`stored (${lang}): a list that fails while confirming closes the dialog, says so`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mock(page);
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('stored-row')).toHaveCount(3);
+    m.listStatus = 404;
+    await del(page, 1).click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(page.getByTestId('stored-problem')).toBeVisible();
+    await expect(live(page)).toContainText(word(/not available/, /אינן זמינות/));
+    await expect(page.getByTestId('stored-toggle')).toBeFocused();
+    expect(deletes(m)).toEqual([]);
+  });
+
+  test(`stored (${lang}): on a phone a focused row Delete is above the tab bar`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 560 });
+    await mock(page);
+    await open(page, context, baseURL!, lang);
+    await page.getByTestId('stored-filter').focus();
+    const bar = page.getByTestId('tabbar');
+    for (let n = 1; n <= 3; n++) {
+      // Park the button just under the tab bar's top edge, then reach it with the keyboard.
+      await page.keyboard.press('Tab');
+      await expect(del(page, n)).toBeFocused();
+      await del(page, n).evaluate((b: HTMLElement) => {
+        b.blur();
+        window.scrollBy(0, b.getBoundingClientRect().bottom - window.innerHeight);
+        b.focus();
+      });
+      const box = (await del(page, n).boundingBox())!;
+      expect(box.y + box.height).toBeLessThanOrEqual((await bar.boundingBox())!.y);
+    }
   });
 }
 
