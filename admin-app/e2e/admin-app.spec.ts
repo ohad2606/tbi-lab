@@ -250,6 +250,7 @@ test('owner actions: rename, disable with confirmation, reactivate; the log reco
 
   await page.getByTestId('tester-reactivate').click();
   await expect(page.getByTestId('confirm')).toContainText('one of the 30 tester places');
+  await expect(page.getByTestId('confirm-cancel')).toBeFocused();
   await page.getByTestId('confirm-ok').click();
   await expect(page.getByTestId('notice')).toHaveText('Alex Example can sign in again.');
   await expect(page.getByTestId('tester-status')).toHaveText('Active');
@@ -320,6 +321,7 @@ test('a slow helper: 202 pending, then the result arrives without asking', async
   await english(context);
   await page.goto(`${APP}/#/testers/${ALEX}`);
   await page.getByTestId('tester-disable').click();
+  await expect(page.getByTestId('confirm-cancel')).toBeFocused();
   await page.getByTestId('confirm-ok').click();
   await expect(page.getByTestId('notice')).toContainText('The server is still processing');
   await expect(page.getByTestId('pending-check')).toBeVisible();
@@ -394,6 +396,7 @@ test('feedback: newest first, new until opened, the full text, delete confirmed'
   await expect(items).toHaveCount(1);
   await items.first().locator('a').click();
   await page.getByTestId('report-delete-tester').click();
+  await expect(page.getByTestId('confirm-cancel')).toBeFocused();
   await page.getByTestId('confirm-ok').click();
   await expect(page.getByTestId('feedback-empty')).toBeVisible();
 });

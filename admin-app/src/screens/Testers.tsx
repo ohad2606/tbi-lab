@@ -238,7 +238,10 @@ export function TesterDetail({ target }: { target: string }) {
   const [metric, setMetric] = useState<UsageMetric>('runs');
   const [action, setAction] = useState<Pending>(null);
   const [name, setName] = useState('');
-  const [nameProblem, setNameProblem] = useState(false);
+  // 0: no problem; else which refusal this is, so the same one twice is a new alert (spoken again).
+  const [nameProblem, setNameProblem] = useState(0);
+  const refusals = useRef(0);
+  const refuseName = () => setNameProblem(++refusals.current);
   const [busy, setBusy] = useState(false);
   const renameField = useRef<HTMLInputElement>(null);
   const renaming = action?.kind === 'rename';
@@ -323,14 +326,14 @@ export function TesterDetail({ target }: { target: string }) {
   const saveName = async () => {
     const n = normalizeDisplayName(name);
     if (!n) {
-      setNameProblem(true);
+      refuseName();
       return;
     }
     setBusy(true);
     try {
       const o = await renameTester(api, a.target, n);
       if (o.kind === 'refused' && o.error === 'invalid_name') {
-        setNameProblem(true);
+        refuseName();
         return;
       }
       await settle(o, n, 'rename');
@@ -474,17 +477,23 @@ export function TesterDetail({ target }: { target: string }) {
                 maxLength={4 * DISPLAY_NAME_MAX}
                 data-testid="rename-input"
                 value={name}
-                aria-invalid={nameProblem}
+                aria-invalid={nameProblem > 0}
                 aria-describedby={nameProblem ? 'rename-problem' : undefined}
                 ref={renameField}
                 onInput={(e) => {
                   setName((e.target as HTMLInputElement).value);
-                  setNameProblem(false);
+                  setNameProblem(0);
                 }}
               />
             </label>
-            {nameProblem && (
-              <p id="rename-problem" class="problem" role="alert" data-testid="rename-problem">
+            {nameProblem > 0 && (
+              <p
+                key={nameProblem}
+                id="rename-problem"
+                class="problem"
+                role="alert"
+                data-testid="rename-problem"
+              >
                 {t('admin.name.invalid', { max: DISPLAY_NAME_MAX })}
               </p>
             )}
@@ -536,7 +545,7 @@ export function TesterDetail({ target }: { target: string }) {
               data-testid="tester-rename"
               onClick={() => {
                 setName(a.displayName ?? '');
-                setNameProblem(false);
+                setNameProblem(0);
                 setAction({ kind: 'rename' });
               }}
             >

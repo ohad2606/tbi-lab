@@ -200,6 +200,7 @@ const WALKS: Record<string, { subject?: string; walk: Walk }> = {
       await visible(page, 'confirm', 'confirm-ok');
       await check('confirm disable');
       await request.post(`${FAKE}/__test/admin-hold?on=1`);
+      await expect(page.getByTestId('confirm-cancel')).toBeFocused();
       await page.getByTestId('confirm-ok').click();
       await visible(page, 'notice', 'pending-check');
       await check('pending request notice');
@@ -273,6 +274,7 @@ const WALKS: Record<string, { subject?: string; walk: Walk }> = {
       await page.getByTestId('report-delete-tester').click();
       await visible(page, 'confirm');
       await check('confirm delete all of a tester');
+      await expect(page.getByTestId('confirm-cancel')).toBeFocused();
       await page.getByTestId('confirm-ok').click();
       await visible(page, 'notice', 'feedback-empty');
       await check('feedback after delete, with notice');

@@ -402,4 +402,14 @@ describe('stored requests: filter, warning, outcome (K12)', () => {
     expect(outcomes.filter((o) => deleteOutcomeView(o).gone)).toHaveLength(3);
     expect(deleteOutcomeView({ kind: 'rate_limited', retryAfterS: 30 }).seconds).toBe(30);
   });
+
+  it('a not_found with sign-up administration off claims nothing about the request', () => {
+    const off = deleteOutcomeView({ kind: 'not_found' }, true);
+    expect(off).toEqual({ key: 'console.signups.delete.failed.off', gone: false });
+    for (const l of LOCALES)
+      expect(l.messages[off.key as keyof typeof l.messages]).toContain('{id}');
+    expect(deleteOutcomeView({ kind: 'not_found' }).gone).toBe(true);
+    // Only the service's audit log answers `already_deleted`: that stays true either way.
+    expect(deleteOutcomeView({ kind: 'already_deleted' }, true).gone).toBe(true);
+  });
 });

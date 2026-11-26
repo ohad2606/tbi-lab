@@ -55,11 +55,14 @@ function Sentence({ k, values }: { k: MessageKey; values: Record<string, string>
 function DeleteDialog({
   children,
   notice,
+  onModal,
   onCancel,
   onConfirm,
 }: {
   children: ComponentChildren;
   notice: string;
+  /** Told while the page behind is inert, so its announcements wait. */
+  onModal: (open: boolean) => void;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -82,7 +85,9 @@ function DeleteDialog({
   // a key pressed as soon as it appears (Escape) reaches it and not the page behind.
   useLayoutEffect(() => {
     dialog.current?.showModal();
+    onModal(true);
     cancel.current?.focus();
+    return () => onModal(false);
   }, []);
   return (
     <dialog
@@ -159,12 +164,14 @@ interface Outcome {
 export function StoredSignups({
   say,
   alsoSay,
+  onModal,
   version,
   approving,
   onChanged,
 }: {
   say: (text: string) => void;
   alsoSay: (text: string) => void;
+  onModal: (open: boolean) => void;
   version: number;
   approving: ReadonlySet<string>;
   onChanged: (gone: string | null) => void;
@@ -176,8 +183,11 @@ export function StoredSignups({
   const [stale, setStale] = useState(false);
   const [query, setQuery] = useState('');
   const [confirming, setConfirming] = useState<SignupRecord | null>(null);
-  /** Whether the open confirmation has shown an account warning. */
+  /** The open confirmation: whether it has shown an account warning, the one it opened with,
+   * and whether that has changed since (a warning that comes back is then announced again). */
   const warned = useRef(false);
+  const openedWith = useRef<ReturnType<typeof deleteAccountWarning>>(null);
+  const changed = useRef(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const listRef = useRef(list);
@@ -284,6 +294,8 @@ export function StoredSignups({
   const ask = (r: SignupRecord) => {
     if (inFlight.current) return;
     warned.current = false;
+    changed.current = false;
+    openedWith.current = deleteAccountWarning(r, approving);
     setConfirming(r);
     void load();
   };
@@ -306,18 +318,32 @@ export function StoredSignups({
     say(t('console.signups.delete.working'));
     requestAnimationFrame(() => deleteButton(r.id)?.focus());
     try {
-      const v = deleteOutcomeView(await deleteSignup(api, r.id));
-      const done: Outcome = { ...v, id: r.id, key: v.key as MessageKey };
-      const text = t(done.key, { id: ltr(r.id), seconds: v.seconds ?? '' });
-      onChanged(v.gone ? r.id : null);
+      const answer = await deleteSignup(api, r.id);
+      // With sign-up administration off the service answers `not_found` too: only the reloaded
+      // list tells that apart from a request that is gone, so nothing is claimed before it.
+      const unsure = answer.kind === 'not_found';
+      const view = (off: boolean) => {
+        const v = deleteOutcomeView(answer, off);
+        const done: Outcome = { ...v, id: r.id, key: v.key as MessageKey };
+        return { v, done, text: t(done.key, { id: ltr(r.id), seconds: v.seconds ?? '' }) };
+      };
+      let { v, done, text } = view(false);
+      if (!unsure) onChanged(v.gone ? r.id : null);
       // One announcement for the outcome and a failed reload; a slow reload is not waited for.
       let spoken = false;
-      const timer = setTimeout(() => {
-        spoken = true;
-        say(text);
-      }, RELOAD_WAIT_MS);
+      const timer = unsure
+        ? undefined
+        : setTimeout(() => {
+            spoken = true;
+            say(text);
+          }, RELOAD_WAIT_MS);
       const next = await load();
       clearTimeout(timer);
+      if (unsure) {
+        const off = !!next && !next.v.ok && next.v.error === 'unavailable';
+        ({ v, done, text } = view(off));
+        onChanged(v.gone ? r.id : null);
+      }
       const stale = next?.stale ? t('console.signups.all.stale') : '';
       if (!spoken) say(stale ? `${text} ${stale}` : text);
       else if (stale) alsoSay(stale);
@@ -361,10 +387,9 @@ export function StoredSignups({
     confirming && ((list?.ok && list.value.find((x) => x.id === confirming.id)) || confirming);
   const warning = target && deleteAccountWarning(target, approving);
   if (warning) warned.current = true;
+  if (confirming && warning !== openedWith.current) changed.current = true;
   const notice = [
-    warning && confirming && warning !== deleteAccountWarning(confirming, approving)
-      ? t(`console.signups.delete.confirm.${warning}`)
-      : '',
+    warning && confirming && changed.current ? t(`console.signups.delete.confirm.${warning}`) : '',
     // A warning that was on screen and is gone is said once; no warning at all says nothing.
     confirming && !warning && warned.current ? t('console.signups.delete.confirm.noWarning') : '',
     stale ? t('console.signups.all.stale') : '',
@@ -491,7 +516,12 @@ export function StoredSignups({
           </>
         ))}
       {target && (
-        <DeleteDialog notice={notice} onCancel={cancel} onConfirm={() => void remove(target)}>
+        <DeleteDialog
+          notice={notice}
+          onModal={onModal}
+          onCancel={cancel}
+          onConfirm={() => void remove(target)}
+        >
           <p>
             <Sentence
               k="console.signups.delete.confirm.target"

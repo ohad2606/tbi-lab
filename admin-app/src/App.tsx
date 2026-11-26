@@ -149,8 +149,12 @@ export function App() {
 
   const settle = async (o: MutationOutcome, label: string, action: MutationAction) => {
     setNotice(outcomeText(o, label, action));
-    if (o.kind === 'pending') setPending({ id: o.id, label, action, tries: 0 });
-    else await refresh(['accounts', 'capacity', 'audit']);
+    const startedOn = location.hash;
+    if (o.kind === 'pending') return setPending({ id: o.id, label, action, tries: 0 });
+    await refresh(['accounts', 'capacity', 'audit']);
+    // Left for another screen meanwhile: the reload may have removed what had focus there. The
+    // screen that started the action rescues its own, to the control that took the old one's place.
+    if (location.hash !== startedOn) rescueFocus();
   };
 
   const checkPending = async () => {

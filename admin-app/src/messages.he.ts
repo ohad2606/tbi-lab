@@ -232,5 +232,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.delete.failed.signed_out': 'בקשה {id}: לא נמחקה. תוקף ההתחברות פג; התחברו שוב.',
   'console.signups.delete.failed.unavailable':
     'בקשה {id}: לא נמחקה. השירות אינו זמין כרגע; נסו שוב מאוחר יותר.',
+  'console.signups.delete.failed.off':
+    'בקשה {id}: לא נמחקה. ניהול ההרשמה כבוי או לא זמין בשרת, ולכן ייתכן שהבקשה עדיין שמורה.',
   'console.signups.delete.failed.invalid_id': 'בקשה {id}: לא נמחקה. מזהה הבקשה אינו תקין.',
 };

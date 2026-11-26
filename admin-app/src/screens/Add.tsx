@@ -9,6 +9,7 @@ import {
 } from '@tbi-lab/admin-client';
 import { BackButton, Loading, Num, Problem } from '../common.js';
 import { api, useConsole, useT } from '../context.js';
+import { rescueFocus } from '../focus-rescue.js';
 
 /** Add a tester: a name and the address; afterwards the address is shown masked only. */
 export function Add() {
@@ -69,6 +70,8 @@ export function Add() {
         setLast(maskAddress(typed));
       }
       await settle(o, n || maskAddress(typed), 'add');
+      // A tester list that is now full disables the form, with whatever had focus in it.
+      rescueFocus();
     } finally {
       setSending(false);
     }

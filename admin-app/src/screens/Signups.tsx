@@ -50,6 +50,9 @@ const rowFocus = (id: string) =>
 /** How long the count announcement waits for the auto-approve status before it is spoken alone. */
 const STATUS_WAIT_MS = 3000;
 
+/** How long an announcement may still be unspoken, so an added sentence is posted with it. */
+const FRESH_MS = 2000;
+
 /** Two spoken sentences in one announcement. */
 const join = (a: string, b: string) => (a ? `${a.replace(/([^.!?…])$/, '$1.')} ${b}` : b);
 
@@ -192,22 +195,45 @@ export function Signups() {
   const topic = useRef(0);
   const quiet = useRef(0);
   const said = useRef('');
+  const saidAt = useRef(0);
+  // While the delete dialog is modal this page is inert, its live regions too: sentences are
+  // held (all of them, joined) and posted when it closes.
+  const modal = useRef(false);
+  const held = useRef(false);
   const post = (text: string) => {
     said.current = text;
+    saidAt.current = performance.now();
     const n = ++spoken.current;
+    if (modal.current) {
+      held.current = true;
+      return;
+    }
     setAnnounce('');
     requestAnimationFrame(() => {
       if (alive.current && n === spoken.current) setAnnounce(text);
     });
   };
 
+  /** The sentence still waiting to be heard, if any: an old one is never read again. */
+  const unheard = () =>
+    held.current || (!modal.current && performance.now() - saidAt.current < FRESH_MS)
+      ? said.current
+      : '';
+
   const say = (text: string) => {
     topic.current++;
-    post(text);
+    post(held.current ? join(said.current, text) : text);
   };
 
-  /** Adds a sentence to the latest announcement instead of replacing it. */
-  const alsoSay = (text: string) => post(join(said.current, text));
+  /** Adds a sentence: with one not heard yet, else on its own. */
+  const alsoSay = (text: string) => post(join(unheard(), text));
+
+  const onModal = (open: boolean) => {
+    modal.current = open;
+    if (open || !held.current) return;
+    held.current = false;
+    post(said.current);
+  };
 
   /**
    * After a deletion on this screen: a request that is gone leaves the open list at once, then the
@@ -224,8 +250,11 @@ export function Signups() {
     const mine = ++listTurn.current;
     const v = await loadOpenSignups(api);
     if (!alive.current || mine !== listTurn.current) return;
-    if (!v.ok && (v.error === 'network' || v.error === 'rate_limited') && listRef.current?.ok)
+    if (!v.ok && (v.error === 'network' || v.error === 'rate_limited') && listRef.current?.ok) {
+      // Its own live region is inert behind a modal: then the sentence is held like the others.
+      if (modal.current) alsoSay(t('console.signups.openStale'));
       return setOpenStale(true);
+    }
     setOpenStale(false);
     setList(v);
     setMessages({});
@@ -238,21 +267,27 @@ export function Signups() {
     const turn = ++topic.current;
     const run = ++quiet.current;
     said.current = '';
+    held.current = false;
     const mine = ++listTurn.current;
     const status = loadAutoApproveStatus(api).then((st) => {
       if (alive.current) setAutoStatus(st);
       return st;
     });
     const v = await loadOpenSignups(api);
-    if (!alive.current || mine !== listTurn.current) return;
-    setOpenStale(false);
-    setList(v);
-    setMessages({});
-    setConfirming(null);
+    if (!alive.current) return;
+    // A quiet reload (after a deletion) may have overtaken this one: its list and count are then
+    // dropped, but a status failure is still spoken.
+    const current = mine === listTurn.current;
+    if (current) {
+      setOpenStale(false);
+      setList(v);
+      setMessages({});
+      setConfirming(null);
+    }
     const unavailable = t('console.signups.auto.unavailable');
     /** What was spoken last when the count went out; unset: no count was spoken. */
     let counted: number | undefined;
-    if (v.ok) {
+    if (current && v.ok) {
       const c = signupCountView(v.value);
       const count = t(c.key, { count: c.count });
       // One announcement for both: a failed status is added to the count (a hung one is not waited for).
@@ -263,8 +298,10 @@ export function Signups() {
       if (!alive.current || run !== quiet.current) return;
       if (turn === topic.current) {
         const line = st && !st.ok ? join(count, unavailable) : count;
-        // A sentence added while this reload was pending (a stale list) stays, after the count.
-        say(said.current ? join(line, said.current) : line);
+        // A sentence added while this reload was pending (a stale list), not heard yet, stays,
+        // after the count.
+        const added = unheard();
+        say(added ? join(line, added) : line);
         counted = spoken.current;
         if (st) return;
       }
@@ -357,6 +394,7 @@ export function Signups() {
         topic.current++;
         spoken.current++;
         said.current = '';
+        held.current = false;
         setAnnounce('');
       } else say(text);
       if (v.removed) {
@@ -586,6 +624,7 @@ export function Signups() {
       <StoredSignups
         say={say}
         alsoSay={alsoSay}
+        onModal={onModal}
         version={storedVersion}
         approving={approving.current}
         onChanged={(gone) => void reloadQuietly(gone)}

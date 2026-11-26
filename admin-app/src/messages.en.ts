@@ -245,6 +245,8 @@ export const consoleEn = {
     'Request {id}: not deleted. Your sign-in has expired; sign in again.',
   'console.signups.delete.failed.unavailable':
     'Request {id}: not deleted. The service is not available right now; try again later.',
+  'console.signups.delete.failed.off':
+    'Request {id}: not deleted. Sign-up administration is off or unavailable on the server, so the request may still be stored.',
   'console.signups.delete.failed.invalid_id':
     'Request {id}: not deleted. This request ID is not valid.',
 } as const;

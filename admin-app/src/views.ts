@@ -467,8 +467,15 @@ export function deleteAccountWarning(
   return r.status === 'approved' || approving.has(r.id) ? 'inFlight' : null;
 }
 
-/** The sentence for one delete outcome; `gone`: the request no longer exists on the server. */
-export function deleteOutcomeView(o: DeleteSignupOutcome): {
+/**
+ * The sentence for one delete outcome; `gone`: the request no longer exists on the server.
+ * `adminOff`: the sign-up routes are not there (the stored list is unavailable), so a `not_found`
+ * deleted nothing and says nothing about the request.
+ */
+export function deleteOutcomeView(
+  o: DeleteSignupOutcome,
+  adminOff = false,
+): {
   key: string;
   gone: boolean;
   seconds?: number;
@@ -477,8 +484,9 @@ export function deleteOutcomeView(o: DeleteSignupOutcome): {
   switch (o.kind) {
     case 'deleted':
       return { key: `${k}done`, gone: true };
-    case 'already_deleted':
     case 'not_found':
+      return adminOff ? { key: `${k}failed.off`, gone: false } : { key: `${k}gone`, gone: true };
+    case 'already_deleted':
       return { key: `${k}gone`, gone: true };
     case 'rate_limited':
       return o.retryAfterS === null
