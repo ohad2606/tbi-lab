@@ -33,7 +33,7 @@ With the keyboard (wiring with the keyboard):
 
 1. Use `Tab` to move focus to a part in the circuit view.
 2. Press `W` to enter pin mode. The arrow keys move between the part's pins.
-3. Press `Enter` on a pin to start a wire. The arrow keys or `Tab` and `Shift + Tab` move between possible targets: pins, junctions and points on wires, nearest first. The current target is outlined on the canvas (a dashed ring; a target wire gets a dashed outline) and the view moves so it stays visible. Each target is also read out by a screen reader.
+3. Press `Enter` on a pin to start a wire (not while the probe tool is on). The arrow keys or `Tab` and `Shift + Tab` move between possible targets: pins, junctions and points on wires, nearest first. The current target is outlined on the canvas (a dashed ring; a target wire gets a dashed outline) and the view moves so it stays visible. Each target is also read out by a screen reader.
 4. Press `Enter` to connect, or `Esc` to cancel. Pressing `Esc` in pin mode returns to the part.
 5. `[` and `]` select the previous or next wire. With a wire selected, `E` re-picks one of its ends (`1` or `2`, or the arrow keys, then `Enter`; then choose the new pin as above). `Delete` removes the selected wire.
 6. Wiring is not possible while the simulation runs.
@@ -51,12 +51,12 @@ Open the **Code** tab. Choose the **Programming language**: **Arduino C++** or *
 
 1. Press **Build**, then press **Run**. The status shows starting, then running. Press **Stop** to end it.
 2. The serial monitor shows what the program prints. It shows output only; there is no serial input.
-3. While running, select a part to see its values, and change environment values such as a distance. Toggle a focused switch with `Space`.
+3. While running, select a part to see its values, and change environment values such as a distance. Toggle a focused switch with `Space` (not while the probe tool is on).
 4. The simulator is shared. If it is busy, wait a moment and press Run again.
 
 ## Probes and warnings
 
-- The **Probe** tool shows the voltage of a terminal or wire (to GND), or the current through a part. Press `Esc` to leave the tool. Probes only read values; they never change the circuit.
+- The **Probe** tool shows the voltage of a terminal or wire (to GND), or the current through a part. With the keyboard, press `Enter` or `Space` on a focused part for its current, or on a wire selected with `[` or `]` for its voltage; press `W`, move with the arrow keys and press `Enter` or `Space` for a pin voltage. While the tool is on, switches and push buttons are probed, not operated. Press `Esc` to leave the tool. Probes only read values; they never change the circuit.
 - A part pushed beyond its published absolute maximum is marked "may be damaged". Outside its specified operating range you get a separate notice. If the manufacturer publishes no damage threshold, the risk is unknown: treat it as unsafe. The simulation keeps showing the calculated values and does not model damage.
 - Wrong wiring is explained, not hidden. For example, an ESP32 input that nothing holds at a level stops the run, and the message suggests a pull-up or pull-down resistor (for example 10 kΩ). The ESP32's internal pull resistors are not simulated.
 
@@ -77,7 +77,8 @@ This list is copied from the shortcuts registry in the app (`app/src/ui/shortcut
 
 ### Circuit view
 
-- <!-- shortcut:pinMode -->`W`: Start wiring from the focused part: choose one of its pins (A part has focus; not while running)
+- <!-- shortcut:pinMode -->`W`: Start wiring from the focused part: choose one of its pins (A part has focus; not while running; not while the probe tool is on (then W only reaches pins to probe))
+- <!-- shortcut:probePlace -->`Enter` or `Space`: Probe the focused part (current), pin or selected wire (voltage); in probe mode W reaches the pins, also while running; switches and buttons are probed, not operated (Probe tool on; not read-only)
 - <!-- shortcut:wireSelect -->`]` or `[`: Select the previous or next wire; its ends are announced (Circuit view, not in pin mode)
 - <!-- shortcut:wireRepick -->`E`: Re-pick one end of the selected wire (choose the end, then the new pin) (A wire is selected; not while running or read-only)
 - <!-- shortcut:escStep -->`Esc`: Step back one level: probe mode, armed part, drawing mode, then clear the selection (Circuit view)
@@ -88,13 +89,13 @@ This list is copied from the shortcuts registry in the app (`app/src/ui/shortcut
 - <!-- shortcut:zoomIn -->`+` or `=`: Zoom in (Circuit view)
 - <!-- shortcut:zoomOut -->`-`: Zoom out (Circuit view)
 - <!-- shortcut:fit -->`F`: Fit the whole circuit to the view (the key in the F position on any keyboard layout) (Circuit view)
-- <!-- shortcut:toggleSwitch -->`Space`: Toggle the switch (A switch has focus; simulation running)
+- <!-- shortcut:toggleSwitch -->`Space`: Toggle the switch (A switch has focus; simulation running; not while the probe tool is on (then Space probes the switch))
 
 ### Wiring with the keyboard
 
 - <!-- shortcut:pinNext -->`Arrow Down` or `Arrow Right`: Next pin of the part (Pin mode)
 - <!-- shortcut:pinPrev -->`Arrow Up` or `Arrow Left` or `Shift + Tab`: Previous pin of the part (Pin mode)
-- <!-- shortcut:wireStart -->`Enter`: Start a wire from this pin (Pin mode)
+- <!-- shortcut:wireStart -->`Enter`: Start a wire from this pin (Pin mode; not while the probe tool is on (then Enter probes the pin))
 - <!-- shortcut:repickEnd -->`1` or `2`: Choose which end of the wire to move: 1 is the first end, 2 the second; or switch ends with the arrow keys or Tab and Shift + Tab, and press Enter to choose (After E, while choosing the end)
 - <!-- shortcut:targetCycle -->`Arrow keys` or `Tab`: Move between possible targets: pins, junctions and points on wires (Tab is kept inside on purpose) (While choosing where the wire ends)
 - <!-- shortcut:wireConnect -->`Enter`: Connect the wire to the chosen target (While choosing where the wire ends)

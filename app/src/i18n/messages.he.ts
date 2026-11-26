@@ -663,7 +663,13 @@ export const he: Record<MessageKey, string> = {
   'inspector.stopToChange': 'יש לעצור את הסימולציה כדי לשנות ערך זה.',
 
   'canvas.hint.probe':
-    '[[probe]]: לחצו על [[terminal]] או חוט למתח ביחס ל-GND, או על [[component]] לזרם שלו. Esc לסיום.',
+    '[[probe]]: לחצו, או בחרו במקלדת רכיב, פין ({w}) או חוט ({prev} {next}) והקישו {enter}. {esc} לסיום.',
+  'probe.kb.added': 'נוספה [[probe]]: {probe}',
+  'probe.kb.exists': 'נקודת המדידה {probe} כבר מוצבת',
+  'probe.kb.noNet': 'לא נוספה [[probe]]: לחוט הזה אין קצה בפין שממנו אפשר לקרוא את ה-net.',
+  'probe.kb.off': 'כלי נקודת המדידה כבוי',
+  'probe.kb.pins':
+    '{component}: {count} פינים, כעת על {pin}. מקשי החצים עוברים בין הפינים, Enter או רווח מודדים מתח, Escape יוצא מהפינים.',
   'probe.tool': '[[probe]]',
   'probe.voltageLabel': 'V({point}) = {value}',
   'probe.currentLabel': 'I({point}) = {value}',
@@ -2352,12 +2358,16 @@ export const he: Record<MessageKey, string> = {
   'shortcut.cancelPlace.action': 'ביטול הנחת רכיב',
   'shortcut.cancelPlace.when': 'כשרכיב מהפלטה מוכן להנחה',
   'shortcut.pinMode.action': 'התחלת חיווט מהרכיב הממוקד: בחירת אחד הפינים שלו',
-  'shortcut.pinMode.when': 'רכיב ממוקד; לא בזמן הרצה',
+  'shortcut.pinMode.when':
+    'רכיב ממוקד; לא בזמן הרצה; לא כשכלי נקודת המדידה פעיל (אז W רק מגיע לפינים למדידה)',
   'shortcut.wireSelect.action': 'בחירת החוט הקודם או הבא; קצותיו מוקראים',
   'shortcut.wireSelect.when': 'תצוגת המעגל, לא במצב פינים',
   'shortcut.wireRepick.action':
     'בחירה מחדש של קצה אחד בחוט הנבחר (בוחרים את הקצה ואז את הפין החדש)',
   'shortcut.wireRepick.when': 'חוט נבחר; לא בזמן הרצה ולא לקריאה בלבד',
+  'shortcut.probePlace.action':
+    'הצבת [[probe]] על הרכיב הממוקד (זרם), על פין או על החוט הנבחר (מתח); במצב בדיקה W מגיע לפינים גם בזמן הרצה; מתגים ולחצנים נמדדים ולא מופעלים',
+  'shortcut.probePlace.when': 'כלי נקודת המדידה פעיל; לא לקריאה בלבד',
   'shortcut.escStep.action': 'חזרה צעד אחד אחורה: מצב בדיקה, רכיב מוכן, מצב ציור, ואז ניקוי הבחירה',
   'shortcut.escStep.when': 'תצוגת המעגל',
   'shortcut.delete.action': 'מחיקת הרכיבים, החוטים או הצמתים הנבחרים',
@@ -2375,13 +2385,14 @@ export const he: Record<MessageKey, string> = {
   'shortcut.fit.action': 'התאמת כל המעגל לתצוגה (המקש במקום של F בכל פריסת מקלדת)',
   'shortcut.fit.when': 'תצוגת המעגל',
   'shortcut.toggleSwitch.action': 'הפעלה או כיבוי של המתג',
-  'shortcut.toggleSwitch.when': 'מתג ממוקד; הסימולציה רצה',
+  'shortcut.toggleSwitch.when':
+    'מתג ממוקד; הסימולציה רצה; לא כשכלי נקודת המדידה פעיל (אז Space מודד את המתג)',
   'shortcut.pinNext.action': 'הפין הבא ברכיב',
   'shortcut.pinNext.when': 'מצב פינים',
   'shortcut.pinPrev.action': 'הפין הקודם ברכיב',
   'shortcut.pinPrev.when': 'מצב פינים',
   'shortcut.wireStart.action': 'התחלת חוט מהפין הזה',
-  'shortcut.wireStart.when': 'מצב פינים',
+  'shortcut.wireStart.when': 'מצב פינים; לא כשכלי נקודת המדידה פעיל (אז Enter מודד את הפין)',
   'shortcut.targetCycle.action':
     'מעבר בין יעדים אפשריים: פינים, צמתים ונקודות על חוטים (Tab נשאר כאן בכוונה)',
   'shortcut.targetCycle.when': 'בזמן בחירת סוף החוט',
