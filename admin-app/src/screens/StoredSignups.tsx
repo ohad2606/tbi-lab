@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
   deleteSignup,
   loadAllSignups,
@@ -72,7 +72,9 @@ function DeleteDialog({
     const frame = requestAnimationFrame(() => setSpoken(notice));
     return () => cancelAnimationFrame(frame);
   }, [notice]);
-  useEffect(() => {
+  // A layout effect: the dialog is modal, with Cancel focused, in the same task as its render, so
+  // a key pressed as soon as it appears (Escape) reaches it and not the page behind.
+  useLayoutEffect(() => {
     dialog.current?.showModal();
     cancel.current?.focus();
   }, []);
