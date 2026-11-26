@@ -172,8 +172,12 @@ Evidence replaces the values of `TBI_*` (4 characters or more) and, whatever the
 
 ### Excluded (listed in every evidence file)
 
-- `g2-deployed`, its harness test and its two `it.todo` cases: staging-only load harness, run
-  separately (planned 3.12); no evidence yet. The two todos are not covered by that harness either.
+- `g2-deployed`, its harness test and the other G2 cases the gate manifest names: staging-only load
+  harness, run separately (planned 3.12); no evidence yet. Its paying `queue_full` drill runs only
+  with `TBI_G2_EXTRA_PAYING_USERS` (existing identities the operator maps to `preview` in the staging
+  policy copy). Without enough of them the report can still say `PASSED` with
+  `queueFullAtMaxLength: "not_run"`, so read that field. After the run the operator removes those
+  mappings: the harness neither creates nor restores them.
 - The older-host compatibility cases of `s11-deployed`, `s11-real` and `s12-real`.
 
 ### Known not excluded (the gate fails on them until decided)
