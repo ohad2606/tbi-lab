@@ -93,8 +93,14 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
   restart or resume (also one for an unrelated reason) leaves **all** requests still pending from before it for
   manual approval, including older ones that were waiting for the next day's cap.
 - After the first enable, remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in (or set it to the recorded cut-off). The
-  cut-off is stored in the state file; if that file is ever deleted, a past `TBI_SIGNUP_AUTO_SINCE` is applied again
-  as a first run (requests created after it are taken) and the daily count starts again at 0.
+  cut-off is stored in the state file. If that file is deleted, the daily count starts again at 0 and the list of
+  unfinished approvals to retry is lost. The new cut-off depends on the process:
+  - A running process that has set its cut-off (and had no pause, missing owner or unsafe directory since) resets
+    it at the next sweep, to now or to a later `TBI_SIGNUP_AUTO_SINCE`. A past value is **not** applied again.
+  - If the file is missing at the first approving sweep of a process that has not set a cut-off yet (for example:
+    deleted, then restarted), that sweep is a first run again: a past `TBI_SIGNUP_AUTO_SINCE` **is** applied, and
+    requests created after it are taken. A paused or owner-not-recorded sweep before it writes the file again, and
+    then the cut-off is the time of the first approving sweep.
 
 ## What to watch in the log (monitoring)
 
@@ -112,7 +118,7 @@ Alert on (owner action needed or capacity reached):
 | `auto-approve daily cap reached (N); the rest stay pending` | Today's cap is used up. The rest wait for tomorrow or for you; a restart or resume before then leaves them all for you (manual). If this happens often, review the cap (pending requests are purged after 90 days). |
 | `auto-approve paused` / `auto-approve resumed` | The kill switch changed. Check that it was you. |
 | `auto-approve pause check failed (<ERRNO>); treated as paused` | The directory cannot be read. Check the owner and mode. |
-| `auto-approve state dir unsafe (<reason>); manual only` | The owner, mode, symlink or parent of the directory is wrong. It resumes by itself once fixed. |
+| `auto-approve state dir unsafe (<reason>); manual only` | The owner, mode, symlink or parent of the directory is wrong. It resumes by itself once fixed, after a cut-off reset: requests that arrived before the first approving sweep after the fix stay for you (manual). Only if no cut-off was ever recorded is that sweep a first run. |
 | `auto-approve not started (state dir unsafe: <reason>); manual only` | Same problem at start. Fix it, then restart. |
 | `auto-approve counter unreadable (<class>); treated as cap reached` | The state file is corrupt, or (`future_day`) the clock went back. Inspect it before you remove it (removing it resets today's count and the cut-off); create the pause file first and back the file up (`cp -p`) before any removal. |
 | `auto-approve retry limit reached (N today); the rest wait` | The account helper keeps failing. Check the helper. |
@@ -123,8 +129,16 @@ Alert on (owner action needed or capacity reached):
 | `auto-approve off (config: <reason>)` | The drop-in value is wrong. Auto-approve is off. |
 
 For information only: `auto-approve on (daily cap N)`, `auto-approve processed N`, `auto-approve cut-off recorded`
-(first run ever), `auto-approve cut-off reset (only requests created from now on)` (once per restart, re-enable or
-resume). Until that line, the status block shows the backlog as unknown (reset pending).
+(first run) and `auto-approve cut-off reset (only requests created from now on)`. The reset line is written by the
+first sweep that may approve after a restart or re-enable, a pause, a wait for the owner principal, an unsafe state
+directory, or the deletion of the state file under a running process (not on a first run). Between such an event and
+that line, if the state directory is safe and the state file can be read, the status block shows the backlog as
+unknown (the status answer gives the reason `reset_pending`). Other cases differ:
+
+- Before a first run, the reason is `not_recorded`; with `TBI_SIGNUP_AUTO_SINCE` set, the backlog is counted from it.
+- With an unsafe state directory or an unreadable state file, the reason names that failure; with
+  `TBI_SIGNUP_AUTO_SINCE` set, the backlog is counted from it.
+- A pause file that no sweep has seen yet does not change the status block's backlog.
 
 ## Roll back (turn auto-approve off)
 
