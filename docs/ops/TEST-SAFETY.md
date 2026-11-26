@@ -94,3 +94,48 @@ terminate only those): **read-only** for every deployed instance.
 - DEV has no crontab (user or root) and no TBI timer (`systemctl list-timers`: system timers only).
 - The kits under `~/tbi-*/kit` run the runtime suite without `TBI_ALLOW_SERVICE_MUTATION`: the
   mutating tests now skip there.
+
+## Release gate (runtime vitest + *-real specs)
+
+A default run of the runtime suite and of the `*-real.spec.ts` specs skips whatever its
+environment does not provide, and still exits 0. A release is therefore judged only by
+
+```
+npm run release:runtime-gate -- --out <directory outside the repository>
+```
+
+It needs a clean tree, builds the Session Host, runs `vitest.runtime.config.ts` and the `*-real`
+specs of `playwright.app.config.ts` with JSON reporters, and writes
+`runtime-gate-<commit>.json` (verdict, counts, excluded tests, failures; no error text). It fails
+on any skipped, todo, failed, retried or expected-to-fail test, a file with no tests or absent from
+the report, a non-zero runner exit, a missing report, or a tree that changed during the run. The
+only exclusions are the entries of `scripts/release/runtime-gate.manifest.json` (one file, a
+test-title prefix, a reason); an entry that excludes nothing, or also matches a test that ran, fails
+the gate. `--from-reports <dir>` evaluates existing reports for diagnosis and never yields PASS.
+
+### What the operator provides
+
+The gate sets none of this itself, except `CI=1` and the report path for Playwright.
+
+| Need | Setting |
+|---|---|
+| Host-wide pipeline lock, held for the whole run | `deploy/ops/pipeline-lock.mjs acquire` |
+| Permission to restart / reconfigure the instance under test (owner / PM decision; ends live sessions) | `TBI_ALLOW_SERVICE_MUTATION=<instance>` |
+| Provisioned runtime and emulator | `TBI_RUNTIME_HOME`, `TBI_QEMU` |
+| Real services behind the preview (the fake services' ports are refused) | `TBI_RUNTIME_PROXY`, `TBI_BUILD_PROXY` |
+| Real browser specs | `TBI_S6_REAL`, `TBI_S11_REAL`, `TBI_S12_REAL`, `TBI_S15_REAL`, `TBI_S18_REAL`, `TBI_S19B_REAL`, `TBI_S20L_REAL`, `TBI_MPY_REAL`, `TBI_RC6_REAL`, `TBI_W2_REAL` (each `=1`) |
+| QEMU kill / restart cases of `s18-r4b-real` | `TBI_S18_UNIT=<instance>` plus the mutation opt-in |
+| Deployed runtime tests | `TBI_S8_INSTANCE`, `TBI_C5_DEPLOYED`, `TBI_S13_SEC_DEPLOYED` (instance name), `TBI_C5_FAULTS=1`, passwordless sudo |
+| Measurements | `TBI_C5=1`, `TBI_MPY_BENCH=1` |
+| Gate tests | `oauth2-proxy` and `caddy` installed (`TBI_OAUTH2_PROXY` for another binary) |
+
+Leave unset: `TBI_S11_EXPECT`, `TBI_S12_EXPECT` (older-host cases), `TBI_G2_DEPLOYED` (staging
+harness), and `TBI_GATE_RUNS`, `TBI_GATE_UNPINNED`, `TBI_R1_DET_RUNS`, `TBI_S12_DET_RUNS`,
+`TBI_S12_DET_UNPINNED` (the gate refuses to run with these: they weaken a test).
+
+### Known not excluded (the gate fails on them until decided)
+
+- `g2-deployed`: its `it.todo` idle drill (not written yet).
+- `alpha-deployed-recovery` and `s8-deployed-policy`: the "prebuilt refusal" cases run only when the
+  installed default plan refuses prebuilt uploads, so they are skipped under a policy that allows
+  them.

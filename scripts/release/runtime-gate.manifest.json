@@ -1,0 +1,28 @@
+{
+  "exclusions": [
+    {
+      "runner": "vitest",
+      "file": "runtime/tests/s11-deployed.runtime.test.ts",
+      "test": "a Sprint 10 host refuses R1 explicitly",
+      "reason": "Compatibility case against an older (Sprint 10) Session Host; a release candidate run targets the current host, where the mutually exclusive R1 suite runs."
+    },
+    {
+      "runner": "playwright",
+      "file": "app/e2e/s11-real.spec.ts",
+      "test": "against a Sprint 10 Session Host:",
+      "reason": "Compatibility case against an older (Sprint 10) Session Host; a release candidate run targets the current host, where the mutually exclusive R1 cases run."
+    },
+    {
+      "runner": "playwright",
+      "file": "app/e2e/s12-real.spec.ts",
+      "test": "against a Sprint 11 Session Host:",
+      "reason": "Compatibility case against an older (Sprint 11) Session Host; a release candidate run targets the current host, where the mutually exclusive R2/R3 cases run."
+    },
+    {
+      "runner": "vitest",
+      "file": "runtime/tests/g2-deployed.runtime.test.ts",
+      "test": "G2 deployed: queue under load on staging TBI_G2_DEPLOYED: guard",
+      "reason": "Load harness that refuses every instance but staging; it is not part of the release candidate run on DEV and has its own staging evidence."
+    }
+  ]
+}
