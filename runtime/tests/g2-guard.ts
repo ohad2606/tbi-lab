@@ -2,10 +2,10 @@
  * Run guard of the BETA-G2 queue load harness (g2-deployed.runtime.test.ts). Pure decision logic, so
  * the refusal is unit-tested offline (scripts/tests/g2-deployed-guard.test.mjs, normal vitest suite).
  *
- * The harness creates and removes `free-admission.paused` and drives 17 identities (15 Free, 2
- * preview) against one instance. It may therefore run ONLY against the staging instance, and only with the opt-in naming it
+ * The harness creates and removes `free-admission.paused` and drives at most 30 identities (Free and
+ * 2 preview) against one instance. It may therefore run ONLY against the staging instance, and only with the opt-in naming it
  * in the mutation gate (TBI_ALLOW_SERVICE_MUTATION=tbi-s8) while the pipeline lock is held. Anything
- * else is a refusal, never a skip: a green run that silently did nothing would be a false result.
+ * else (also any run with CI set) is a refusal, never a skip: a green run that silently did nothing would be a false result.
  *
  *   off      TBI_G2_DEPLOYED is not set: the file is excluded from the run, like the other deployed tests.
  *   refused  the opt-in is set but the run is not allowed or not configured: the test FAILS with `reason`.
@@ -62,16 +62,56 @@ export interface G2Progress {
   builds: { status: number; ms: number }[];
   promotedPositions: number[];
   samples: { freeLive: number; hostLive: number }[];
+  /** what stopped the run (auto-stop, manual stop file or signal) */
+  autostop?: string;
+  metrics?: Record<string, number>;
+  flags?: string[];
+  failures?: string[];
 }
 
-/** Partial report of a failed run: listed fields only, so no principal, token or ticket gets in. */
-export function g2FailedReport(p: G2Progress) {
+/** The only measured values a report may carry: numbers under these names. */
+export const G2_METRICS = [
+  'headPromotionGapS', 'idleMs', 'idleEndMs', 'idlePromotionMs', 'queueFullAccepted',
+  'queueFullStatus', 'abandonMs', 'queueTimeoutMs', 'queueTimeoutStatus', 'build1WaitMs',
+  'build2WaitMs', 'buildsSucceeded', 'buildsRefused', 'buildsFailed', 'buildsLost',
+  'minLiveDuringBuilds', 'heldEndedEarly', 'sampleCount', 'sampleFailures', 'lastSamplerExit',
+  'minMemAvailableMiB', 'maxLoad1', 'nproc', 'maxUnitMemoryRatio', 'hostPeakBytes',
+  'buildPeakBytes', 'oomKills', 'kernelOomLines', 'maxQemuUnits', 'journalSessions',
+  'journalBad', 'journalUnparsable', 'secretLeaks', 'leftoverLive', 'leftoverWaiting',
+  'leftoverMetered', 'leftoverUnits', 'leftoverDirs', 'otherUnits', 'otherDirs',
+  'unconfirmedCreates', 'unresolvedBuilds', 'deleteFailures',
+] as const; // prettier-ignore
+export const G2_FLAGS = ['dec32'] as const;
+export const G2_FAILURES = [
+  'mem_below_400',
+  'queue_full_refused',
+  'build_lost_or_failed',
+  'builds_not_under_6_live',
+  'held_session_ended',
+  'leftovers',
+  'leftover_check_failed',
+  'delete_failed',
+  'pause_file_not_removed',
+  'journal_counts',
+  'journal_unreadable',
+  'secret_in_journal',
+] as const;
+export type G2Failure = (typeof G2_FAILURES)[number];
+
+/** Report of a run: listed fields only, so no principal, token, ticket or session id gets in. */
+export function g2Report(p: G2Progress, result: 'PASSED' | 'FAILED') {
   const max = (k: 'freeLive' | 'hostLive') =>
     p.samples.length ? Math.max(...p.samples.map((s) => s[k])) : null;
   return {
-    result: 'FAILED',
+    result,
     instance: p.instance,
-    failedPhase: p.phase,
+    ...(result === 'FAILED' ? { failedPhase: p.phase } : {}),
+    ...(p.autostop ? { reason: `autostop:${p.autostop}` } : {}),
+    metrics: Object.fromEntries(
+      G2_METRICS.filter((k) => Number.isFinite(p.metrics?.[k])).map((k) => [k, p.metrics![k]]),
+    ),
+    flags: G2_FLAGS.filter((f) => p.flags?.includes(f)),
+    failures: G2_FAILURES.filter((f) => p.failures?.includes(f)),
     seconds: p.seconds,
     admitted: [...p.admitted],
     builds: p.builds.map(({ status, ms }) => ({ status, ms })),
@@ -80,6 +120,7 @@ export function g2FailedReport(p: G2Progress) {
     maxHostLive: max('hostLive'),
   };
 }
+export const g2FailedReport = (p: G2Progress) => g2Report(p, 'FAILED');
 
 export type G2Decision =
   | { kind: 'off' }
@@ -92,6 +133,11 @@ export function g2Decision(
 ): G2Decision {
   const instance = (env[G2_ENV] ?? '').trim();
   if (instance === '') return { kind: 'off' };
+  if (env.CI !== undefined)
+    return { kind: 'refused', reason: 'CI is set: this harness never runs unattended' };
+  const drain = env.TBI_G2_SECONDS;
+  if (drain !== undefined && !(/^\d+$/.test(drain) && Number(drain) > 0 && Number(drain) <= 3600))
+    return { kind: 'refused', reason: 'TBI_G2_SECONDS must be 1..3600 or unset' };
   if (instance !== G2_STAGING)
     return {
       kind: 'refused',

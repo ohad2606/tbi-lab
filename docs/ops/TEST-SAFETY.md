@@ -62,6 +62,7 @@ a deployed instance, cleaned up by the test; uses the per-user rate), **session-
 | `c5-deployed.runtime.test.ts` | session-creating; fault stage unit-killing (own) | `TBI_C5_FAULTS=1` kills a session's QEMU unit (:553) | `TBI_C5_DEPLOYED`; faults behind the mutation gate (:56) |
 | `s11-deployed.runtime.test.ts` | session-creating | own sessions, DELETE own (:208, :498) | `TBI_S8_INSTANCE` |
 | `alpha-deployed-recovery.runtime.test.ts` | session-creating; with the gate also config-mutating, service-restarting | own sessions end by lease / lifetime; DELETE own; temporary policy as above (only with at least 3 live sessions) | `TBI_S8_INSTANCE` (and ≥ 3 live sessions); temporary policy behind the mutation gate |
+| `g2-deployed.runtime.test.ts` | session-creating (load: up to 30 identities, builds, 6 live, queue); creates / removes its own pause file | staging only: drills and clean-up below | `TBI_G2_DEPLOYED=tbi-s8` + mutation gate + preview list; a failed condition, CI or an unclean baseline is a refusal (test fails) |
 | `s8-qemu-tasks.runtime.test.ts` | session-creating | own sessions, DELETE own (:201) | `TBI_S8_INSTANCE` (no longer defaults to tbi-s8) |
 
 All other runtime tests use an in-process Session Host / build service with their own temporary
@@ -85,6 +86,18 @@ terminate only those): **read-only** for every deployed instance.
 | `deploy/dev-lab/publish.sh`, `publish-frontend.sh`, `publish-runtime.sh`, `rollback-runtime.sh`, `s8/rollback-dev-lab.sh`, `setup-build.sh`, `retire-preview.sh`, `s9-preview/*`, `s10-preview/*` | DEV-Lab operator procedures (restart / install / re-point by design) | `TBI_ALLOW_SERVICE_MUTATION=tbi`; manual operator use only |
 | `deploy/dev-lab/s8/publish-release-artifacts.sh` | writes the release-artifact store under `/srv` | `TBI_ALLOW_SERVICE_MUTATION=tbi-s8` (or `tbi`) |
 | `scripts/*` | read-only (brand assets, checks) | – |
+
+### The staging load harness (`g2-deployed`)
+
+It configures nothing: no drop-in, `/etc` or `/srv` write, policy change or service restart. It
+reads the host's unit environment, sim plans config, health, resource figures, journals and the sim
+journal (`sudo -n`, read-only, with timeouts). Its writes are its own builds, sessions, queue tickets
+and the Free pause file. It samples every 5 s and aborts on low memory, high load, a service near its
+memory limit, an OOM kill, a failing sampler or the manual stop file `$TBI_RUNTIME_HOME/g2-stop`.
+One clean-up (success, failure, timeout, SIGINT/SIGTERM) removes only what the run created and counts
+the rest. A killed process (SIGKILL, power loss) cannot clean up: sessions then end by their lease,
+waiters vanish, but the pause file may remain and must be checked by the operator. Reports hold
+numbers and fixed codes only. Thresholds: `runtime/tests/g2-load.ts`.
 
 ## Unattended execution
 
