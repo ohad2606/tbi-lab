@@ -32,4 +32,4 @@ Hebrew and English drafts with the same structure (same numbered headings). Tech
 
 ## Accuracy notes
 - The data fields, retention periods, no-pixel rule and the 30-day sign-in log come from the internal registration plan. They are proposals and the application service is not deployed.
-- The accessibility statement lists known limits from an internal review. It makes no conformance claim and contains no dates. The listed limits must be re-checked against the product state at publication time.
+- The accessibility statement lists known limits from an internal review, updated on 2026-11-26 against the current development code and its tests (automated tests were read, not a new manual or screen-reader review). It makes no conformance claim and its date fields are still [TBD]. The listed limits must be re-checked against the published product at publication time.

@@ -12,43 +12,44 @@ We aim to build the public site and the Lab to **WCAG 2.2 level AA**. We also ai
 A target is not a result. **We do not claim that the site or the Lab conforms to WCAG 2.2 AA or to IS 5568.**
 
 ## 3. Current conformance status
-- The public site: **[NOT YET REVIEWED]**. It has not yet been built and audited.
+- The public site: **[NOT YET REVIEWED]**. Its code (Hebrew and English pages) exists and has automated checks: axe-core, page language and text direction, keyboard order and skip link, and reflow at a width of 320 pixels. It has not had an independent audit and has not been tested with screen readers. Our own sign-up page is built but switched off in the current code. **[TBD]** Which version of the site is published on the date of this statement.
 - The Lab (the engineering workspace): partly accessible, with significant known gaps listed below.
 - Automated checks cover only part of the requirements. They do not prove conformance.
 - We have not yet verified behaviour with screen readers such as NVDA, JAWS, VoiceOver or TalkBack. **[TBD]** Which assistive technologies and browsers will be tested.
 - An independent expert review is planned before the public launch. **[PROPOSED]**
 
-## 4. What we do [PROPOSED — planned practices, site not yet built]
+## 4. What we do [PROPOSED — practices to be confirmed before publication]
 - Semantic page structure, visible labels, keyboard operation and visible focus are engineering requirements for the public site.
 - Pages in Hebrew and English set the language and the text direction. Technical terms such as `ESP32` stay left-to-right.
-- No CAPTCHA or puzzle on our side of the application flow.
+- Our own sign-up page (not yet switched on) uses no CAPTCHA or puzzle.
 - We do **not** use an accessibility overlay or widget.
 
 ## 5. Known limitations
-Based on an internal review of a pre-public release (date: [DATE OF LAST REVIEW TBD]). As of that review, these were **not yet fixed**:
+Based on an internal review of a pre-public release and a later check of the current development code and its automated tests (date: [DATE OF LAST REVIEW TBD]). The published version may differ. **[TBD]** Confirm against the published version. As of that check, these limitations and open checks **remain**:
 
-**Circuit editor**
-- You cannot create wires between parts using the keyboard alone. Terminals are not reachable by keyboard, and there is no alternative yet.
-- The connections of a circuit are not exposed to assistive technology. A screen-reader user can hear the list of parts but not how they are connected. A text alternative (a connections list) is planned but not yet available. Screen-reader support of the circuit canvas is not promised.
-- Moving parts and panning require dragging, with no single-pointer alternative.
+**Circuit editor and other views**
+- You can create, select, delete and reconnect wires with the keyboard, and a "Wires" list lets you select a wire. A new wire made with the keyboard starts at a part's pin. Moving the end of an existing wire with the keyboard can only move it to a pin. Shaping a single segment of a wire's route requires dragging.
+- A "Connections (text list)" panel lists the parts and which pins are connected together. It does not announce changes to the connections. Neither this panel nor keyboard wiring has been tested with screen readers. Screen-reader support of the circuit drawing itself is not promised.
+- Moving a part with a pointer requires dragging. The arrow keys move a selected part, but there is no single-pointer alternative.
+- Circuit view: panning with a pointer requires dragging (the middle button, or holding the space bar while dragging). The arrow keys pan when nothing is selected. There are no pan buttons.
+- Schematic view: panning is possible only by dragging. There is no keyboard panning and there are no pan buttons. Zoom and "Fit to view" buttons are available.
+- 3D view: panning requires dragging or `Shift` with the arrow keys; there are no pan buttons. The "Top", "Front", "Side" and "Rear" buttons give fixed viewing angles; tilting the view freely requires dragging.
 
 **Code editor**
-- Tab inserts spaces. To leave the editor with the keyboard, press Escape and then Tab. This is not yet explained in the interface.
-- Error locations are not announced to screen readers in full, and there is no next-error shortcut.
+- When a build fails, the list of errors and their line numbers is not announced automatically to screen readers. Moving to an error does not announce the line, and there is no next-error shortcut.
 
 **Appearance and layout**
-- The keyboard focus indicator has lower contrast than required on several surfaces.
-- Some text, such as code line numbers, has insufficient contrast.
-- The Lab needs a window at least 1024 pixels wide. Zooming in a lot, or a small screen, causes two-dimensional scrolling, and the Lab shows a "not supported on phones" note.
-- Some small controls are below the minimum target size.
+- The keyboard focus indicator and the colour of the code line numbers were changed to improve contrast. Our automated checks measure them on selected controls and screens only. We have not checked the contrast of every text, control border and state; some button and field borders are faint.
+- The Lab is built for windows at least 1024 pixels wide. Zooming in a lot, or a small screen, can cause two-dimensional scrolling. The Lab then shows a note asking for a wider window, or saying that phones and screens this small are not supported, even when the cause is zoom.
+- Some small controls are below the minimum target size, for example the button that removes a measurement probe. We have not measured every control.
 
 **Sign-in**
-- Sign-in error pages are in English only, block pinch zoom, and hide the reason behind a control that cannot be used by keyboard. Fixing this is planned.
+- Sign-in error pages are in English only, block pinch zoom, and hide the reason behind a control that cannot be used by keyboard. Fixing this is planned. These pages are outside the Lab's code and were not re-checked after the internal review.
 
 **Language**
-- Some Hebrew text has display or terminology issues, for example a mixed-direction label and two different Hebrew terms for the same action.
+- Some Hebrew screens have display or terminology issues. For example, in the code view the name `Arduino C++` and the Hebrew message in the empty serial output have no text direction of their own and may display in the wrong order, and two different Hebrew labels are used for the Build action.
 
-This list is not complete, because the review did not cover everything (for example the in-Lab administration dialog and a step-by-step keyboard walk of the 3D view). **[TBD]** Keep this list in sync with the current status before publication, with fix dates only when real.
+This list is not complete, because the checks did not cover everything (for example the in-Lab administration dialog and a step-by-step keyboard walk of the 3D view). **[TBD]** Keep this list in sync with the current status before publication, with fix dates only when real.
 
 ## 6. Third-party content [PROPOSED]
 Sign-in uses Google account pages. These are run by Google and are outside our control. We use our own link to start sign-in, not Google's embedded button. **[LAWYER]** How to describe third-party parts under the regulations.
