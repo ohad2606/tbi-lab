@@ -579,8 +579,16 @@ function signupRecord(v: unknown): SignupRecord | null {
  * The open requests (pending, approved, email queued or failed: everything that still needs the
  * owner), oldest first. 404 (the feature is off on the server) is "unavailable".
  */
-export async function loadOpenSignups(fetchFn: Fetch): Promise<Loaded<SignupRecord[]>> {
-  const r = await request(fetchFn, '/signups/open');
+export const loadOpenSignups = (fetchFn: Fetch) => loadSignups(fetchFn, '/signups/open');
+
+/**
+ * K12: every request the store still holds, any status, oldest first (the same parsing). Personal
+ * data: the caller keeps it in memory only (the request itself is `cache: 'no-store'`).
+ */
+export const loadAllSignups = (fetchFn: Fetch) => loadSignups(fetchFn, '/signups');
+
+async function loadSignups(fetchFn: Fetch, path: string): Promise<Loaded<SignupRecord[]>> {
+  const r = await request(fetchFn, path);
   if (r.status === 404) return { ok: false, error: 'unavailable' };
   if (r.status !== 200) return { ok: false, error: loadError(r.status) };
   if (!isObj(r.body) || !Array.isArray(r.body.signups)) return { ok: false, error: 'network' };
@@ -670,4 +678,40 @@ export async function signupAction(
     return { kind: 'refused', error: 'network' };
   const r = await request(fetchFn, `/signups/${id}/${action}`, mutating('POST', {}));
   return interpretSignup(r.status, r.body);
+}
+
+// ---------------------------------------------------------------- delete one request (K12)
+
+/** The server's request id (runtime/admin/common.ts REQUEST_ID_RE). */
+const DELETE_ID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+
+/** What one delete ended with. `network`: no readable answer, so it may or may not have happened. */
+export type DeleteSignupOutcome =
+  | { kind: 'deleted' | 'already_deleted' | 'not_found' }
+  | { kind: 'rate_limited'; retryAfterS: number | null }
+  | {
+      kind: 'failed';
+      error:
+        'csrf' | 'forbidden' | 'signed_out' | 'unavailable' | 'server' | 'network' | 'invalid_id';
+    };
+
+/** Delete one stored request now. The account, if one was added, is not touched. */
+export async function deleteSignup(fetchFn: Fetch, id: string): Promise<DeleteSignupOutcome> {
+  if (!DELETE_ID.test(id)) return { kind: 'failed', error: 'invalid_id' };
+  const r = await request(fetchFn, `/signups/${id}`, mutating('DELETE'));
+  const b = isObj(r.body) ? r.body : {};
+  if (r.status === 200 && b.deleted === true)
+    return { kind: b.note === 'already_deleted' ? 'already_deleted' : 'deleted' };
+  if (r.status === 404) return { kind: 'not_found' };
+  if (r.status === 429) {
+    const s = b.retryAfterS;
+    return {
+      kind: 'rate_limited',
+      retryAfterS: typeof s === 'number' && Number.isFinite(s) && s > 0 ? Math.ceil(s) : null,
+    };
+  }
+  if (r.status === 403 && b.error === 'csrf') return { kind: 'failed', error: 'csrf' };
+  if (r.status === 500) return { kind: 'failed', error: 'server' };
+  const error = loadError(r.status);
+  return { kind: 'failed', error: error === 'rate_limited' ? 'network' : error };
 }

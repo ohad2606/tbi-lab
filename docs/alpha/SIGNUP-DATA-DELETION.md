@@ -13,44 +13,47 @@ Do the steps in order. Steps 1–3 are in the admin app; steps 4–6 are manual.
 
 ### Step 1 – find the request by email address
 
-The Sign-ups screen of the TBI Admin app shows only the requests that still need you (pending,
-approved with the email not finished, email queued or failed). A request whose approval email was
-already sent is not on that screen. To see every request:
+1. Sign in to the TBI Admin app (`https://<ALPHA_HOST>`) as the owner, in Chrome or Edge on a
+   computer, and open **Sign-up requests**.
+2. At the bottom, under **Stored requests and deletion**, press **Show all stored requests**. The
+   list holds every request the store still has, in any status. (The list above it holds only the
+   requests that still need you.)
+3. Type the address, or part of it, in **Filter by email**. The filter runs in the browser only:
+   nothing typed is sent to the server or saved. Note the request ID (`<id>`), the status and
+   whether the row is marked **Account added**.
 
-1. Sign in to the TBI Admin app as the owner, in Chrome or Edge on a computer.
-2. In the same browser, open `https://<ALPHA_HOST>/admin-api/signups`. The answer is JSON with all
-   requests the store still holds (owner only; others get 403).
-3. Search the page (Ctrl+F) for the address. Note the `id` of the matching record, its `status` and
-   whether `accountAdded` is `true`.
-
-If no record matches, the request was already removed by retention (not approved: 90 days; every
-request: at most 365 days) or never reached the store. Continue with step 4 anyway.
+If no request matches, it was already removed by retention (not approved: 90 days; every request:
+at most 365 days) or never reached the store. Continue with step 4 anyway. If the screen says
+sign-up requests are not available, the sign-up routes are off or unreachable: nothing was
+checked, so do not report the person as deleted.
 
 ### Step 2 – delete the request now
 
-There is no button yet (an open question for the PM). From the TBI Admin app's tab (signed in as
-the owner), open the browser's developer console (F12) and run:
+Press **Delete** on that request's row. A confirmation opens with Cancel selected; check the ID
+and the masked address, then press **Delete request**. One request is deleted at a time (if the
+address has several, repeat for each). After every answer the list is loaded again from the server,
+and the screen says what happened, naming the request ID only.
 
-```js
-await fetch('/admin-api/signups/<id>', {
-  method: 'DELETE',
-  headers: { 'content-type': 'application/json' },
-}).then((r) => r.json());
-```
-
-| Answer | Meaning |
+| Answer (what the screen says) | Meaning |
 |---|---|
-| 200 `{"deleted":true}` | Gone: the record, its notification markers, the address marker and any leftover temporary file. One audit line `<time> <id> delete ok` was written (no personal data). |
-| 200 `{"deleted":true,"note":"already_deleted"}` | It was deleted before (the audit log says so). Nothing changed. |
-| 404 `not_found` | No such request (wrong id, or retention already removed it). |
-| 403 | Not the owner, or the request was not same-origin JSON (run it from the admin app's tab). |
-| 500 | A file could not be removed (the record is kept so a retry can finish; the log has the error class only). Try again; if it repeats, the operator checks the store directory permissions. |
+| 200 `{"deleted":true}` ("deleted") | Gone: the record, its notification markers, the address marker and any leftover temporary file. One audit line `<time> <id> delete ok` was written (no personal data). |
+| 200 `{"deleted":true,"note":"already_deleted"}` ("already gone") | It was deleted before (the audit log says so). Nothing changed. |
+| 404 `not_found` ("already gone") | No such request (wrong id, or retention already removed it). |
+| 403 ("not deleted") | Not the owner, or the request was not same-origin JSON (reload the admin app and try again). |
+| 429 ("too many requests") | The write limit; wait the time shown, then try again. |
+| 500 ("did not finish; the record is kept") | A file could not be removed (the record is kept so a retry can finish; the log has the error class only). Try again; if it repeats, the operator checks the store directory permissions. |
+| no answer ("the server did not answer") | Unknown whether it was deleted. Check the reloaded list (Refresh requests) and try again if the row is still there. |
 
 Deleting the request does **not** remove an account that was already added. Step 3 does that.
 
+**An account add may still be in progress.** If the request was approved but not marked **Account
+added** (or Approve answered that the account is not ready yet), the account may still be created
+after the request is deleted. The confirmation warns about this. After a few minutes, open the
+Testers screen, look for the account and **Disable** it if it appears (step 3).
+
 ### Step 3 – the account, if one was added (`accountAdded: true`)
 
-In the TBI Admin app, Testers screen: find the tester (the list shows masked addresses, e.g.
+In the TBI Admin app, Testers screen (the confirmation of step 2 links to it): find the tester (the list shows masked addresses, e.g.
 `da***@example.com`, and the display name) and **Disable** it. That revokes access at once.
 
 Disable does not erase the address: the root helper's tester registry keeps the record (revoked),
@@ -85,7 +88,7 @@ status for that row; delete that row too. Do not delete or sort response rows wh
 
 | Place | What | Removed by |
 |---|---|---|
-| Pending store (`TBI_SIGNUP_DIR`): `<id>.json` | name, address, role, language, consent, status | `DELETE /signups/<id>` (step 2), or retention (90 days not approved / 365 days at most) |
+| Pending store (`TBI_SIGNUP_DIR`): `<id>.json` | name, address, role, language, consent, status | the screen's Delete (`DELETE /signups/<id>`, step 2), or retention (90 days not approved / 365 days at most) |
 | Pending store: `<sha256 of address>.mark` | a hash of the address (de-duplication) | step 2 (the marker pointing to that id), retention purge |
 | Pending store: `<id>.notified`, `<id>.notifyq`, `audit.log` | no personal data (id, action, outcome) | step 2 removes the markers; the audit log is kept |
 | Account spool (`<TBI_ADMIN_DIR>/spool`, results) | the address while an `add` request waits for the helper | the helper deletes the request once processed; results hold a masked address only |

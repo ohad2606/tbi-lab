@@ -189,6 +189,60 @@ export const consoleEn = {
   'console.signups.err.email_failed':
     'The account for {name} was added, but the email could not be sent. Use Resend email.',
   'console.signups.err.not_found': 'The request of {name} no longer exists.',
+  'console.signups.all.heading': 'Stored requests and deletion',
+  'console.signups.all.intro':
+    "Every request we still hold, in any status. Use it to delete a person's request when they ask.",
+  'console.signups.all.show': 'Show all stored requests',
+  'console.signups.all.hide': 'Hide stored requests',
+  'console.signups.all.filter': 'Filter by email',
+  'console.signups.all.count': 'Showing {shown} of {total} stored requests',
+  'console.signups.all.none': 'No stored requests.',
+  'console.signups.all.noMatch': 'No stored request matches this email.',
+  'console.signups.all.unavailable': 'Sign-up requests are not available right now.',
+  'console.signups.all.stale':
+    'The list could not be reloaded and may be out of date. Use Refresh requests.',
+  'console.signups.all.id': 'Request ID',
+  'console.signups.all.accountAdded': 'Account added',
+  'console.signups.all.status.pending': 'Waiting for a decision',
+  'console.signups.all.status.approved': 'Approved, not finished',
+  'console.signups.all.status.rejected': 'Rejected',
+  'console.signups.all.status.email_queued': 'Email scheduled',
+  'console.signups.all.status.email_sent': 'Email sent',
+  'console.signups.all.status.email_failed': 'Email failed',
+  'console.signups.all.status.other': 'Unknown status',
+  'console.signups.delete': 'Delete',
+  'console.signups.delete.for': 'Delete request {id} of {address}',
+  'console.signups.delete.working': 'Deleting…',
+  'console.signups.delete.confirm.title': 'Delete this request?',
+  'console.signups.delete.confirm.target': 'Request {id} of {address}',
+  'console.signups.delete.confirm.body':
+    'The stored request (name, email and answers) is removed. This cannot be undone.',
+  'console.signups.delete.confirm.account':
+    'An account was added for this request, and it stays after the deletion. To end its access, open Testers and use Disable.',
+  'console.signups.delete.confirm.inFlight':
+    'Warning: an account add for this request may still complete after the deletion. Check the Testers screen after a few minutes and use Disable if the account appears.',
+  'console.signups.delete.confirm.testers': 'Open Testers',
+  'console.signups.delete.confirm.ok': 'Delete request',
+  'console.signups.delete.done': 'Request {id}: deleted.',
+  'console.signups.delete.gone': 'Request {id}: it was already gone.',
+  'console.signups.delete.rateLimited':
+    'Request {id}: not deleted. Too many requests; wait a minute and try again.',
+  'console.signups.delete.rateLimitedFor':
+    'Request {id}: not deleted. Too many requests; try again in {seconds} seconds.',
+  'console.signups.delete.failed.server':
+    'Request {id}: the deletion did not finish. The record is kept; try again.',
+  'console.signups.delete.failed.network':
+    'Request {id}: the server did not answer, so it may or may not be deleted. Check the list and try again.',
+  'console.signups.delete.failed.csrf':
+    'Request {id}: not deleted. The server refused it as not coming from this app. Reload the page and try again.',
+  'console.signups.delete.failed.forbidden':
+    'Request {id}: not deleted. Only the owner can delete requests.',
+  'console.signups.delete.failed.signed_out':
+    'Request {id}: not deleted. Your sign-in has expired; sign in again.',
+  'console.signups.delete.failed.unavailable':
+    'Request {id}: not deleted. The service is not available right now; try again later.',
+  'console.signups.delete.failed.invalid_id':
+    'Request {id}: not deleted. This request ID is not valid.',
 } as const;
 
 export type ConsoleMessageKey = keyof typeof consoleEn;

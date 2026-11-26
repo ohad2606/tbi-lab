@@ -569,6 +569,26 @@ fieldset {
   padding-inline-start: 1.25rem;
 }
 
+/* A modal confirmation (native dialog): never wider or taller than the screen. */
+.modal {
+  box-sizing: border-box;
+  inline-size: min(32rem, calc(100vw - 1rem));
+  max-inline-size: none;
+  max-block-size: calc(100dvh - 1rem);
+  overflow: auto;
+  border: 2px solid var(--danger);
+  border-radius: 10px;
+  padding: 1rem;
+  background: var(--panel);
+  color: var(--text);
+}
+.modal p {
+  margin: 0;
+}
+.modal::backdrop {
+  background: rgb(10 26 51 / 0.6);
+}
+
 .more {
   display: inline-flex;
   align-items: center;

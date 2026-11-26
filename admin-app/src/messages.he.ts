@@ -181,4 +181,53 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.err.email_failed':
     'החשבון של {name} נוסף, אבל שליחת המייל נכשלה. השתמשו בשליחת המייל שוב.',
   'console.signups.err.not_found': 'הבקשה של {name} כבר לא קיימת.',
+  'console.signups.all.heading': 'בקשות שמורות ומחיקה',
+  'console.signups.all.intro':
+    'כל הבקשות שעדיין שמורות אצלנו, בכל סטטוס. כאן מוחקים את הבקשה של אדם שביקש זאת.',
+  'console.signups.all.show': 'הצגת כל הבקשות השמורות',
+  'console.signups.all.hide': 'הסתרת הבקשות השמורות',
+  'console.signups.all.filter': 'סינון לפי אימייל',
+  'console.signups.all.count': 'מוצגות {shown} מתוך {total} בקשות שמורות',
+  'console.signups.all.none': 'אין בקשות שמורות.',
+  'console.signups.all.noMatch': 'אין בקשה שמורה שמתאימה לאימייל הזה.',
+  'console.signups.all.unavailable': 'בקשות ההצטרפות אינן זמינות כרגע.',
+  'console.signups.all.stale':
+    'טעינת הרשימה מחדש נכשלה וייתכן שהיא לא מעודכנת. אפשר ללחוץ על רענון הבקשות.',
+  'console.signups.all.id': 'מזהה בקשה',
+  'console.signups.all.accountAdded': 'נוסף חשבון',
+  'console.signups.all.status.pending': 'ממתינה להחלטה',
+  'console.signups.all.status.approved': 'אושרה, טרם הושלמה',
+  'console.signups.all.status.rejected': 'נדחתה',
+  'console.signups.all.status.email_queued': 'המייל מתוזמן',
+  'console.signups.all.status.email_sent': 'המייל נשלח',
+  'console.signups.all.status.email_failed': 'שליחת המייל נכשלה',
+  'console.signups.all.status.other': 'סטטוס לא ידוע',
+  'console.signups.delete': 'מחיקה',
+  'console.signups.delete.for': 'מחיקה: בקשה {id} של {address}',
+  'console.signups.delete.working': 'מוחקים…',
+  'console.signups.delete.confirm.title': 'למחוק את הבקשה הזאת?',
+  'console.signups.delete.confirm.target': 'בקשה {id} של {address}',
+  'console.signups.delete.confirm.body':
+    'הבקשה השמורה (שם, אימייל ותשובות) תוסר. אי אפשר לבטל את הפעולה.',
+  'console.signups.delete.confirm.account':
+    'לבקשה הזאת כבר נוסף חשבון, והוא נשאר גם אחרי המחיקה. כדי לסיים את הגישה שלו, פתחו את מסך הבודקים ובחרו השבתה.',
+  'console.signups.delete.confirm.inFlight':
+    'אזהרה: הוספת החשבון של הבקשה הזאת עדיין עשויה להסתיים אחרי המחיקה. בדקו את מסך הבודקים בעוד כמה דקות, ואם החשבון מופיע שם, השביתו אותו.',
+  'console.signups.delete.confirm.testers': 'מעבר למסך הבודקים',
+  'console.signups.delete.confirm.ok': 'מחיקת הבקשה',
+  'console.signups.delete.done': 'בקשה {id}: נמחקה.',
+  'console.signups.delete.gone': 'בקשה {id}: היא כבר לא קיימת.',
+  'console.signups.delete.rateLimited': 'בקשה {id}: לא נמחקה. יותר מדי בקשות; המתינו דקה ונסו שוב.',
+  'console.signups.delete.rateLimitedFor':
+    'בקשה {id}: לא נמחקה. יותר מדי בקשות; נסו שוב בעוד {seconds} שניות.',
+  'console.signups.delete.failed.server': 'בקשה {id}: המחיקה לא הושלמה. הרשומה נשמרה; נסו שוב.',
+  'console.signups.delete.failed.network':
+    'בקשה {id}: השרת לא ענה, ולכן לא ידוע אם היא נמחקה. בדקו את הרשימה ונסו שוב.',
+  'console.signups.delete.failed.csrf':
+    'בקשה {id}: לא נמחקה. השרת דחה אותה כי לא זוהתה כמגיעה מהאפליקציה. טענו את הדף מחדש ונסו שוב.',
+  'console.signups.delete.failed.forbidden': 'בקשה {id}: לא נמחקה. רק הבעלים יכולים למחוק בקשות.',
+  'console.signups.delete.failed.signed_out': 'בקשה {id}: לא נמחקה. תוקף ההתחברות פג; התחברו שוב.',
+  'console.signups.delete.failed.unavailable':
+    'בקשה {id}: לא נמחקה. השירות אינו זמין כרגע; נסו שוב מאוחר יותר.',
+  'console.signups.delete.failed.invalid_id': 'בקשה {id}: לא נמחקה. מזהה הבקשה אינו תקין.',
 };
