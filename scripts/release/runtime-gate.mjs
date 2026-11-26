@@ -56,6 +56,10 @@ const WEAKENING = [
   'TBI_S12_EXPECT',
   'TBI_S8_QEMU_CYCLES',
 ];
+/** What no verdict of this gate covers, whatever its result: written into every evidence file. */
+const NOT_GATED = [
+  'c5-deployed QEMU-unit crash drill: needs N>=2, the gate runs the default N=1; not covered',
+];
 /** Preconditions whose "test" is a variable name of ours, not something to redact. */
 const NAMES_VARIABLE = ['no_real_proxy', 'weakening_env', 'fault_drills_off', 'no_fault_optin'];
 /** Variables whose values name an instance or a unit: redacted however short. */
@@ -234,6 +238,7 @@ export function runGate(argv, deps) {
     finishedAt: new Date().toISOString(),
     counts: result.counts,
     excluded: result.excluded.map(clean),
+    notGated: NOT_GATED,
     failures,
   };
   writeFileSync(`${target}.tmp`, `${JSON.stringify(evidence, null, 2)}\n`);

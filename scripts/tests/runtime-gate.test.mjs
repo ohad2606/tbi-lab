@@ -418,11 +418,13 @@ describe('the gate run (fake git and runners)', () => {
       'failures',
       'finishedAt',
       'mode',
+      'notGated',
       'schema',
       'sha',
       'startedAt',
       'verdict',
     ]);
+    expect(e.notGated).toEqual([expect.stringMatching(/QEMU-unit crash drill: needs N>=2/)]);
     expect(JSON.stringify(e)).not.toMatch(/secret-instance|127\.0\.0\.1|gate-test-/);
   });
   it.each([

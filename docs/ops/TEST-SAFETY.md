@@ -146,7 +146,7 @@ The gate sets none of this itself, except `CI=1` and the report path for Playwri
 | Real browser specs | `TBI_S6_REAL`, `TBI_S11_REAL`, `TBI_S12_REAL`, `TBI_S15_REAL`, `TBI_S18_REAL`, `TBI_S19B_REAL`, `TBI_S20L_REAL`, `TBI_MPY_REAL`, `TBI_RC6_REAL`, `TBI_W2_REAL` (each `=1`) |
 | QEMU kill / restart cases of `s18-r4b-real` | `TBI_S18_UNIT=<instance>` plus the mutation opt-in |
 | Deployed runtime tests | `TBI_S8_INSTANCE`, `TBI_C5_DEPLOYED`, `TBI_S13_SEC_DEPLOYED` (instance name), passwordless sudo |
-| C-5 fault drills (required, else the gate refuses to start) | `TBI_C5_FAULTS=1`, and the `TBI_C5_DEPLOYED` instance named in `TBI_ALLOW_SERVICE_MUTATION` |
+| C-5 fault drills (opt-in required, else the gate refuses to start; coverage below) | `TBI_C5_FAULTS=1`, and the `TBI_C5_DEPLOYED` instance named in `TBI_ALLOW_SERVICE_MUTATION` |
 | Measurements | `TBI_C5=1`, `TBI_MPY_BENCH=1` |
 | Gate tests | `oauth2-proxy` and `caddy` installed (`TBI_OAUTH2_PROXY` for another binary) |
 
@@ -156,6 +156,11 @@ narrows or redirects a test): `TBI_C5_N`, `TBI_C5_PACE`, `TBI_C5_SECONDS`, `TBI_
 `TBI_S11_EXPECT`, `TBI_S12_DET_RUNS`, `TBI_S12_DET_UNPINNED`, `TBI_S12_EXPECT`,
 `TBI_S8_QEMU_CYCLES`. So the gate's C-5 runs use the test defaults (1 session, 120 s); larger soaks
 are separate runs.
+
+With that default, `c5-deployed` runs only the stop / re-create drill: its QEMU-unit crash drill
+needs `TBI_C5_N` of at least 2 and is **not covered** by the gate (each evidence file says so in
+`notGated`). With `TBI_C5_FAULTS=1`, `c5-deployed` and `c5-capacity` fail if a drill that ran did
+not recover and clean up; a drill that did not run is not judged.
 
 Evidence replaces the values of `TBI_*` (4 characters or more) and, whatever their length, of
 `TBI_*_INSTANCE`, `TBI_ALLOW_SERVICE_MUTATION`, `TBI_C5_DEPLOYED`, `TBI_S13_SEC_DEPLOYED` and

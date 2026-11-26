@@ -44,6 +44,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { availableParallelism, totalmem } from 'node:os';
 import { afterAll, describe, expect, it } from 'vitest';
+import { deployedFaultFailures, type DeployedFaults } from './c5-faults.js';
 import { mutationAllowed, mutationSkipReason } from './mutation-gate.js';
 import { recordEvidence } from '../harness/env.js';
 import { Circuit } from '../host/tests/r1-support.js';
@@ -790,14 +791,7 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
                 // Only the faults that ran (the crash needs two sessions): ended -> re-created;
                 // crashed -> reported, its unit gone, re-created. Judged on the faulted users' own
                 // re-admissions (a policy refusal of another user is `sessionsAdmitted`).
-                faultsRecovered:
-                  (!faults.stop ||
-                    ((faults.stop as { status: number }).status < 300 &&
-                      (faults.stop as { recreated?: number }).recreated === 201)) &&
-                  (!faults.crash ||
-                    ((faults.crash as { unitGone?: boolean }).unitGone === true &&
-                      !!(faults.crash as { reported?: unknown }).reported &&
-                      (faults.crash as { recreated?: number }).recreated === 201)),
+                faultsRecovered: deployedFaultFailures(faults as DeployedFaults).length === 0,
               }
             : {}),
           ...(ROTATE_S > 0
@@ -831,6 +825,8 @@ describe('C-5 deployed: N concurrent ESP32 sessions on a deployed instance', () 
       // The harness reports; acceptance is the `pass` record (a policy that admits fewer than N
       // sessions is a finding, not a harness failure).
       expect(report.leftovers).toEqual({ qemuUnits: 0, buildJobs: 0, sessionDirs: 0 });
+      // Except the requested fault drills: one that ran must have recovered and cleaned up.
+      if (FAULTS) expect(deployedFaultFailures(faults as DeployedFaults)).toEqual([]);
     },
     (SECONDS + 1500) * 1000,
   );
