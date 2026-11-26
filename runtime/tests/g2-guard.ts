@@ -80,7 +80,7 @@ export const G2_METRICS = [
   'journalBad', 'journalUnparsable', 'secretLeaks', 'leftoverLive', 'leftoverWaiting',
   'leftoverMetered', 'leftoverUnits', 'leftoverDirs', 'otherUnits', 'otherDirs',
   'unconfirmedCreates', 'unresolvedBuilds', 'deleteFailures', 'maxUnitCurrentRatio',
-  'maxSampleGapMs', 'lockUnknown',
+  'maxSampleGapMs', 'lockUnknown', 'idleStreamEnded', 'heldStreamOpenMs',
 ] as const; // prettier-ignore
 export const G2_FLAGS = ['dec32'] as const;
 export const G2_FAILURES = [
@@ -104,8 +104,6 @@ export type G2Failure = (typeof G2_FAILURES)[number];
 
 /** What no run of this harness covers: the file's it.todo titles, carried in every report. */
 export const G2_NOT_COVERED = [
-  // every fetch is bounded to 15 s, so no 5 minute event stream can be held
-  'idle with an attached event stream: idle_timeout although the stream is open (host unit tests only)',
   // Free is capped at maxFree < maxLength: filling it needs more paid identities than the two preview
   'queue_full at maxLength with paid waiters',
 ] as const;
@@ -119,6 +117,11 @@ export function g2Report(p: G2Progress, result: 'PASSED' | 'FAILED') {
     ![p.metrics?.buildsSucceeded, p.metrics?.buildsRefused].every(Number.isFinite)
   )
     throw new Error('g2 report: PASSED needs the build counts');
+  if (
+    result === 'PASSED' &&
+    !(p.metrics?.idleStreamEnded === 1 && Number.isFinite(p.metrics.heldStreamOpenMs))
+  )
+    throw new Error('g2 report: PASSED needs the open event stream idle drill');
   return {
     result,
     instance: p.instance,

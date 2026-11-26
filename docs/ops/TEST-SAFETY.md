@@ -127,7 +127,8 @@ with JSON reporters, and writes `runtime-gate-<commit>.json` (verdict, counts, e
 failures; no error text). It fails on any skipped, todo, failed, retried or expected-to-fail test,
 a file with no tests or absent from the report, a file in which no test passed (unless every test
 of it is excluded), an expected failure declared in a tracked `runtime/**/*.ts` source (`it.fails`,
-`fails: true`: vitest reports it as passed, so it is found in the text), a non-zero runner exit, a
+`it['fails']`, `fails: true`: vitest reports it as passed, so it is found in the text; a name built
+at run time or destructured is not found), a non-zero runner exit, a
 missing report, or a tree that changed during the run. The only exclusions are the entries of
 `scripts/release/runtime-gate.manifest.json` (one file, a test-title prefix, a reason); an entry
 that excludes nothing, or also matches a test that ran, fails the gate. `--from-reports <dir>`
@@ -142,7 +143,7 @@ The gate sets none of this itself, except `CI=1` and the report path for Playwri
 | Host-wide pipeline lock, held for the whole run | `deploy/ops/pipeline-lock.mjs acquire` |
 | Permission to restart / reconfigure the instance under test (owner / PM decision; ends live sessions) | `TBI_ALLOW_SERVICE_MUTATION=<instance>` |
 | Provisioned runtime and emulator | `TBI_RUNTIME_HOME`, `TBI_QEMU` |
-| Real services behind the preview (the fake services' ports are refused) | `TBI_RUNTIME_PROXY`, `TBI_BUILD_PROXY` |
+| Real services behind the preview (the fake services' ports are refused) | `TBI_RUNTIME_PROXY`, `TBI_BUILD_PROXY`, `TBI_FEEDBACK_RUNTIME_PROXY` (Session Host in reports mode, `rc6-golden-real`) |
 | Real browser specs | `TBI_S6_REAL`, `TBI_S11_REAL`, `TBI_S12_REAL`, `TBI_S15_REAL`, `TBI_S18_REAL`, `TBI_S19B_REAL`, `TBI_S20L_REAL`, `TBI_MPY_REAL`, `TBI_RC6_REAL`, `TBI_W2_REAL` (each `=1`) |
 | QEMU kill / restart cases of `s18-r4b-real` | `TBI_S18_UNIT=<instance>` plus the mutation opt-in |
 | Deployed runtime tests | `TBI_S8_INSTANCE`, `TBI_C5_DEPLOYED`, `TBI_S13_SEC_DEPLOYED` (instance name), passwordless sudo |
@@ -154,7 +155,9 @@ Leave unset (the gate refuses to run when any of these is set, even empty, becau
 narrows or redirects a test): `TBI_C5_N`, `TBI_C5_PACE`, `TBI_C5_SECONDS`, `TBI_C5_WORKLOAD`,
 `TBI_G2_DEPLOYED`, `TBI_GATE_RUNS`, `TBI_GATE_UNPINNED`, `TBI_MPY_BENCH_N`, `TBI_R1_DET_RUNS`,
 `TBI_S11_EXPECT`, `TBI_S12_DET_RUNS`, `TBI_S12_DET_UNPINNED`, `TBI_S12_EXPECT`,
-`TBI_S8_QEMU_CYCLES`. So the gate's C-5 runs use the test defaults (1 session, 120 s); larger soaks
+`TBI_S8_QEMU_CYCLES`. It also refuses `TBI_C5_BUILDS` (`lease_knob`): `c5-capacity` leases its
+sessions for the measured time plus 120 s and then waits up to 600 s more for those builds, so the
+lease can expire before the run ends. So the gate's C-5 runs use the test defaults (1 session, 120 s); larger soaks
 are separate runs.
 
 With that default, `c5-deployed` runs only the stop / re-create drill: its QEMU-unit crash drill

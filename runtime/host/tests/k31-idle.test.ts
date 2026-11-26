@@ -300,7 +300,12 @@ describe('K3-1: on', () => {
     const t0 = performance.now();
     // status polls every 50 ms (each one refreshes the LEASE, never the idle clock)
     const poll = setInterval(
-      () => void w.call(`/sessions/${c.body.sessionId}`, c.body.token).then((r) => r.text()),
+      () =>
+        void w
+          .call(`/sessions/${c.body.sessionId}`, c.body.token)
+          .then((r) => r.text())
+          // a request still in flight at server close must not become an unhandled rejection
+          .catch(() => undefined),
       50,
     );
     try {

@@ -5,7 +5,7 @@
  * output is the same either way (pacing cannot alter the simulated timeline). Real time (1x) on
  * the real runtime: runtime/tests/s12-pace.runtime.test.ts.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { principalFor } from '../../identity/test-gate.js';
 import type { SessionHost } from '../host.js';
 import type { HostSession } from '../session.js';
@@ -49,6 +49,21 @@ describe('pacing (D-10)', () => {
     expect(status.pace.pacedMs).toBeGreaterThan(300);
     expect(status.pace.tickGapMs.count).toBeGreaterThan(500);
     expect(status.pace.tickGapMs.p99!).toBeLessThanOrEqual(100);
+  });
+
+  it('an ended session reports the same simPerWall after a wall-clock step (monotonic only)', async () => {
+    const { s, status } = await runFor(null, 300);
+    expect(status.pace.simPerWall).toBeGreaterThan(0);
+    const real = Date.now.bind(Date);
+    for (const step of [-3_600_000, 3_600_000]) {
+      const spy = vi.spyOn(Date, 'now').mockImplementation(() => real() + step);
+      try {
+        await new Promise((res) => setTimeout(res, 20));
+        expect(s.status().pace.simPerWall).toBeCloseTo(status.pace.simPerWall!, 9);
+      } finally {
+        spy.mockRestore();
+      }
+    }
   });
 
   it('unpaced: the fake runtime runs well ahead of the 0.5x cap', async () => {

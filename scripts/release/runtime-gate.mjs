@@ -56,12 +56,25 @@ const WEAKENING = [
   'TBI_S12_EXPECT',
   'TBI_S8_QEMU_CYCLES',
 ];
+/**
+ * Variables that make a test outlast a session lease it set from its default length, so sessions
+ * would end `lease_expired` before the run does. Refused whenever set, whatever the value.
+ * TBI_C5_BUILDS: c5-capacity leases its sessions for SECONDS + 120 s, nobody renews them, and the
+ * test then waits up to 600 s more for these builds while the sessions are still being measured.
+ */
+const LEASE_KNOBS = ['TBI_C5_BUILDS'];
 /** What no verdict of this gate covers, whatever its result: written into every evidence file. */
 const NOT_GATED = [
   'c5-deployed QEMU-unit crash drill: needs N>=2, the gate runs the default N=1; not covered',
 ];
 /** Preconditions whose "test" is a variable name of ours, not something to redact. */
-const NAMES_VARIABLE = ['no_real_proxy', 'weakening_env', 'fault_drills_off', 'no_fault_optin'];
+const NAMES_VARIABLE = [
+  'no_real_proxy',
+  'weakening_env',
+  'lease_knob',
+  'fault_drills_off',
+  'no_fault_optin',
+];
 /** Variables whose values name an instance or a unit: redacted however short. */
 const IDENTIFYING =
   /^TBI_(\w+_INSTANCE|ALLOW_SERVICE_MUTATION|C5_DEPLOYED|S13_SEC_DEPLOYED|S18_UNIT)$/;
@@ -168,10 +181,19 @@ export function runGate(argv, deps) {
   if (!opts.from) {
     if (dirty()) pre.push({ code: 'dirty_tree' });
     if (!deps.holdsLock()) pre.push({ code: 'no_lock' });
-    for (const name of ['TBI_RUNTIME_PROXY', 'TBI_BUILD_PROXY'])
+    // Each of these has a fake-service default in playwright.app.config.ts.
+    for (const name of ['TBI_RUNTIME_PROXY', 'TBI_BUILD_PROXY', 'TBI_FEEDBACK_RUNTIME_PROXY'])
       if (!realProxy(env[name])) pre.push({ code: 'no_real_proxy', test: name });
     for (const name of WEAKENING)
       if (env[name] !== undefined) pre.push({ code: 'weakening_env', test: name });
+    for (const name of LEASE_KNOBS)
+      if (env[name] !== undefined) {
+        pre.push({ code: 'lease_knob', test: name });
+        log(
+          `${name} must be unset: its builds can outlast the C-5 session lease, which would end ` +
+            'the sessions before the run does. Run that measurement outside the gate.',
+        );
+      }
     // The C-5 fault drills run only on request and only against an instance in the mutation opt-in.
     if (env.TBI_C5_FAULTS !== '1') pre.push({ code: 'fault_drills_off', test: 'TBI_C5_FAULTS' });
     if (!list(env.TBI_ALLOW_SERVICE_MUTATION).includes(env.TBI_C5_DEPLOYED))

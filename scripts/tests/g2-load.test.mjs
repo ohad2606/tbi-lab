@@ -352,6 +352,60 @@ describe('drill verdicts', () => {
   });
 });
 
+describe('idle with an open event stream', () => {
+  /** an SSE body the test writes to, split at arbitrary points like a network would */
+  const tab = () => {
+    let c;
+    const body = new ReadableStream({ start: (x) => void (c = x) });
+    const enc = new TextEncoder();
+    return {
+      ...L.g2FollowStream(body, () => 42),
+      send: (text) => c.enqueue(enc.encode(text)),
+      end: () => c.close(),
+      cut: () => c.error(new Error('cut')),
+    };
+  };
+  const frame = (e) => `id: 1\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
+  const ended = frame({ type: 'state', state: 'ended', reason: 'idle_timeout' });
+  const past = L.G2_IDLE_MS + L.G2_IDLE_TOLERANCE_MS + 1;
+
+  it('the silent tab passes only when its stream delivers idle_timeout, across chunk borders', async () => {
+    const t = tab();
+    t.send(`: keepalive\n\n${frame({ type: 'state', state: 'running' })}${ended.slice(0, 40)}`);
+    t.send(ended.slice(40));
+    t.end();
+    await t.done;
+    expect(t.state).toEqual({ endReason: 'idle_timeout', closedAtMs: 42 });
+    expect(L.g2IdleStreamOk(t.state)).toBe(true);
+  });
+  it('a stream closed or cut before the end, or another end reason, fails', async () => {
+    for (const finish of ['end', 'cut']) {
+      const t = tab();
+      t.send(frame({ type: 'state', state: 'running' }));
+      t[finish]();
+      await t.done;
+      expect(L.g2IdleStreamOk(t.state)).toBe(false);
+      expect(L.g2HeldStreamOk(t.state, past)).toBe(false);
+    }
+    const t = tab();
+    t.send(frame({ type: 'state', state: 'ended', reason: 'lease_expired' }));
+    t.end();
+    await t.done;
+    expect(L.g2IdleStreamOk(t.state)).toBe(false);
+  });
+  it('the present tab passes only while still open, longer than the idle limit', async () => {
+    const t = tab();
+    t.send(frame({ type: 'state', state: 'running' }));
+    expect(L.g2HeldStreamOk(t.state, past)).toBe(true);
+    expect(L.g2HeldStreamOk(t.state, past - 1)).toBe(false);
+    t.send(ended);
+    await vi.waitFor(() => expect(t.state.endReason).toBe('idle_timeout'));
+    expect(L.g2HeldStreamOk(t.state, past)).toBe(false);
+    t.end();
+    await t.done;
+  });
+});
+
 describe('G4 summary', () => {
   const sum = (...x) => L.g2BuildSummary(x.map(([outcome, ms]) => ({ outcome, ms })));
   it('counts outcomes; failed or lost builds fail the criterion', () => {

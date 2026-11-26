@@ -140,19 +140,32 @@ describe('g2-deployed drill helpers', () => {
       builds: [],
       promotedPositions: [],
       samples: [],
-      metrics: { buildsSucceeded: 0, buildsRefused: 2 },
+      metrics: {
+        buildsSucceeded: 0,
+        buildsRefused: 2,
+        idleStreamEnded: 1,
+        heldStreamOpenMs: 400_000,
+      },
       flags: ['dec32'],
     };
     const passed = g2Report(p, 'PASSED');
-    expect(G2_NOT_COVERED).toHaveLength(2);
+    expect(G2_NOT_COVERED).toHaveLength(1);
     expect(passed).toMatchObject({
       result: 'PASSED',
-      metrics: { buildsSucceeded: 0, buildsRefused: 2 },
+      metrics: { buildsSucceeded: 0, buildsRefused: 2, idleStreamEnded: 1 },
       flags: ['dec32'],
       notCovered: [...G2_NOT_COVERED],
     });
     expect(g2FailedReport(p).notCovered).toEqual([...G2_NOT_COVERED]);
     expect(() => g2Report({ ...p, metrics: {} }, 'PASSED')).toThrow('build counts');
+    for (const o of [
+      { idleStreamEnded: 0 },
+      { idleStreamEnded: undefined },
+      { heldStreamOpenMs: NaN },
+    ])
+      expect(() => g2Report({ ...p, metrics: { ...p.metrics, ...o } }, 'PASSED')).toThrow(
+        'open event stream',
+      );
     const codes = ['load_above_2x_cpus', 'sampler_blind'];
     expect(g2FailedReport({ ...p, failures: codes }).failures).toEqual(codes);
   });

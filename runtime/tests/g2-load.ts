@@ -418,6 +418,44 @@ export const g2MayStart = (history: number[], nowMs: number): boolean =>
 export const g2IdleOnTime = (ms: number): boolean =>
   Math.abs(ms - G2_IDLE_MS) <= G2_IDLE_TOLERANCE_MS;
 
+/**
+ * Follows a session's event stream the way a left-open tab holds it: consumes it, and records the
+ * terminal state it delivered and when it closed (a cut or aborted stream is closed too).
+ */
+export function g2FollowStream(body: ReadableStream<Uint8Array>, now: () => number) {
+  const state: { endReason?: string; closedAtMs?: number } = {};
+  const done = (async () => {
+    const decoder = new TextDecoder();
+    let tail = '';
+    try {
+      for await (const chunk of body) {
+        const lines = (tail + decoder.decode(chunk, { stream: true })).split('\n');
+        tail = lines.pop()!;
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const e = JSON.parse(line.slice(6)) as { type: string; state: string; reason?: string };
+          if (e.type === 'state' && (e.state === 'ended' || e.state === 'failed'))
+            state.endReason = e.reason ?? 'none';
+        }
+      }
+    } catch {
+      // cut, aborted or unreadable: no terminal state beyond what already arrived
+    }
+    state.closedAtMs = now();
+  })();
+  return { state, done };
+}
+export type G2Stream = ReturnType<typeof g2FollowStream>['state'];
+
+/** The silent tab: only a stream that was still attached receives the idle end itself. */
+export const g2IdleStreamOk = (s: G2Stream): boolean => s.endReason === 'idle_timeout';
+
+/** The present tab: its stream is still open after longer than the idle limit. */
+export const g2HeldStreamOk = (s: G2Stream, openMs: number): boolean =>
+  s.closedAtMs === undefined &&
+  s.endReason === undefined &&
+  openMs > G2_IDLE_MS + G2_IDLE_TOLERANCE_MS;
+
 /** A vanished waiter also answers queue_timeout, so the answer must not come before maxWaitMs. */
 export const g2TimeoutOk = (
   r: { status: number; error?: string; ms: number },
