@@ -2,8 +2,8 @@
  * Run guard of the BETA-G2 queue load harness (g2-deployed.runtime.test.ts). Pure decision logic, so
  * the refusal is unit-tested offline (scripts/tests/g2-deployed-guard.test.mjs, normal vitest suite).
  *
- * The harness creates and removes `free-admission.paused` and drives 16 identities against one
- * instance. It may therefore run ONLY against the staging instance, and only with the opt-in naming it
+ * The harness creates and removes `free-admission.paused` and drives 17 identities (15 Free, 2
+ * preview) against one instance. It may therefore run ONLY against the staging instance, and only with the opt-in naming it
  * in the mutation gate (TBI_ALLOW_SERVICE_MUTATION=tbi-s8) while the pipeline lock is held. Anything
  * else is a refusal, never a skip: a green run that silently did nothing would be a false result.
  *
@@ -21,6 +21,65 @@ export const G2_PREVIEW_ENV = 'TBI_G2_PREVIEW_USERS';
 export const G2_FREE_LIVE = 4;
 export const G2_PREVIEW = 2;
 export const G2_QUEUED = 10;
+/** Index of the extra Free identity the pause drill uses: neither live nor queued. */
+export const G2_PAUSE_PROBE = G2_FREE_LIVE + G2_QUEUED;
+export const g2FreeUsers = (run: string): string[] =>
+  Array.from({ length: G2_PAUSE_PROBE + 1 }, (_, i) => `g2d-${run}-f${i}`);
+/**
+ * Deadline for `waiting` = 0 after the pause file is created. Waiters leave only on an admit that
+ * reaches the adapter or on its housekeeping pass (docs/plans/BETA-G2-FREE-LIMITS.md section 2:
+ * default 5 s, driven by the 250 ms host timer); the rest is slack for the pass and the health read.
+ */
+export const G2_PAUSE_REMOVAL_MS = 10_000;
+
+const realClock = {
+  now: () => performance.now(),
+  sleep: (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
+};
+
+/** Poll until `done(value)` is read no later than `deadlineAt` (clock ms), else ok = false. */
+export async function pollUntil<T>(
+  read: () => Promise<T>,
+  done: (value: T) => boolean,
+  deadlineAt: number,
+  clock = realClock,
+  intervalMs = 500,
+): Promise<{ ok: boolean; value: T; atMs: number }> {
+  for (;;) {
+    const value = await read();
+    const atMs = clock.now();
+    const ok = done(value) && atMs <= deadlineAt;
+    if (ok || atMs >= deadlineAt) return { ok, value, atMs };
+    await clock.sleep(Math.min(intervalMs, deadlineAt - atMs));
+  }
+}
+
+export interface G2Progress {
+  instance: string;
+  phase: string;
+  seconds: number;
+  admitted: number[];
+  builds: { status: number; ms: number }[];
+  promotedPositions: number[];
+  samples: { freeLive: number; hostLive: number }[];
+}
+
+/** Partial report of a failed run: listed fields only, so no principal, token or ticket gets in. */
+export function g2FailedReport(p: G2Progress) {
+  const max = (k: 'freeLive' | 'hostLive') =>
+    p.samples.length ? Math.max(...p.samples.map((s) => s[k])) : null;
+  return {
+    result: 'FAILED',
+    instance: p.instance,
+    failedPhase: p.phase,
+    seconds: p.seconds,
+    admitted: [...p.admitted],
+    builds: p.builds.map(({ status, ms }) => ({ status, ms })),
+    promotedPositions: [...p.promotedPositions],
+    maxFreeLive: max('freeLive'),
+    maxHostLive: max('hostLive'),
+  };
+}
 
 export type G2Decision =
   | { kind: 'off' }

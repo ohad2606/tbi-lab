@@ -2,19 +2,23 @@
  * K2-b / BETA-G2: queue load harness against the DEPLOYED STAGING instance (`tbi-s8`), never any other.
  * Plan of record: reports/2026-11-24-fable52-k2k3-plan.md section 3.
  *
- * 16 identities (the c5-deployed root relays and `x-forwarded-user`): 14 Free + 2 preview.
+ * 17 identities (the c5-deployed root relays and `x-forwarded-user`): 15 Free + 2 preview.
+ * 4 Free run, 10 queue, and 1 more only probes the pause.
  *  1. Builds: two unique sketches built concurrently (each must finish or be refused explicitly <= 600 s).
  *  2. Admission: 4 Free + 2 preview get 201 (6 live); 10 more Free with `Tbi-Queue: 1` get 202 at
  *     positions 1..10. Free live sessions never exceed 4 (sampled each second, own sessions' state);
  *     live sessions on the host never exceed 6 (/health capacity).
  *  3. Cancel: the last waiter cancels (204) and `waiting` drops by one.
  *  4. Pause drill: `free-admission.paused` created -> a new Free request gets 429 `free_paused` within 5 s,
- *     waiting Free are removed (`waiting` 0), running Free and preview sessions are untouched; the file is
+ *     waiting Free are removed (`waiting` 0, polled for up to 10 s and before any waiter could have
+ *     vanished), running Free and preview sessions are untouched; the file is
  *     removed -> admission is back (202, the seats are full). Removed waiters then queue again.
  *  5. Drain: sessions are created with limits.maxLifetimeMs = 120 s (allowed: only stricter than the plan),
  *     so seats free themselves; every waiter is promoted (201) in FIFO order, the head within
  *     pollAfterS + 30 s of a free seat.
  *  6. Clean-up: every session ended; `waiting` back to 0; no principal, token or ticket in the journal.
+ *  A run that fails after preflight and relay setup writes results/g2-deployed-<run>-FAILED.json
+ *  (counts and timings only); an earlier failure writes no report.
  *  Idle drill (idle_timeout, presence): TODO until K3-1 (idle) exists, see it.todo below.
  * Light workload only (TBI_C5_WORKLOAD=gpio, the default here).
  *
@@ -29,16 +33,31 @@
  *   4. Without TBI_G2_DEPLOYED the file does nothing. With it set, a wrong instance, a missing mutation
  *      opt-in, no lock or wrong preview list FAILS the test (g2-guard.ts, unit-tested offline in
  *      scripts/tests/g2-deployed-guard.test.mjs). The only mutation is creating/removing the pause file
- *      (and the harness's own sessions); the file is removed again in a finally block.
+ *      (and the harness's own sessions); the file is removed again in a finally block and, for a test
+ *      timeout, in onTestFailed.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, onTestFailed } from 'vitest';
+import { DEFAULT_CONFIG } from '../plans/config.js';
 import { recordEvidence } from '../harness/env.js';
 import { Circuit } from '../host/tests/r1-support.js';
 import { PROTOCOL } from '../host/protocol.js';
 import { mutationAllowed } from './mutation-gate.js';
-import { g2Decision, G2_FREE_LIVE, G2_PREVIEW, G2_QUEUED, G2_STAGING, G2_ENV } from './g2-guard.js';
+import {
+  g2Decision,
+  g2FailedReport,
+  g2FreeUsers,
+  pollUntil,
+  G2_ENV,
+  G2_FREE_LIVE,
+  G2_PAUSE_PROBE,
+  G2_PAUSE_REMOVAL_MS,
+  G2_PREVIEW,
+  G2_QUEUED,
+  G2_STAGING,
+  type G2Progress,
+} from './g2-guard.js';
 
 const decision = g2Decision();
 const INSTANCE = G2_STAGING;
@@ -91,7 +110,7 @@ const sketch = (tag: string) =>
 
 describe('G2 deployed: queue under load on staging', () => {
   it.skipIf(decision.kind === 'off')(
-    `${G2_ENV}: guard, then the 16-identity queue drill`,
+    `${G2_ENV}: guard, then the ${G2_PAUSE_PROBE + 1 + G2_PREVIEW}-identity queue drill`,
     async () => {
       // Refusal is a FAILURE, never a skip (a green no-op would be a false result).
       if (decision.kind === 'refused') throw new Error(`g2-deployed refused: ${decision.reason}`);
@@ -104,7 +123,7 @@ describe('G2 deployed: queue under load on staging', () => {
       const BUILD = await relay(`/run/${INSTANCE}-build/api.sock`);
       const HOST = await relay(`/run/${INSTANCE}-runtime/api.sock`);
       const HEALTH = await relay(`/run/${INSTANCE}-runtime/health.sock`);
-      const free = Array.from({ length: 14 }, (_, i) => `g2d-${RUN}-f${i}`);
+      const free = g2FreeUsers(RUN);
       const preview = decision.previewUsers;
       const t00 = performance.now();
       const health = async () =>
@@ -115,6 +134,23 @@ describe('G2 deployed: queue under load on staging', () => {
           metered?: number;
           freePaused?: boolean;
         };
+
+      const progress: G2Progress = {
+        instance: INSTANCE,
+        phase: 'builds',
+        seconds: 0,
+        admitted: [],
+        builds: [],
+        promotedPositions: [],
+        samples: [],
+      };
+      let pauseCreated = false;
+      // Also covers failed builds and a test timeout, which a finally block would not.
+      onTestFailed(() => {
+        if (pauseCreated) sudo('rm', '-f', PAUSE_FILE);
+        progress.seconds = Math.round((performance.now() - t00) / 1000);
+        recordEvidence(`g2-deployed-${RUN}-FAILED`, g2FailedReport(progress));
+      });
 
       // ---- 1. builds
       const buildFor = async (user: string, text: string) => {
@@ -147,7 +183,9 @@ describe('G2 deployed: queue under load on staging', () => {
             if (performance.now() - t0 > 600_000) break;
             await sleep(500);
           }
-        return { user, status: s.status, sha, ms: Math.round(performance.now() - t0) };
+        const ms = Math.round(performance.now() - t0);
+        progress.builds.push({ status: s.status, ms });
+        return { user, status: s.status, sha, ms };
       };
       const everyone = [...free, ...preview];
       const unique = await Promise.all([
@@ -226,7 +264,7 @@ describe('G2 deployed: queue under load on staging', () => {
         ).body.state as string;
       const isEnded = (s: string) => s === 'ended' || s === 'failed';
       /** One pass: own live Free count and host live; throws on a breach (explicit failure). */
-      const samples: { freeLive: number; hostLive: number }[] = [];
+      const { samples, admitted } = progress;
       const sample = async () => {
         let freeLive = 0;
         for (const m of mine) {
@@ -245,10 +283,9 @@ describe('G2 deployed: queue under load on staging', () => {
         );
       };
 
-      let pauseCreated = false;
       try {
         // ---- 2. admission
-        const admitted = [];
+        progress.phase = 'admission';
         for (const u of [...free.slice(0, G2_FREE_LIVE), ...preview])
           admitted.push((await create(u)).status);
         expect(admitted).toEqual(Array(G2_FREE_LIVE + G2_PREVIEW).fill(201));
@@ -273,11 +310,13 @@ describe('G2 deployed: queue under load on staging', () => {
           }
           return out;
         };
+        const firstJoinAt = performance.now();
         waiters = await enqueue(queuedUsers);
         await sample();
         expect((await health()).waiting).toBe(G2_QUEUED);
 
         // ---- 3. cancel
+        progress.phase = 'cancel';
         const last = waiters.pop()!;
         const c = await fetch(`${HOST}/sessions/queue`, {
           method: 'DELETE',
@@ -287,19 +326,34 @@ describe('G2 deployed: queue under load on staging', () => {
         expect((await health()).waiting).toBe(G2_QUEUED - 1);
 
         // ---- 4. pause drill
+        progress.phase = 'pause';
         const tPause = performance.now();
         expect(sudo('touch', PAUSE_FILE).status).toBe(0);
         pauseCreated = true;
         let pausedAnswer = 0;
         while (performance.now() - tPause < 5000 && pausedAnswer !== 429) {
-          pausedAnswer = (await create(free[G2_FREE_LIVE + G2_QUEUED]!)).status;
+          pausedAnswer = (await create(free[G2_PAUSE_PROBE]!)).status;
           if (pausedAnswer !== 429) await sleep(500);
         }
         expect(pausedAnswer, 'free_paused (429) within 5 s').toBe(429);
-        const refusal = await create(free[G2_FREE_LIVE + G2_QUEUED]!);
+        const refusal = await create(free[G2_PAUSE_PROBE]!);
         expect(refusal.body.error).toBe('free_paused');
-        await sleep(2000);
-        expect((await health()).waiting, 'waiting Free removed by the pause').toBe(0);
+        // after vanishMs without a poll a waiter leaves anyway, which would prove nothing
+        const removed = await pollUntil(
+          async () => (await health()).waiting,
+          (w) => w === 0,
+          Math.min(tPause + G2_PAUSE_REMOVAL_MS, firstJoinAt + DEFAULT_CONFIG.queue.vanishMs),
+        );
+        expect(
+          removed.ok,
+          `waiting Free removed by the pause: waiting=${removed.value}, ${Math.round(removed.atMs - tPause)} ms after the pause, ${Math.round(removed.atMs - firstJoinAt)} ms after the first join`,
+        ).toBe(true);
+        // a waiter that merely vanished answers queue_timeout: only the pause answers free_paused
+        const dropped = await create(waiters[0]!.user, waiters[0]!.ticket);
+        expect([dropped.status, dropped.body.error], 'removed ticket poll').toEqual([
+          429,
+          'free_paused',
+        ]);
         await sample(); // running Free and preview sessions are untouched (still counted, none ended)
         expect(
           mine.filter(
@@ -308,14 +362,14 @@ describe('G2 deployed: queue under load on staging', () => {
         ).toEqual([]);
         expect(sudo('rm', '-f', PAUSE_FILE).status).toBe(0);
         pauseCreated = false;
-        const back = await create(free[G2_FREE_LIVE + G2_QUEUED]!);
+        const back = await create(free[G2_PAUSE_PROBE]!);
         expect([201, 202], `admission after removal: ${JSON.stringify(back.body)}`).toContain(
           back.status,
         );
         if (back.status === 202)
           await fetch(`${HOST}/sessions/queue`, {
             method: 'DELETE',
-            headers: as(free[G2_FREE_LIVE + G2_QUEUED]!, {
+            headers: as(free[G2_PAUSE_PROBE]!, {
               'tbi-queue-ticket': back.body.queued.ticket,
             }),
           });
@@ -323,6 +377,7 @@ describe('G2 deployed: queue under load on staging', () => {
         waiters = await enqueue(waiters.map((w) => w.user));
 
         // ---- 5. drain: poll every pollAfterS; seats free themselves at the 120 s lifetime
+        progress.phase = 'drain';
         const promoted: { user: string; atMs: number; position: number }[] = [];
         const deadline = performance.now() + SECONDS * 1000;
         const poller = async (w: Waiter) => {
@@ -331,8 +386,10 @@ describe('G2 deployed: queue under load on staging', () => {
             const r = await create(w.user, w.ticket);
             if (r.status === 202) continue;
             w.done = { status: r.status, atMs: performance.now(), error: r.body.error };
-            if (r.status === 201)
+            if (r.status === 201) {
               promoted.push({ user: w.user, atMs: w.done.atMs, position: w.position });
+              progress.promotedPositions.push(w.position);
+            }
           }
         };
         const pollers = waiters.map(poller);
@@ -359,6 +416,7 @@ describe('G2 deployed: queue under load on staging', () => {
         );
 
         // ---- 6. clean-up
+        progress.phase = 'clean-up';
         for (const m of mine)
           await fetch(`${HOST}/sessions/${m.id}`, {
             method: 'DELETE',
@@ -390,7 +448,7 @@ describe('G2 deployed: queue under load on staging', () => {
         recordEvidence(`g2-deployed-${RUN}`, {
           instance: INSTANCE,
           admitted,
-          unique,
+          unique: unique.map((b) => ({ status: b.status, ms: b.ms })),
           others,
           positions,
           headPromotionGapS: gapS,
