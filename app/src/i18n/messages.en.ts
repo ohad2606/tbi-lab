@@ -2525,7 +2525,7 @@ export const en = {
   'shortcut.wireCancel.when': 'Pin mode or wiring',
   'shortcut.schematicSelect.action': 'Select the symbol or module',
   'shortcut.schematicSelect.when': 'A symbol has focus',
-  'shortcut.panSchematic.action': 'Move the view',
+  'shortcut.panSchematic.action': 'Move the view (not mirrored in Hebrew)',
   'shortcut.panSchematic.when': 'The drawing or one of its symbols has focus',
   'shortcut.zoomSchematic.action': 'Zoom in or out',
   'shortcut.zoomSchematic.when': 'The drawing or one of its symbols has focus',

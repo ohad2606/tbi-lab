@@ -162,9 +162,7 @@ body,
     outline: 3px solid Highlight;
     outline-offset: 2px;
   }
-  .focus-ring,
-  .sch-part:focus-visible .sch-hit,
-  .sch-part:focus-visible .sch-module-body {
+  .focus-ring {
     stroke: Highlight;
   }
 }
@@ -3031,6 +3029,19 @@ select {
   gap: 0.25rem;
 }
 
+/* A short view: one row along the top, so the controls never meet the note along the bottom or
+   spill out of the view. */
+.schematic-short .schematic-controls {
+  flex-flow: row wrap;
+  justify-content: flex-end;
+  align-items: center;
+  max-inline-size: calc(100% - 1.5rem);
+}
+
+.schematic-short .schematic-pan {
+  grid-template-columns: repeat(4, auto);
+}
+
 .schematic-pan .icon-button {
   display: grid;
   place-items: center;
@@ -3084,10 +3095,28 @@ select {
   fill: rgba(11, 87, 208, 0.08);
 }
 
+/* A module has its own ring outside the body, so the body's border (and the selection colour)
+   never hides it. */
+.sch-focus-ring {
+  fill: none;
+  stroke: none;
+  pointer-events: none;
+}
+
+/* 3 CSS px at every zoom. */
 .sch-part:focus-visible .sch-hit,
-.sch-part:focus-visible .sch-module-body {
+.sch-part:focus-visible .sch-focus-ring {
   stroke: var(--focus);
-  stroke-width: 3;
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+}
+
+/* After the rule above, so the system highlight colour wins. */
+@media (forced-colors: active) {
+  .sch-part:focus-visible .sch-hit,
+  .sch-part:focus-visible .sch-focus-ring {
+    stroke: Highlight;
+  }
 }
 
 .sch-module-body {

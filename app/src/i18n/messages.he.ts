@@ -2395,7 +2395,7 @@ export const he: Record<MessageKey, string> = {
   'shortcut.wireCancel.when': 'מצב פינים או חיווט',
   'shortcut.schematicSelect.action': 'בחירת הסמל או המודול',
   'shortcut.schematicSelect.when': 'סמל ממוקד',
-  'shortcut.panSchematic.action': 'הזזת התצוגה',
+  'shortcut.panSchematic.action': 'הזזת התצוגה (לא מתהפך בעברית)',
   'shortcut.panSchematic.when': 'השרטוט או אחד הסמלים שבו ממוקד',
   'shortcut.zoomSchematic.action': 'הגדלה או הקטנה',
   'shortcut.zoomSchematic.when': 'השרטוט או אחד הסמלים שבו ממוקד',

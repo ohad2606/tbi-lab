@@ -6,6 +6,8 @@
  * - four named pan buttons beside zoom / fit, each at least 24 x 24 CSS px;
  * - a part that gets keyboard focus off screen (or under the controls) is brought into view; a
  *   mouse click or a drag never makes the view jump;
+ * - a focused module draws its own ring; short views (640x360, 683x325) keep every control clear
+ *   of the note and inside the view;
  * - the controls stay inside the view at a 320px-wide window. The project is never edited.
  */
 import { expect, test, type Locator, type Page } from '@playwright/test';
@@ -21,15 +23,20 @@ const TEXT = {
     buttons: ['הזזת התצוגה שמאלה', 'הזזת התצוגה ימינה', 'הזזת התצוגה למעלה', 'הזזת התצוגה למטה'],
   },
 } as const;
+/** Optional directory for review screenshots; nothing is written without it. */
+const SHOTS = process.env.TBI_SHOT_DIR;
+const shot = async (page: Page, name: string) => {
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` });
+};
 const DIRECTIONS = ['left', 'right', 'up', 'down'] as const;
 
-async function openSchematic(page: Page, lang: 'en' | 'he') {
+async function openSchematic(page: Page, lang: 'en' | 'he', example = 'voltage-divider') {
   await page.goto('/');
   const library = page.getByTestId('example-list');
   await expect(library.or(page.getByTestId('canvas'))).toBeVisible();
   if (!(await library.isVisible())) await goToProjects(page);
   await page.getByTestId('language-select').selectOption(lang);
-  await page.getByTestId('open-example-voltage-divider').click();
+  await page.getByTestId(`open-example-${example}`).click();
   await expect(page.getByTestId('canvas')).toBeVisible();
   await waitSaved(page);
   await page.getByTestId('view-schematic').click();
@@ -276,6 +283,126 @@ for (const lang of ['en', 'he'] as const) {
       expect((await viewBox(page)).y).toBeCloseTo(dragged.y, 6);
       expect(await revision(page)).toBe(before);
     });
+
+    test('a module focused from the keyboard shows its own ring, also selected and zoomed out', async ({
+      page,
+    }) => {
+      await openSchematic(page, lang, 'esp32-motion-relay');
+      const modules = (await svgOf(page).getAttribute('data-modules'))!.split(' ');
+      expect(modules.length).toBeGreaterThan(0);
+      const id = modules[0]!;
+      const module = page.locator(`.schematic [data-part="${id}"]`);
+      const ring = module.locator('.sch-focus-ring');
+      const style = () =>
+        ring.evaluate((el) => {
+          const s = getComputedStyle(el);
+          return { stroke: s.stroke, width: s.strokeWidth, effect: s.vectorEffect };
+        });
+      const shown = { stroke: 'rgb(10, 26, 51)', width: '3px', effect: 'non-scaling-stroke' };
+      expect((await style()).stroke).toBe('none');
+      await svgOf(page).focus();
+      for (let i = 0; i < 40; i++) {
+        await page.keyboard.press('Tab');
+        if (await module.evaluate((el) => el === document.activeElement)) break;
+      }
+      await expect(module).toBeFocused();
+      expect(await style()).toEqual(shown);
+      // The ring lies outside the body on every side.
+      const outer = await rect(ring);
+      const body = await rect(module.locator('.sch-module-body'));
+      expect(outer.x).toBeLessThan(body.x);
+      expect(outer.y).toBeLessThan(body.y);
+      expect(outer.x + outer.width).toBeGreaterThan(body.x + body.width);
+      expect(outer.y + outer.height).toBeGreaterThan(body.y + body.height);
+      await page.keyboard.press('Enter');
+      await expect(module).toHaveAttribute('aria-pressed', 'true');
+      expect(await style()).toEqual(shown);
+      await shot(page, `g3-module-focus-${lang}`);
+      for (let i = 0; i < 10; i++) await page.keyboard.press('-');
+      expect(await style()).toEqual(shown);
+      // Forced colours: the ring takes the system highlight colour.
+      await page.emulateMedia({ forcedColors: 'active' });
+      const highlight = await page.evaluate(() => {
+        const probe = document.body.appendChild(document.createElement('span'));
+        probe.style.setProperty('forced-color-adjust', 'none');
+        probe.style.color = 'Highlight';
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      expect(highlight).not.toBe(shown.stroke);
+      await expect.poll(async () => (await style()).stroke).toBe(highlight);
+    });
+
+    test('a focused two-pin part keeps a 3px ring at any zoom', async ({ page }) => {
+      await openSchematic(page, lang);
+      await svgOf(page).focus();
+      await page.keyboard.press('Tab');
+      const hit = page.locator('.schematic [data-part]:focus .sch-hit');
+      expect(
+        await hit.evaluate((el) => {
+          const s = getComputedStyle(el);
+          return [s.stroke, s.strokeWidth, s.vectorEffect];
+        }),
+      ).toEqual(['rgb(10, 26, 51)', '3px', 'non-scaling-stroke']);
+    });
+
+    for (const size of [
+      { width: 640, height: 360 },
+      { width: 683, height: 325 },
+    ]) {
+      test(`at ${size.width}x${size.height} no control is clipped or under the note`, async ({
+        page,
+      }) => {
+        await openSchematic(page, lang);
+        await page.setViewportSize(size);
+        const wrap = page.getByTestId('schematic-view');
+        await wrap.scrollIntoViewIfNeeded();
+        const buttons = page.locator('.schematic-wrap .canvas-controls button');
+        await expect(buttons).toHaveCount(7);
+        await expect
+          .poll(async () => {
+            const frame = await rect(wrap);
+            const note = await rect(page.locator('.schematic-wrap .view-note'));
+            const bad: number[] = [];
+            const boxes = [];
+            for (const b of await buttons.all()) boxes.push(await rect(b));
+            for (const [i, b] of boxes.entries()) {
+              const ok =
+                b.width >= 24 &&
+                b.height >= 24 &&
+                b.x >= frame.x &&
+                b.y >= frame.y &&
+                b.x + b.width <= frame.x + frame.width &&
+                b.y + b.height <= frame.y + frame.height &&
+                !overlap(b, note) &&
+                !boxes.slice(i + 1).some((o) => overlap(b, o));
+              if (!ok) bad.push(i);
+            }
+            return bad;
+          })
+          .toEqual([]);
+        await shot(page, `g3-${size.width}x${size.height}-${lang}`);
+        // Each one is also on top where it is drawn (nothing else takes the pointer).
+        for (const b of await buttons.all()) await b.click({ trial: true });
+        // A part focused from the keyboard is not left under the controls or the note.
+        await svgOf(page).focus();
+        for (let i = 0; i < 25; i++) await page.keyboard.press('ArrowRight');
+        await page.keyboard.press('Tab');
+        const part = page.locator('.schematic [data-part]:focus');
+        await expect
+          .poll(async () => {
+            const p = await rect(part);
+            const c = await rect(page.locator('.schematic-wrap .canvas-controls'));
+            const n = await rect(page.locator('.schematic-wrap .view-note'));
+            const cx = p.x + p.width / 2;
+            const cy = p.y + p.height / 2;
+            const frame = await rect(svgOf(page));
+            return cx > frame.x && cx < frame.x + frame.width && cy > c.y + c.height && cy < n.y;
+          })
+          .toBe(true);
+      });
+    }
 
     test('at a 320px-wide window the controls stay inside the view', async ({ page }) => {
       await openSchematic(page, lang);

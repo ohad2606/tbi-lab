@@ -41,6 +41,10 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const PAN_STEP = 0.1;
 /** Screen pixels kept between a part brought into view and the edges or overlays. */
 const FOCUS_MARGIN = 8;
+/** Below this view height (CSS px) the control column would reach the note: use a top row. */
+const SHORT_VIEW = 280;
+/** Drawing units between a module's body and its focus ring. */
+const RING_GAP = 5;
 const PAN_BUTTONS = [
   { id: 'left', key: 'schematic.panLeft', dx: -1, dy: 0, path: 'M12 4 6 10l6 6' },
   { id: 'right', key: 'schematic.panRight', dx: 1, dy: 0, path: 'M8 4l6 6-6 6' },
@@ -96,6 +100,7 @@ export function SchematicView() {
   if (!doc || !layout || !cam) return null;
   const viewW = size.w / cam.scale;
   const viewH = size.h / cam.scale;
+  const short = size.h < SHORT_VIEW;
 
   const zoomAt = (factor: number, cx = size.w / 2, cy = size.h / 2) => {
     const scale = clamp(cam.scale * factor, MIN_SCALE, MAX_SCALE);
@@ -150,14 +155,12 @@ export function SchematicView() {
         part.left < o.right && o.left < part.right && part.top < o.bottom && o.top < part.bottom,
     );
     if (inside && !covered) return;
-    const [side, foot] = overlays as [DOMRect, DOMRect];
-    const dx = intoRange(
-      part.left,
-      part.right,
-      frame.left + FOCUS_MARGIN,
-      side.left - FOCUS_MARGIN,
-    );
-    const dy = intoRange(part.top, part.bottom, frame.top + FOCUS_MARGIN, foot.top - FOCUS_MARGIN);
+    const [bar, foot] = overlays as [DOMRect, DOMRect];
+    // The controls are a column at the right edge or, in a short view, a row along the top.
+    const right = short ? frame.right : bar.left;
+    const top = short ? bar.bottom : frame.top;
+    const dx = intoRange(part.left, part.right, frame.left + FOCUS_MARGIN, right - FOCUS_MARGIN);
+    const dy = intoRange(part.top, part.bottom, top + FOCUS_MARGIN, foot.top - FOCUS_MARGIN);
     setCamera({ scale: cam.scale, x: cam.x + dx / cam.scale, y: cam.y + dy / cam.scale });
   };
   const selected = new Set(selection.components);
@@ -166,7 +169,12 @@ export function SchematicView() {
   const supplies = new Set(layout.marks.filter((m) => m.kind === 'rail').map((m) => m.supply));
 
   return (
-    <div class="schematic-wrap" ref={wrap} dir="ltr" data-testid="schematic-view">
+    <div
+      class={`schematic-wrap${short ? ' schematic-short' : ''}`}
+      ref={wrap}
+      dir="ltr"
+      data-testid="schematic-view"
+    >
       <svg
         class="schematic"
         role="group"
@@ -459,6 +467,14 @@ function ModuleView({
         }
       }}
     >
+      <rect
+        class="sch-focus-ring"
+        x={m.x - RING_GAP}
+        y={m.y - RING_GAP}
+        width={m.width + 2 * RING_GAP}
+        height={m.height + 2 * RING_GAP}
+        rx={3 + RING_GAP}
+      />
       <rect class="sch-module-body" x={m.x} y={m.y} width={m.width} height={m.height} rx={3} />
       <text class="sch-ref" x={m.x + m.width / 2} y={m.y - 10} text-anchor="middle">
         {c.id}
