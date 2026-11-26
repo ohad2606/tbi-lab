@@ -37,11 +37,22 @@
  *                  resume after a pause, or recorded owner after `no_owner` leaves the requests
  *                  that arrived before it for the owner. The cut-off only moves forward. A reset
  *                  that cannot be persisted approves nothing (`reset_failed`) and is retried by
- *                  the next sweep; the daily count is never lowered by it.
+ *                  the next sweep; the daily count is never lowered by it. Lost state is never a
+ *                  first run: once this process saw a paused / no_owner / unsafe-dir sweep or an
+ *                  unreadable state, or the state file vanished after it had one, or any record
+ *                  carries `autoApprovedAt`, or `<state>/auto-approve.marker` exists (both survive
+ *                  a restart), a missing state file gets max(now, TBI_SIGNUP_AUTO_SINCE) ("state
+ *                  missing, cut-off = now"). The empty marker is written (only into a dir that
+ *                  passed the check) on every paused / no_owner sweep and with the first persisted
+ *                  cut-off; an error looking for it counts as present. Limits: a deleted state
+ *                  dir (or state file and marker, with no marked record), and a run that only ever
+ *                  saw an unsafe dir (nothing is written there), look like a first run after a
+ *                  restart.
  *   Kill switch    while `<state>/auto-approve.paused` exists (any entry: file, dir, symlink, even
  *                  dangling; lstat, never followed) nothing is auto-approved; every check error
- *                  other than ENOENT counts as paused (fail closed). Checked before every claim,
- *                  so `touch` / `rm` takes effect without a restart.
+ *                  other than ENOENT counts as paused (fail closed). Checked before every claim
+ *                  and again inside it (under the state mutex, with the state dir check, right
+ *                  before the slot is written), so `touch` / `rm` takes effect without a restart.
  *   Who is eligible  `pending`, created after the cut-off, not in the claim set and never marked
  *                  (`autoApprovedAt` unset), and without an error from an earlier approve attempt
  *                  (`lastError` null: those need the owner). Web-origin requests (`origin: 'web'`,
@@ -70,6 +81,8 @@ import type { PendingStore, SignupRecord } from './store.js';
 export const AUTO_PAUSE_FILE = 'auto-approve.paused';
 /** Day count, retries, claim set and cut-off (admin-owned state). */
 export const AUTO_STATE_FILE = 'auto-approve.state.json';
+/** Empty file: "an earlier run used this dir". Must not end in `.mark` / `.tmp` (store purge). */
+export const AUTO_MARKER_FILE = 'auto-approve.marker';
 export const AUTO_CAP_MAX = 1000;
 export const AUTO_APPROVE_INTERVAL_MS = 60_000;
 export const AUTO_TZ = 'Asia/Jerusalem';
@@ -399,6 +412,14 @@ export class AutoApprover {
   private unconfirmed = true;
   /** Last time (ms) each reset-failure class was logged: at most once per hour each. */
   private readonly resetFailLoggedAt = new Map<string, number>();
+  /**
+   * Set (never cleared) once this process saw a paused / no_owner / state_dir_unsafe sweep, an
+   * unreadable state, or a missing state file after it had read one: a missing state can then
+   * never be a first run (a backdated TBI_SIGNUP_AUTO_SINCE must not apply), see confirm().
+   */
+  private sawInactive = false;
+  /** This process has read a state file (so a later ENOENT is lost state, not a first run). */
+  private hadState = false;
 
   constructor(private readonly d: AutoApproverDeps) {}
 
@@ -447,15 +468,18 @@ export class AutoApprover {
    * The state as of `day`: empty when the file is missing; count and retries reset when it is
    * from an earlier day. Throws CounterUnreadable when unreadable, corrupt or from a later day.
    */
-  private async readState(day: string): Promise<AutoState> {
+  private async readState(day: string, track = true): Promise<AutoState> {
     let text: string;
     try {
       text = await readFile(this.statePath, 'utf8');
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT')
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+        if (track && this.hadState) this.sawInactive = true;
         return { v: 2, day, count: 0, retries: 0, claims: {} };
+      }
       throw new CounterUnreadable(errorClass(e), errnoOf(e));
     }
+    if (track) this.hadState = true;
     let c: unknown;
     try {
       c = JSON.parse(text);
@@ -509,7 +533,7 @@ export class AutoApprover {
     if (bad) unknown.count = 'state_dir_unsafe';
     else
       try {
-        state = await this.readState(day);
+        state = await this.readState(day, false);
       } catch (e) {
         unknown.count = !(e instanceof CounterUnreadable)
           ? errorClass(e)
@@ -518,7 +542,15 @@ export class AutoApprover {
             : e.message;
       }
     let cutoff: number | null = null;
-    const firstRun = state && this.unconfirmed && !state.since && state.active === undefined;
+    // As confirm() will judge it: lost state is no first run (also not while paused).
+    const firstRun =
+      state &&
+      this.unconfirmed &&
+      !state.since &&
+      state.active === undefined &&
+      !pause.paused &&
+      !this.hadState &&
+      !(await this.lostState());
     if (state && !firstRun && (this.unconfirmed || state.active !== true || !state.since)) {
       // The stored cut-off is replaced by the next approving sweep: neither it nor a backlog
       // counted against it is shown (neutral `unknown`, reason reset_pending).
@@ -564,7 +596,10 @@ export class AutoApprover {
    */
   private markInactive(): Promise<void> {
     this.unconfirmed = true;
+    this.sawInactive = true;
     return exclusive(this.d.dir, async () => {
+      // First, so that it is there even when the state cannot be read or written.
+      await this.writeMarker();
       const s = await this.readState(this.today());
       if (s.active !== false) await this.writeState({ ...s, active: false });
     });
@@ -583,12 +618,19 @@ export class AutoApprover {
       const s = await this.readState(this.today());
       if (!this.unconfirmed && s.active === true && s.since) return;
       const env = this.d.since;
-      const firstRun = this.unconfirmed && s.since === undefined && s.active === undefined;
+      let firstRun = this.unconfirmed && s.since === undefined && s.active === undefined;
+      // Lost state (not a true first run): fail closed, the cut-off is now (or a later SINCE).
+      if (firstRun && (await this.lostState())) {
+        firstRun = false;
+        this.log('signup: auto-approve state missing, cut-off = now');
+      }
       const since = firstRun
         ? (env ?? this.now())
         : Math.max(this.now(), s.since ? Date.parse(s.since) : -Infinity, env ?? -Infinity);
       try {
         await this.writeState({ ...s, since: new Date(since).toISOString(), active: true });
+        // After the state, so a failed first write stays a first run; nothing is claimed without it.
+        await this.writeMarker();
       } catch (e) {
         throw new ResetFailed(errnoOf(e));
       }
@@ -599,6 +641,64 @@ export class AutoApprover {
           : 'signup: auto-approve cut-off reset (only requests created from now on)',
       );
     });
+  }
+
+  /** Creates the marker when no entry of that name exists (the caller has checked the dir). */
+  private async writeMarker(): Promise<void> {
+    try {
+      const fh = await open(join(this.d.dir, AUTO_MARKER_FILE), 'wx', 0o600);
+      await fh.close();
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    }
+  }
+
+  /** Whether a missing cut-off means lost state rather than a first run. Read-only. */
+  private async lostState(): Promise<boolean> {
+    if (this.sawInactive) return true;
+    try {
+      await lstatAsync(join(this.d.dir, AUTO_MARKER_FILE));
+      return true;
+    } catch (e) {
+      // Any error but "no such entry" counts as present (fail closed).
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return true;
+    }
+    return this.earlierRunInStore();
+  }
+
+  /**
+   * Whether an earlier run left a mark in the store (a record with `autoApprovedAt`): then a
+   * missing state file was lost, not never written. A listing error counts as yes (fail closed).
+   */
+  private async earlierRunInStore(): Promise<boolean> {
+    try {
+      return (await this.d.store.list()).some((r) => !!r.autoApprovedAt);
+    } catch {
+      return true;
+    }
+  }
+
+  /**
+   * Kill switch and state dir, re-checked under the state mutex right before a slot or a retry is
+   * written (closes the race with a pause created after the sweep's own check). A check that
+   * errors counts as paused. Not ok: this process is unconfirmed and the sweep stops.
+   */
+  private async stillMayApprove(): Promise<'ok' | 'paused' | 'state_dir_unsafe'> {
+    let r: 'ok' | 'paused' | 'state_dir_unsafe';
+    try {
+      r = (await this.checkStateDir())
+        ? 'state_dir_unsafe'
+        : (await this.paused())
+          ? 'paused'
+          : 'ok';
+    } catch {
+      r = 'paused';
+    }
+    if (r !== 'ok') {
+      this.unconfirmed = true;
+      this.sawInactive = true;
+    }
+    return r;
   }
 
   /**
@@ -619,7 +719,7 @@ export class AutoApprover {
   private claim(
     id: string,
     since: number,
-  ): Promise<'claimed' | 'ineligible' | 'cap' | 'mark_failed'> {
+  ): Promise<'claimed' | 'ineligible' | 'cap' | 'mark_failed' | 'paused' | 'state_dir_unsafe'> {
     return exclusive(this.d.dir, async () => {
       // Defence in depth: never a claim before this process has reset the cut-off.
       if (this.unconfirmed) return 'ineligible';
@@ -631,6 +731,9 @@ export class AutoApprover {
       return serialById(id, async () => {
         const cur = await this.d.store.get(id).catch(() => null);
         if (!cur || !eligible(cur, s, cut, this.d.webSignups)) return 'ineligible' as const;
+        // A pause (or unsafe dir) that appeared since the sweep's check: nothing is written.
+        const may = await this.stillMayApprove();
+        if (may !== 'ok') return may;
         const at = new Date(this.now()).toISOString();
         const taken: AutoState = {
           ...s,
@@ -665,12 +768,16 @@ export class AutoApprover {
   }
 
   /** Reserves one retry of a claimed id (persisted before the call), within all three bounds. */
-  private reserveRetry(id: string): Promise<'ok' | 'skip' | 'limit'> {
+  private reserveRetry(
+    id: string,
+  ): Promise<'ok' | 'skip' | 'limit' | 'paused' | 'state_dir_unsafe'> {
     return exclusive(this.d.dir, async () => {
       const s = await this.readState(this.today());
       const e = s.claims[id];
       if (!e || this.now() - Date.parse(e.lastAttemptAt) < AUTO_RETRY_BACKOFF_MS) return 'skip';
       if (s.retries >= this.d.dailyCap) return 'limit';
+      const may = await this.stillMayApprove();
+      if (may !== 'ok') return may;
       const lastAttemptAt = new Date(this.now()).toISOString();
       await this.writeState({
         ...s,
@@ -743,6 +850,7 @@ export class AutoApprover {
       return await this.sweepInner(out);
     } catch (e) {
       if (e instanceof CounterUnreadable) {
+        this.sawInactive = true;
         const last = this.unreadableLoggedAt.get(e.message);
         const t = this.now();
         // A clock stepped back also logs again (never silent for longer than the window).
@@ -773,8 +881,10 @@ export class AutoApprover {
 
   private async sweepInner(out: SweepResult): Promise<SweepResult> {
     if (await this.checkStateDir()) {
-      // Like a pause (the state is not touched: the dir is not trusted): reset on recovery.
+      // Like a pause (the state is not touched: the dir is not trusted): reset on recovery, and
+      // a missing state file after it is lost state (cut-off = now), never a first run.
       this.unconfirmed = true;
+      this.sawInactive = true;
       return { ...out, stopped: 'state_dir_unsafe' };
     }
     if (await this.paused()) {
@@ -810,9 +920,11 @@ export class AutoApprover {
       if (this.now() - Date.parse(e.lastAttemptAt) < AUTO_RETRY_BACKOFF_MS) continue;
       if (await this.paused()) {
         this.unconfirmed = true;
+        this.sawInactive = true;
         return { ...out, stopped: 'paused' };
       }
       const res = await this.reserveRetry(r.id);
+      if (res === 'paused' || res === 'state_dir_unsafe') return { ...out, stopped: res };
       if (res === 'limit') {
         const day = this.today();
         if (this.retryLoggedDay !== day) {
@@ -833,6 +945,7 @@ export class AutoApprover {
       if (!eligible(r, state, since, this.d.webSignups)) continue;
       if (await this.paused()) {
         this.unconfirmed = true;
+        this.sawInactive = true;
         return { ...out, stopped: 'paused' };
       }
       const c = await this.claim(r.id, since);
@@ -847,6 +960,7 @@ export class AutoApprover {
         return { ...out, stopped: 'cap' };
       }
       if (c === 'mark_failed') return { ...out, stopped: 'mark_failed' };
+      if (c === 'paused' || c === 'state_dir_unsafe') return { ...out, stopped: c };
       if (c !== 'claimed') continue;
       out.claimed++;
       out.attempted++;

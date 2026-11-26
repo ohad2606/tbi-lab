@@ -23,7 +23,7 @@
  *                          (absolute, 0700, this service's own); off by default; a bad setting turns only them off.
  *
  * SIGTERM / SIGINT: stop accepting requests, wait (at most 5 s) for an approval email being sent
- * by the drain, and exit.
+ * by the drain, then (counters on) flush the counters (at most 1 s more), and exit.
  */
 import { accessViewFromEnv } from '../identity/access.js';
 import { describeListen, listen, parseListen, socketGidFromEnv } from '../identity/listen.js';
@@ -31,6 +31,7 @@ import { identityFromEnv } from '../identity/principal.js';
 import { AdminSpool, adminConfigFromEnv, createAdminServer } from './accounts.js';
 import { healthCapacity } from './capacity.js';
 import { funnelCountersFromEnv } from './funnel/counters.js';
+import { drainThenFlush } from './funnel/shutdown.js';
 import { signupWiringFromEnv } from './signup/admin-wiring.js';
 import { AdminViews, viewPathsFromEnv } from './views.js';
 
@@ -76,11 +77,13 @@ const stop = () => {
   stopping = true;
   access.stop();
   stopPurge?.();
-  // An approval email being sent now is allowed to finish and be saved (bounded: 5 s).
-  const drained = Promise.race([
-    Promise.all([stopDrain?.(), stopAuto?.()]).then(() => counters?.flush()),
-    new Promise<void>((r) => setTimeout(r, DRAIN_STOP_WAIT_MS).unref()),
-  ]);
+  // An approval email being sent now is allowed to finish and be saved (bounded: 5 s); the
+  // counters are flushed after it, finished or timed out, with their own bound (funnel/shutdown.ts).
+  const drained = drainThenFlush(
+    () => Promise.all([stopDrain?.(), stopAuto?.()]),
+    DRAIN_STOP_WAIT_MS,
+    counters,
+  );
   server.close(() => void drained.then(() => process.exit(0)));
   server.closeAllConnections();
 };

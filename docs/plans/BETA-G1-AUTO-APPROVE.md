@@ -130,8 +130,9 @@ added. This is tested.
   retried by the next sweep; the count, retries and claims are written back unchanged. Until the reset, the status
   route answers `cutoff` and `waitingBacklog` as `unknown` with the reason `reset_pending`. Never delete or edit the
   state file while auto-approve is on.
-- **Deleting the state file resets today's count** (and clears the claim set, and makes the next run a first run
-  that applies `TBI_SIGNUP_AUTO_SINCE` again): the cap is only as strong as the integrity of the admin-only state
+- **Deleting the state file resets today's count** (and clears the claim set). With evidence of an earlier run (in memory,
+  the `auto-approve.marker` file, or a marked request) the cut-off becomes now; without it (e.g. the whole state
+  directory deleted) the next run is a first run that applies `TBI_SIGNUP_AUTO_SINCE` again: the cap is only as strong as the integrity of the admin-only state
   dir. Only root or the admin service user can do it; the runbook must say so, and says to remove or update
   `TBI_SIGNUP_AUTO_SINCE` after the first enable.
 - An unreadable or corrupt state file, or one whose `day` is **after** today (a clock stepped back across

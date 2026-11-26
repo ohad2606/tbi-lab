@@ -2,12 +2,13 @@
  * TBI-022: process entry of the public sign-up intake (docs/alpha/SIGNUP-AUTOMATION-DESIGN.md).
  * Disabled unless TBI_SIGNUP_INTAKE=1 (exit 0, one log line). Enabled but misconfigured or with a
  * missing secret: one log line with a class code (never a path or a value) and exit 1; nothing
- * listens. SIGTERM / SIGINT: stop accepting, close connections, exit.
+ * listens. SIGTERM / SIGINT: stop accepting, close connections, (counters on) flush, exit.
  * K12: TBI_FUNNEL_COUNTERS=1 + TBI_FUNNEL_DIR (absolute, private) count `signup_submitted` and
  * `signup_form_view` (form tokens issued) (funnel/counters.ts); off by default, and a bad setting
  * only turns the counters off.
  */
 import { funnelCountersFromEnv } from '../funnel/counters.js';
+import { closeThenFlush } from '../funnel/shutdown.js';
 import { errorClass } from './errors.js';
 import { intakeConfigFromEnv, startIntake } from './intake-server.js';
 
@@ -29,15 +30,9 @@ try {
   const stop = () => {
     if (stopping) return;
     stopping = true;
-    // Counts not yet written get a bounded chance (1 s) to be saved.
-    const flushed = Promise.race([
-      counters?.flush(),
-      new Promise<void>((r) => setTimeout(r, 1_000).unref()),
-    ]);
-    void running
-      .close()
-      .then(() => flushed)
-      .then(() => process.exit(0));
+    // close() first (counts made by requests still in flight are included), then the flush, under
+    // one 1.5 s deadline (funnel/shutdown.ts); a hanging close() still reaches the flush and exit.
+    void closeThenFlush(() => running.close(), counters).then(() => process.exit(0));
   };
   process.on('SIGTERM', stop);
   process.on('SIGINT', stop);

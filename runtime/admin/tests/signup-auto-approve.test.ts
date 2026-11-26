@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  AUTO_MARKER_FILE,
   AUTO_STATE_FILE,
   AUTO_PAUSE_FILE,
   AUTO_RETRIES_PER_SWEEP,
@@ -1076,6 +1077,12 @@ describe('review follow-up (slice 3)', () => {
     expect(r.logs.filter((l) => /state dir unsafe \(ancestor_mode\)/.test(l))).toHaveLength(1);
     expect(r.added).toEqual([]);
     chmodSync(a, 0o700);
+    // Before-enable (req 8): unsafe -> safe with no state is lost state, not a first run: the
+    // cut-off is now, so the request from the unsafe period stays for the owner.
+    expect(await auto.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect(r.logs.filter((l) => /state missing, cut-off = now/.test(l))).toHaveLength(1);
+    r.clock.t += 5_000;
+    await createN(r, 1, 1);
     expect((await auto.sweep()).claimed).toBe(1);
   });
 
@@ -1438,8 +1445,9 @@ describe('BETA-G1 follow-up: every process starts unconfirmed (cut-off reset bef
     expect((await a.sweep()).stopped).toBe('counter_unreadable');
     expect(r.added).toEqual([]);
     rmSync(join(r.dir, AUTO_STATE_FILE));
-    // Still unconfirmed: a missing file now is a first run, which records the env cut-off.
-    expect((await a.sweep()).claimed).toBe(1);
+    // Before-enable (req 6): after an unreadable state a missing file is never a first run.
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect(counter(r.dir).since).toBe(new Date(r.clock.t).toISOString());
   });
 
   it('env TBI_SIGNUP_AUTO_SINCE older than the reset: the reset (now) wins', async () => {
@@ -1610,5 +1618,222 @@ describe('BETA-G1 QA: a paused or no_owner first run is no longer a first run', 
     expect((await r.store.get(during!)).status).toBe('pending');
     expect(counter(sd).since).toBe(new Date(r.clock.t).toISOString());
     expect(resets(r)).toHaveLength(1);
+  });
+});
+
+/** Frozen copy of validState as released at dea6f93 (the previous release's reader). */
+function oldValidState(c: unknown): boolean {
+  const s = c as Record<string, unknown> | null;
+  const isTime = (x: unknown) => typeof x === 'string' && Number.isFinite(Date.parse(x));
+  const isCount = (x: unknown) => Number.isInteger(x) && (x as number) >= 0;
+  if (!s || typeof s !== 'object' || s.v !== 2) return false;
+  if (typeof s.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s.day)) return false;
+  if (!isCount(s.count) || !isCount(s.retries)) return false;
+  if (s.since !== undefined && !isTime(s.since)) return false;
+  if (s.active !== undefined && typeof s.active !== 'boolean') return false;
+  const claims = s.claims as Record<string, Record<string, unknown>> | undefined;
+  if (!claims || typeof claims !== 'object' || Array.isArray(claims)) return false;
+  for (const [id, e] of Object.entries(claims)) {
+    if (!/^[0-9A-Za-z]{1,64}$/.test(id) || !e || typeof e !== 'object') return false;
+    if (!isTime(e.at) || !isTime(e.lastAttemptAt) || !isCount(e.attempts)) return false;
+    if (
+      e.spoolId !== undefined &&
+      (typeof e.spoolId !== 'string' || !/^[0-9A-Za-z_-]{1,64}$/.test(e.spoolId))
+    )
+      return false;
+  }
+  return true;
+}
+/** The previous release's first-run test on a state it read. */
+const oldFirstRun = (s: { since?: string; active?: boolean }) =>
+  s.since === undefined && s.active === undefined;
+
+describe('before-enable (BACKLOG 12/G1): lost state is never a first run; pause race', () => {
+  it('pause -> state deleted -> resume with a backdated SINCE approves no old request', async () => {
+    const r = await rig();
+    const a = r.auto(); // TBI_SIGNUP_AUTO_SINCE one day before the clock
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 }); // first run, recorded
+    writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+    expect((await a.sweep()).stopped).toBe('paused');
+    r.clock.t += 10_000;
+    const ids = await createN(r, 2); // after SINCE, while paused
+    rmSync(join(r.dir, AUTO_STATE_FILE));
+    rmSync(join(r.dir, AUTO_PAUSE_FILE));
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    for (const id of ids) expect((await r.store.get(id)).status).toBe('pending');
+    const s = counter(r.dir) as ReturnType<typeof counter> & { active?: boolean };
+    expect(s.since).toBe(new Date(r.clock.t).toISOString());
+    expect(r.logs.filter((l) => /state missing, cut-off = now/.test(l))).toHaveLength(1);
+    expect(r.added).toEqual([]);
+    // The state written keeps v:2 and loads in the previous release, not as a first run.
+    expect(oldValidState(s)).toBe(true);
+    expect(oldFirstRun(s)).toBe(false);
+  });
+
+  it('restart with the state file lost: a record auto-approved earlier marks it; cut-off = now', async () => {
+    const r = await rig();
+    await createN(r, 1);
+    expect((await r.auto().sweep()).claimed).toBe(1);
+    rmSync(join(r.dir, AUTO_STATE_FILE));
+    r.clock.t += 10_000;
+    const ids = await createN(r, 2, 1); // after the backdated SINCE
+    const b = r.auto(); // a new process, same backdated SINCE
+    expect(await b.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    for (const id of ids) expect((await r.store.get(id)).status).toBe('pending');
+    expect(counter(r.dir).since).toBe(new Date(r.clock.t).toISOString());
+  });
+
+  it('a true first run (no state, no earlier auto mark) still records SINCE', async () => {
+    const r = await rig();
+    await createN(r, 1);
+    expect((await r.auto().sweep()).claimed).toBe(1);
+    expect(r.logs.filter((l) => /state missing/.test(l))).toHaveLength(0);
+  });
+
+  it('pause created between the sweep check and the claim: 0 claims, count unchanged, nothing written', async () => {
+    const r = await rig();
+    const a = r.auto();
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0 });
+    r.clock.t += 10_000;
+    const ids = await createN(r, 2);
+    const before = readFileSync(join(r.dir, AUTO_STATE_FILE), 'utf8');
+    const get = r.store.get.bind(r.store);
+    const list = r.store.list.bind(r.store);
+    let armed = false;
+    // Armed once the sweep has listed (list() reads records itself): the next get is the claim's.
+    r.store.list = async () => {
+      const out = await list();
+      armed = true;
+      return out;
+    };
+    r.store.get = async (id: string) => {
+      if (armed) {
+        armed = false; // the owner pauses while the claim is being checked
+        writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+      }
+      return get(id);
+    };
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0, stopped: 'paused' });
+    expect(readFileSync(join(r.dir, AUTO_STATE_FILE), 'utf8')).toBe(before);
+    expect(counter(r.dir).count).toBe(0);
+    for (const id of ids) {
+      const rec = await get(id);
+      expect(rec.status).toBe('pending');
+      expect(rec.autoApprovedAt).toBeUndefined();
+    }
+    expect(r.added).toEqual([]);
+  });
+
+  it('a pause check that errors inside the claim counts as paused', async () => {
+    const r = await rig();
+    await createN(r, 1);
+    let calls = 0;
+    const enoent = () => Object.assign(new Error('x'), { code: 'ENOENT' });
+    const a = r.auto({
+      stat: async () => {
+        calls++;
+        // 1: sweep start, 2: before the claim, 3: inside the claim -> EIO.
+        throw calls === 3 ? Object.assign(new Error('x'), { code: 'EIO' }) : enoent();
+      },
+    });
+    expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0, stopped: 'paused' });
+    expect(counter(r.dir).count).toBe(0);
+  });
+
+  it('pause created between the retry check and reserveRetry: no retry reserved, nothing called', async () => {
+    const r = await rig();
+    await createN(r, 1);
+    r.addAnswers.push('pending');
+    expect(await r.auto({ cap: 1 }).sweep()).toEqual({ claimed: 1, attempted: 1 });
+    r.clock.t += AUTO_RETRY_BACKOFF_MS;
+    let calls = 0;
+    const b = r.auto({
+      cap: 1,
+      stat: async () => {
+        calls++;
+        // 1: sweep start, 2: before reserveRetry, 3: inside it -> paused.
+        if (calls >= 3) return {};
+        throw Object.assign(new Error('x'), { code: 'ENOENT' });
+      },
+    });
+    const addsBefore = r.added.length;
+    expect(await b.sweep()).toEqual({ claimed: 0, attempted: 0, stopped: 'paused' });
+    const s = counter(r.dir);
+    expect(s.retries).toBe(0);
+    expect(Object.values(s.claims)[0]!.attempts).toBe(1);
+    expect(r.added.length).toBe(addsBefore);
+  });
+});
+
+describe('restart gap: the marker file makes a lost state visible to a new process', () => {
+  const lose = (r: Rig) => rmSync(join(r.dir, AUTO_STATE_FILE));
+  const lostLines = (r: Rig) => r.logs.filter((l) => /state missing, cut-off = now/.test(l));
+
+  for (const [name, first] of [
+    ['paused', {}],
+    ['no_owner', { noOwner: true }],
+    ['a recorded cut-off', {}],
+  ] as const) {
+    it(`earlier run: ${name}, nothing approved, state lost, restart: a past SINCE is not applied`, async () => {
+      const r = await rig();
+      if (name === 'paused') writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+      await r.auto(first).sweep();
+      expect(lstatSync(join(r.dir, AUTO_MARKER_FILE)).mode & 0o777).toBe(0o600);
+      rmSync(join(r.dir, AUTO_PAUSE_FILE), { force: true });
+      lose(r);
+      await createN(r, 1);
+      const next = r.auto();
+      // status() says what the next sweep will do, and writes nothing.
+      const before = readdirSync(r.dir).sort();
+      expect(await next.status()).toMatchObject({
+        cutoff: 'unknown',
+        waitingBacklog: 'unknown',
+        unknownReasons: { cutoff: 'reset_pending' },
+      });
+      expect(readdirSync(r.dir).sort()).toEqual(before);
+      expect(await next.sweep()).toEqual({ claimed: 0, attempted: 0 });
+      expect(lostLines(r)).toHaveLength(1);
+      expect(r.added).toEqual([]);
+    });
+  }
+
+  it('status(): marked records and no state file or marker: reset pending, not the past SINCE', async () => {
+    const r = await rig();
+    const [id] = await createN(r, 1);
+    await r.store.update(id!, { autoApprovedAt: new Date(NOON_IL).toISOString() });
+    expect(await r.auto().status()).toMatchObject({
+      cutoff: 'unknown',
+      waitingBacklog: 'unknown',
+      unknownReasons: { cutoff: 'reset_pending' },
+    });
+    expect(existsSync(join(r.dir, AUTO_MARKER_FILE))).toBe(false);
+  });
+
+  it('a marker entry that is not a plain file (dangling symlink) still counts: fail closed', async () => {
+    const r = await rig();
+    symlinkSync(join(r.dir, 'nowhere'), join(r.dir, AUTO_MARKER_FILE));
+    await createN(r, 1);
+    expect(await r.auto().sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect(lostLines(r)).toHaveLength(1);
+    expect(existsSync(join(r.dir, 'nowhere'))).toBe(false);
+  });
+
+  it('nothing is written into an unsafe state dir', async () => {
+    const r = await rig();
+    chmodSync(r.dir, 0o777);
+    const before = readdirSync(r.dir).sort();
+    expect((await r.auto().sweep()).stopped).toBe('state_dir_unsafe');
+    expect(readdirSync(r.dir).sort()).toEqual(before);
+  });
+
+  it('rollback: the store listing and purge (unchanged from the previous release) leave the marker', async () => {
+    const r = await rig();
+    await createN(r, 1);
+    await r.auto().sweep();
+    r.clock.t += 400 * DAY_MS;
+    await r.store.purge();
+    expect(await r.store.list()).toEqual([]);
+    expect(existsSync(join(r.dir, AUTO_MARKER_FILE))).toBe(true);
+    expect(await autoStateDirCheck(r.dir)).toBeNull();
   });
 });
