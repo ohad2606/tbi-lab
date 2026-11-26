@@ -556,3 +556,33 @@ for (const lang of ['he', 'en'] as const) {
       }
     });
 }
+
+/**
+ * A deferred focus rescue (focus-rescue.ts) can run right after a confirmation replaced its
+ * opener, while focus is on <body>. The observer stands in for it at that exact moment: the
+ * confirmation must already hold focus, so its opener is never mistaken for the heading.
+ */
+test('a rescue right after a confirmation opens does not take over its opener', async ({
+  page,
+  context,
+}) => {
+  await signIn(context, 'en');
+  await open(page, `#/testers/${ALEX}`);
+  await button(page, 'disable').focus();
+  await page.evaluate(() => {
+    const observer = new MutationObserver(() => {
+      if (!document.querySelector('[data-testid="confirm"]')) return;
+      observer.disconnect();
+      if (document.activeElement !== document.body) return;
+      const heading = document.querySelector<HTMLElement>('main h1')!;
+      heading.tabIndex = -1;
+      heading.focus();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('confirm-cancel')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('confirm')).toHaveCount(0);
+  await expect(button(page, 'disable')).toBeFocused();
+});
