@@ -116,9 +116,17 @@ person: a write can fail (the count is then kept in memory and retried, and lost
 first), a day is capped at 10 000 per event, and duplicates of an address are not counted.
 
 - Stored: per UTC day and event, one integer. Events (fixed allow-list): `landing_view`,
-  `signup_form_view`, `signup_submitted`, `signup_approved`, `first_session`. Tonight only two are
-  counted: `signup_submitted` (the intake, once per new request; duplicates and refusals are not
-  counted) and `signup_approved` (the admin service, once per request, when its account is added).
+  `signup_form_view`, `signup_submitted`, `signup_approved`, `first_session`. Three are counted
+  (`landing_view` and `first_session` are not, so their zeros mean "not counted"):
+  - `signup_form_view` (the intake, web route only): **form tokens issued**, one per successful
+    `GET /signup/form-token`; refused requests are not counted. The page fetches a token when it
+    loads (so again after a reload), on focus or submit when it has none still fresh (the fetch
+    failed, or the token is close to expiry; there is no timer) and after a 401. It is **not** a
+    number of people or visits, and dividing sign-ups by it does not give a conversion rate. A bot
+    can raise it to the daily cap (10 000) while staying within the per-source token limit; accepted
+    for an indicative number (nothing is stored per source).
+  - `signup_submitted` (the intake, once per new request; duplicates and refusals are not counted).
+  - `signup_approved` (the admin service, once per request, when its account is added).
 - Never stored or logged: IP address, user agent, referrer, URL, address, name, cookie, request id,
   client id. The intake sets no cookie.
 - One file `funnel-counters.json` (0600) in a private directory (0700); a directory that group or
@@ -130,3 +138,24 @@ first), a day is capped at 10 000 per event, and duplicates of an address are no
   default; a bad setting turns only the counters off, never the sign-up.
 - There is no HTTP endpoint. `FunnelCounters.snapshot()` returns `{v:1, days:{<day>:{<event>:n}}}`
   for an operator or a later owner view.
+- Enabling the counters on Alpha is a production change: it needs the owner's approval.
+
+### Reading the counters (`scripts/funnel-report.mjs`)
+
+Run as a user that may read the directories (they are private). Give each service's directory once:
+
+```sh
+sudo node scripts/funnel-report.mjs --dir /path/to/intake-funnel-dir --dir /path/to/admin-funnel-dir
+sudo node scripts/funnel-report.mjs --dir /path/to/funnel-dir --csv
+```
+
+- Read-only: it writes nothing, ignores the lock file, and renames, repairs or prunes nothing.
+- Output: per UTC day, one row per directory that has the day (`dir` = position of its `--dir`,
+  from 1) and a `total` row; one column per event, plus `unknown`: the sum of event names this copy
+  of the script does not know (a newer writer; the names are not printed).
+- A directory without a counters file counts as empty (warning on stderr).
+- Exit 0: report. Exit 1: an input is invalid or unreadable; nothing is printed on stdout, and
+  stderr gives one reason code per bad directory (`dir_unreadable`, `dir_symlink`,
+  `dir_not_directory`, `file_symlink`, `file_not_regular`, `file_too_large` (over 1 MiB),
+  `file_unreadable`, `file_invalid`). Exit 2: usage (`--dir` must be absolute, without `..`, and
+  not repeat a directory).
