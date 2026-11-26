@@ -38,7 +38,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { availableParallelism, totalmem } from 'node:os';
 import { join } from 'node:path';
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ESP32_ARDUINO_PROFILE } from '@tbi-lab/domain';
 import { ArduinoEsp32Provider, type ArduinoProfileRecord } from '../builder/arduino.js';
 import { Grants } from '../builder/grants.js';
@@ -56,6 +56,7 @@ import { ticketFor } from '../identity/test-gate.js';
 import type { HostSession } from '../host/session.js';
 import { Circuit, open } from '../host/tests/r1-support.js';
 import { realHost } from './r2-support.js';
+import { capacityFaultFailures, type CapacityFaults } from './c5-faults.js';
 
 const N = Number(process.env.TBI_C5_N ?? 1);
 const SECONDS = Number(process.env.TBI_C5_SECONDS ?? 120);
@@ -490,6 +491,8 @@ describe.skipIf(!process.env.TBI_C5)('C-5 capacity (opt-in measurement)', () => 
         report,
       );
       console.log(JSON.stringify(report, null, 2));
+      // A measurement, except the requested fault drills: one that ran must recover and clean up.
+      if (FAULTS) expect(capacityFaultFailures(faults as CapacityFaults, result)).toEqual([]);
     },
     (SECONDS + 900) * 1000,
   );

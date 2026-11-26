@@ -166,6 +166,33 @@ describe('save and restore of the installed policy', () => {
     expect(state.installed).toEqual(file('policy.beta.json'));
     expect(existsSync(backup)).toBe(false);
   });
+  it('a restart failure inside restore names the backup file; the restore can be retried', () => {
+    const fail: string[] = [];
+    const { state, deps } = instance(file('policy.beta.json'), true, fail);
+    const p = InstalledPolicy.capture('tbi-s8', deps, path('policy.beta.json'));
+    p.install(file('policy.json'), UNITS);
+    fail.push('systemctl');
+    const message = errorOf(() => p.restore(UNITS));
+    expect(message).toMatch(/NOT restarted.*\S+policy\.before\.json.*systemctl/);
+    expect(state.installed).toEqual(file('policy.beta.json'));
+    const backup = /(\/\S+policy\.before\.json)/.exec(message)![1]!;
+    expect(readFileSync(backup)).toEqual(file('policy.beta.json'));
+    fail.length = 0;
+    expect(p.restore(UNITS)).toBe(true);
+    expect(existsSync(backup)).toBe(false);
+  });
+  it('restore does not rewrite the backup: it is the file saved before the first change', () => {
+    const fail: string[] = [];
+    const { deps } = instance(file('policy.beta.json'), true, fail);
+    const log = vi.spyOn(console, 'log');
+    const p = InstalledPolicy.capture('tbi-s8', deps, path('policy.beta.json'));
+    p.install(file('policy.json'), UNITS);
+    const backup = /saved to (\S+)/.exec(String(log.mock.lastCall![0]))![1]!;
+    writeFileSync(backup, 'marker: must stay as it is');
+    fail.push('install');
+    expect(() => p.restore(UNITS)).toThrow(/NOT restored/);
+    expect(readFileSync(backup, 'utf8')).toBe('marker: must stay as it is');
+  });
   it('a restore that cannot verify the installed bytes names the backup', () => {
     const fail: string[] = [];
     const { deps } = instance(file('policy.beta.json'), true, fail);
@@ -189,6 +216,8 @@ describe('the installed policy must be the repository file', () => {
       `sudo install -m 0400 ${path('policy.beta.json')} /etc/tbi-s8/policy.json && ` +
         'sudo systemctl restart tbi-s8-build.service tbi-s8-session-host.service',
     );
+    // The printed command can be pasted as it is: no punctuation after it.
+    expect(message).toMatch(/tbi-s8-session-host\.service(\n|$)/);
     expect(state.calls).toEqual(['cat']);
     expect(state.installed).toEqual(left);
   });

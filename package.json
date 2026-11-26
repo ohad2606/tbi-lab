@@ -31,6 +31,7 @@
     "assist:build": "esbuild runtime/assist/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/assist/dist/assist-service.mjs --log-level=warning",
     "admin:build": "esbuild runtime/admin/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/admin/dist/admin-service.mjs --log-level=warning",
     "signup:build": "esbuild runtime/admin/signup/intake-main.ts --bundle --platform=node --format=esm --target=node22 --outfile=runtime/admin/dist/signup-intake.mjs --log-level=warning",
+    "release:runtime-gate": "node scripts/release/runtime-gate.mjs",
     "test:r2": "npm run host:build && vitest run --config vitest.runtime.config.ts runtime/tests/r2-",
     "test:r2:soak": "npm run host:build && vite-node runtime/soak/r2-soak.ts",
     "test:qemu-wasm": "TBI_QEMU_WASM=1 playwright test experiments/gate-b-esp32/browser/qemu-wasm.wasm.spec.ts"
