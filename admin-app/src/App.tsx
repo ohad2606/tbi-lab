@@ -219,6 +219,7 @@ export function App() {
   else if (!data.accounts)
     body = (
       <main class="access">
+        <h1 class="visually-hidden">{t('console.appName')}</h1>
         <Loading />
       </main>
     );

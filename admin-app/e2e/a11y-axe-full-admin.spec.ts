@@ -140,7 +140,9 @@ const TITLES = {
   tester: { he: 'בודק/ת', en: 'Tester' },
   add: { he: 'הוספת בודק/ת', en: 'Add tester' },
   report: { he: 'דיווח', en: 'Report' },
+  feedback: { he: 'משוב', en: 'Feedback' },
 };
+const LOADING = { he: /^טוען/, en: /^Loading/ };
 const h1 = (page: Page) => page.getByRole('heading', { level: 1 });
 const titled = async (page: Page, lang: Lang, screen: keyof typeof TITLES) =>
   expect(h1(page)).toHaveText(TITLES[screen][lang]);
@@ -324,7 +326,7 @@ const WALKS: Record<string, { subject?: string; walk: Walk }> = {
       await titled(page, lang, 'testers');
       await check('testers unavailable');
       await open(page, '#/add');
-      await visible(page, 'problem');
+      await visible(page, 'problem', 'add-back');
       await titled(page, lang, 'add');
       await check('add unavailable');
       await open(page, `#/testers/${ALEX}`);
@@ -459,6 +461,70 @@ for (const lang of ['he', 'en'] as const) {
       expect(await node!.evaluate((e) => e === document.activeElement)).toBe(true);
       expect(await page.evaluate(() => (window as unknown as { h1Focus: number }).h1Focus)).toBe(1);
     });
+
+  // Loading and error states keep one h1 and the screen's way back (G3).
+  for (const outcome of ['loaded', 'unavailable'] as const)
+    test(`(${lang}) feedback list loading then ${outcome}: one heading, which keeps focus`, async ({
+      page,
+      context,
+    }) => {
+      await signIn(context, lang);
+      let release!: () => void;
+      const held = new Promise<void>((r) => (release = r));
+      await page.route(/\/admin\/reports$/, async (r) => {
+        await held;
+        if (outcome === 'loaded') await r.continue();
+        else await r.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+      });
+      await open(page, '#/today');
+      await page.getByTestId('nav-feedback').click();
+      await expect(page.getByText(LOADING[lang])).toBeVisible();
+      await expect(h1(page)).toHaveCount(1);
+      await titled(page, lang, 'feedback');
+      await expect(h1(page)).toBeFocused();
+      expect(await scan(page)).toEqual([]);
+      const node = await h1(page).elementHandle();
+      release();
+      await visible(page, outcome === 'loaded' ? 'feedback-empty' : 'problem');
+      await titled(page, lang, 'feedback');
+      expect(await node!.evaluate((e) => e === document.activeElement)).toBe(true);
+    });
+
+  test(`(${lang}) first load: the waiting page has a heading`, async ({ page, context }) => {
+    await signIn(context, lang);
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    await page.route('**/admin-api/accounts', async (r) => {
+      await held;
+      await r.continue();
+    });
+    await open(page, '#/add');
+    await expect(page.getByText(LOADING[lang])).toBeVisible();
+    await expect(h1(page)).toHaveCount(1);
+    await expect(h1(page)).toHaveText('TBI Lab Admin');
+    expect(await scan(page)).toEqual([]);
+    release();
+    await visible(page, 'add-form');
+    await titled(page, lang, 'add');
+  });
+
+  test(`(${lang}) add unavailable: Back leads to the testers heading`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    await page.route('**/admin-api/accounts', (r) =>
+      r.fulfill({ status: 503, contentType: 'application/json', body: '{}' }),
+    );
+    await open(page, '#/add');
+    await visible(page, 'problem');
+    const back = page.getByTestId('add-back');
+    await expect(back).toHaveAccessibleName(lang === 'he' ? 'חזור' : 'Back');
+    await back.focus();
+    await page.keyboard.press('Enter');
+    await titled(page, lang, 'testers');
+    await expect(h1(page)).toBeFocused();
+  });
 
   for (const [name, { subject, walk }] of Object.entries(WALKS)) {
     test(`axe (${lang}) ${name}`, async ({ page, context, request }) => {
