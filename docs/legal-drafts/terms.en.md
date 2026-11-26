@@ -17,8 +17,10 @@ TBI Lab is a web-based electronics and embedded laboratory for the classic `ESP3
 ## 4. Applying and access
 - Applying does not give access. We review applications manually, places are limited, and you may be placed on a waiting list.
 - Only approved accounts can sign in to the Lab. Approval is at our discretion. **[LAWYER]** Is a stated criteria list or a duty to give reasons required?
-- Access is tied to the email address you applied with. Sign in with the Google account that uses that address.
+- Access is tied to the Google account you applied with. Sign in with that same account.
 - You may withdraw your application at any time. **[PROPOSED]** A self-service button for withdrawal and deletion on the status page.
+
+**[לבדיקת עו"ד / FOR LAWYER REVIEW: in the sign-up code there is no Google sign-in when you apply; you give an email address. Access is first tied to that email address, and you sign in with the Google account that uses it.]**
 
 **[לבדיקת עו"ד / FOR LAWYER REVIEW: there is no status page, waiting-list status or self-service button; a request not yet approved stays pending, and deletion is by request. Automatic approval of applications is built but switched off, while the draft says applications are reviewed manually.]**
 
