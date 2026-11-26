@@ -120,11 +120,12 @@ export class InstalledPolicy {
     expected: string = repoPolicyFile(),
   ): InstalledPolicy {
     const bytes = InstalledPolicy.read(instance, deps);
+    // The command ends the message, on its own line: it can be pasted as printed.
     const fix =
-      `A killed test run may have left a temporary policy installed. Recover with: ` +
+      `A killed test run may have left a temporary policy installed. If the instance was ` +
+      `installed with another repository file, set TBI_S8_POLICY to it; else recover with:\n` +
       `sudo install -m 0400 ${expected} /etc/${instance}/policy.json && ` +
-      `sudo systemctl restart ${instance}-build.service ${instance}-session-host.service . ` +
-      `If the instance was installed with another repository file, set TBI_S8_POLICY to it.`;
+      `sudo systemctl restart ${instance}-build.service ${instance}-session-host.service`;
     try {
       parse(bytes);
     } catch (e) {
@@ -205,19 +206,29 @@ export class InstalledPolicy {
   /**
    * Puts the saved bytes back (checked by reading them again) and restarts `units`; false, doing
    * nothing, if this object changed nothing. Not gated again: it only undoes a gated change.
+   * The backup file is never written here (a failing write must not damage it): the bytes are
+   * installed from a separate copy. Every failure names the backup, which is kept.
    */
   restore(units: string[]): boolean {
     if (!this.changed) return false;
-    const failed = () =>
-      `policy of ${this.instance} NOT restored: restore it from ${this.dir}/policy.before.json`;
+    const backup = join(this.dir!, 'policy.before.json');
+    const failed = () => `policy of ${this.instance} NOT restored: restore it from ${backup}`;
     try {
-      this.write('policy.before.json', this.bytes);
+      this.write('policy.restore.json', this.bytes);
       if (!InstalledPolicy.read(this.instance, this.deps).equals(this.bytes))
         throw new Error('the installed bytes differ from the saved ones');
     } catch (e) {
       throw new Error(`${failed()} (${(e as Error).message})`, { cause: e });
     }
-    this.restart(units);
+    try {
+      this.restart(units);
+    } catch (e) {
+      throw new Error(
+        `policy of ${this.instance} restored but services NOT restarted; the saved policy is ` +
+          `kept at ${backup} (${(e as Error).message})`,
+        { cause: e },
+      );
+    }
     this.changed = false;
     rmSync(this.dir!, { recursive: true, force: true });
     this.dir = null;
