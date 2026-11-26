@@ -8,7 +8,9 @@
  */
 
 import { isolateLtr } from '../i18n/i18n.js';
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { viewerPan } from '../views/scene3d/camera.js';
+import { PanButtons, SHORT_VIEW_PX } from './PanButtons.js';
 import { emptySelection } from '@tbi-lab/domain';
 import { sceneObstacles, type SceneDescription } from '../views/scene3d/scene.js';
 import { deriveCheckedScene } from '../views/scene3d/checked.js';
@@ -40,8 +42,8 @@ const storage = (): Storage | null => {
   }
 };
 
-/** Shift + arrow pan step, as a fraction of the visible height. */
-const PAN_STEP = 0.1;
+/** One tilt step (15 degrees). */
+const TILT_STEP = Math.PI / 12;
 
 /** A press that moves less than this (px) is a click (selection); more is a camera drag. */
 const CLICK_SLOP = 5;
@@ -62,6 +64,18 @@ export function ThreeView() {
   const [stats, setStats] = useState<ViewerStats | null>(null);
   const [layers, setLayers] = useState<LayerVisibility>(() => readLayers(storage()));
   const [layersOpen, setLayersOpen] = useState(false);
+  const [short, setShort] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const update = () => setShort(el.clientHeight > 0 && el.clientHeight < SHORT_VIEW_PX);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [!doc]);
+  const pan = (dx: number, dy: number) => viewer.current?.pan(...viewerPan(dx, dy));
   const layersButton = useRef<HTMLButtonElement>(null);
   const changeLayers = (next: LayerVisibility) => {
     setLayers(next);
@@ -324,7 +338,8 @@ export function ThreeView() {
   const routeLimits = scene?.routeLimits?.length ? scene.routeLimits.join(', ') : '';
   return (
     <div
-      class="view3d-wrap"
+      class={`view3d-wrap${short ? ' view-short' : ''}`}
+      ref={wrap}
       dir="ltr"
       data-testid="view3d"
       data-status={status}
@@ -396,7 +411,7 @@ export function ThreeView() {
         onBlur={releaseKey}
         role="group"
         aria-label={t('view3d.aria', { name: doc.name })}
-        aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown + - Home"
+        aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown + - Home"
         tabIndex={status === 'ready' ? 0 : -1}
         data-testid="view3d-host"
         onKeyDown={(e) => {
@@ -415,17 +430,20 @@ export function ThreeView() {
           // The same camera actions as the buttons. Arrows are spatial: not mirrored under RTL.
           const v = viewer.current;
           if (!v) return;
-          // Shift + arrows pan (the view moves the way the arrow points).
+          // Shift + arrows pan: the view moves the way the arrow points, as in the 2D views
+          // (the drawing appears to move the other way). Plain arrows orbit the same way.
           const act: Record<string, () => void> = e.shiftKey
             ? {
-                ArrowLeft: () => v.pan(-PAN_STEP, 0),
-                ArrowRight: () => v.pan(PAN_STEP, 0),
-                ArrowUp: () => v.pan(0, PAN_STEP),
-                ArrowDown: () => v.pan(0, -PAN_STEP),
+                ArrowLeft: () => pan(-1, 0),
+                ArrowRight: () => pan(1, 0),
+                ArrowUp: () => pan(0, -1),
+                ArrowDown: () => pan(0, 1),
               }
             : {
                 ArrowLeft: () => v.rotate(-Math.PI / 8),
                 ArrowRight: () => v.rotate(Math.PI / 8),
+                ArrowUp: () => v.tilt(TILT_STEP),
+                ArrowDown: () => v.tilt(-TILT_STEP),
                 '+': () => v.zoom(1.25),
                 '=': () => v.zoom(1.25),
                 '-': () => v.zoom(0.8),
@@ -478,7 +496,11 @@ export function ThreeView() {
       )}
       {status === 'ready' && (
         <>
-          <div class="canvas-controls" role="group" aria-label={t('view3d.controls')}>
+          <div
+            class="canvas-controls view-controls view3d-controls"
+            role="group"
+            aria-label={t('view3d.controls')}
+          >
             <button
               type="button"
               class="icon-button"
@@ -536,6 +558,42 @@ export function ThreeView() {
             <button
               type="button"
               class="icon-button"
+              data-testid="view3d-tilt-up"
+              aria-label={t('view3d.tiltUp')}
+              title={t('view3d.tiltUp')}
+              onClick={() => viewer.current?.tilt(TILT_STEP)}
+            >
+              <svg
+                viewBox="0 0 20 20"
+                width="18"
+                height="18"
+                aria-hidden="true"
+                class="control-icon"
+              >
+                <path d="M3 16h14M10 13V3M6 7l4-4 4 4" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="icon-button"
+              data-testid="view3d-tilt-down"
+              aria-label={t('view3d.tiltDown')}
+              title={t('view3d.tiltDown')}
+              onClick={() => viewer.current?.tilt(-TILT_STEP)}
+            >
+              <svg
+                viewBox="0 0 20 20"
+                width="18"
+                height="18"
+                aria-hidden="true"
+                class="control-icon"
+              >
+                <path d="M3 4h14M10 7v10M6 13l4 4 4-4" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="icon-button"
               data-testid="view3d-fit"
               aria-label={t('canvas.zoomFit')}
               title={t('canvas.zoomFit')}
@@ -569,6 +627,8 @@ export function ThreeView() {
                 <path d="M3 10 10 3l7 7M5 8.5V17h10V8.5" />
               </svg>
             </button>
+            {/* The single-pointer alternative to a right- or middle-button drag. */}
+            <PanButtons view="view3d" onPan={pan} />
           </div>
           <div
             class="view3d-presets"

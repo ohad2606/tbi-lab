@@ -61,8 +61,9 @@ Notation: file paths are under `app/src/ui/`. `Mod` = Ctrl or Cmd. "Part focused
 
 | Key | Context | Action | File:line | Test |
 |---|---|---|---|---|
-| Arrow Left / Right | 3D view focused | Rotate by 22.5 degrees; not mirrored in RTL | ThreeView.tsx:420-431 | e2e/three-layers.spec.ts:151 is another control; rotate by key NO TEST found |
-| Shift+Arrows | 3D view focused | Pan | ThreeView.tsx:418-424 | e2e/s9-semantics.spec.ts:227-229 |
+| Arrow Left / Right | 3D view focused | Rotate by 22.5 degrees; not mirrored in RTL | ThreeView.tsx:434-451 | e2e/three-layers.spec.ts:151 is another control; rotate by key NO TEST found |
+| Arrow Up / Down | 3D view focused | Tilt by 15 degrees (look from higher / lower) | ThreeView.tsx:434-451 | e2e/a11y-viewpan.spec.ts |
+| Shift+Arrows | 3D view focused | Move the view that way, as in the 2D views; not mirrored in RTL | ThreeView.tsx:436-443 | e2e/a11y-viewpan.spec.ts, e2e/s9-semantics.spec.ts:227-229 |
 | + or = / - | 3D view focused | Zoom in / out | ThreeView.tsx:428-430 | e2e/three-layers.spec.ts:144 (+); - NO TEST found |
 | Home | 3D view focused | Reset camera | ThreeView.tsx:431 | e2e/s9-semantics.spec.ts:230 |
 | Space or Enter | 3D view or its hidden control, selected switch/button, running | Toggle a switch; hold a push button | ThreeView.tsx:405-413, 454-463 | e2e/three-controls.spec.ts:97,165 |

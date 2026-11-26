@@ -621,23 +621,3 @@ export function wireListEntries(
     to: endName(w.to),
   }));
 }
-
-/**
- * How far to move the camera (world units) so that `pos` lies at least `margin` inside the visible
- * area (`viewW` x `viewH` world units, top-left at `camera`). Zero on an axis that is already
- * inside. When the view is smaller than twice the margin the point is centred on that axis.
- */
-export function panIntoView(
-  camera: { x: number; y: number },
-  view: { w: number; h: number },
-  pos: { x: number; y: number },
-  margin: number,
-): { dx: number; dy: number } {
-  const axis = (p: number, c: number, len: number): number => {
-    if (len <= 2 * margin) return p - (c + len / 2);
-    if (p < c + margin) return p - c - margin;
-    if (p > c + len - margin) return p - c - len + margin;
-    return 0;
-  };
-  return { dx: axis(pos.x, camera.x, view.w), dy: axis(pos.y, camera.y, view.h) };
-}
