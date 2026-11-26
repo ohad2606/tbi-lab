@@ -43,6 +43,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   { id: 'cancelPlace', scope: 'global', keys: ['Esc'], file: 'Editor.tsx' },
 
   { id: 'pinMode', scope: 'circuit', keys: ['W'], file: 'Canvas.tsx' },
+  { id: 'probePlace', scope: 'circuit', keys: ['Enter', 'Space'], file: 'Canvas.tsx' },
   { id: 'wireSelect', scope: 'circuit', keys: [']', '['], file: 'Canvas.tsx' },
   { id: 'wireRepick', scope: 'circuit', keys: ['E'], file: 'Canvas.tsx' },
   { id: 'escStep', scope: 'circuit', keys: ['Esc'], file: 'Canvas.tsx' },

@@ -663,7 +663,12 @@ export const he: Record<MessageKey, string> = {
   'inspector.stopToChange': 'יש לעצור את הסימולציה כדי לשנות ערך זה.',
 
   'canvas.hint.probe':
-    '[[probe]]: לחצו על [[terminal]] או חוט למתח ביחס ל-GND, או על [[component]] לזרם שלו. Esc לסיום.',
+    '[[probe]]: לחצו על [[terminal]] או חוט למתח ביחס ל-GND, או על [[component]] לזרם שלו. במקלדת: {enter} או {space} על [[component]] ממוקד (זרם) או על חוט שנבחר ב-{prev} {next} (מתח); {w}, אחר כך חצים ו-{enter} למתח של פין. {esc} לסיום.',
+  'probe.kb.added': 'נוסף [[probe]]: {probe}',
+  'probe.kb.exists': 'ה-[[probe]] כבר מוצב: {probe}',
+  'probe.kb.noNet': 'לא נוסף [[probe]]: לחוט הזה אין קצה בפין שממנו אפשר לקרוא את ה-net.',
+  'probe.kb.pins':
+    '{component}: {count} פינים, כעת על {pin}. מקשי החצים עוברים בין הפינים, Enter או רווח מודדים מתח, Escape יוצא מהפינים.',
   'probe.tool': '[[probe]]',
   'probe.voltageLabel': 'V({point}) = {value}',
   'probe.currentLabel': 'I({point}) = {value}',
@@ -2358,6 +2363,9 @@ export const he: Record<MessageKey, string> = {
   'shortcut.wireRepick.action':
     'בחירה מחדש של קצה אחד בחוט הנבחר (בוחרים את הקצה ואז את הפין החדש)',
   'shortcut.wireRepick.when': 'חוט נבחר; לא בזמן הרצה ולא לקריאה בלבד',
+  'shortcut.probePlace.action':
+    'הצבת [[probe]] על הרכיב הממוקד (זרם), על פין או על החוט הנבחר (מתח); במצב בדיקה W מגיע לפינים גם בזמן הרצה',
+  'shortcut.probePlace.when': 'כלי ה-[[probe]] פעיל; לא לקריאה בלבד',
   'shortcut.escStep.action': 'חזרה צעד אחד אחורה: מצב בדיקה, רכיב מוכן, מצב ציור, ואז ניקוי הבחירה',
   'shortcut.escStep.when': 'תצוגת המעגל',
   'shortcut.delete.action': 'מחיקת הרכיבים, החוטים או הצמתים הנבחרים',

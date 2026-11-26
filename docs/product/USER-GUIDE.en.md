@@ -56,7 +56,7 @@ Open the **Code** tab. Choose the **Programming language**: **Arduino C++** or *
 
 ## Probes and warnings
 
-- The **Probe** tool shows the voltage of a terminal or wire (to GND), or the current through a part. Press `Esc` to leave the tool. Probes only read values; they never change the circuit.
+- The **Probe** tool shows the voltage of a terminal or wire (to GND), or the current through a part. With the keyboard, press `Enter` or `Space` on a focused part for its current, or on a wire selected with `[` or `]` for its voltage; press `W`, move with the arrow keys and press `Enter` or `Space` for a pin voltage. Press `Esc` to leave the tool. Probes only read values; they never change the circuit.
 - A part pushed beyond its published absolute maximum is marked "may be damaged". Outside its specified operating range you get a separate notice. If the manufacturer publishes no damage threshold, the risk is unknown: treat it as unsafe. The simulation keeps showing the calculated values and does not model damage.
 - Wrong wiring is explained, not hidden. For example, an ESP32 input that nothing holds at a level stops the run, and the message suggests a pull-up or pull-down resistor (for example 10 kΩ). The ESP32's internal pull resistors are not simulated.
 
@@ -78,6 +78,7 @@ This list is copied from the shortcuts registry in the app (`app/src/ui/shortcut
 ### Circuit view
 
 - <!-- shortcut:pinMode -->`W`: Start wiring from the focused part: choose one of its pins (A part has focus; not while running)
+- <!-- shortcut:probePlace -->`Enter` or `Space`: Probe the focused part (current), pin or selected wire (voltage); in probe mode W reaches the pins, also while running (Probe tool on; not read-only)
 - <!-- shortcut:wireSelect -->`]` or `[`: Select the previous or next wire; its ends are announced (Circuit view, not in pin mode)
 - <!-- shortcut:wireRepick -->`E`: Re-pick one end of the selected wire (choose the end, then the new pin) (A wire is selected; not while running or read-only)
 - <!-- shortcut:escStep -->`Esc`: Step back one level: probe mode, armed part, drawing mode, then clear the selection (Circuit view)

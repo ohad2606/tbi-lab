@@ -96,7 +96,14 @@ import { resolveWireColors } from '../views/wireColors.js';
 import { pressControl, toggleControl } from './controls.js';
 import type { GpioLevel } from '../runtime/view.js';
 import { warningsFor } from '../sim/ratings.js';
-import { probeAnchor, probeTargetName, readProbe, type Probe, type ProbeInput } from './probes.js';
+import {
+  probeAnchor,
+  probeTargetName,
+  readProbe,
+  type Probe,
+  type ProbeInput,
+  sameTarget,
+} from './probes.js';
 
 export interface CanvasApi {
   placeAtCenter(type: ComponentTypeId): void;
@@ -485,6 +492,24 @@ export function Canvas({
     return true;
   };
 
+  /** The probe a hit stands for: one rule for the pointer and the keyboard. */
+  const probeAt = (hit: ReturnType<typeof hitOf>, world: Point): ProbeInput | undefined => {
+    if (hit.kind === 'terminal')
+      return { kind: 'terminal', component: hit.component, terminal: hit.terminal };
+    if (hit.kind === 'component' || hit.kind === 'actuator')
+      return { kind: 'current', component: hit.id };
+    if (hit.kind !== 'wire') return undefined;
+    const w = doc.layout.wires.find((x) => x.id === hit.id);
+    const end = w && [w.from, w.to].find((x) => x.kind === 'terminal');
+    const net =
+      end?.kind === 'terminal'
+        ? doc.connections.find((c) => c.component === end.component && c.terminal === end.terminal)
+            ?.net
+        : undefined;
+    const route = w && wireRoute(doc, w);
+    return net && route ? { kind: 'net', net, at: pointOnRoute(route, world) } : undefined;
+  };
+
   const onPointerDown = (e: PointerEvent) => {
     const svg = svgRef.current!;
     const world = toWorld(e.clientX, e.clientY);
@@ -502,22 +527,8 @@ export function Canvas({
 
     if (probeMode) {
       // Observation only: a probe never edits the project or the circuit.
-      if (hit.kind === 'terminal')
-        onProbe({ kind: 'terminal', component: hit.component, terminal: hit.terminal });
-      else if (hit.kind === 'component' || hit.kind === 'actuator')
-        onProbe({ kind: 'current', component: hit.id });
-      else if (hit.kind === 'wire') {
-        const w = doc.layout.wires.find((x) => x.id === hit.id);
-        const end = w && [w.from, w.to].find((x) => x.kind === 'terminal');
-        const net =
-          end?.kind === 'terminal'
-            ? doc.connections.find(
-                (c) => c.component === end.component && c.terminal === end.terminal,
-              )?.net
-            : undefined;
-        const route = w && wireRoute(doc, w);
-        if (net && route) onProbe({ kind: 'net', net, at: pointOnRoute(route, world) });
-      }
+      const input = probeAt(hit, world);
+      if (input) onProbe(input);
       return;
     }
     if (hit.kind === 'actuator') {
@@ -814,7 +825,7 @@ export function Canvas({
   const kbText = (ev: WireKbEvent): string => {
     switch (ev.kind) {
       case 'pins':
-        return t('kbwire.pins', {
+        return t(probeMode ? 'probe.kb.pins' : 'kbwire.pins', {
           component: isolateLtr(ev.pin.component),
           count: ev.count,
           pin: pinName(ev.pin),
@@ -889,7 +900,8 @@ export function Canvas({
   const kbDispatch = (action: WireKbAction) => {
     const r = reduceWireKeyboard(kb, action, {
       doc,
-      running: simActive,
+      // Choosing a pin to probe is observation only, so it works while running.
+      running: simActive && !probeMode,
       route: (a, b) => ({ vertices: autoRouteVertices([a, b], routeObs) }),
     });
     if (r.doc)
@@ -938,6 +950,52 @@ export function Canvas({
     return true;
   };
 
+  /** Probe mode: Enter / Space place what a click would, on the pin, wire or part. */
+  const onProbeKey = (e: KeyboardEvent): boolean => {
+    if (!probeMode || readOnly || (e.key !== 'Enter' && e.key !== ' ')) return false;
+    if (e.ctrlKey || e.metaKey || e.altKey || (kb.mode !== 'idle' && kb.mode !== 'pins'))
+      return false;
+    let input: ProbeInput | undefined;
+    const pin = kb.mode === 'pins' ? pinsOf(doc, kb.component)[kb.index] : undefined;
+    const wire =
+      selection.wires.length === 1 && !selection.components.length && !selection.junctions.length
+        ? doc.layout.wires.find((x) => x.id === selection.wires[0])
+        : undefined;
+    const part = (e.target as Element | null)?.closest?.(
+      '[data-hit="component"]',
+    ) as SVGElement | null;
+    if (pin) input = { kind: 'terminal', component: pin.component, terminal: pin.terminal };
+    else if (wire) {
+      // The keyboard has no click point: the pin goes on the middle segment of the wire.
+      const route = wireRoute(doc, wire);
+      if (route) {
+        const i = Math.floor((route.length - 2) / 2);
+        const [a, b] = [route[i]!, route[i + 1]!];
+        input = probeAt({ kind: 'wire', id: wire.id } as ReturnType<typeof hitOf>, {
+          x: (a.x + b.x) / 2,
+          y: (a.y + b.y) / 2,
+        });
+      }
+    } else if (part?.dataset.id) input = { kind: 'current', component: part.dataset.id };
+    else return false;
+    e.preventDefault();
+    if (e.repeat) return true;
+    if (!input) {
+      kbAnnounce(t('probe.kb.noNet'));
+      return true;
+    }
+    const added = input;
+    const name = probeTargetName({ ...added, id: '' } as Probe);
+    const exists = probes.some((p) => sameTarget(p, added));
+    if (!exists) onProbe(added);
+    kbAnnounce(
+      t(exists ? 'probe.kb.exists' : 'probe.kb.added', {
+        probe: isolateLtr(`${added.kind === 'current' ? 'I' : 'V'}(${name})`),
+      }),
+    );
+    return true;
+  };
+
   /** Returns true when the key was consumed by keyboard wiring. */
   const onKbKey = (e: KeyboardEvent): boolean => {
     if (kb.mode === 'ends' || kb.mode === 'repick') return onRepickKey(e);
@@ -971,7 +1029,7 @@ export function Canvas({
       ) as SVGElement | null;
       if (!el?.dataset.id) return false;
       e.preventDefault();
-      if (simActive) {
+      if (simActive && !probeMode) {
         kbAnnounce(t('kbwire.running'));
         return true;
       }
@@ -1081,11 +1139,12 @@ export function Canvas({
       return;
     }
     const comp = kb.mode === 'pins' ? kb.component : kb.from.component;
-    if (simActive || !doc.components.some((c) => c.id === comp)) setKb({ mode: 'idle' });
-  }, [simActive, doc, selection]);
+    if ((simActive && !probeMode) || !doc.components.some((c) => c.id === comp))
+      setKb({ mode: 'idle' });
+  }, [simActive, probeMode, doc, selection]);
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (onKbKey(e)) return;
+    if (onProbeKey(e) || onKbKey(e)) return;
     if (e.key === ' ') {
       e.preventDefault();
       const sw = focusedSwitch(e);
@@ -1739,7 +1798,15 @@ export function Canvas({
         conflictLines.length > 0 ||
         conflicts.unchecked.length > 0) && (
         <div class="canvas-hint" dir={state.locale.dir} data-testid="canvas-hint">
-          {!readOnly && t(hint)}
+          {!readOnly &&
+            t(hint, {
+              enter: isolateLtr('Enter'),
+              space: isolateLtr('Space'),
+              w: isolateLtr('W'),
+              prev: isolateLtr('['),
+              next: isolateLtr(']'),
+              esc: isolateLtr('Esc'),
+            })}
           {overlaysLimited && (
             <div class="view-note-warning" role="status" data-testid="canvas-overlay-limit">
               {t('canvas.overlayLimit')}

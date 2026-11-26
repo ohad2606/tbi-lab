@@ -672,7 +672,12 @@ export const en = {
   'inspector.stopToChange': 'Stop the simulation to change this value.',
 
   'canvas.hint.probe':
-    'Probe: click a terminal or wire for its voltage to GND, or a part for its current. Esc ends.',
+    'Probe: click a terminal or wire for its voltage to GND, or a part for its current. Keyboard: {enter} or {space} on a focused part (current) or a wire selected with {prev} {next} (voltage); {w}, then arrows and {enter} for a pin voltage. {esc} ends.',
+  'probe.kb.added': 'Probe added: {probe}',
+  'probe.kb.exists': 'Probe already placed: {probe}',
+  'probe.kb.noNet': 'No probe added: this wire has no pin end to read a net from.',
+  'probe.kb.pins':
+    '{component}: {count} pins, now on {pin}. Arrow keys move between pins, Enter or Space probes the voltage, Escape leaves the pins.',
   'probe.tool': 'Probe',
   'probe.voltageLabel': 'V({point}) = {value}',
   'probe.currentLabel': 'I({point}) = {value}',
@@ -2486,6 +2491,9 @@ export const en = {
   'shortcut.wireRepick.action':
     'Re-pick one end of the selected wire (choose the end, then the new pin)',
   'shortcut.wireRepick.when': 'A wire is selected; not while running or read-only',
+  'shortcut.probePlace.action':
+    'Probe the focused part (current), pin or selected wire (voltage); in probe mode W reaches the pins, also while running',
+  'shortcut.probePlace.when': 'Probe tool on; not read-only',
   'shortcut.escStep.action':
     'Step back one level: probe mode, armed part, drawing mode, then clear the selection',
   'shortcut.escStep.when': 'Circuit view',
