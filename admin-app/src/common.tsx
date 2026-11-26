@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { LoadError } from '@tbi-lab/admin-client';
+import { rescueFocus } from './focus-rescue.js';
 import { formatCount, type MessageKey } from './i18n.js';
 import { useConsole, useT } from './context.js';
 import { loadingStatus } from './loading-status.js';
@@ -47,6 +48,8 @@ export function Problem({
   testid?: string;
 }) {
   const t = useT();
+  // It may have replaced the content that held focus.
+  useEffect(rescueFocus, []);
   return (
     <p role="alert" class="problem" data-testid={testid ?? 'problem'} data-error={error}>
       {error === 'unavailable' ? t(unavailable) : t(`admin.error.${error}`)}

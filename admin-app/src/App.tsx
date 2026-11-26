@@ -20,6 +20,7 @@ import {
   type IconName,
 } from './common.js';
 import { ConsoleContext, api, type Console, type Data, type MutationAction } from './context.js';
+import { rescueFocus } from './focus-rescue.js';
 import { getLocale, storeLocale, storedLocale, translate, type MessageKey } from './i18n.js';
 import { TABS, afterRoute, parseRoute, routeHash, section, tab, type Route } from './views.js';
 import { Activity } from './screens/Activity.js';
@@ -169,6 +170,10 @@ export function App() {
     const timer = setTimeout(() => void checkPending(), POLL_MS);
     return () => clearTimeout(timer);
   }, [pending]);
+  // The "check again" button leaves with its request, whatever the answer.
+  useEffect(() => {
+    if (!pending) rescueFocus();
+  }, [pending]);
 
   const ctx: Console = useMemo(
     () => ({
@@ -204,6 +209,10 @@ export function App() {
   const loads = Object.values(data) as Data[keyof Data][];
   const signedOut = loads.some((l) => l && !l.ok && l.error === 'signed_out');
   const forbidden = loads.some((l) => l && !l.ok && l.error === 'forbidden');
+  // The access page replaces the whole app, with whatever had focus in it.
+  useEffect(() => {
+    if (signedOut || forbidden) rescueFocus();
+  }, [signedOut, forbidden]);
   let body;
   if (signedOut || forbidden)
     body = (
