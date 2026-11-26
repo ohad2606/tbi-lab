@@ -40,10 +40,10 @@ Intake side: `docs/plans/BETA-G1-WEB-INTAKE.md`.
 
 ## Tests
 
-`npx vitest run site/tests/signup-proxy.test.mjs`. The Caddy part is skipped when `caddy` is not on the PATH (CI has
-none today). With `TBI_REQUIRE_CADDY=1`, a missing caddy or a version below 2.6 fails the run. This variable is
-**not** wired into a release gate yet. To wire it in, run the test with `TBI_REQUIRE_CADDY=1` on the
-packaging/deploy host before any live step. The harness uses `admin off`, `auto_https off`, a temp HOME/XDG,
+`npx vitest run site/tests/signup-proxy.test.mjs`. The Caddy part is skipped when `caddy` is not on the PATH. With
+`TBI_REQUIRE_CADDY=1`, a missing caddy or a version below 2.6 fails the run. CI (`ci.yml`, unit job) installs a
+checksum-pinned Caddy 2.6.2 and sets this variable. It is **not** wired into a release gate yet, and CI does not
+check the Caddy on the deploy host (see step 1). The harness uses `admin off`, `auto_https off`, a temp HOME/XDG,
 `127.0.0.1` with a free port, and a fake intake on a unix socket in a 0700 temp dir. One end-to-end token-then-post
 goes to the real intake.
 
@@ -72,7 +72,8 @@ options block, which must come first.
 
 ### Steps
 
-1. **Required before any RED step:** on the deploy host, with its Caddy version, this passes (loopback only):
+1. **RED** (runs on the server; required before any other RED step): on the deploy host, with its Caddy version,
+   this passes (loopback only):
 
    ```sh
    TBI_REQUIRE_CADDY=1 npx vitest run site/tests/signup-proxy.test.mjs
@@ -94,10 +95,10 @@ options block, which must come first.
    echo "$out"
    ```
 
-3. Validate both files (GREEN), in the same shell:
+3. Validate both files (GREEN), in the same shell. The command exits non-zero if either file fails; then stop:
 
    ```sh
-   for f in tls rollback; do caddy validate --adapter caddyfile --config "$out/$f.Caddyfile"; done
+   (for f in tls rollback; do caddy validate --adapter caddyfile --config "$out/$f.Caddyfile" || exit 1; done)
    ```
 
 4. **RED:** diff against the live config, and have the owner review the diff. The review must list every
@@ -106,10 +107,19 @@ options block, which must come first.
    decision (see the warning). Do not overwrite other sites.
 5. **RED:** copy the current live config to a dated backup next to it, and keep it.
 6. **RED:** install the reviewed config (the rendered file only if the host serves no other site, otherwise the
-   merged one) and `caddy reload` (needs the live admin endpoint). Never restart other services.
-7. **RED:** smoke checks from outside: `curl -sI https://<SITE_HOST>/he/` gives 200 with the CSP, nosniff and HSTS
+   merged one). Do not reload yet.
+7. **RED:** validate the installed file immediately before the reload; the reload (needs the live admin endpoint)
+   runs only if validation passes. If either command fails, restore the backup from step 5. Never restart other
+   services.
+
+   ```sh
+   live=/path/to/live/Caddyfile # replace
+   caddy validate --adapter caddyfile --config "$live" && caddy reload --adapter caddyfile --config "$live"
+   ```
+
+8. **RED:** smoke checks from outside: `curl -sI https://<SITE_HOST>/he/` gives 200 with the CSP, nosniff and HSTS
    headers. `curl -s https://<SITE_HOST>/signup/form-token -H 'Origin: https://<SITE_HOST>'` gives 200 JSON
    (with `TBI_SIGNUP_WEB=1`) or 404 (off). `/signup`, `/signup/web/` and `/SIGNUP/WEB` give 404.
-8. **RED (rollback):** reload the backup from step 5, or the rollback config. On a multi-site host, never install the
-   rollback render as it is: merge its site block as in step 4. Smoke checks: `/he/` gives 200, and both intake paths
-   give 404.
+9. **RED (rollback):** install the backup from step 5, or the rollback config, then validate and reload as in
+   step 7. On a multi-site host, never install the rollback render as it is: merge its site block as in step 4. Smoke
+   checks: `/he/` gives 200, and both intake paths give 404.
