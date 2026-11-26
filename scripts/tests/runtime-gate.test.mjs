@@ -5,13 +5,16 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
+import { G2_ENV, G2_NOT_COVERED } from '../../runtime/tests/g2-guard.ts';
 import {
   evaluate,
   expectedFiles,
   normalizePlaywright,
   normalizeVitest,
   parseManifest,
+  declaresExpectedFailure,
   sanitize,
 } from '../release/runtime-gate-eval.mjs';
 import { runGate } from '../release/runtime-gate.mjs';
@@ -166,6 +169,60 @@ describe('evaluation', () => {
   });
 });
 
+describe('per file', () => {
+  const W = 'runtime/tests/w.runtime.test.ts';
+  const two = (status) => {
+    const v = vitestReport();
+    v.testResults.push({
+      name: `${ROOT}/${W}`,
+      status: 'passed',
+      assertionResults: [vTest('two', status)],
+    });
+    v.numTotalTests = 2;
+    return evaluate({
+      expected: expectedFiles([...TRACKED, W]),
+      manifest: parseManifest({ exclusions: status === 'skipped' ? [entry({ file: W })] : [] }),
+      runs: {
+        vitest: { exitCode: 0, report: normalizeVitest(v, ROOT) },
+        playwright: { exitCode: 0, report: normalizePlaywright(playwrightReport(), ROOT) },
+      },
+    });
+  };
+  it('a file in which nothing passed fails', () => {
+    expect(two('todo').failures).toContainEqual(
+      expect.objectContaining({ code: 'file_nothing_passed', file: W }),
+    );
+  });
+  it('unless the whole file is excluded', () => {
+    expect(two('skipped').failures).toEqual([]);
+  });
+  it('a partly excluded file with no pass fails', () => {
+    const r = judge({
+      v: vitestReport([vTest('two', 'skipped'), vTest('three', 'todo')]),
+      entries: [entry()],
+    });
+    expect(codes(r)).toContain('file_nothing_passed');
+  });
+});
+
+describe('expected failures declared in sources', () => {
+  it.each([
+    "it.fails('x', () => {});",
+    "test.fails('x', () => {});",
+    "it.skipIf(a(b)).fails('x', () => {});",
+    "it.each([1, 2]).fails('x', () => {});",
+    "it\n  .fails('x', () => {});",
+    "it('x', { fails: true }, () => {});",
+  ])('detects %j', (source) => {
+    expect(declaresExpectedFailure(source)).toBe(true);
+  });
+  it('ignores other uses of the word', () => {
+    expect(declaresExpectedFailure("if (lock.fails) x({ fails: false }); it('fails', f);")).toBe(
+      false,
+    );
+  });
+});
+
 describe('exclusion manifest', () => {
   const skipped = vitestReport([vTest('one'), vTest('two', 'skipped')]);
   it('an excluded skip passes and is listed with its reason', () => {
@@ -217,11 +274,69 @@ describe('exclusion manifest', () => {
     ])
       expect(() => parseManifest({ exclusions: [bad] })).toThrow(/manifest/);
   });
-  it('the committed manifest is valid and names only tests that exist', () => {
-    const root = new URL('../../', import.meta.url);
-    const raw = readFileSync(new URL('scripts/release/runtime-gate.manifest.json', root), 'utf8');
-    for (const e of parseManifest(JSON.parse(raw)))
-      expect(existsSync(new URL(e.file, root))).toBe(true);
+});
+
+/** Full titles ("describe … test") written in a test source; `${NAME}` is resolved from `names`. */
+function sourceTitles(source, names) {
+  const file = ts.createSourceFile('x.ts', source, ts.ScriptTarget.Latest, true);
+  const root = (e) =>
+    ts.isCallExpression(e) || ts.isPropertyAccessExpression(e) ? root(e.expression) : e.getText();
+  const text = (n) => {
+    if (ts.isStringLiteralLike(n)) return n.text;
+    if (!ts.isTemplateExpression(n)) return undefined;
+    let out = n.head.text;
+    for (const span of n.templateSpans) {
+      const value = names[span.expression.getText()];
+      if (value === undefined) return out; // a prefix: the rest is only known at run time
+      out += value + span.literal.text;
+    }
+    return out;
+  };
+  const titles = [];
+  const walk = (node, outer) => {
+    let inner = outer;
+    if (ts.isCallExpression(node) && ['describe', 'test', 'it'].includes(root(node.expression))) {
+      const title = node.arguments[0] && text(node.arguments[0]);
+      if (title !== undefined) {
+        inner = [...outer, title];
+        if (!/(^|\.)describe\b/.test(node.expression.getText())) titles.push(inner.join(' '));
+      }
+    }
+    ts.forEachChild(node, (child) => walk(child, inner));
+  };
+  walk(file, []);
+  return titles;
+}
+
+describe('the committed exclusion manifest', () => {
+  const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
+  const entries = parseManifest(JSON.parse(read('scripts/release/runtime-gate.manifest.json')));
+  const G2 = 'runtime/tests/g2-deployed.runtime.test.ts';
+  const G2_SUITE = 'G2 deployed: queue, idle and builds under load on staging';
+  const titles = (file) => {
+    const source = read(file);
+    const out = sourceTitles(source, { G2_ENV });
+    // The todo titles come from an exported list.
+    if (file === G2 && /for \(const title of G2_NOT_COVERED\) it\.todo\(title\);/.test(source))
+      out.push(...G2_NOT_COVERED.map((t) => `${G2_SUITE} ${t}`));
+    return out;
+  };
+  it('names only tests that exist', () => {
+    for (const e of entries)
+      expect(
+        titles(e.file).filter((t) => t.startsWith(e.test)),
+        `${e.file}: ${e.test}`,
+      ).not.toEqual([]);
+  });
+  it('excludes every g2-deployed test, todos included, as not yet evidenced', () => {
+    const g2 = entries.filter((e) => e.file === G2);
+    const all = titles(G2);
+    expect(all).toHaveLength(1 + G2_NOT_COVERED.length);
+    for (const t of all) expect(g2.filter((e) => t.startsWith(e.test))).toHaveLength(1);
+    for (const e of g2)
+      expect(e.reason).toContain(
+        'staging-only load harness, run separately (planned 3.12); no evidence yet',
+      );
   });
 });
 
@@ -247,8 +362,11 @@ describe('the gate run (fake git and runners)', () => {
     TBI_RUNTIME_PROXY: 'http://127.0.0.1:7410',
     TBI_BUILD_PROXY: 'http://127.0.0.1:7420',
     TBI_S8_INSTANCE: 'secret-instance',
+    TBI_C5_DEPLOYED: 'secret-instance',
+    TBI_C5_FAULTS: '1',
+    TBI_ALLOW_SERVICE_MUTATION: 'secret-instance',
   };
-  function fake({ status = '', env = ENV, reports = true, after } = {}) {
+  function fake({ status = '', env = ENV, reports = true, after, lock = true, source = '' } = {}) {
     const root = tmp();
     const ran = [];
     let state = { sha: SHA, status };
@@ -256,6 +374,8 @@ describe('the gate run (fake git and runners)', () => {
       root,
       env,
       log: () => {},
+      holdsLock: () => lock,
+      read: () => source,
       git: (args) =>
         args[0] === 'rev-parse'
           ? `${state.sha}\n`
@@ -288,7 +408,8 @@ describe('the gate run (fake git and runners)', () => {
     expect(ran[1].args).toEqual(expect.arrayContaining(['--retry=0', '--allowOnly=false']));
     expect(ran[2].args).toEqual(expect.arrayContaining(['--retries=0', '--forbid-only']));
     expect(ran[2].env.CI).toBe('1');
-    expect(ran.some((s) => 'TBI_ALLOW_SERVICE_MUTATION' in s.env)).toBe(false);
+    // The opt-in is passed on as the operator set it, never added or widened.
+    for (const s of ran) expect(s.env.TBI_ALLOW_SERVICE_MUTATION).toBe('secret-instance');
     const e = evidence(out);
     expect(e).toMatchObject({ sha: SHA, mode: 'run', verdict: 'PASS' });
     expect(Object.keys(e).sort()).toEqual([
@@ -309,12 +430,56 @@ describe('the gate run (fake git and runners)', () => {
     ['no_real_proxy', { env: {} }],
     ['no_real_proxy', { env: { ...ENV, TBI_BUILD_PROXY: 'http://127.0.0.1:7498' } }],
     ['weakening_env', { env: { ...ENV, TBI_GATE_UNPINNED: '1' } }],
+    ...[
+      'TBI_S8_QEMU_CYCLES',
+      'TBI_C5_SECONDS',
+      'TBI_C5_N',
+      'TBI_C5_WORKLOAD',
+      'TBI_C5_PACE',
+      'TBI_MPY_BENCH_N',
+      'TBI_S11_EXPECT',
+      'TBI_S12_EXPECT',
+      'TBI_G2_DEPLOYED',
+    ].map((name) => ['weakening_env', { env: { ...ENV, [name]: '1' } }]),
+    ['weakening_env', { env: { ...ENV, TBI_C5_N: '' } }],
+    ['fault_drills_off', { env: { ...ENV, TBI_C5_FAULTS: undefined } }],
+    ['fault_drills_off', { env: { ...ENV, TBI_C5_FAULTS: 'true' } }],
+    ['no_fault_optin', { env: { ...ENV, TBI_ALLOW_SERVICE_MUTATION: undefined } }],
+    ['no_fault_optin', { env: { ...ENV, TBI_ALLOW_SERVICE_MUTATION: 'other' } }],
+    ['no_fault_optin', { env: { ...ENV, TBI_C5_DEPLOYED: undefined } }],
+    ['no_lock', { lock: false }],
+    ['declared_expected_failure', { source: "it.fails('x', () => {});" }],
   ])('%s: FAIL before anything runs', (code, over) => {
     const { deps, ran } = fake(over);
     const out = tmp();
     expect(runGate(['--out', out], deps)).toBe(1);
     expect(ran).toEqual([]);
     expect(codes(evidence(out))).toContain(code);
+  });
+  it('redacts instance and unit values however short', () => {
+    const env = {
+      ...ENV,
+      TBI_S8_INSTANCE: 'qz',
+      TBI_C5_DEPLOYED: 'jx',
+      TBI_ALLOW_SERVICE_MUTATION: 'jx, kv',
+      TBI_S18_UNIT: 'w',
+    };
+    const { deps, root } = fake({ env });
+    const run = deps.run;
+    deps.run = (step) => {
+      const code = run(step);
+      if (step.name === 'vitest') {
+        const r = vitestReport([vTest('one'), vTest('on qz jx kv w end', 'failed')]);
+        r.testResults[0].name = join(root, V);
+        writeFileSync(step.report, JSON.stringify(r));
+      }
+      return code;
+    };
+    const out = tmp();
+    runGate(['--out', out], deps);
+    const failed = evidence(out).failures.find((f) => f.code === 'test_failed');
+    expect(failed.test).not.toMatch(/qz|jx|kv|\bw\b/);
+    expect(failed.test).toMatch(/<redacted> <redacted> <redacted> <redacted>/);
   });
   it('a tree or HEAD that changed during the run fails', () => {
     for (const after of [{ status: ' M x\n' }, { sha: 'b'.repeat(40) }]) {

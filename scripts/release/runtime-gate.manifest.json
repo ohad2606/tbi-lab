@@ -21,8 +21,20 @@
     {
       "runner": "vitest",
       "file": "runtime/tests/g2-deployed.runtime.test.ts",
-      "test": "G2 deployed: queue under load on staging TBI_G2_DEPLOYED: guard",
-      "reason": "Load harness that refuses every instance but staging; it is not part of the release candidate run on DEV and has its own staging evidence."
+      "test": "G2 deployed: queue, idle and builds under load on staging TBI_G2_DEPLOYED: guard, then the queue, idle and build drills",
+      "reason": "staging-only load harness, run separately (planned 3.12); no evidence yet"
+    },
+    {
+      "runner": "vitest",
+      "file": "runtime/tests/g2-deployed.runtime.test.ts",
+      "test": "G2 deployed: queue, idle and builds under load on staging idle with an attached event stream: idle_timeout although the stream is open (host unit tests only)",
+      "reason": "staging-only load harness, run separately (planned 3.12); no evidence yet. This case is an it.todo: that harness does not cover it either."
+    },
+    {
+      "runner": "vitest",
+      "file": "runtime/tests/g2-deployed.runtime.test.ts",
+      "test": "G2 deployed: queue, idle and builds under load on staging queue_full at maxLength with paid waiters",
+      "reason": "staging-only load harness, run separately (planned 3.12); no evidence yet. This case is an it.todo: that harness does not cover it either."
     }
   ]
 }

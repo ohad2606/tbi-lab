@@ -14,6 +14,13 @@ export const expectedFiles = (tracked) => ({
   playwright: tracked.filter((f) => /^(?!experiments\/).*-real\.spec\.ts$/.test(f)).sort(),
 });
 
+/**
+ * Does the source declare an expected failure (`it.fails`, `{ fails: true }`)? The vitest JSON
+ * report counts one as passed, so the gate refuses it from the source text.
+ */
+export const declaresExpectedFailure = (source) =>
+  /\.\s*fails\s*[(.<`]|\bfails\s*:\s*true\b/.test(source);
+
 /** Exclusions: one exact file, a prefix of the full test title, and the reason. Nothing else. */
 export function parseManifest(raw) {
   const bad = (why) => new Error(`invalid exclusion manifest: ${why}`);
@@ -133,6 +140,7 @@ export function evaluate({ expected, manifest, runs }) {
       if (!known) fail('unexpected_file', shown);
       if (failed) fail('file_failed', shown);
       if (tests.length === 0) fail('zero_tests', shown);
+      const before = c.excluded;
       for (const { title, status } of tests) {
         c.tests++;
         c[status]++;
@@ -149,6 +157,9 @@ export function evaluate({ expected, manifest, runs }) {
           excluded.push({ runner, file, test: title, status, reason });
         } else if (status !== 'passed') fail(`test_${status}`, shown, title);
       }
+      // A file in which nothing passed has run nothing, unless every test of it is excluded.
+      const wholly = c.excluded - before === tests.length;
+      if (!wholly && !tests.some((t) => t.status === 'passed')) fail('file_nothing_passed', shown);
     }
     if (c.passed === 0) fail('nothing_passed');
   }
@@ -162,9 +173,12 @@ export function evaluate({ expected, manifest, runs }) {
 
 /** Removes the given values, URLs, absolute paths and IPv4 addresses from a test title. */
 export function sanitize(text, values = []) {
-  let out = text;
-  for (const v of [...values].sort((a, b) => b.length - a.length))
-    if (v.length >= 3) out = out.replaceAll(v, '<redacted>');
+  // One pass, longest first: a short value never matches inside an inserted marker.
+  const given = values
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const out = given.length ? text.replace(new RegExp(given.join('|'), 'g'), '<redacted>') : text;
   return out
     .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, '<redacted>')
     .replace(

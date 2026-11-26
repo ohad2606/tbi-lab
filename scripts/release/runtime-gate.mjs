@@ -8,8 +8,8 @@
  *   npm run release:runtime-gate -- --out <dir outside the repository>
  *   ... --from-reports <dir>   evaluates <dir>/vitest.json and playwright.json; never a PASS
  *
- * It sets no mutation opt-in and takes no lock: both are the operator's. Exit: 0 PASS, 1 FAIL,
- * 2 usage, 3 evaluation only.
+ * It sets no mutation opt-in and takes no lock: both are the operator's, and it refuses to start
+ * without them (and without the C-5 fault drills). Exit: 0 PASS, 1 FAIL, 2 usage, 3 evaluation only.
  */
 import { spawnSync } from 'node:child_process';
 import {
@@ -26,6 +26,7 @@ import { homedir, hostname, tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
+  declaresExpectedFailure,
   evaluate,
   expectedFiles,
   normalizePlaywright,
@@ -35,14 +36,31 @@ import {
   sanitize,
 } from './runtime-gate-eval.mjs';
 
-/** Variables that make a runtime test check less than it does by default. */
+/**
+ * Variables that shorten, narrow or redirect what a runtime test or *-real spec checks. Refused
+ * whenever set, whatever the value: a release run uses the defaults.
+ */
 const WEAKENING = [
+  'TBI_C5_N',
+  'TBI_C5_PACE',
+  'TBI_C5_SECONDS',
+  'TBI_C5_WORKLOAD',
+  'TBI_G2_DEPLOYED',
   'TBI_GATE_RUNS',
   'TBI_GATE_UNPINNED',
+  'TBI_MPY_BENCH_N',
   'TBI_R1_DET_RUNS',
+  'TBI_S11_EXPECT',
   'TBI_S12_DET_RUNS',
   'TBI_S12_DET_UNPINNED',
+  'TBI_S12_EXPECT',
+  'TBI_S8_QEMU_CYCLES',
 ];
+/** Preconditions whose "test" is a variable name of ours, not something to redact. */
+const NAMES_VARIABLE = ['no_real_proxy', 'weakening_env', 'fault_drills_off', 'no_fault_optin'];
+/** Variables whose values name an instance or a unit: redacted however short. */
+const IDENTIFYING =
+  /^TBI_(\w+_INSTANCE|ALLOW_SERVICE_MUTATION|C5_DEPLOYED|S13_SEC_DEPLOYED|S18_UNIT)$/;
 /** Ports of the fake services playwright.app.config.ts falls back to. */
 const FAKE_PORTS = ['7496', '7497', '7498', '7499'];
 const NORMALIZE = { vitest: normalizeVitest, playwright: normalizePlaywright };
@@ -92,6 +110,13 @@ function steps(reports, env) {
   ];
 }
 
+/** Comma-separated values of a variable (the mutation opt-in is a list). */
+const list = (value) =>
+  (value ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
 function realProxy(value) {
   try {
     return !FAKE_PORTS.includes(new URL(value).port);
@@ -133,18 +158,29 @@ export function runGate(argv, deps) {
   const target = join(out, `runtime-gate-${sha}${opts.from ? '.evaluation' : ''}.json`);
   rmSync(target, { force: true }); // an interrupted run leaves no earlier verdict behind
 
+  const tracked = () => git(['ls-files', '-z']).split('\0').filter(Boolean);
+
   const pre = [];
   if (!opts.from) {
     if (dirty()) pre.push({ code: 'dirty_tree' });
+    if (!deps.holdsLock()) pre.push({ code: 'no_lock' });
     for (const name of ['TBI_RUNTIME_PROXY', 'TBI_BUILD_PROXY'])
       if (!realProxy(env[name])) pre.push({ code: 'no_real_proxy', test: name });
-    for (const name of WEAKENING) if (env[name]) pre.push({ code: 'weakening_env', test: name });
+    for (const name of WEAKENING)
+      if (env[name] !== undefined) pre.push({ code: 'weakening_env', test: name });
+    // The C-5 fault drills run only on request and only against an instance in the mutation opt-in.
+    if (env.TBI_C5_FAULTS !== '1') pre.push({ code: 'fault_drills_off', test: 'TBI_C5_FAULTS' });
+    if (!list(env.TBI_ALLOW_SERVICE_MUTATION).includes(env.TBI_C5_DEPLOYED))
+      pre.push({ code: 'no_fault_optin', test: 'TBI_ALLOW_SERVICE_MUTATION' });
+    for (const file of tracked().filter((f) => /^runtime\/.*\.ts$/.test(f)))
+      if (declaresExpectedFailure(deps.read(file)))
+        pre.push({ code: 'declared_expected_failure', runner: 'vitest', file });
   }
 
   let result = { failures: [], excluded: [], counts: {} };
   if (pre.length === 0) {
     const manifest = parseManifest(deps.manifest());
-    const expected = expectedFiles(git(['ls-files', '-z']).split('\0').filter(Boolean));
+    const expected = expectedFiles(tracked());
     const reports = opts.from ? resolve(opts.from) : mkdtempSync(join(tmpdir(), 'tbi-gate-'));
     const exits = { vitest: 0, playwright: 0 };
     if (!opts.from) {
@@ -171,16 +207,20 @@ export function runGate(argv, deps) {
   }
 
   const secrets = [
-    ...Object.entries(env)
-      .filter(([k]) => k.startsWith('TBI_') || ['HOME', 'USER', 'LOGNAME'].includes(k))
-      .map(([, v]) => v)
+    ...[
+      ...Object.entries(env)
+        .filter(([k]) => k.startsWith('TBI_') || ['HOME', 'USER', 'LOGNAME'].includes(k))
+        .map(([, v]) => v),
+      homedir(),
+      hostname(),
       // Switch values such as "1" or "r1" identify nothing and occur in ordinary titles.
-      .filter((v) => v && v.length >= 4),
-    homedir(),
-    hostname(),
+    ].filter((v) => v && v.length >= 4),
+    ...Object.entries(env)
+      .filter(([k]) => IDENTIFYING.test(k))
+      .flatMap(([, v]) => list(v)),
   ];
   const clean = (item) =>
-    item.test === undefined || item.code === 'no_real_proxy' || item.code === 'weakening_env'
+    item.test === undefined || NAMES_VARIABLE.includes(item.code)
       ? item
       : { ...item, test: sanitize(item.test, secrets) };
   const failures = [...pre, ...result.failures].map(clean);
@@ -219,6 +259,11 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     env: process.env,
     git: capture,
     log: (line) => console.log(line),
+    read: (file) => readFileSync(join(root, file), 'utf8'),
+    holdsLock: () =>
+      spawnSync(process.execPath, [join(root, 'deploy/ops/pipeline-lock.mjs'), 'check'], {
+        stdio: 'ignore',
+      }).status === 0,
     manifest: () =>
       JSON.parse(readFileSync(new URL('runtime-gate.manifest.json', import.meta.url), 'utf8')),
     run: ({ cmd, args, env }) => spawnSync(cmd, args, { cwd: root, env, stdio: 'inherit' }).status,
