@@ -447,7 +447,7 @@ for (const lang of ['he', 'en'] as const) {
       await row.getByRole('link').click();
       await titled(page, lang, 'report');
       await expect(h1(page)).toBeFocused();
-      await expect(page.getByTestId('loading')).toBeVisible();
+      await expect(page.getByTestId('loading')).toHaveText(LOADING[lang]);
       const node = await h1(page).elementHandle();
       release();
       if (outcome === 'loaded') {

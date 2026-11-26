@@ -65,12 +65,12 @@ export function Problem({
   );
 }
 
-/** The visible "loading" text. Screen readers get it from `LoadingStatus`, once. */
+/** The visible "loading" text: readable but not live; `LoadingStatus` announces it, once. */
 export const Loading = () => {
   const t = useT();
   useEffect(() => loadingStatus.begin(), []);
   return (
-    <p class="muted" data-testid="loading" aria-hidden="true">
+    <p class="muted" data-testid="loading">
       {t('admin.loading')}
     </p>
   );

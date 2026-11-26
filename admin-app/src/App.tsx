@@ -163,6 +163,8 @@ export function App() {
     setPending(null);
     setNotice(outcomeText(o, pending.label, pending.action));
     await refresh(['accounts', 'capacity', 'audit']);
+    // The reloaded data may have removed what had focus (a row that left the list).
+    rescueFocus();
   };
   // 202: the helper has not answered yet; ask again on its own for a while.
   useEffect(() => {

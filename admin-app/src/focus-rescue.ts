@@ -10,6 +10,14 @@ if (typeof document !== 'undefined') {
   document.addEventListener('focusin', (e) => {
     held = e.target instanceof HTMLElement ? e.target : null;
   });
+  // A press on the page after the focused node was removed: the user has moved on from it.
+  document.addEventListener(
+    'pointerdown',
+    () => {
+      if (held && !held.isConnected) held = null;
+    },
+    true,
+  );
   document.addEventListener('focusout', (e) => {
     const left = e.target;
     // Judged after the render in progress: a removed node is then no longer connected.

@@ -475,6 +475,7 @@ export function TesterDetail({ target }: { target: string }) {
                 data-testid="rename-input"
                 value={name}
                 aria-invalid={nameProblem}
+                aria-describedby={nameProblem ? 'rename-problem' : undefined}
                 ref={renameField}
                 onInput={(e) => {
                   setName((e.target as HTMLInputElement).value);
@@ -483,7 +484,7 @@ export function TesterDetail({ target }: { target: string }) {
               />
             </label>
             {nameProblem && (
-              <p class="problem" data-testid="rename-problem">
+              <p id="rename-problem" class="problem" role="alert" data-testid="rename-problem">
                 {t('admin.name.invalid', { max: DISPLAY_NAME_MAX })}
               </p>
             )}
