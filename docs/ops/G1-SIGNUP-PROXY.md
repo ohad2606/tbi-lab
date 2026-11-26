@@ -106,15 +106,21 @@ options block, which must come first.
    Caddyfile holds other sites, merge the site block and snippet by hand and apply the owner's global-block
    decision (see the warning). Do not overwrite other sites.
 5. **RED:** copy the current live config to a dated backup next to it, and keep it.
-6. **RED:** install the reviewed config (the rendered file only if the host serves no other site, otherwise the
-   merged one). Do not reload yet.
-7. **RED:** validate the installed file immediately before the reload; the reload (needs the live admin endpoint)
-   runs only if validation passes. If either command fails, restore the backup from step 5. Never restart other
-   services.
+6. **RED:** stage the reviewed config (the rendered file only if the host serves no other site, otherwise the
+   merged one) as a new file next to the live one. Do not touch the live file yet: a restart must never find an
+   unvalidated config.
+7. **RED:** validate the staged file; only if validation passes, move it over the live file and reload (the reload
+   needs the live admin endpoint). Run `caddy validate` and `caddy reload` as the Caddy service's user and with its
+   environment (see the unit's `User=` and `Environment`/`EnvironmentFile`), not under plain `sudo`: validating as
+   another user can create root-owned log or storage files that break the reload, and a different environment can
+   validate a different config. If the reload fails, restore the backup from step 5, then validate and reload it.
+   Never restart other services.
 
    ```sh
    live=/path/to/live/Caddyfile # replace
-   caddy validate --adapter caddyfile --config "$live" && caddy reload --adapter caddyfile --config "$live"
+   staged="$live.staged"
+   caddy validate --adapter caddyfile --config "$staged" && mv "$staged" "$live" &&
+     caddy reload --adapter caddyfile --config "$live"
    ```
 
 8. **RED:** smoke checks from outside: `curl -sI https://<SITE_HOST>/he/` gives 200 with the CSP, nosniff and HSTS
