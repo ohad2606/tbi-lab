@@ -10,8 +10,10 @@ import {
   g2Decision,
   g2FailedReport,
   g2FreeUsers,
+  g2Report,
   pollUntil,
   G2_FREE_LIVE,
+  G2_NOT_COVERED,
   G2_PAUSE_PROBE,
   G2_PAUSE_REMOVAL_MS,
   G2_QUEUED,
@@ -58,6 +60,18 @@ describe('g2-deployed guard', () => {
 
   it('refuses a heavy workload', () => {
     expect(g2Decision({ ...ok, TBI_C5_WORKLOAD: 'sonar' }, locked).kind).toBe('refused');
+  });
+
+  it('refuses (fails, not skips) when CI is set, even empty', () => {
+    for (const CI of ['true', '1', ''])
+      expect(g2Decision({ ...ok, CI }, locked).kind).toBe('refused');
+    expect(g2Decision({ CI: 'true' }, locked).kind).toBe('off');
+  });
+
+  it('refuses a drain budget that is not a bounded positive number of seconds', () => {
+    for (const TBI_G2_SECONDS of ['', 'x', '0', '-1', '3601'])
+      expect(g2Decision({ ...ok, TBI_G2_SECONDS }, locked).kind).toBe('refused');
+    expect(g2Decision({ ...ok, TBI_G2_SECONDS: '900' }, locked).kind).toBe('run');
   });
 
   it('runs only on staging with gate, lock and two preview identities', () => {
@@ -115,5 +129,55 @@ describe('g2-deployed drill helpers', () => {
     expect(report.builds).toEqual([{ status: 200, ms: 5 }]);
     expect(JSON.stringify(report)).not.toContain('secret');
     expect(g2FailedReport({ ...progress, samples: [] }).maxFreeLive).toBeNull();
+  });
+
+  it('every report lists what was not covered; PASSED needs the build counts', () => {
+    const p = {
+      instance: 'tbi-s8',
+      phase: 'clean-up',
+      seconds: 1,
+      admitted: [],
+      builds: [],
+      promotedPositions: [],
+      samples: [],
+      metrics: { buildsSucceeded: 0, buildsRefused: 2 },
+      flags: ['dec32'],
+    };
+    const passed = g2Report(p, 'PASSED');
+    expect(G2_NOT_COVERED).toHaveLength(2);
+    expect(passed).toMatchObject({
+      result: 'PASSED',
+      metrics: { buildsSucceeded: 0, buildsRefused: 2 },
+      flags: ['dec32'],
+      notCovered: [...G2_NOT_COVERED],
+    });
+    expect(g2FailedReport(p).notCovered).toEqual([...G2_NOT_COVERED]);
+    expect(() => g2Report({ ...p, metrics: {} }, 'PASSED')).toThrow('build counts');
+    const codes = ['load_above_2x_cpus', 'sampler_blind'];
+    expect(g2FailedReport({ ...p, failures: codes }).failures).toEqual(codes);
+  });
+
+  it('report keeps only allowlisted numbers and codes', () => {
+    const report = g2FailedReport({
+      instance: 'tbi-s8',
+      phase: 'idle',
+      seconds: 1,
+      admitted: [],
+      builds: [],
+      promotedPositions: [],
+      samples: [],
+      autostop: 'mem',
+      metrics: { minMemAvailableMiB: 250, idleEndMs: NaN, secretTicket: 1, journalBad: 'secret' },
+      flags: ['dec32', 'secret-flag'],
+      failures: ['mem_below_400', '/home/secret'],
+    });
+    expect(report).toMatchObject({
+      reason: 'autostop:mem',
+      metrics: { minMemAvailableMiB: 250 },
+      flags: ['dec32'],
+      failures: ['mem_below_400'],
+    });
+    expect(Object.keys(report.metrics)).toEqual(['minMemAvailableMiB']);
+    expect(JSON.stringify(report)).not.toContain('secret');
   });
 });
