@@ -1837,3 +1837,145 @@ describe('restart gap: the marker file makes a lost state visible to a new proce
     expect(await autoStateDirCheck(r.dir)).toBeNull();
   });
 });
+
+describe('unreadable state leaves the marker for the next process', () => {
+  const state = (r: Rig) => join(r.dir, AUTO_STATE_FILE);
+  const marker = (r: Rig) => join(r.dir, AUTO_MARKER_FILE);
+  const corrupt = (r: Rig) => writeFileSync(state(r), '{not json', { mode: 0o600 });
+  const future = JSON.stringify({ v: 2, day: '2099-01-01', count: 0, retries: 0, claims: {} });
+  const failLines = (r: Rig) => r.logs.filter((l) => /marker not written/.test(l));
+
+  const kinds: [string, (r: Rig) => void][] = [
+    ['corrupt', corrupt],
+    ['future_day', (r) => writeFileSync(state(r), future, { mode: 0o600 })],
+    ['unreadable errno (EISDIR)', (r) => mkdirSync(state(r))],
+  ];
+  for (const [name, breakState] of kinds) {
+    for (const paused of [false, true]) {
+      it(`${name}${paused ? ', paused' : ''}: marker written; state deleted, new process: nothing older approved`, async () => {
+        const r = await rig();
+        await createN(r, 2); // after the past SINCE
+        breakState(r);
+        if (paused) writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+        expect((await r.auto().sweep()).stopped).toBe('counter_unreadable');
+        const m = lstatSync(marker(r));
+        expect([m.isFile(), m.mode & 0o777, m.size]).toEqual([true, 0o600, 0]);
+        rmSync(join(r.dir, AUTO_PAUSE_FILE), { force: true });
+        rmSync(state(r), { recursive: true });
+        expect(await r.auto().sweep()).toEqual({ claimed: 0, attempted: 0 });
+        expect(r.logs.filter((l) => /state missing, cut-off = now/.test(l))).toHaveLength(1);
+        expect(counter(r.dir).since).toBe(new Date(r.clock.t).toISOString());
+        expect(r.added).toEqual([]);
+      });
+    }
+  }
+
+  it('every such sweep ensures the marker, also within the log rate limit; status() writes nothing', async () => {
+    const r = await rig();
+    corrupt(r);
+    const a = r.auto();
+    await a.status();
+    await expect(a.todayCount()).rejects.toThrow();
+    expect(existsSync(marker(r))).toBe(false);
+    await a.sweep();
+    rmSync(marker(r));
+    await a.sweep();
+    expect(existsSync(marker(r))).toBe(true);
+    expect((await a.sweep()).stopped).toBe('counter_unreadable'); // EEXIST is fine
+    expect(failLines(r)).toHaveLength(0);
+    expect(readFileSync(state(r), 'utf8')).toBe('{not json');
+  });
+
+  // The state turns corrupt after confirm(): at the listing (prune reads next) or at the pause
+  // check right before claim() / reserveRetry().
+  for (const step of ['prune', 'claim', 'retry'] as const) {
+    it(`corrupted before ${step}: counter_unreadable and the marker is back`, async () => {
+      const r = await rig();
+      await createN(r, 1);
+      if (step === 'retry') r.addAnswers.push('pending');
+      let armed = false;
+      let checks = 0;
+      const breakNow = () => {
+        rmSync(marker(r), { force: true });
+        corrupt(r);
+      };
+      const a = r.auto({
+        stat: async () => {
+          // 1: sweep start, 2: before the claim or the retry.
+          if (armed && step !== 'prune' && ++checks === 2) breakNow();
+          throw Object.assign(new Error('x'), { code: 'ENOENT' });
+        },
+      });
+      // Confirm the process first (claim: with the request not yet eligible for a claim).
+      if (step === 'retry') {
+        await a.sweep();
+        r.clock.t += AUTO_RETRY_BACKOFF_MS;
+      } else {
+        writeFileSync(state(r), future.replace('2099-01-01', '2026-11-23'), { mode: 0o600 });
+        const list = r.store.list.bind(r.store);
+        r.store.list = async () => [];
+        await a.sweep();
+        r.clock.t += 10_000;
+        await createN(r, 1, 1);
+        r.store.list = async () => {
+          const out = await list();
+          if (step === 'prune') breakNow();
+          return out;
+        };
+      }
+      armed = true;
+      expect(await a.sweep()).toEqual({ claimed: 0, attempted: 0, stopped: 'counter_unreadable' });
+      if (step !== 'prune') expect(checks).toBe(2);
+      expect(existsSync(marker(r))).toBe(true);
+    });
+  }
+
+  it('the dir turned unsafe during the sweep: nothing is written into it', async () => {
+    const r = await rig();
+    await createN(r, 1);
+    const a = r.auto();
+    const list = r.store.list.bind(r.store);
+    r.store.list = async () => {
+      const out = await list();
+      rmSync(marker(r), { force: true });
+      corrupt(r);
+      chmodSync(r.dir, 0o777);
+      return out;
+    };
+    expect((await a.sweep()).stopped).toBe('counter_unreadable');
+    expect(existsSync(marker(r))).toBe(false);
+  });
+
+  for (const paused of [false, true]) {
+    it(`marker write failure${paused ? ' while paused' : ''}: still counter_unreadable, logged hourly (errno only), retried`, async () => {
+      const r = await rig();
+      await createN(r, 1);
+      corrupt(r);
+      if (paused) writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+      chmodSync(r.dir, 0o500); // safe for the dir check, but nothing can be created
+      try {
+        const a = r.auto();
+        expect(await a.sweep()).toEqual({
+          claimed: 0,
+          attempted: 0,
+          stopped: 'counter_unreadable',
+        });
+        r.clock.t += 60_000;
+        expect((await a.sweep()).stopped).toBe('counter_unreadable');
+        expect(failLines(r)).toEqual([
+          'signup: auto-approve marker not written (EACCES); retried at the next unreadable-state sweep',
+        ]);
+        r.clock.t += 60 * 60_000;
+        await a.sweep();
+        expect(failLines(r)).toHaveLength(2);
+        chmodSync(r.dir, 0o700);
+        await a.sweep();
+        expect(existsSync(marker(r))).toBe(true);
+        expect(readFileSync(state(r), 'utf8')).toBe('{not json');
+        expect(r.added).toEqual([]);
+      } finally {
+        chmodSync(r.dir, 0o700);
+      }
+    });
+  }
+});
