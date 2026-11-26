@@ -28,17 +28,22 @@
  *     exactly one sim_open and one sim_close per own session in sim-journal.log; no identity, token or
  *     ticket in that file or the host journal. Others' units/directories are counted, never touched.
  *
- * Auto-stop (G6, g2-load.ts): every 5 s, read-only commands. Abort on MemAvailable < 300 MiB twice in
- * a row, load1 > 2 x CPUs for 60 s, session-host or build unit MemoryCurrent >= 90 % of MemoryMax, a
- * new oom_kill or kernel OOM line, 3 failed samples in a row, or the manual stop file
- * $TBI_RUNTIME_HOME/g2-stop. MemAvailable < 400 MiB at any sample fails the run without aborting.
+ * Auto-stop (G6, g2-load.ts): every 5 s (never two at once), read-only commands. Abort on
+ * MemAvailable < 300 MiB twice in a row; load1 > max(4 x CPUs, 12) for 60 s; session-host or build
+ * unit working set (memory.stat anon + kernel + shmem; MemoryCurrent is reported only) >= 90 % of
+ * MemoryMax; a new oom_kill or kernel OOM line; 3 failed samples in a row; the pipeline lock no
+ * longer held; or the manual stop file $TBI_RUNTIME_HOME/g2-stop. Without aborting, the run FAILS on
+ * MemAvailable < 400 MiB at any sample, load1 > 2 x CPUs for 60 s, or > 10 % failed samples.
+ * G4 counts only builder_busy / memory_pressure / storage_pressure / capacity_timeout as a refusal
+ * (any 429 fails); zero successful builds is flagged `dec32`. Every report lists `notCovered`.
  * Reports (numbers and fixed codes only): $TBI_RUNTIME_HOME/results/g2-deployed-<run>[-FAILED].json.
  *
  * RUNBOOK (interactive only, daytime, never from the night runner or CI; staging only):
  *   1. Staging installed per the plan (policy.beta.json, TBI_HOST_MAX_SESSIONS=6, metering on,
  *      TBI_HOST_IDLE_MS=300000); the two preview identities mapped to `preview` in the server's policy
  *      copy (not in the repo). The harness configures nothing.
- *   2. Take the pipeline lock (deploy/ops/pipeline-lock.mjs acquire), up to 2.5 h worst case.
+ *   2. Take the pipeline lock (deploy/ops/pipeline-lock.mjs acquire) inside tmux, from the shell that
+ *      runs the test; lock window 2 h by default, up to 2.5 h.
  *   3. TBI_G2_DEPLOYED=tbi-s8 TBI_ALLOW_SERVICE_MUTATION=tbi-s8 TBI_G2_PREVIEW_USERS=<id1>,<id2> \
  *      [TBI_G2_SECONDS=1500] npx vitest run --config vitest.runtime.config.ts \
  *      runtime/tests/g2-deployed.runtime.test.ts
@@ -46,7 +51,7 @@
  *      mutation opt-in or lock, a wrong preview list or an unclean baseline FAILS the test. The only
  *      writes are the pause file and the harness's own builds, sessions and tickets.
  */
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, onTestFailed } from 'vitest';
@@ -55,7 +60,7 @@ import { DEFAULT_SIM_HOUSEKEEPING_MS, FREE_PAUSE_FILE } from '../plans/hostboot.
 import { recordEvidence, RUNTIME_HOME } from '../harness/env.js';
 import { Circuit } from '../host/tests/r1-support.js';
 import { PROTOCOL } from '../host/protocol.js';
-import { mutationAllowed } from './mutation-gate.js';
+import { mutationAllowed, pipelineLockStatus } from './mutation-gate.js';
 import {
   g2Decision,
   g2Report,
@@ -63,6 +68,7 @@ import {
   pollUntil,
   G2_ENV,
   G2_FREE_LIVE,
+  G2_NOT_COVERED,
   G2_PAUSE_PROBE,
   G2_PAUSE_REMOVAL_MS,
   G2_PREVIEW,
@@ -82,6 +88,20 @@ const RUN = Date.now().toString(36);
 const FETCH_MS = 15_000;
 const sudo = (...args: string[]) =>
   spawnSync('sudo', ['-n', ...args], { encoding: 'utf8', timeout: 10_000, maxBuffer: 1 << 28 });
+/** the sampler's reads: same argv rules, but without blocking the event loop */
+const sudoAsync: L.G2Run = (argv) =>
+  new Promise((resolve) => {
+    execFile(
+      'sudo',
+      ['-n', ...argv],
+      { encoding: 'utf8', timeout: 10_000, maxBuffer: 1 << 24 },
+      (error, stdout) =>
+        resolve({
+          status: !error ? 0 : typeof error.code === 'number' ? error.code : null,
+          stdout,
+        }),
+    );
+  });
 const PAUSE_FILE = `${L.G2_STATE_DIR}/${FREE_PAUSE_FILE}`;
 const STOP_FILE = join(RUNTIME_HOME, L.G2_STOP_FILE);
 /** `test -e`: 0 exists, 1 does not; anything else is unknown and refused. */
@@ -94,12 +114,13 @@ const rootExists = (path: string) => {
 const relays: ChildProcess[] = [];
 async function relay(socket: string): Promise<string> {
   const port = 5800 + Math.floor(Math.random() * 150);
-  const code = `const net=require('node:net');net.createServer((c)=>{const u=net.connect(${JSON.stringify(socket)});c.pipe(u).pipe(c);u.on('error',()=>c.destroy());c.on('error',()=>u.destroy())}).listen(${port},'127.0.0.1',()=>console.log('ready'));`;
-  // own process group: a Ctrl-C must not kill the relays before the clean-up has used them
-  const child = spawn('sudo', ['-n', process.execPath, '-e', code], {
-    stdio: ['ignore', 'pipe', 'inherit'],
+  // own process group: a Ctrl-C must not kill the relays before the clean-up has used them. The
+  // stdin pipe is the tie to this process: when it ends, however we die, the relay exits.
+  const child = spawn('sudo', ['-n', process.execPath, '-e', L.g2RelayCode(socket, port)], {
+    stdio: ['pipe', 'pipe', 'inherit'],
     detached: true,
   });
+  child.stdin!.on('error', () => undefined); // EPIPE when the relay is already gone
   relays.push(child);
   await new Promise<void>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('g2-deployed: relay did not start')), 10_000);
@@ -107,17 +128,28 @@ async function relay(socket: string): Promise<string> {
   });
   return `http://127.0.0.1:${port}`;
 }
-function killRelays() {
-  for (const r of relays.splice(0))
-    for (const c of sudo('pgrep', '-P', String(r.pid)).stdout.split(/\s+/).filter(Boolean))
-      sudo('kill', c);
+async function killRelays() {
+  await Promise.all(
+    relays.splice(0).map(async (r) => {
+      r.stdin!.end();
+      if (L.g2Running(r))
+        await new Promise<void>((resolve) => {
+          const t = setTimeout(resolve, 5000);
+          r.once('exit', () => (clearTimeout(t), resolve()));
+        });
+      // only for one that is still running: an exited relay's PID may be someone else's
+      if (!L.g2Running(r)) return;
+      for (const c of sudo('pgrep', '-P', String(r.pid)).stdout.split(/\s+/).filter(Boolean))
+        sudo('kill', c);
+    }),
+  );
 }
 
 /** Set by the running test: its one idempotent clean-up. */
 let cleanupRun: (() => Promise<void>) | undefined;
 afterAll(async () => {
   await cleanupRun?.();
-  killRelays();
+  await killRelays();
 });
 
 const as = (user: string, extra: Record<string, string> = {}) => ({
@@ -216,19 +248,35 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
       // ---- G6 sampler
       const watch = L.g2WatchState();
       const sinceEpochS = Math.floor(Date.now() / 1000);
-      let sampler: ReturnType<typeof setInterval> | undefined;
+      /** kernel lines are read since the start of the last good sample */
+      let kernelSinceS = sinceEpochS;
+      let sampledAt: number | undefined;
+      let sampler: ReturnType<typeof L.g2Loop> | undefined;
       const stop = (why: L.G2Autostop) => {
         if (abort.signal.aborted) return;
         progress.autostop = why;
         abort.abort(new Error(`autostop:${why}`));
         void cleanup();
       };
-      const takeSample = () => {
+      const takeSample = async () => {
         let breach: L.G2Autostop | null;
         try {
-          const r = L.g2TakeSample((argv) => sudo(...argv), sinceEpochS);
+          const startedS = Math.floor(Date.now() / 1000);
+          const lock = L.g2LockState(await pipelineLockStatus(10_000));
+          const r = await L.g2TakeSample(sudoAsync, kernelSinceS);
           if (!r.sample) metrics.lastSamplerExit = r.exit;
-          breach = L.g2Evaluate(watch, r.sample, performance.now());
+          // a lock check without an answer leaves the sample blind
+          const sample = lock === 'unknown' ? null : r.sample;
+          const now = performance.now();
+          breach = L.g2Evaluate(watch, sample, now);
+          if (sample) {
+            kernelSinceS = startedS;
+            metrics.maxSampleGapMs = Math.round(
+              Math.max(metrics.maxSampleGapMs ?? 0, now - (sampledAt ?? now)),
+            );
+            sampledAt = now;
+          }
+          if (lock === 'lost') breach = 'lock';
           if (existsSync(STOP_FILE)) breach = 'manual';
         } catch {
           breach = 'sampler';
@@ -240,6 +288,7 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           maxLoad1: watch.maxLoad1,
           nproc: watch.nproc,
           maxUnitMemoryRatio: watch.maxUnitRatio,
+          maxUnitCurrentRatio: watch.maxUnitCurrentRatio,
           hostPeakBytes: watch.unitPeakBytes[0],
           buildPeakBytes: watch.unitPeakBytes[1],
           oomKills: watch.oomKills,
@@ -251,6 +300,8 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           !progress.failures!.includes('mem_below_400')
         )
           fail('mem_below_400');
+        if (watch.loadFail && !progress.failures!.includes('load_above_2x_cpus'))
+          fail('load_above_2x_cpus');
         if (breach) stop(breach);
       };
 
@@ -289,8 +340,9 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         }
         metrics.unresolvedBuilds = openBuilds.size; // no cancel endpoint: counted only
         if (mine.length || tickets.length) await countLeftovers();
-        clearInterval(sampler);
-        killRelays();
+        await sampler?.stop();
+        if (L.g2SamplerBlind(watch)) fail('sampler_blind');
+        await killRelays();
       }
       async function countLeftovers() {
         const ids = mine.map((m) => m.id);
@@ -365,6 +417,7 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
       };
       process.once('SIGINT', onSignal);
       process.once('SIGTERM', onSignal);
+      process.once('SIGHUP', onSignal); // a closed terminal or lost ssh session
       // also covers a test timeout, which a finally block would not
       onTestFailed(() => bail('test failed'));
 
@@ -386,10 +439,10 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         const dirty = L.g2Baseline(await health(), rootExists(PAUSE_FILE), existsSync(STOP_FILE));
         if (dirty.length)
           throw new Error(`g2-deployed refused: unclean baseline: ${dirty.join(', ')}`);
-        takeSample();
-        if (!watch.samples) throw new Error('g2-deployed refused: resource sampling does not work');
+        await takeSample();
         checkAbort();
-        sampler = setInterval(takeSample, L.G2_LIMITS.sampleMs);
+        if (!watch.samples) throw new Error('g2-deployed refused: resource sampling does not work');
+        sampler = L.g2Loop(takeSample, L.G2_LIMITS.sampleMs, () => stop('sampler'));
 
         const base = g2FreeUsers(RUN);
         const free = Array.from(
@@ -588,6 +641,11 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           done?: { status: number; atMs: number; error?: unknown };
         }
         let waiters: Waiter[] = [];
+        // joined waiters are polled while the harness does other things, or they vanish
+        const line = L.g2WaitingLine<{ user: string; ticket: string }>(
+          async (w) => (await create(w.user, w.ticket, L.G2_HOLD_LIFETIME_MS)).status,
+          () => performance.now(),
+        );
         const enqueue = async (users: string[]) => {
           const out: Waiter[] = [];
           for (const [i, user] of users.entries()) {
@@ -596,23 +654,32 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
             const q = r.body.queued as { ticket: string; position: number; pollAfterS: number };
             expect(q.position).toBe(i + 1);
             expect(r.body.error).not.toBe('runtime_capacity');
-            out.push({ user, ticket: q.ticket, pollAfterS: q.pollAfterS, position: q.position });
+            const w = { user, ticket: q.ticket, pollAfterS: q.pollAfterS, position: q.position };
+            out.push(w);
+            line.add(w);
+            await line.keep();
           }
           return out;
         };
         const firstJoinAt = performance.now();
         waiters = await enqueue(queuedUsers);
         await sample();
+        await line.keep();
         expect((await health()).waiting).toBe(G2_QUEUED);
 
         // ---- 3. cancel
         progress.phase = 'cancel';
         const last = waiters.pop()!;
+        line.remove(last);
         expect(await cancel(last.user, last.ticket)).toBe(204);
         expect((await health()).waiting).toBe(G2_QUEUED - 1);
 
         // ---- 4. pause drill
         progress.phase = 'pause';
+        // last sign of life of every waiter: no polls from here on, so only the pause can remove them
+        await line.keep(0);
+        const aliveSince = line.oldestSeenAt();
+        line.clear();
         const tPause = performance.now();
         checkAbort();
         expect(rootExists(PAUSE_FILE), 'pause file made by someone else').toBe(false);
@@ -630,12 +697,12 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         const removed = await pollUntil(
           async () => (await health()).waiting,
           (w) => w === 0,
-          Math.min(tPause + G2_PAUSE_REMOVAL_MS, firstJoinAt + queue.vanishMs),
+          Math.min(tPause + G2_PAUSE_REMOVAL_MS, aliveSince + queue.vanishMs),
           clock,
         );
         expect(
           removed.ok,
-          `waiting Free removed by the pause: waiting=${removed.value}, ${Math.round(removed.atMs - tPause)} ms after the pause, ${Math.round(removed.atMs - firstJoinAt)} ms after the first join`,
+          `waiting Free removed by the pause: waiting=${removed.value}, ${Math.round(removed.atMs - tPause)} ms after the pause, ${Math.round(removed.atMs - firstJoinAt)} ms after the first join, ${Math.round(removed.atMs - aliveSince)} ms after the oldest poll`,
         ).toBe(true);
         // a waiter that merely vanished answers queue_timeout: only the pause answers free_paused
         const dropped = await create(waiters[0]!.user, waiters[0]!.ticket);
@@ -656,6 +723,8 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         if (back.status === 202) await cancel(free[G2_PAUSE_PROBE]!, back.body.queued.ticket);
         // the waiters the pause removed queue again (their old tickets keep answering free_paused)
         waiters = await enqueue(waiters.map((w) => w.user));
+        await line.keep(0);
+        line.clear(); // from here each waiter has its own poller
 
         // ---- 5. drain: poll every pollAfterS; seats free themselves at the 120 s lifetime
         progress.phase = 'drain';
@@ -816,14 +885,22 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
               refusedWith = { status: r.status, error: r.body.error };
               break;
             }
-            fillers.push({ user, ticket: r.body.queued.ticket });
+            const filler = { user, ticket: r.body.queued.ticket as string };
+            fillers.push(filler);
+            line.add(filler);
+            await line.keep();
           }
           metrics.queueFullAccepted = fillers.length;
           metrics.queueFullStatus = refusedWith?.status ?? 0;
           expect([refusedWith?.status, refusedWith?.error]).toEqual([429, 'queue_full']);
           expect(fillers.length).toBe(queue.maxFree);
+          await line.keep();
           expect((await health()).waiting).toBe(queue.maxFree);
-          for (const f of fillers) expect(await cancel(f.user, f.ticket)).toBe(204);
+          for (const f of fillers) {
+            line.remove(f);
+            expect(await cancel(f.user, f.ticket)).toBe(204);
+            await line.keep();
+          }
           expect((await health()).waiting).toBe(0);
         }
 
@@ -874,21 +951,15 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           ),
           watchLive,
         ]);
-        const outcomes = done.map((b) => b.outcome);
-        const count = (o: L.G2BuildOutcome) => outcomes.filter((x) => x === o).length;
+        const g4 = L.g2BuildSummary(done);
         Object.assign(metrics, {
-          build1WaitMs: done[0]!.ms,
-          build2WaitMs: done[1]!.ms,
-          buildsSucceeded: count('succeeded'),
-          buildsRefused: count('refused'),
-          buildsFailed: count('failed'),
-          buildsLost: count('lost'),
+          ...g4.metrics,
           minLiveDuringBuilds: minLive,
           queueTimeoutMs: Math.round(timedOut.atMs - patientAt),
           queueTimeoutStatus: timedOut.status,
         });
-        if (done.some((b) => b.ms > L.G2_BUILD_FLAG_MS)) progress.flags!.push('dec32');
-        if (count('lost') || count('failed')) fail('build_lost_or_failed');
+        if (g4.dec32) progress.flags!.push('dec32');
+        if (g4.failed) fail('build_lost_or_failed');
         if (minLive < SEATS) fail('builds_not_under_6_live');
         expect(
           L.g2TimeoutOk(
@@ -915,16 +986,11 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         await cleanup();
         process.removeListener('SIGINT', onSignal);
         process.removeListener('SIGTERM', onSignal);
+        process.removeListener('SIGHUP', onSignal);
       }
     },
     L.g2TimeoutMs(decision.kind === 'run' ? SECONDS : 0),
   );
 
-  // Requirement: every fetch is bounded to 15 s, so no 5 minute event stream can be held here.
-  it.todo(
-    'idle with an attached event stream: idle_timeout although the stream is open (host unit tests only)',
-  );
-  // Free is capped at maxFree < maxLength, so filling the whole queue needs more paid identities
-  // than the two preview users.
-  it.todo('queue_full at maxLength with paid waiters');
+  for (const title of G2_NOT_COVERED) it.todo(title);
 });

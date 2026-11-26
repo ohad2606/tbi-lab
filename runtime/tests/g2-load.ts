@@ -31,11 +31,20 @@ export const G2_LIMITS = {
   abortAvailMiB: 300,
   abortAvailSamples: 2,
   failAvailMiB: 400,
-  loadPerCpu: 2,
+  /** load1 above loadFailPerCpu x CPUs for loadForMs fails the run; it does not stop it */
+  loadFailPerCpu: 2,
+  /** load1 above max(loadAbortPerCpu x CPUs, loadAbortMin) for loadForMs stops the run */
+  loadAbortPerCpu: 4,
+  loadAbortMin: 12,
   loadForMs: 60_000,
   unitMemoryRatio: 0.9,
   samplerFailures: 3,
+  /** a run with more than this share of failed samples (of at least blindMinSamples) fails */
+  blindRatio: 0.1,
+  blindMinSamples: 20,
 };
+/** a waiter not polled for this long is polled again; far below queue.vanishMs (30 s) */
+export const G2_KEEP_MS = 10_000;
 /** DEC-31: the idle limit the instance must report, and the allowed error of its end */
 export const G2_IDLE_MS = 300_000;
 export const G2_IDLE_TOLERANCE_MS = 2000;
@@ -67,7 +76,10 @@ export const g2TimeoutMs = (drainS: number): number =>
 
 // ---- sampling (read-only commands, fixed argv, run as `sudo -n`, no shell)
 export interface G2UnitMemory {
+  /** MemoryCurrent: includes reclaimable page cache, reported only */
   current: number;
+  /** memory.stat anon + kernel + shmem: what the cgroup cannot give back without swap */
+  workingSet: number;
   max: number;
   peak: number | null;
   oomKill: number;
@@ -80,19 +92,19 @@ export interface G2Sample {
   kernelOom: number;
   qemuUnits: number;
 }
-export type G2Run = (argv: string[]) => { status: number | null; stdout: string };
+export type G2Run = (argv: string[]) => Promise<{ status: number | null; stdout: string }>;
 
 const OOM_LINE = /out of memory|oom-kill|oom_reaper|invoked oom-killer/i;
 const num = (re: RegExp, text: string): number => Number(re.exec(text)?.[1] ?? NaN);
 
 /** One sample, or null with the exit code of the failed command (-1 = no exit code, 0 = unparsable). */
-export function g2TakeSample(
+export async function g2TakeSample(
   run: G2Run,
   sinceEpochS: number,
-): { sample: G2Sample | null; exit: number } {
+): Promise<{ sample: G2Sample | null; exit: number }> {
   let exit = 0;
-  const read = (...argv: string[]): string => {
-    const r = run(argv);
+  const read = async (...argv: string[]): Promise<string> => {
+    const r = await run(argv);
     if (r.status !== 0) {
       exit = r.status ?? -1;
       throw new Error('sample command failed');
@@ -100,28 +112,39 @@ export function g2TakeSample(
     return r.stdout;
   };
   try {
-    const availMiB = num(/^MemAvailable:\s+(\d+) kB/m, read('cat', '/proc/meminfo')) / 1024;
-    const load1 = num(/^([\d.]+) /, read('cat', '/proc/loadavg'));
-    const nproc = num(/^(\d+)\s*$/, read('nproc'));
-    const units = G2_WATCHED_UNITS.map((u) => {
-      const show = read('systemctl', 'show', '-p', 'MemoryCurrent,MemoryPeak,MemoryMax', u);
-      const events = read('cat', `/sys/fs/cgroup/system.slice/${u}.service/memory.events`);
+    const meminfo = await read('cat', '/proc/meminfo');
+    const availMiB = num(/^MemAvailable:\s+(\d+) kB/m, meminfo) / 1024;
+    const load1 = num(/^([\d.]+) /, await read('cat', '/proc/loadavg'));
+    const nproc = num(/^(\d+)\s*$/, await read('nproc'));
+    const units: G2UnitMemory[] = [];
+    for (const u of G2_WATCHED_UNITS) {
+      const show = await read('systemctl', 'show', '-p', 'MemoryCurrent,MemoryPeak,MemoryMax', u);
+      const cgroup = `/sys/fs/cgroup/system.slice/${u}.service`;
+      const stat = await read('cat', `${cgroup}/memory.stat`);
+      const events = await read('cat', `${cgroup}/memory.events`);
       const peak = num(/^MemoryPeak=(\d+)$/m, show);
-      return {
+      units.push({
         current: num(/^MemoryCurrent=(\d+)$/m, show),
+        workingSet:
+          num(/^anon (\d+)$/m, stat) + num(/^kernel (\d+)$/m, stat) + num(/^shmem (\d+)$/m, stat),
         max: num(/^MemoryMax=(\d+)$/m, show),
         peak: Number.isNaN(peak) ? null : peak,
         oomKill: num(/^oom_kill (\d+)$/m, events),
-      };
-    });
+      });
+    }
     const since = `@${sinceEpochS}`;
-    const kernel = read('journalctl', '-k', '--since', since, '--no-pager', '-o', 'cat');
-    const qemuUnits = read(...G2_QEMU_LIST)
+    const kernel = await read('journalctl', '-k', '--since', since, '--no-pager', '-o', 'cat');
+    const qemuUnits = (await read(...G2_QEMU_LIST))
       .split('\n')
       .filter((l) => l.includes('-qemu@')).length;
     const kernelOom = kernel.split('\n').filter((l) => OOM_LINE.test(l)).length;
     // an unreadable value must never pass as a harmless one
-    const needed = [availMiB, load1, nproc, ...units.flatMap((u) => [u.current, u.max, u.oomKill])];
+    const needed = [
+      availMiB,
+      load1,
+      nproc,
+      ...units.flatMap((u) => [u.current, u.workingSet, u.max, u.oomKill]),
+    ];
     if (!needed.every(Number.isFinite) || nproc < 1) return { sample: null, exit };
     return { sample: { availMiB, load1, nproc, units, kernelOom, qemuUnits }, exit };
   } catch {
@@ -138,6 +161,7 @@ export const G2_AUTOSTOPS = [
   'sampler',
   'manual',
   'signal',
+  'lock',
 ] as const;
 export type G2Autostop = (typeof G2_AUTOSTOPS)[number];
 
@@ -147,11 +171,14 @@ export const g2WatchState = () => ({
   failuresInRow: 0,
   lowMemInRow: 0,
   loadSince: null as number | null,
+  loadAbortSince: null as number | null,
+  loadFail: false,
   oomBase: null as number[] | null,
   minAvailMiB: Infinity,
   maxLoad1: 0,
   nproc: 0,
   maxUnitRatio: 0,
+  maxUnitCurrentRatio: 0,
   unitPeakBytes: [0, 0],
   oomKills: 0,
   kernelOom: 0,
@@ -172,8 +199,9 @@ export function g2Evaluate(s: G2WatchState, x: G2Sample | null, nowMs: number): 
   s.maxLoad1 = Math.max(s.maxLoad1, x.load1);
   s.maxQemuUnits = Math.max(s.maxQemuUnits, x.qemuUnits);
   s.kernelOom = Math.max(s.kernelOom, x.kernelOom);
-  const ratios = x.units.map((u) => u.current / u.max);
+  const ratios = x.units.map((u) => u.workingSet / u.max);
   s.maxUnitRatio = Math.max(s.maxUnitRatio, ...ratios);
+  s.maxUnitCurrentRatio = Math.max(s.maxUnitCurrentRatio, ...x.units.map((u) => u.current / u.max));
   x.units.forEach((u, i) => {
     s.unitPeakBytes[i] = Math.max(s.unitPeakBytes[i] ?? 0, u.peak ?? u.current);
   });
@@ -181,14 +209,100 @@ export function g2Evaluate(s: G2WatchState, x: G2Sample | null, nowMs: number): 
   const kills = x.units.reduce((n, u, i) => n + Math.max(0, u.oomKill - s.oomBase![i]!), 0);
   s.oomKills = Math.max(s.oomKills, kills);
   s.lowMemInRow = x.availMiB < G2_LIMITS.abortAvailMiB ? s.lowMemInRow + 1 : 0;
-  s.loadSince = x.load1 > G2_LIMITS.loadPerCpu * x.nproc ? (s.loadSince ?? nowMs) : null;
+  const since = (over: number, from: number | null) => (x.load1 > over ? (from ?? nowMs) : null);
+  const held = (from: number | null) => from !== null && nowMs - from >= G2_LIMITS.loadForMs;
+  const abortLoad = Math.max(G2_LIMITS.loadAbortPerCpu * x.nproc, G2_LIMITS.loadAbortMin);
+  s.loadSince = since(G2_LIMITS.loadFailPerCpu * x.nproc, s.loadSince);
+  s.loadAbortSince = since(abortLoad, s.loadAbortSince);
+  if (held(s.loadSince)) s.loadFail = true;
   if (kills > 0) return 'oom_kill';
   if (x.kernelOom > 0) return 'oom_kernel';
   if (s.lowMemInRow >= G2_LIMITS.abortAvailSamples) return 'mem';
   if (ratios.some((r) => r >= G2_LIMITS.unitMemoryRatio)) return 'unit_mem';
-  if (s.loadSince !== null && nowMs - s.loadSince >= G2_LIMITS.loadForMs) return 'load';
+  if (held(s.loadAbortSince)) return 'load';
   return null;
 }
+
+/** Too many samples failed for the run to count as watched. */
+export const g2SamplerBlind = (s: Pick<G2WatchState, 'samples' | 'failures'>): boolean => {
+  const total = s.samples + s.failures;
+  return total >= G2_LIMITS.blindMinSamples && s.failures > total * G2_LIMITS.blindRatio;
+};
+
+/** Exit code of `pipeline-lock.mjs check`; null (no answer) counts as a failed sample. */
+export const g2LockState = (status: number | null): 'held' | 'lost' | 'unknown' =>
+  status === 0 ? 'held' : status === null ? 'unknown' : 'lost';
+
+/** Runs `tick` every `intervalMs` (from start to start), never two at once. */
+export function g2Loop(
+  tick: () => Promise<void>,
+  intervalMs: number,
+  onError: (e: unknown) => void,
+) {
+  let stopped = false;
+  let running: Promise<void> = Promise.resolve();
+  let timer: ReturnType<typeof setTimeout>;
+  const schedule = (ms: number) => {
+    timer = setTimeout(() => {
+      const t0 = performance.now();
+      running = tick()
+        .catch(onError)
+        .finally(() => {
+          if (!stopped) schedule(Math.max(0, intervalMs - (performance.now() - t0)));
+        });
+    }, ms);
+  };
+  schedule(intervalMs);
+  return {
+    /** no further tick; resolves when the one in flight has ended */
+    stop: async () => {
+      stopped = true;
+      clearTimeout(timer);
+      await running;
+    },
+  };
+}
+
+/**
+ * Queue waiters that must not vanish while the harness is busy: `keep(ageMs)` polls, oldest first,
+ * every waiter not heard from for that long. `poll` returns the HTTP status; only 202 is a waiter.
+ */
+export function g2WaitingLine<T>(poll: (w: T) => Promise<number>, now: () => number) {
+  const seen = new Map<T, number>();
+  return {
+    add: (w: T) => void seen.set(w, now()),
+    remove: (w: T) => void seen.delete(w),
+    clear: () => seen.clear(),
+    oldestSeenAt: () => Math.min(...seen.values()),
+    async keep(ageMs = G2_KEEP_MS) {
+      const due = [...seen].filter(([, at]) => now() - at >= ageMs).sort((a, b) => a[1] - b[1]);
+      for (const [w] of due) {
+        const status = await poll(w);
+        if (status !== 202) throw new Error(`g2-deployed: a queued waiter answered ${status}`);
+        seen.set(w, now());
+      }
+    },
+  };
+}
+
+// ---- root relays
+/**
+ * Source of a TCP -> unix socket relay (`node -e`, run as root). It exits when its stdin ends, so
+ * it cannot outlive the harness that holds the other end of the pipe.
+ */
+export const g2RelayCode = (socket: string, port: number): string =>
+  [
+    "const net=require('node:net');",
+    "for(const e of ['end','close','error'])process.stdin.on(e,()=>process.exit(0));",
+    'process.stdin.resume();',
+    'net.createServer((c)=>{',
+    `const u=net.connect(${JSON.stringify(socket)});`,
+    "c.pipe(u).pipe(c);u.on('error',()=>c.destroy());c.on('error',()=>u.destroy())",
+    `}).listen(${port},'127.0.0.1',()=>console.log('ready'));`,
+  ].join('');
+/** false once the process has exited: its PID may belong to another process by now */
+export const g2Running = (p: { exitCode: number | null; signalCode: string | null }): boolean =>
+  p.exitCode === null && p.signalCode === null;
 
 // ---- preconditions and drill verdicts
 export interface G2Capacity {
@@ -248,8 +362,13 @@ export const g2TimeoutOk = (
   r.ms >= maxWaitMs - 2000 &&
   r.ms <= maxWaitMs + 2 * pollAfterS * 1000 + 30_000;
 
+/** the builder's refusals that mean "no capacity now" (runtime/policy/refusal.ts, all 503) */
+export const G2_CAPACITY_REFUSALS = ['builder_busy', 'memory_pressure', 'storage_pressure'];
 export type G2BuildOutcome = 'succeeded' | 'refused' | 'failed' | 'lost';
-/** `lost`: neither success nor an explicit refusal within the cap. */
+/**
+ * `lost`: neither success nor an explicit refusal within the cap. Only a capacity refusal counts as
+ * refused: a 429 (rate_limited, quota, cooldown) says the run did not test capacity and is `failed`.
+ */
 export function g2BuildOutcome(r: {
   http: number;
   error?: string;
@@ -259,9 +378,28 @@ export function g2BuildOutcome(r: {
 }): G2BuildOutcome {
   if (r.ms > G2_BUILD_CAP_MS) return 'lost';
   if (r.state === 'succeeded') return 'succeeded';
-  if ((r.http === 429 || r.http === 503) && r.error) return 'refused';
+  if (r.http === 503 && G2_CAPACITY_REFUSALS.includes(r.error ?? '')) return 'refused';
   if (r.state === 'failed') return r.failure === 'capacity_timeout' ? 'refused' : 'failed';
   return r.http === 200 || r.http === 202 ? 'lost' : 'failed';
+}
+
+/** G4 over the two builds under load. */
+export function g2BuildSummary(done: { outcome: G2BuildOutcome; ms: number }[]) {
+  const count = (o: G2BuildOutcome) => done.filter((b) => b.outcome === o).length;
+  const succeeded = count('succeeded');
+  return {
+    metrics: {
+      build1WaitMs: done[0]!.ms,
+      build2WaitMs: done[1]!.ms,
+      buildsSucceeded: succeeded,
+      buildsRefused: count('refused'),
+      buildsFailed: count('failed'),
+      buildsLost: count('lost'),
+    },
+    /** a long wait, or no success at all: DEC-32 must be looked at */
+    dec32: succeeded === 0 || done.some((b) => b.ms > G2_BUILD_FLAG_MS),
+    failed: count('failed') + count('lost') > 0,
+  };
 }
 
 // ---- G7

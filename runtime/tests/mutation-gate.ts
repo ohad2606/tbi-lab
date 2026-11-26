@@ -13,7 +13,7 @@
  * scripts/tests/mutation-gate.test.mjs fails if a runtime test or e2e spec calls a mutating
  * systemctl / install command without using this gate.
  */
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const MUTATION_ENV = 'TBI_ALLOW_SERVICE_MUTATION';
@@ -31,6 +31,15 @@ const LOCK = fileURLToPath(new URL('../../deploy/ops/pipeline-lock.mjs', import.
 /** True only if the caller holds the pipeline lock (the lock tool's own `check`). */
 export function holdsPipelineLock(): boolean {
   return spawnSync(process.execPath, [LOCK, 'check'], { stdio: 'ignore' }).status === 0;
+}
+
+/** The same check without blocking the event loop: its exit code, or null if it gave none. */
+export function pipelineLockStatus(timeoutMs: number): Promise<number | null> {
+  return new Promise((resolve) => {
+    execFile(process.execPath, [LOCK, 'check'], { timeout: timeoutMs }, (error) =>
+      resolve(!error ? 0 : typeof error.code === 'number' ? error.code : null),
+    );
+  });
 }
 
 /**

@@ -1,6 +1,10 @@
 /** Offline unit tests of the BETA-G2 load harness logic (runtime/tests/g2-load.ts). Fake clock, no host. */
-import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CONFIG } from '../../runtime/plans/config.ts';
 import { encodeLine } from '../../runtime/plans/store.ts';
 import * as L from '../../runtime/tests/g2-load.ts';
@@ -11,8 +15,8 @@ const good = {
   load1: 1,
   nproc: 4,
   units: [
-    { current: 100, max: 1000, peak: 200, oomKill: 0 },
-    { current: 100, max: 1000, peak: null, oomKill: 0 },
+    { current: 100, workingSet: 100, max: 1000, peak: 200, oomKill: 0 },
+    { current: 100, workingSet: 100, max: 1000, peak: null, oomKill: 0 },
   ],
   kernelOom: 0,
   qemuUnits: 0,
@@ -36,16 +40,38 @@ describe('auto-stop thresholds', () => {
     ]);
     expect(s.minAvailMiB).toBe(350);
   });
-  it('load above 2 x CPUs aborts only after 60 s in a row', () => {
-    const high = Array(13).fill({ load1: 8.1 });
-    expect(feed(high)).toEqual([...Array(12).fill(null), 'load']);
-    expect(feed([...high.slice(0, 11), { load1: 8 }, ...high.slice(0, 5)]).every((b) => !b)).toBe(
-      true,
+  it('load1 above 2 x CPUs for 60 s is a recorded FAIL criterion and never aborts by itself', () => {
+    const s = L.g2WatchState();
+    expect(feed(Array(12).fill({ load1: 8.1 }), s).every((b) => !b)).toBe(true);
+    expect(s.loadFail).toBe(false); // 55 s
+    expect(feed(Array(13).fill({ load1: 8.1 }), s).every((b) => !b)).toBe(true);
+    expect(s.loadFail).toBe(true);
+    const long = L.g2WatchState();
+    expect(feed(Array(40).fill({ load1: 16 }), long).every((b) => !b)).toBe(true);
+    const broken = L.g2WatchState();
+    feed(
+      [...Array(11).fill({ load1: 8.1 }), { load1: 8 }, ...Array(5).fill({ load1: 8.1 })],
+      broken,
     );
+    expect(broken.loadFail).toBe(false);
   });
-  it('unit memory at 90 % of MemoryMax aborts', () => {
-    expect(feed([{ units: unit({ current: 899 }) }])).toEqual([null]);
-    expect(feed([{ units: unit({ current: 900 }) }])).toEqual(['unit_mem']);
+  it('load aborts only above max(4 x CPUs, 12) for 60 s in a row', () => {
+    for (const [nproc, limit] of [
+      [1, 12],
+      [4, 16],
+    ]) {
+      const at = Array(20).fill({ nproc, load1: limit });
+      expect(feed(at).every((b) => !b)).toBe(true);
+      const over = Array(13).fill({ nproc, load1: limit + 0.1 });
+      expect(feed(over)).toEqual([...Array(12).fill(null), 'load']);
+      expect(feed([...over.slice(0, 11), at[0], ...over.slice(0, 5)]).every((b) => !b)).toBe(true);
+    }
+  });
+  it('unit memory at 90 % of MemoryMax aborts on the working set; page cache does not', () => {
+    const s = L.g2WatchState();
+    expect(feed([{ units: unit({ current: 999, workingSet: 899 }) }], s)).toEqual([null]);
+    expect(s).toMatchObject({ maxUnitRatio: 0.899, maxUnitCurrentRatio: 0.999 });
+    expect(feed([{ units: unit({ workingSet: 900 }) }])).toEqual(['unit_mem']);
   });
   it('a NEW oom_kill (against the first sample) or a kernel OOM line aborts', () => {
     expect(feed([{ units: unit({ oomKill: 3 }) }, { units: unit({ oomKill: 3 }) }])).toEqual([
@@ -59,6 +85,60 @@ describe('auto-stop thresholds', () => {
     expect(feed([null, null, {}, null, null])).toEqual([null, null, null, null, null]);
     expect(feed([null, null, null])).toEqual([null, null, 'sampler']);
   });
+  it('a run is blind when more than 10 % of at least 20 samples failed', () => {
+    const blind = (samples, failures) => L.g2SamplerBlind({ samples, failures });
+    expect([blind(18, 2), blind(17, 3), blind(90, 10), blind(89, 11)]).toEqual([
+      false,
+      true,
+      false,
+      true,
+    ]);
+    expect(blind(10, 9)).toBe(false); // below the minimum count: 3 in a row still aborts
+  });
+  it('only exit 0 holds the lock; a refusal is lost, no exit code is a failed sample', () => {
+    expect([0, 75, 70, 64, 1, null].map(L.g2LockState)).toEqual([
+      'held',
+      'lost',
+      'lost',
+      'lost',
+      'lost',
+      'unknown',
+    ]);
+    expect(L.G2_AUTOSTOPS).toContain('lock');
+  });
+  it('the sampler loop never overlaps and stop() waits for the sample in flight', async () => {
+    vi.useFakeTimers();
+    try {
+      let active = 0;
+      let started = 0;
+      let release;
+      const loop = L.g2Loop(
+        async () => {
+          expect(++active).toBe(1);
+          started++;
+          await new Promise((r) => (release = r));
+          active--;
+        },
+        5000,
+        () => {},
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(started).toBe(1);
+      release();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(started).toBe(2); // overdue: the next one starts at once, still alone
+      let stopped = false;
+      const done = loop.stop().then(() => (stopped = true));
+      await vi.advanceTimersByTimeAsync(1);
+      expect(stopped).toBe(false);
+      release();
+      await done;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(started).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('sampling commands', () => {
@@ -67,6 +147,7 @@ describe('sampling commands', () => {
     loadavg: '1.50 1.00 0.50 1/100 5\n',
     nproc: '4\n',
     show: 'MemoryCurrent=100\nMemoryPeak=[not set]\nMemoryMax=536870912\n',
+    stat: 'anon 40\nfile 900\nkernel 5\nshmem 3\ninactive_file 800\n',
     events: 'low 0\nhigh 0\nmax 0\noom 0\noom_kill 2\n',
     kernel: 'usb 1-1: new device\nOut of memory: Killed process 5 (qemu)\n',
     list: `tbi-s8-qemu@${'a'.repeat(32)}.service loaded active running x\n`,
@@ -79,18 +160,21 @@ describe('sampling commands', () => {
         ? 'loadavg'
         : j === 'nproc'
           ? 'nproc'
-          : j.includes('memory.events')
-            ? 'events'
-            : argv[0] === 'journalctl'
-              ? 'kernel'
-              : argv[1] === 'show'
-                ? 'show'
-                : 'list';
+          : j.includes('memory.stat')
+            ? 'stat'
+            : j.includes('memory.events')
+              ? 'events'
+              : argv[0] === 'journalctl'
+                ? 'kernel'
+                : argv[1] === 'show'
+                  ? 'show'
+                  : 'list';
     return { status: 0, stdout: out[key] };
   };
-  it('runs only the read-only allowlist and parses it', () => {
+  it('runs only the read-only allowlist and parses it', async () => {
     const seen = [];
-    const r = L.g2TakeSample((argv) => (seen.push(argv), answer(argv)), 1700000000);
+    const run = async (argv) => (seen.push(argv), answer(argv));
+    const r = await L.g2TakeSample(run, 1700000000);
     expect(r.exit).toBe(0);
     expect(r.sample).toMatchObject({
       availMiB: 500,
@@ -99,18 +183,39 @@ describe('sampling commands', () => {
       kernelOom: 1,
       qemuUnits: 1,
     });
-    expect(r.sample.units[0]).toEqual({ current: 100, max: 536870912, peak: null, oomKill: 2 });
+    expect(r.sample.units[0]).toEqual({
+      current: 100,
+      workingSet: 48,
+      max: 536870912,
+      peak: null,
+      oomKill: 2,
+    });
+    expect(seen).toContainEqual([
+      'cat',
+      '/sys/fs/cgroup/system.slice/tbi-s8-build.service/memory.stat',
+    ]);
+    expect(seen.find((a) => a[0] === 'journalctl')).toContain('@1700000000');
     for (const a of seen) {
       expect(['cat', 'nproc', 'systemctl', 'journalctl']).toContain(a[0]);
       if (a[0] === 'systemctl') expect(['show', 'list-units']).toContain(a[1]);
     }
   });
-  it('a failed or unparsable command gives no sample, only an exit code', () => {
-    expect(L.g2TakeSample(() => ({ status: 1, stdout: '' }), 1)).toEqual({ sample: null, exit: 1 });
-    expect(L.g2TakeSample(() => ({ status: null, stdout: '' }), 1).exit).toBe(-1);
-    const noMax = (a) =>
+  it('a failed or unparsable command gives no sample, only an exit code', async () => {
+    const dead = (status) => async () => ({ status, stdout: '' });
+    expect(await L.g2TakeSample(dead(1), 1)).toEqual({ sample: null, exit: 1 });
+    expect((await L.g2TakeSample(dead(null), 1)).exit).toBe(-1);
+    const noMax = async (a) =>
       a[1] === 'show' ? { status: 0, stdout: 'MemoryCurrent=[not set]\n' } : answer(a);
-    expect(L.g2TakeSample(noMax, 1).sample).toBeNull();
+    expect((await L.g2TakeSample(noMax, 1)).sample).toBeNull();
+  });
+  it('an unreadable or incomplete memory.stat is a failed sample', async () => {
+    for (const stat of [
+      { status: 1, stdout: '' },
+      { status: 0, stdout: 'anon 4\nfile 9\n' },
+    ]) {
+      const run = async (a) => (a[1]?.endsWith('memory.stat') ? stat : answer(a));
+      expect((await L.g2TakeSample(run, 1)).sample).toBeNull();
+    }
   });
 });
 
@@ -175,11 +280,108 @@ describe('drill verdicts', () => {
     const o = (x) => L.g2BuildOutcome({ http: 202, ms: 1000, ...x });
     expect(o({ state: 'succeeded' })).toBe('succeeded');
     expect(o({ state: 'failed', failure: 'capacity_timeout', ms: 601_000 })).toBe('refused');
-    expect(o({ http: 429, error: 'builder_busy' })).toBe('refused');
+    for (const error of ['builder_busy', 'memory_pressure', 'storage_pressure'])
+      expect(o({ http: 503, error })).toBe('refused');
+    for (const error of ['rate_limited', 'build_quota', 'build_cooldown'])
+      expect(o({ http: 429, error })).toBe('failed');
     expect(o({ http: 500, error: 'x' })).toBe('failed');
     expect(o({ state: 'failed', failure: 'internal' })).toBe('failed');
     expect(o({ state: 'queued' })).toBe('lost');
     expect(o({ state: 'succeeded', ms: L.G2_BUILD_CAP_MS + 1 })).toBe('lost');
+  });
+});
+
+describe('G4 summary', () => {
+  const sum = (...x) => L.g2BuildSummary(x.map(([outcome, ms]) => ({ outcome, ms })));
+  it('counts outcomes; failed or lost builds fail the criterion', () => {
+    expect(sum(['succeeded', 5], ['refused', 6])).toEqual({
+      metrics: {
+        build1WaitMs: 5,
+        build2WaitMs: 6,
+        buildsSucceeded: 1,
+        buildsRefused: 1,
+        buildsFailed: 0,
+        buildsLost: 0,
+      },
+      dec32: false,
+      failed: false,
+    });
+    expect(sum(['succeeded', 5], ['failed', 6]).failed).toBe(true);
+    expect(sum(['succeeded', 5], ['lost', 6]).failed).toBe(true);
+  });
+  it('flags dec32 on a long wait or when no build succeeded', () => {
+    expect(sum(['succeeded', 120_001], ['succeeded', 1]).dec32).toBe(true);
+    expect(sum(['refused', 5], ['refused', 6])).toMatchObject({
+      metrics: { buildsSucceeded: 0 },
+      dec32: true,
+      failed: false,
+    });
+  });
+});
+
+describe('waiting line keep-alive', () => {
+  const setup = () => {
+    let now = 0;
+    const polled = [];
+    const line = L.g2WaitingLine(
+      async (w) => (polled.push(w), w === 'gone' ? 429 : 202),
+      () => now,
+    );
+    return { line, polled, at: (t) => (now = t) };
+  };
+  it('polls only due waiters, oldest first, and never a removed one', async () => {
+    const { line, polled, at } = setup();
+    line.add('a');
+    at(4000);
+    line.add('b');
+    at(8000);
+    line.add('c');
+    await line.keep(10_000);
+    expect(polled).toEqual([]);
+    at(14_000);
+    await line.keep(10_000);
+    expect(polled).toEqual(['a', 'b']);
+    expect(line.oldestSeenAt()).toBe(8000);
+    line.remove('c');
+    await line.keep(0);
+    expect(polled).toEqual(['a', 'b', 'a', 'b']);
+  });
+  it('a waiter that is no longer queued is an explicit failure', async () => {
+    const { line } = setup();
+    line.add('gone');
+    await expect(line.keep(0)).rejects.toThrow('429');
+  });
+  it('the keep interval leaves room before a waiter vanishes', () => {
+    expect(L.G2_KEEP_MS).toBeLessThanOrEqual(DEFAULT_CONFIG.queue.vanishMs / 3);
+  });
+});
+
+describe('root relay', () => {
+  it('forwards to the socket and exits when its stdin closes (parent gone)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'g2-relay-'));
+    const socket = join(dir, 's');
+    const server = createServer((c) => c.end('hi'));
+    await new Promise((r) => server.listen(socket, r));
+    const probe = createServer();
+    await new Promise((r) => probe.listen(0, '127.0.0.1', r));
+    const { port } = probe.address();
+    await new Promise((r) => probe.close(r));
+    const child = spawn(process.execPath, ['-e', L.g2RelayCode(socket, port)], {
+      stdio: ['pipe', 'pipe', 'inherit'],
+    });
+    try {
+      await new Promise((r) => child.stdout.once('data', r));
+      expect(L.g2Running(child)).toBe(true);
+      const exit = new Promise((r) => child.once('exit', r));
+      child.stdin.end();
+      expect(await exit).toBe(0);
+      expect(L.g2Running(child)).toBe(false);
+      expect(L.g2Running({ exitCode: null, signalCode: 'SIGTERM' })).toBe(false);
+    } finally {
+      child.kill();
+      server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

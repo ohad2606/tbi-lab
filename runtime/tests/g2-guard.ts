@@ -79,7 +79,8 @@ export const G2_METRICS = [
   'buildPeakBytes', 'oomKills', 'kernelOomLines', 'maxQemuUnits', 'journalSessions',
   'journalBad', 'journalUnparsable', 'secretLeaks', 'leftoverLive', 'leftoverWaiting',
   'leftoverMetered', 'leftoverUnits', 'leftoverDirs', 'otherUnits', 'otherDirs',
-  'unconfirmedCreates', 'unresolvedBuilds', 'deleteFailures',
+  'unconfirmedCreates', 'unresolvedBuilds', 'deleteFailures', 'maxUnitCurrentRatio',
+  'maxSampleGapMs',
 ] as const; // prettier-ignore
 export const G2_FLAGS = ['dec32'] as const;
 export const G2_FAILURES = [
@@ -95,13 +96,28 @@ export const G2_FAILURES = [
   'journal_counts',
   'journal_unreadable',
   'secret_in_journal',
+  'load_above_2x_cpus',
+  'sampler_blind',
 ] as const;
 export type G2Failure = (typeof G2_FAILURES)[number];
+
+/** What no run of this harness covers: the file's it.todo titles, carried in every report. */
+export const G2_NOT_COVERED = [
+  // every fetch is bounded to 15 s, so no 5 minute event stream can be held
+  'idle with an attached event stream: idle_timeout although the stream is open (host unit tests only)',
+  // Free is capped at maxFree < maxLength: filling it needs more paid identities than the two preview
+  'queue_full at maxLength with paid waiters',
+] as const;
 
 /** Report of a run: listed fields only, so no principal, token, ticket or session id gets in. */
 export function g2Report(p: G2Progress, result: 'PASSED' | 'FAILED') {
   const max = (k: 'freeLive' | 'hostLive') =>
     p.samples.length ? Math.max(...p.samples.map((s) => s[k])) : null;
+  if (
+    result === 'PASSED' &&
+    ![p.metrics?.buildsSucceeded, p.metrics?.buildsRefused].every(Number.isFinite)
+  )
+    throw new Error('g2 report: PASSED needs the build counts');
   return {
     result,
     instance: p.instance,
@@ -112,6 +128,7 @@ export function g2Report(p: G2Progress, result: 'PASSED' | 'FAILED') {
     ),
     flags: G2_FLAGS.filter((f) => p.flags?.includes(f)),
     failures: G2_FAILURES.filter((f) => p.failures?.includes(f)),
+    notCovered: [...G2_NOT_COVERED],
     seconds: p.seconds,
     admitted: [...p.admitted],
     builds: p.builds.map(({ status, ms }) => ({ status, ms })),
