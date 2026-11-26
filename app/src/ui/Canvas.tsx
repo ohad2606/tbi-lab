@@ -8,6 +8,8 @@
  */
 
 import type { MutableRef } from 'preact/hooks';
+import { PanButtons, SHORT_VIEW_PX } from './PanButtons.js';
+import { panCamera } from './viewPan.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   CATALOG,
@@ -1396,13 +1398,18 @@ export function Canvas({
             : 'canvas.hint.idle';
 
   return (
-    <div class={simActive ? 'canvas-wrap running' : 'canvas-wrap'} dir="ltr">
+    <div
+      class={`canvas-wrap${simActive ? ' running' : ''}${
+        size.h > 0 && size.h < SHORT_VIEW_PX ? ' view-short' : ''
+      }`}
+      dir="ltr"
+    >
       <svg
         ref={svgRef}
         class={`canvas mode-${probeMode ? 'probe' : placing ? 'placing' : mode.kind}`}
         data-testid="canvas"
         viewBox={`${camera.x} ${camera.y} ${viewW} ${viewH}`}
-        tabIndex={0}
+        tabindex={0}
         aria-label={t('canvas.label')}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -1746,7 +1753,7 @@ export function Canvas({
           </g>
         )}
       </svg>
-      <div class="canvas-controls" role="group">
+      <div class="canvas-controls view-controls" role="group" aria-label={t('canvas.controls')}>
         <button
           type="button"
           class={probeMode ? 'icon-button active' : 'icon-button'}
@@ -1781,6 +1788,7 @@ export function Canvas({
         <button
           type="button"
           class="icon-button"
+          data-testid="canvas-fit"
           aria-label={t('canvas.zoomFit')}
           title={t('canvas.zoomFit')}
           onClick={fit}
@@ -1789,6 +1797,11 @@ export function Canvas({
             <path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5" />
           </svg>
         </button>
+        {/* The single-pointer alternative to dragging the drawing. */}
+        <PanButtons
+          view="canvas"
+          onPan={(dx, dy) => setCamera((c) => panCamera(c, size, dx, dy))}
+        />
       </div>
       <div
         class="visually-hidden"
@@ -1922,7 +1935,7 @@ function ComponentView({
       data-selected={selected ? 'true' : 'false'}
       class={`component${selected ? ' selected' : ''}${overstressed ? ' overstressed' : ''}`}
       data-overstressed={overstressed ? 'true' : undefined}
-      tabIndex={0}
+      tabindex={0}
       role="button"
       aria-label={[label, values, switchState, screen].filter(Boolean).join(', ')}
       data-closed={c.type === 'component.toggle_switch' ? String(symbolState.closed) : undefined}

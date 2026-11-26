@@ -66,6 +66,7 @@ export const en = {
   'connections.region': 'Connections text list',
   'connections.select': 'Select {ref} on the canvas',
   'canvas.label': 'Schematic canvas',
+  'canvas.controls': 'Circuit view controls',
   'canvas.zoomIn': 'Zoom in',
   'canvas.zoomOut': 'Zoom out',
   'canvas.zoomFit': 'Fit to view',
@@ -990,10 +991,10 @@ export const en = {
   'schematic.aria':
     'Schematic of {name}. Arrow keys move the view, plus and minus zoom, Home fits the whole circuit.',
   'schematic.controls': 'Schematic view controls',
-  'schematic.panLeft': 'Move view left',
-  'schematic.panRight': 'Move view right',
-  'schematic.panUp': 'Move view up',
-  'schematic.panDown': 'Move view down',
+  'view.panLeft': 'Move view left',
+  'view.panRight': 'Move view right',
+  'view.panUp': 'Move view up',
+  'view.panDown': 'Move view down',
   'schematic.note': 'Generated from the circuit. Edit in the Circuit view.',
   'view3d.aria': '3D view of {name}',
   'view3d.controls': '3D view controls',
@@ -1062,6 +1063,8 @@ export const en = {
   'view3d.view.rear': 'Rear',
   'view3d.reset': 'Reset camera',
   'view3d.rotateLeft': 'Rotate left',
+  'view3d.tiltUp': 'Look from higher',
+  'view3d.tiltDown': 'Look from lower',
   'view3d.rotateRight': 'Rotate right',
   'view3d.loading': 'Loading the 3D view…',
   'view3d.unavailable':
@@ -1072,7 +1075,7 @@ export const en = {
   'view3d.control.stopped': 'Run the simulation to operate it.',
   'view3d.controlsHint': 'Running: click a lever to toggle it; press and hold a button.',
   'view3d.note':
-    'A visualization of the circuit: drag or ← → to rotate; right-drag, Shift-drag or Shift + arrows to pan; scroll or + − to zoom. Edit in the Circuit view.',
+    'A visualization of the circuit: drag or the arrow keys to rotate and tilt; right-drag, Shift-drag or Shift + arrows to pan; scroll or + − to zoom. Edit in the Circuit view.',
   'view3d.overlap':
     'Some parts are larger in 3D than their symbols and still touch here ({parts}). Move them further apart in the Circuit view.',
   'view3d.routeLimit':
@@ -2544,6 +2547,8 @@ export const en = {
   'shortcut.fitSchematic.when': 'The drawing or one of its symbols has focus',
   'shortcut.rotate3d.action': 'Rotate the view by 22.5 degrees (not mirrored in Hebrew)',
   'shortcut.rotate3d.when': '3D view has focus',
+  'shortcut.tilt3d.action': 'Tilt the view up or down by 15 degrees',
+  'shortcut.tilt3d.when': '3D view has focus',
   'shortcut.pan3d.action': 'Pan the view',
   'shortcut.pan3d.when': '3D view has focus',
   'shortcut.zoom3d.action': 'Zoom in or out',
