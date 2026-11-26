@@ -213,13 +213,33 @@ describe('expected failures declared in sources', () => {
     "it.each([1, 2]).fails('x', () => {});",
     "it\n  .fails('x', () => {});",
     "it('x', { fails: true }, () => {});",
+    "it['fails']('x', () => {});",
+    'test["fails"](\'x\', () => {});',
+    "it[`fails`]('x', () => {});",
+    "it.each([1])['fails']('x', () => {});",
+    "it?.['fails']('x', () => {});",
+    "it['fails'].each([1])('x', () => {});",
+    "it.fails['each']([1])('x', () => {});",
+    "it('x', { 'fails': true }, () => {});",
+    "it('x', { ['fails']: true }, () => {});",
   ])('detects %j', (source) => {
     expect(declaresExpectedFailure(source)).toBe(true);
   });
   it('ignores other uses of the word', () => {
-    expect(declaresExpectedFailure("if (lock.fails) x({ fails: false }); it('fails', f);")).toBe(
-      false,
-    );
+    for (const source of [
+      "if (lock.fails) x({ fails: false }); it('fails', f);",
+      "const codes = ['fails']; return ['fails'].includes(x);",
+      "counts['fails'] += 1;",
+    ])
+      expect(declaresExpectedFailure(source)).toBe(false);
+  });
+  // `it['skip']` / `it["todo"]` need no source check: whatever the spelling, the report names them.
+  it.each([
+    ["it['skip']", 'skipped'],
+    ['it["todo"]', 'todo'],
+  ])('%s is caught from the report', (_, status) => {
+    const r = judge({ v: vitestReport([vTest('one'), vTest('two', status)]) });
+    expect(codes(r)).toContain(`test_${status}`);
   });
 });
 
@@ -361,6 +381,7 @@ describe('the gate run (fake git and runners)', () => {
   const ENV = {
     TBI_RUNTIME_PROXY: 'http://127.0.0.1:7410',
     TBI_BUILD_PROXY: 'http://127.0.0.1:7420',
+    TBI_FEEDBACK_RUNTIME_PROXY: 'http://127.0.0.1:7411',
     TBI_S8_INSTANCE: 'secret-instance',
     TBI_C5_DEPLOYED: 'secret-instance',
     TBI_C5_FAULTS: '1',
@@ -444,6 +465,18 @@ describe('the gate run (fake git and runners)', () => {
       'TBI_G2_DEPLOYED',
     ].map((name) => ['weakening_env', { env: { ...ENV, [name]: '1' } }]),
     ['weakening_env', { env: { ...ENV, TBI_C5_N: '' } }],
+    ['no_real_proxy', { env: { ...ENV, TBI_FEEDBACK_RUNTIME_PROXY: undefined } }],
+    ['no_real_proxy', { env: { ...ENV, TBI_FEEDBACK_RUNTIME_PROXY: 'http://127.0.0.1:7497' } }],
+    ...[
+      'http://127.0.0.1',
+      'http://127.0.0.1:80',
+      'localhost:7420',
+      '127.0.0.1:7420',
+      'ws://127.0.0.1:7420',
+      'file:///tmp/build',
+    ].map((url) => ['no_real_proxy', { env: { ...ENV, TBI_BUILD_PROXY: url } }]),
+    ['lease_knob', { env: { ...ENV, TBI_C5_BUILDS: '5' } }],
+    ['lease_knob', { env: { ...ENV, TBI_C5_BUILDS: '' } }],
     ['fault_drills_off', { env: { ...ENV, TBI_C5_FAULTS: undefined } }],
     ['fault_drills_off', { env: { ...ENV, TBI_C5_FAULTS: 'true' } }],
     ['no_fault_optin', { env: { ...ENV, TBI_ALLOW_SERVICE_MUTATION: undefined } }],
@@ -457,6 +490,25 @@ describe('the gate run (fake git and runners)', () => {
     expect(runGate(['--out', out], deps)).toBe(1);
     expect(ran).toEqual([]);
     expect(codes(evidence(out))).toContain(code);
+  });
+  it('names the refused knob and says why', () => {
+    const { deps } = fake({ env: { ...ENV, TBI_C5_BUILDS: '5' } });
+    const lines = [];
+    deps.log = (line) => lines.push(line);
+    const out = tmp();
+    expect(runGate(['--out', out], deps)).toBe(1);
+    expect(evidence(out).failures).toEqual([{ code: 'lease_knob', test: 'TBI_C5_BUILDS' }]);
+    expect(lines.join('\n')).toMatch(/TBI_C5_BUILDS must be unset: .*session lease/);
+  });
+  it('the app config has no fake-service default the gate does not refuse', () => {
+    const config = readFileSync(new URL('../../playwright.app.config.ts', import.meta.url), 'utf8');
+    const names = [...config.matchAll(/process\.env\.(TBI_\w+) \?\? 'http/g)].map((m) => m[1]);
+    expect(names).toContain('TBI_FEEDBACK_RUNTIME_PROXY');
+    for (const name of new Set(names)) {
+      const { deps, ran } = fake({ env: { ...ENV, [name]: undefined } });
+      expect(runGate(['--out', tmp()], deps), name).toBe(1);
+      expect(ran).toEqual([]);
+    }
   });
   it('redacts instance and unit values however short', () => {
     const env = {

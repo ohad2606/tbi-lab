@@ -193,6 +193,8 @@ export class HostSession {
   /** Monotonic twin of `createdAt` for durations: the wall clock may step backwards. */
   private readonly createdPerf = performance.now();
   endedAt: Date | null = null;
+  /** Monotonic twin of `endedAt` (set with it), for durations that must not follow the wall clock. */
+  private endedPerf: number | null = null;
   lastActivity = performance.now();
   /**
    * K3-1: the user's last interaction (run, accepted command, presence), for the idle limit only.
@@ -381,10 +383,15 @@ export class HostSession {
     });
   }
 
+  private markEnded() {
+    this.endedAt = new Date();
+    this.endedPerf = performance.now();
+  }
+
   private fail(reason: FailReason, detail?: unknown) {
     if (isTerminal(this.sm.state)) return;
     this.sm.to('failed', reason, detail);
-    this.endedAt = new Date();
+    this.markEnded();
     this.discardFiles();
     this.emitState(detail);
     this.diagnoseEnd();
@@ -398,7 +405,7 @@ export class HostSession {
       this.emitState();
     }
     this.sm.to('ended', reason);
-    this.endedAt = new Date();
+    this.markEnded();
     this.discardFiles();
     this.emitState(this.endDetail);
     this.diagnoseEnd();
@@ -1764,11 +1771,7 @@ export class HostSession {
     const wall =
       this.handshakeWall === null
         ? null
-        : ((this.endedAt?.getTime() ?? Date.now()) -
-            Date.now() +
-            performance.now() -
-            this.handshakeWall) /
-          1000;
+        : ((this.endedPerf ?? performance.now()) - this.handshakeWall) / 1000;
     return {
       rate: this.config.paceRate,
       simPerWall: wall && wall > 0 ? Number(this.simNs) / 1e9 / wall : null,

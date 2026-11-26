@@ -15,11 +15,18 @@ export const expectedFiles = (tracked) => ({
 });
 
 /**
- * Does the source declare an expected failure (`it.fails`, `{ fails: true }`)? The vitest JSON
- * report counts one as passed, so the gate refuses it from the source text.
+ * Does the source declare an expected failure (`it.fails`, `it['fails']`, `{ fails: true }`)? The
+ * vitest JSON report counts one as passed, so the gate refuses it from the source text. Skips and
+ * todos need no source check in any spelling: the reports name them. Not found: a name built at run
+ * time (`it[name]`) or taken out first (`const { fails } = it`).
  */
 export const declaresExpectedFailure = (source) =>
-  /\.\s*fails\s*[(.<`]|\bfails\s*:\s*true\b/.test(source);
+  [
+    /\.\s*fails\s*[(.<`[]/,
+    // member access by string: the bracket directly follows a name, `)`, `]` or `?.`
+    /(?:[\w$)\]]|\?\.)\[\s*(['"`])fails\1\s*\]\s*(?:\?\.)?[(.<`[]/,
+    /(?:\bfails|(['"`])fails\1\s*\]?)\s*:\s*true\b/,
+  ].some((re) => re.test(source));
 
 /** Exclusions: one exact file, a prefix of the full test title, and the reason. Nothing else. */
 export function parseManifest(raw) {

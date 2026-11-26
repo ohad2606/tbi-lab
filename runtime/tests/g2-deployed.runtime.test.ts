@@ -14,8 +14,10 @@
  *     within pollAfterS + 30 s. Then all sessions are deleted and the Free cooldown is waited out.
  *  6. Idle (G3): 6 live; one Free gets no presence, 5 post presence every 60 s, one Free waits. The
  *     silent one ends `idle_timeout` at 300 s +/- 2 s after `run`, the others survive, the waiter is
- *     promoted within pollAfterS + 30 s. Status polls renew the lease and are not interaction. The case
- *     with an attached event stream is NOT covered here (it.todo).
+ *     promoted within pollAfterS + 30 s. Status polls renew the lease and are not interaction. As a
+ *     left-open tab, the silent session holds its event stream and must receive its own
+ *     `idle_timeout` on it; one present session holds a stream too, which must still be open (longer
+ *     than the idle limit) at the end of step 9.
  *  7. queue_full (G5): Free join until refusal: exactly maxFree wait, the next gets 429 `queue_full`.
  *     Only the Free share; maxLength with paid waiters is NOT covered (it.todo). Refused (run FAILS) if
  *     it needs more than the identity budget.
@@ -232,6 +234,8 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
       const tickets: { user: string; ticket: string }[] = [];
       const openBuilds = new Set<string>();
       const secrets = new Set<string>();
+      /** event streams we hold open */
+      const streams: AbortController[] = [];
       const inflight = new Set<Promise<unknown>>();
       const track = <T>(p: Promise<T>): Promise<T> => {
         inflight.add(p);
@@ -335,6 +339,7 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           if (sudo('rm', '-f', PAUSE_FILE).status === 0) pauseCreated = false;
           else fail('pause_file_not_removed');
         }
+        for (const s of streams) s.abort();
         metrics.unresolvedBuilds = openBuilds.size; // no cancel endpoint: counted only
         if (mine.length || tickets.length) await countLeftovers();
         await sampler?.stop();
@@ -788,9 +793,28 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           expect(r.status, `held session: ${r.body.error}`).toBe(201);
           return mine.at(-1)!;
         };
+        /** attach and keep the session's event stream; only the connect is bounded */
+        const openStream = async (m: Mine) => {
+          const own = new AbortController();
+          streams.push(own);
+          const connect = setTimeout(() => own.abort(), FETCH_MS);
+          try {
+            const r = await fetch(`${HOST}/sessions/${m.id}/events`, {
+              headers: auth(m),
+              signal: AbortSignal.any([own.signal, abort.signal]),
+            });
+            expect(r.status, 'event stream').toBe(200);
+            return L.g2FollowStream(r.body!, () => performance.now());
+          } finally {
+            clearTimeout(connect);
+          }
+        };
         const subject = await seat(free[0]!);
         const subjectRunAt = performance.now(); // `run` was just answered
+        const silentTab = await openStream(subject);
         for (const u of [...free.slice(1, G2_FREE_LIVE), ...preview]) held.add(await seat(u));
+        const presentTab = await openStream([...held][0]!);
+        const presentTabAt = performance.now();
         // keeps the held sessions alive: status reads renew the lease, presence resets the idle clock
         let keep = true;
         const keeper = (async () => {
@@ -856,6 +880,13 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           clock,
         );
         expect(settled.value.reason, 'end reason of the silent session').toBe('idle_timeout');
+        await Promise.race([silentTab.done, sleep(FETCH_MS)]);
+        metrics.idleStreamEnded = L.g2IdleStreamOk(silentTab.state) ? 1 : 0;
+        expect(
+          metrics.idleStreamEnded,
+          'idle_timeout delivered on the open event stream ' +
+            `(stream closedAtMs ${silentTab.state.closedAtMs}, idle end at ${idleEndAt})`,
+        ).toBe(1);
         expect(L.g2IdleOnTime(metrics.idleEndMs), `idle end after ${metrics.idleEndMs} ms`).toBe(
           true,
         );
@@ -965,6 +996,14 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
             patientQ.pollAfterS,
           ),
           `queue_timeout: ${timedOut.status} ${timedOut.error} after ${metrics.queueTimeoutMs} ms`,
+        ).toBe(true);
+        const heldAt = performance.now();
+        metrics.heldStreamOpenMs = Math.round(heldAt - presentTabAt);
+        const { lastChunkAtMs, closedAtMs } = presentTab.state;
+        expect(
+          L.g2HeldStreamOk(presentTab.state, metrics.heldStreamOpenMs, heldAt),
+          `present session's event stream still open after ${metrics.heldStreamOpenMs} ms ` +
+            `(last chunk at ${lastChunkAtMs}, closed at ${closedAtMs}, checked at ${heldAt})`,
         ).toBe(true);
         keep = false;
         await keeper;

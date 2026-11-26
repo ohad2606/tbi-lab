@@ -27,12 +27,6 @@
     {
       "runner": "vitest",
       "file": "runtime/tests/g2-deployed.runtime.test.ts",
-      "test": "G2 deployed: queue, idle and builds under load on staging idle with an attached event stream: idle_timeout although the stream is open (host unit tests only)",
-      "reason": "staging-only load harness, run separately (planned 3.12); no evidence yet. This case is an it.todo: that harness does not cover it either."
-    },
-    {
-      "runner": "vitest",
-      "file": "runtime/tests/g2-deployed.runtime.test.ts",
       "test": "G2 deployed: queue, idle and builds under load on staging queue_full at maxLength with paid waiters",
       "reason": "staging-only load harness, run separately (planned 3.12); no evidence yet. This case is an it.todo: that harness does not cover it either."
     }

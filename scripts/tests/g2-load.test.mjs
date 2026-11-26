@@ -352,6 +352,84 @@ describe('drill verdicts', () => {
   });
 });
 
+describe('idle with an open event stream', () => {
+  /** an SSE body the test writes to, split at arbitrary points like a network would */
+  const tab = () => {
+    let c;
+    const body = new ReadableStream({ start: (x) => void (c = x) });
+    const enc = new TextEncoder();
+    const clock = { ms: 42 };
+    return {
+      ...L.g2FollowStream(body, () => clock.ms),
+      clock,
+      send: (text) => c.enqueue(enc.encode(text)),
+      end: () => c.close(),
+      cut: () => c.error(new Error('cut')),
+    };
+  };
+  const frame = (e) => `id: 1\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
+  const ended = frame({ type: 'state', state: 'ended', reason: 'idle_timeout' });
+  const past = L.G2_IDLE_MS + L.G2_IDLE_TOLERANCE_MS + 1;
+
+  it('the silent tab passes only when its stream delivers idle_timeout, across chunk borders', async () => {
+    const t = tab();
+    t.send(`: keepalive\n\n${frame({ type: 'state', state: 'running' })}${ended.slice(0, 40)}`);
+    t.send(ended.slice(40));
+    t.end();
+    await t.done;
+    expect(t.state).toEqual({ endReason: 'idle_timeout', lastChunkAtMs: 42, closedAtMs: 42 });
+    expect(L.g2IdleStreamOk(t.state)).toBe(true);
+  });
+  it('a stream closed or cut before the end, or another end reason, fails', async () => {
+    for (const finish of ['end', 'cut']) {
+      const t = tab();
+      t.send(frame({ type: 'state', state: 'running' }));
+      t[finish]();
+      await t.done;
+      expect(L.g2IdleStreamOk(t.state)).toBe(false);
+      expect(L.g2HeldStreamOk(t.state, past, 42)).toBe(false);
+    }
+    const t = tab();
+    t.send(frame({ type: 'state', state: 'ended', reason: 'lease_expired' }));
+    t.end();
+    await t.done;
+    expect(L.g2IdleStreamOk(t.state)).toBe(false);
+  });
+  it('the present tab passes only while still open, longer than the idle limit', async () => {
+    const t = tab();
+    t.send(frame({ type: 'state', state: 'running' }));
+    await vi.waitFor(() => expect(t.state.lastChunkAtMs).toBe(42));
+    expect(L.g2HeldStreamOk(t.state, past, 42)).toBe(true);
+    expect(L.g2HeldStreamOk(t.state, past - 1, 42)).toBe(false);
+    t.send(ended);
+    await vi.waitFor(() => expect(t.state.endReason).toBe('idle_timeout'));
+    expect(L.g2HeldStreamOk(t.state, past, 42)).toBe(false);
+    t.end();
+    await t.done;
+  });
+  it('a stream that goes quiet without closing fails; a keepalive counts as a sign of life', async () => {
+    const quiet = 2 * L.G2_KEEPALIVE_MS;
+    const t = tab();
+    expect(L.g2HeldStreamOk(t.state, past, 42)).toBe(false); // nothing was ever received
+    t.send(frame({ type: 'state', state: 'running' }));
+    await vi.waitFor(() => expect(t.state.lastChunkAtMs).toBe(42));
+    expect(L.g2HeldStreamOk(t.state, past, 42 + quiet)).toBe(true);
+    expect(L.g2HeldStreamOk(t.state, past, 42 + quiet + 1)).toBe(false);
+    expect(t.state.closedAtMs).toBeUndefined();
+    t.clock.ms = 100_000;
+    t.send(': keepalive\n\n');
+    await vi.waitFor(() => expect(t.state.lastChunkAtMs).toBe(100_000));
+    expect(L.g2HeldStreamOk(t.state, past, 100_000 + quiet)).toBe(true);
+    t.end();
+    await t.done;
+  });
+  it('the keepalive interval is the one of the host', () => {
+    const http = readFileSync(new URL('../../runtime/host/http.ts', import.meta.url), 'utf8');
+    const ms = /^const KEEPALIVE_MS = ([\d_]+);$/m.exec(http)?.[1];
+    expect(Number(ms?.replaceAll('_', ''))).toBe(L.G2_KEEPALIVE_MS);
+  });
+});
+
 describe('G4 summary', () => {
   const sum = (...x) => L.g2BuildSummary(x.map(([outcome, ms]) => ({ outcome, ms })));
   it('counts outcomes; failed or lost builds fail the criterion', () => {

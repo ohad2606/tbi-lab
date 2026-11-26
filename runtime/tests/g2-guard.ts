@@ -20,6 +20,9 @@ export const G2_PREVIEW_ENV = 'TBI_G2_PREVIEW_USERS';
 /** Free users 4 (plan cap) + preview 2 = 6 live; 10 more Free queue. */
 export const G2_FREE_LIVE = 4;
 export const G2_PREVIEW = 2;
+/** DEC-31: the idle limit the instance must report, and the allowed error of its end */
+export const G2_IDLE_MS = 300_000;
+export const G2_IDLE_TOLERANCE_MS = 2000;
 export const G2_QUEUED = 10;
 /** Index of the extra Free identity the pause drill uses: neither live nor queued. */
 export const G2_PAUSE_PROBE = G2_FREE_LIVE + G2_QUEUED;
@@ -80,7 +83,7 @@ export const G2_METRICS = [
   'journalBad', 'journalUnparsable', 'secretLeaks', 'leftoverLive', 'leftoverWaiting',
   'leftoverMetered', 'leftoverUnits', 'leftoverDirs', 'otherUnits', 'otherDirs',
   'unconfirmedCreates', 'unresolvedBuilds', 'deleteFailures', 'maxUnitCurrentRatio',
-  'maxSampleGapMs', 'lockUnknown',
+  'maxSampleGapMs', 'lockUnknown', 'idleStreamEnded', 'heldStreamOpenMs',
 ] as const; // prettier-ignore
 export const G2_FLAGS = ['dec32'] as const;
 export const G2_FAILURES = [
@@ -104,8 +107,6 @@ export type G2Failure = (typeof G2_FAILURES)[number];
 
 /** What no run of this harness covers: the file's it.todo titles, carried in every report. */
 export const G2_NOT_COVERED = [
-  // every fetch is bounded to 15 s, so no 5 minute event stream can be held
-  'idle with an attached event stream: idle_timeout although the stream is open (host unit tests only)',
   // Free is capped at maxFree < maxLength: filling it needs more paid identities than the two preview
   'queue_full at maxLength with paid waiters',
 ] as const;
@@ -119,6 +120,15 @@ export function g2Report(p: G2Progress, result: 'PASSED' | 'FAILED') {
     ![p.metrics?.buildsSucceeded, p.metrics?.buildsRefused].every(Number.isFinite)
   )
     throw new Error('g2 report: PASSED needs the build counts');
+  if (
+    result === 'PASSED' &&
+    !(
+      p.metrics?.idleStreamEnded === 1 &&
+      Number.isFinite(p.metrics.heldStreamOpenMs) &&
+      p.metrics.heldStreamOpenMs! > G2_IDLE_MS + G2_IDLE_TOLERANCE_MS
+    )
+  )
+    throw new Error('g2 report: PASSED needs the open event stream idle drill');
   return {
     result,
     instance: p.instance,
