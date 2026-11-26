@@ -91,6 +91,8 @@ This list is copied from the shortcuts registry in the app (`app/src/ui/shortcut
 - <!-- shortcut:fit -->`F`: Fit the whole circuit to the view (the key in the F position on any keyboard layout) (Circuit view)
 - <!-- shortcut:toggleSwitch -->`Space`: Toggle the switch (A switch has focus; simulation running; not while the probe tool is on (then Space probes the switch))
 
+Without dragging: the arrow buttons beside zoom and fit move the view left, right, up and down. When something is selected the arrow keys move it, so press `Esc` first to pan with the keys.
+
 ### Wiring with the keyboard
 
 - <!-- shortcut:pinNext -->`Arrow Down` or `Arrow Right`: Next pin of the part (Pin mode)
@@ -113,11 +115,14 @@ Without dragging: the buttons next to zoom and fit move the view left, right, up
 ### 3D view
 
 - <!-- shortcut:rotate3d -->`Arrow Left` or `Arrow Right`: Rotate the view by 22.5 degrees (not mirrored in Hebrew) (3D view has focus)
+- <!-- shortcut:tilt3d -->`Arrow Up` or `Arrow Down`: Tilt the view up or down by 15 degrees (3D view has focus)
 - <!-- shortcut:pan3d -->`Shift + Arrow keys`: Pan the view (3D view has focus)
 - <!-- shortcut:zoom3d -->`+` or `=` or `-`: Zoom in or out (3D view has focus)
 - <!-- shortcut:reset3d -->`Home`: Reset the camera (3D view has focus)
 - <!-- shortcut:toggle3d -->`Space` or `Enter`: Toggle a selected switch, or hold a push button (3D view; a switch or button is selected; simulation running)
 - <!-- shortcut:layersClose -->`Esc`: Close the layers panel; focus returns to its button (Layers panel open)
+
+Without dragging: the buttons on the view rotate it, tilt it (look from higher or lower), zoom and move it left, right, up and down. As in the other views, an arrow moves the view that way (the drawing appears to move the other way), also in Hebrew.
 
 ### Tabs, menus and dialogs
 

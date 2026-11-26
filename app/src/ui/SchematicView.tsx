@@ -9,6 +9,8 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { PanButtons, SHORT_VIEW_PX } from './PanButtons.js';
+import { panCamera } from './viewPan.js';
 import {
   CATALOG,
   emptySelection,
@@ -37,21 +39,10 @@ interface Camera {
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 5;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-/** One key press or button click moves the view by this share of its own width or height. */
-const PAN_STEP = 0.1;
 /** Screen pixels kept between a part brought into view and the edges or overlays. */
 const FOCUS_MARGIN = 8;
-/** Below this view height (CSS px) the control column would reach the note: use a top row. */
-const SHORT_VIEW = 280;
 /** Drawing units between a module's body and its focus ring. */
 const RING_GAP = 5;
-const PAN_BUTTONS = [
-  { id: 'left', key: 'schematic.panLeft', dx: -1, dy: 0, path: 'M12 4 6 10l6 6' },
-  { id: 'right', key: 'schematic.panRight', dx: 1, dy: 0, path: 'M8 4l6 6-6 6' },
-  { id: 'up', key: 'schematic.panUp', dx: 0, dy: -1, path: 'M4 12l6-6 6 6' },
-  { id: 'down', key: 'schematic.panDown', dx: 0, dy: 1, path: 'M4 8l6 6 6-6' },
-] as const;
-
 /** How far to move [a, b] so it lies inside [lo, hi]; a span too long to fit is centred. */
 function intoRange(a: number, b: number, lo: number, hi: number): number {
   if (b - a > hi - lo) return (a + b - lo - hi) / 2;
@@ -100,7 +91,7 @@ export function SchematicView() {
   if (!doc || !layout || !cam) return null;
   const viewW = size.w / cam.scale;
   const viewH = size.h / cam.scale;
-  const short = size.h < SHORT_VIEW;
+  const short = size.h < SHORT_VIEW_PX;
 
   const zoomAt = (factor: number, cx = size.w / 2, cy = size.h / 2) => {
     const scale = clamp(cam.scale * factor, MIN_SCALE, MAX_SCALE);
@@ -109,15 +100,7 @@ export function SchematicView() {
     setCamera({ scale, x: wx - cx / scale, y: wy - cy / scale });
   };
   // Arrows and buttons move the view that way (as in the Circuit view); never mirrored in RTL.
-  const pan = (dx: number, dy: number) =>
-    setCamera((c) => {
-      const from = c ?? cam;
-      return {
-        scale: from.scale,
-        x: from.x + (dx * PAN_STEP * size.w) / from.scale,
-        y: from.y + (dy * PAN_STEP * size.h) / from.scale,
-      };
-    });
+  const pan = (dx: number, dy: number) => setCamera((c) => panCamera(c ?? cam, size, dx, dy));
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     // Enter and Space are not listed: they stay with the focused part.
@@ -170,7 +153,7 @@ export function SchematicView() {
 
   return (
     <div
-      class={`schematic-wrap${short ? ' schematic-short' : ''}`}
+      class={`schematic-wrap${short ? ' view-short' : ''}`}
       ref={wrap}
       dir="ltr"
       data-testid="schematic-view"
@@ -285,30 +268,7 @@ export function SchematicView() {
             <path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5" />
           </svg>
         </button>
-        {/* The single-pointer alternative to dragging the drawing. */}
-        <div class="schematic-pan">
-          {PAN_BUTTONS.map((b) => (
-            <button
-              key={b.id}
-              type="button"
-              class="icon-button"
-              data-testid={`schematic-pan-${b.id}`}
-              aria-label={t(b.key)}
-              title={t(b.key)}
-              onClick={() => pan(b.dx, b.dy)}
-            >
-              <svg
-                viewBox="0 0 20 20"
-                width="16"
-                height="16"
-                aria-hidden="true"
-                class="control-icon"
-              >
-                <path d={b.path} />
-              </svg>
-            </button>
-          ))}
-        </div>
+        <PanButtons view="schematic" onPan={pan} />
       </div>
       <div class="view-note" ref={note} dir={locale.dir}>
         {t('schematic.note')}

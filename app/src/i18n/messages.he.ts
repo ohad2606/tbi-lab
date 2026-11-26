@@ -68,6 +68,7 @@ export const he: Record<MessageKey, string> = {
   'connections.region': 'רשימת חיבורים בטקסט',
   'connections.select': 'בחירת {ref} על משטח השרטוט',
   'canvas.label': 'משטח השרטוט',
+  'canvas.controls': 'פקדי תצוגת המעגל',
   'canvas.zoomIn': 'הגדלה',
   'canvas.zoomOut': 'הקטנה',
   'canvas.zoomFit': 'התאמה לתצוגה',
@@ -967,10 +968,10 @@ export const he: Record<MessageKey, string> = {
   'schematic.aria':
     'סכמה חשמלית של {name}. מקשי החצים מזיזים את התצוגה, פלוס ומינוס מגדילים ומקטינים, Home מתאים את כל המעגל לתצוגה.',
   'schematic.controls': 'פקדי תצוגת הסכמה החשמלית',
-  'schematic.panLeft': 'הזזת התצוגה שמאלה',
-  'schematic.panRight': 'הזזת התצוגה ימינה',
-  'schematic.panUp': 'הזזת התצוגה למעלה',
-  'schematic.panDown': 'הזזת התצוגה למטה',
+  'view.panLeft': 'הזזת התצוגה שמאלה',
+  'view.panRight': 'הזזת התצוגה ימינה',
+  'view.panUp': 'הזזת התצוגה למעלה',
+  'view.panDown': 'הזזת התצוגה למטה',
   'schematic.note': 'נוצרה מהמעגל. העריכה נעשית בתצוגת המעגל.',
   'view3d.aria': 'תצוגת תלת־ממד של {name}',
   'view3d.controls': 'פקדי תצוגת התלת־ממד',
@@ -1038,6 +1039,8 @@ export const he: Record<MessageKey, string> = {
   'view3d.view.rear': 'אחור',
   'view3d.reset': 'איפוס המצלמה',
   'view3d.rotateLeft': 'סיבוב שמאלה',
+  'view3d.tiltUp': 'מבט מגבוה יותר',
+  'view3d.tiltDown': 'מבט מנמוך יותר',
   'view3d.rotateRight': 'סיבוב ימינה',
   'view3d.loading': 'טוען את תצוגת התלת־ממד…',
   'view3d.unavailable':
@@ -1049,7 +1052,7 @@ export const he: Record<MessageKey, string> = {
   'view3d.controlsHint':
     'בזמן ריצה: לחיצה על ידית מחליפה את מצב המתג; לחיצה ממושכת על לחצן מחזיקה אותו לחוץ.',
   'view3d.note':
-    'הדמיה של המעגל: גרירה או ← → לסיבוב; גרירה בלחצן הימני, Shift+גרירה או Shift+חצים להזזה; גלילה או + − לזום. העריכה נעשית בתצוגת המעגל.',
+    'הדמיה של המעגל: גרירה או מקשי החצים לסיבוב ולהטיה; גרירה בלחצן הימני, Shift+גרירה או Shift+חצים להזזה; גלילה או + − לזום. העריכה נעשית בתצוגת המעגל.',
   'view3d.overlap':
     'חלק מהרכיבים גדולים בתלת־ממד מהסמל שלהם ועדיין נוגעים זה בזה כאן ({parts}). אפשר להרחיק אותם בתצוגת המעגל.',
   'view3d.routeLimit':
@@ -2414,6 +2417,8 @@ export const he: Record<MessageKey, string> = {
   'shortcut.fitSchematic.when': 'השרטוט או אחד הסמלים שבו ממוקד',
   'shortcut.rotate3d.action': 'סיבוב התצוגה ב-22.5 מעלות (לא מתהפך בעברית)',
   'shortcut.rotate3d.when': 'תצוגת התלת־ממד ממוקדת',
+  'shortcut.tilt3d.action': 'הגבהה או הנמכה של נקודת המבט ב-15 מעלות',
+  'shortcut.tilt3d.when': 'תצוגת התלת־ממד ממוקדת',
   'shortcut.pan3d.action': 'הזזת התצוגה',
   'shortcut.pan3d.when': 'תצוגת התלת־ממד ממוקדת',
   'shortcut.zoom3d.action': 'הגדלה או הקטנה',
