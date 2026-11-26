@@ -286,6 +286,17 @@ describe('drill verdicts', () => {
     expect(L.g2IdentityPlan(23)).toEqual({ free: 15, queueFull: false });
     expect(L.g2IdentityPlan(22)).toEqual({ free: 28, queueFull: true });
   });
+  it('paid queue_full: maxLength - maxFree + 1 extra payers, else not run with the number needed', () => {
+    const q = DEFAULT_CONFIG.queue; // 20 and 16
+    expect(L.g2PaidPlan(q, 5)).toEqual({ needed: 5, reason: null });
+    for (const given of [0, 4])
+      expect(L.g2PaidPlan(q, given)).toEqual({
+        needed: 5,
+        reason: `needs 5 extra paying identities, ${given} given`,
+      });
+    expect(L.g2PaidPlan({ maxLength: 22, maxFree: 16 }, 9).reason).toMatch(/needs 7 .*budget/);
+    expect(L.g2PaidPlan({ maxLength: 30, maxFree: 23 }, 9).reason).toMatch(/Free share/);
+  });
   it('start rate matches the beta policy and refuses the 21st start in 10 min', () => {
     const p = JSON.parse(
       readFileSync(new URL('../../deploy/dev-lab/s8/policy.beta.json', import.meta.url)),

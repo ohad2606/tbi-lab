@@ -194,7 +194,7 @@ export class HostSession {
   private readonly createdPerf = performance.now();
   endedAt: Date | null = null;
   /** Monotonic twin of `endedAt` (set with it), for durations that must not follow the wall clock. */
-  private endedPerf: number | null = null;
+  endedPerf: number | null = null;
   lastActivity = performance.now();
   /**
    * K3-1: the user's last interaction (run, accepted command, presence), for the idle limit only.

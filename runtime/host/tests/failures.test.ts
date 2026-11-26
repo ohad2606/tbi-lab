@@ -5,7 +5,7 @@
  */
 import { chmodSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TicketFeatures } from '../../identity/ticket.js';
 import { principalFor, ticketFor } from '../../identity/test-gate.js';
 import type { SessionHost } from '../host.js';
@@ -275,6 +275,30 @@ describe('leases, limits and shutdown', () => {
     expect(host.get(s.id, s.token, principalFor()).ok).toBe(true);
     await waitEvent(s, () => false, 600).catch(() => undefined);
     expect(host.get(s.id, s.token, principalFor()).ok).toBe(false);
+  });
+
+  it('retention follows the monotonic clock: a wall-clock step neither drops nor pins a session', async () => {
+    const real = Date.now.bind(Date);
+    // stepped forward: an ended session must still be there inside its retention time
+    const long = start('normal', { retainEndedMs: 60_000, housekeepingMs: 20 });
+    const kept = created(long.host, long.art.sha256);
+    await kept.terminate('terminated');
+    // stepped back: it must still leave after its retention time
+    const short = start('normal', { retainEndedMs: 200, housekeepingMs: 20 });
+    const gone = created(short.host, short.art.sha256);
+    await gone.terminate('terminated');
+    for (const [step, w, s, there] of [
+      [3_600_000, long, kept, true],
+      [-3_600_000, short, gone, false],
+    ] as const) {
+      const spy = vi.spyOn(Date, 'now').mockImplementation(() => real() + step);
+      try {
+        await new Promise((r) => setTimeout(r, 600));
+        expect(w.host.get(s.id, s.token, principalFor()).ok, `step ${step}`).toBe(there);
+      } finally {
+        spy.mockRestore();
+      }
+    }
   });
 
   it('the enforced lifetime is reported: the host maximum, or the client limit if stricter, never longer', async () => {

@@ -850,8 +850,8 @@ export class SessionHost {
     const now = performance.now();
     for (const [id, s] of this.sessions) {
       if (isTerminal(s.state)) {
-        const ended = s.endedAt?.getTime() ?? Date.now();
-        if (Date.now() - ended > this.config.retainEndedMs) {
+        // monotonic: a wall-clock step must neither drop a session early nor keep it for ever
+        if (now - (s.endedPerf ?? now) > this.config.retainEndedMs) {
           this.sessions.delete(id);
           this.settles.delete(id);
         }

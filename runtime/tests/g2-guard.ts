@@ -17,6 +17,11 @@ import { allowedTargets, holdsPipelineLock, MUTATION_ENV } from './mutation-gate
 export const G2_STAGING = 'tbi-s8';
 export const G2_ENV = 'TBI_G2_DEPLOYED';
 export const G2_PREVIEW_ENV = 'TBI_G2_PREVIEW_USERS';
+/**
+ * Optional: further existing identities mapped to a paying plan (preview) on staging, comma separated.
+ * Only the queue_full-at-maxLength drill uses them; without enough of them it is reported `not_run`.
+ */
+export const G2_PAYING_ENV = 'TBI_G2_EXTRA_PAYING_USERS';
 /** Free users 4 (plan cap) + preview 2 = 6 live; 10 more Free queue. */
 export const G2_FREE_LIVE = 4;
 export const G2_PREVIEW = 2;
@@ -70,6 +75,8 @@ export interface G2Progress {
   metrics?: Record<string, number>;
   flags?: string[];
   failures?: string[];
+  /** the paid queue_full drill: `started` in a report means it did not pass; absent = not run */
+  paidDrill?: 'started' | 'passed';
 }
 
 /** The only measured values a report may carry: numbers under these names. */
@@ -83,7 +90,8 @@ export const G2_METRICS = [
   'journalBad', 'journalUnparsable', 'secretLeaks', 'leftoverLive', 'leftoverWaiting',
   'leftoverMetered', 'leftoverUnits', 'leftoverDirs', 'otherUnits', 'otherDirs',
   'unconfirmedCreates', 'unresolvedBuilds', 'deleteFailures', 'maxUnitCurrentRatio',
-  'maxSampleGapMs', 'lockUnknown', 'idleStreamEnded', 'heldStreamOpenMs',
+  'maxSampleGapMs', 'lockUnknown', 'idleStreamEnded', 'heldStreamOpenMs', 'heldStreamOk',
+  'queueFullPaidNeeded', 'queueFullPaidGiven', 'queueFullPaidAccepted', 'queueFullPaidStatus',
 ] as const; // prettier-ignore
 export const G2_FLAGS = ['dec32'] as const;
 export const G2_FAILURES = [
@@ -105,11 +113,11 @@ export const G2_FAILURES = [
 ] as const;
 export type G2Failure = (typeof G2_FAILURES)[number];
 
-/** What no run of this harness covers: the file's it.todo titles, carried in every report. */
-export const G2_NOT_COVERED = [
-  // Free is capped at maxFree < maxLength: filling it needs more paid identities than the two preview
-  'queue_full at maxLength with paid waiters',
-] as const;
+/**
+ * The drill only a run with enough extra paying identities covers: Free stops at maxFree < maxLength,
+ * and the two preview identities hold seats. Listed as `notCovered` unless the run passed it.
+ */
+export const G2_PAID_DRILL = 'queue_full at maxLength with paid waiters';
 
 /** Report of a run: listed fields only, so no principal, token, ticket or session id gets in. */
 export function g2Report(p: G2Progress, result: 'PASSED' | 'FAILED') {
@@ -129,6 +137,12 @@ export function g2Report(p: G2Progress, result: 'PASSED' | 'FAILED') {
     )
   )
     throw new Error('g2 report: PASSED needs the open event stream idle drill');
+  // the duration alone says nothing: the stream must also have been found open and alive
+  if (result === 'PASSED' && p.metrics?.heldStreamOk !== 1)
+    throw new Error('g2 report: PASSED needs the held event stream verdict');
+  if (result === 'PASSED' && (p.failures?.length || p.paidDrill === 'started'))
+    throw new Error('g2 report: PASSED with a recorded failure or an unfinished drill');
+  const paid = p.paidDrill === 'started' ? 'failed' : (p.paidDrill ?? 'not_run');
   return {
     result,
     instance: p.instance,
@@ -139,7 +153,8 @@ export function g2Report(p: G2Progress, result: 'PASSED' | 'FAILED') {
     ),
     flags: G2_FLAGS.filter((f) => p.flags?.includes(f)),
     failures: G2_FAILURES.filter((f) => p.failures?.includes(f)),
-    notCovered: [...G2_NOT_COVERED],
+    queueFullAtMaxLength: paid,
+    notCovered: paid === 'passed' ? [] : [G2_PAID_DRILL],
     seconds: p.seconds,
     admitted: [...p.admitted],
     builds: p.builds.map(({ status, ms }) => ({ status, ms })),
@@ -153,7 +168,7 @@ export const g2FailedReport = (p: G2Progress) => g2Report(p, 'FAILED');
 export type G2Decision =
   | { kind: 'off' }
   | { kind: 'refused'; reason: string }
-  | { kind: 'run'; instance: string; previewUsers: string[] };
+  | { kind: 'run'; instance: string; previewUsers: string[]; payingUsers: string[] };
 
 export function g2Decision(
   env: NodeJS.ProcessEnv = process.env,
@@ -178,10 +193,12 @@ export function g2Decision(
       kind: 'refused',
       reason: 'the pipeline lock is not held (deploy/ops/pipeline-lock.mjs check)',
     };
-  const previewUsers = (env[G2_PREVIEW_ENV] ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const list = (name: string) =>
+    (env[name] ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  const previewUsers = list(G2_PREVIEW_ENV);
   if (previewUsers.length !== G2_PREVIEW)
     return {
       kind: 'refused',
@@ -189,5 +206,12 @@ export function g2Decision(
     };
   if (env.TBI_C5_WORKLOAD !== undefined && env.TBI_C5_WORKLOAD !== 'gpio')
     return { kind: 'refused', reason: 'TBI_C5_WORKLOAD must be gpio (light workload) or unset' };
-  return { kind: 'run', instance, previewUsers };
+  const payingUsers = list(G2_PAYING_ENV);
+  // a repeated identity cannot wait twice, and a preview one already holds a seat
+  if (new Set([...previewUsers, ...payingUsers]).size !== previewUsers.length + payingUsers.length)
+    return {
+      kind: 'refused',
+      reason: `${G2_PREVIEW_ENV} and ${G2_PAYING_ENV} must not repeat an identity`,
+    };
+  return { kind: 'run', instance, previewUsers, payingUsers };
 }

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
-import { G2_ENV, G2_NOT_COVERED } from '../../runtime/tests/g2-guard.ts';
+import { G2_ENV } from '../../runtime/tests/g2-guard.ts';
 import {
   evaluate,
   expectedFiles,
@@ -332,15 +332,7 @@ describe('the committed exclusion manifest', () => {
   const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
   const entries = parseManifest(JSON.parse(read('scripts/release/runtime-gate.manifest.json')));
   const G2 = 'runtime/tests/g2-deployed.runtime.test.ts';
-  const G2_SUITE = 'G2 deployed: queue, idle and builds under load on staging';
-  const titles = (file) => {
-    const source = read(file);
-    const out = sourceTitles(source, { G2_ENV });
-    // The todo titles come from an exported list.
-    if (file === G2 && /for \(const title of G2_NOT_COVERED\) it\.todo\(title\);/.test(source))
-      out.push(...G2_NOT_COVERED.map((t) => `${G2_SUITE} ${t}`));
-    return out;
-  };
+  const titles = (file) => sourceTitles(read(file), { G2_ENV });
   it('names only tests that exist', () => {
     for (const e of entries)
       expect(
@@ -348,10 +340,10 @@ describe('the committed exclusion manifest', () => {
         `${e.file}: ${e.test}`,
       ).not.toEqual([]);
   });
-  it('excludes every g2-deployed test, todos included, as not yet evidenced', () => {
+  it('excludes every g2-deployed test as not yet evidenced', () => {
     const g2 = entries.filter((e) => e.file === G2);
     const all = titles(G2);
-    expect(all).toHaveLength(1 + G2_NOT_COVERED.length);
+    expect(all).toHaveLength(2);
     for (const t of all) expect(g2.filter((e) => t.startsWith(e.test))).toHaveLength(1);
     for (const e of g2)
       expect(e.reason).toContain(
