@@ -1,4 +1,4 @@
-/** The C-5 fault drills' verdict (runtime/tests/c5-faults.ts): only drills that ran are judged. */
+/** The C-5 fault drills' verdict (runtime/tests/c5-faults.ts). */
 import { describe, expect, it } from 'vitest';
 import { capacityFaultFailures, deployedFaultFailures } from '../../runtime/tests/c5-faults.ts';
 
@@ -6,9 +6,11 @@ describe('deployed fault drills', () => {
   const stop = { status: 200, recreated: 201 };
   const crash = { reported: { state: 'failed' }, unitGone: true, recreated: 201 };
   it('passes the drills that ran (N=1 runs no crash drill)', () => {
-    expect(deployedFaultFailures({})).toEqual([]);
     expect(deployedFaultFailures({ stop })).toEqual([]);
     expect(deployedFaultFailures({ stop, crash })).toEqual([]);
+  });
+  it('fails when no session was admitted, so the stop drill never ran', () => {
+    expect(deployedFaultFailures({})).toEqual(['stop_not_run']);
   });
   it.each([
     ['stop', { ...stop, status: 500 }],

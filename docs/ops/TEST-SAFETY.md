@@ -160,7 +160,8 @@ are separate runs.
 With that default, `c5-deployed` runs only the stop / re-create drill: its QEMU-unit crash drill
 needs `TBI_C5_N` of at least 2 and is **not covered** by the gate (each evidence file says so in
 `notGated`). With `TBI_C5_FAULTS=1`, `c5-deployed` and `c5-capacity` fail if a drill that ran did
-not recover and clean up; a drill that did not run is not judged.
+not recover and clean up; a drill that did not run is not judged,
+except the deployed stop drill, which must run.
 
 Evidence replaces the values of `TBI_*` (4 characters or more) and, whatever their length, of
 `TBI_*_INSTANCE`, `TBI_ALLOW_SERVICE_MUTATION`, `TBI_C5_DEPLOYED`, `TBI_S13_SEC_DEPLOYED` and

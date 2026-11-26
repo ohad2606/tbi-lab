@@ -1,6 +1,7 @@
 /**
  * Verdict of the C-5 fault drills (TBI_C5_FAULTS=1): the names of what did not recover or clean up.
- * A drill that did not run is not judged (the deployed crash drill needs two sessions).
+ * The deployed stop drill must run (no admitted session means nothing was proven); the crash drill
+ * is judged only if it ran (it needs two sessions).
  */
 export interface DeployedFaults {
   stop?: { status: number; recreated?: number };
@@ -8,7 +9,8 @@ export interface DeployedFaults {
 }
 export function deployedFaultFailures({ stop, crash }: DeployedFaults): string[] {
   const failed: string[] = [];
-  if (stop && !(stop.status < 300 && stop.recreated === 201)) failed.push('stop');
+  if (!stop) failed.push('stop_not_run');
+  else if (!(stop.status < 300 && stop.recreated === 201)) failed.push('stop');
   if (crash && !(crash.reported && crash.unitGone === true && crash.recreated === 201))
     failed.push('crash');
   return failed;
