@@ -467,8 +467,16 @@ export function deleteAccountWarning(
   return r.status === 'approved' || approving.has(r.id) ? 'inFlight' : null;
 }
 
-/** The sentence for one delete outcome; `gone`: the request no longer exists on the server. */
-export function deleteOutcomeView(o: DeleteSignupOutcome): {
+/**
+ * The sentence for one delete outcome; `gone`: the request no longer exists on the server.
+ * `reload`: what the list reload after a `not_found` showed. `off`: the sign-up routes are not
+ * there (the stored list is unavailable), so nothing was deleted. `unconfirmed`: no list came back.
+ * Neither says the request is gone.
+ */
+export function deleteOutcomeView(
+  o: DeleteSignupOutcome,
+  reload: 'listed' | 'off' | 'unconfirmed' = 'listed',
+): {
   key: string;
   gone: boolean;
   seconds?: number;
@@ -477,8 +485,10 @@ export function deleteOutcomeView(o: DeleteSignupOutcome): {
   switch (o.kind) {
     case 'deleted':
       return { key: `${k}done`, gone: true };
-    case 'already_deleted':
     case 'not_found':
+      if (reload === 'listed') return { key: `${k}gone`, gone: true };
+      return { key: reload === 'off' ? `${k}failed.off` : `${k}unconfirmed`, gone: false };
+    case 'already_deleted':
       return { key: `${k}gone`, gone: true };
     case 'rate_limited':
       return o.retryAfterS === null

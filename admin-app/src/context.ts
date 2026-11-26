@@ -34,7 +34,12 @@ export interface Console {
   /** Reload everything (or the named parts). */
   refresh: (parts?: (keyof Data)[]) => Promise<void>;
   /** Report a mutation's outcome; a pending request is then checked automatically. */
-  settle: (o: MutationOutcome, label: string, action: MutationAction) => Promise<void>;
+  settle: (
+    o: MutationOutcome,
+    label: string,
+    action: MutationAction,
+    startedOn: string,
+  ) => Promise<void>;
   notice: string | null;
   setNotice: (n: string | null) => void;
   seen: ReadonlySet<string>;

@@ -9,6 +9,7 @@ import {
 } from '@tbi-lab/admin-client';
 import { BackButton, Loading, Num, Problem } from '../common.js';
 import { api, useConsole, useT } from '../context.js';
+import { rescueFocus } from '../focus-rescue.js';
 
 /** Add a tester: a name and the address; afterwards the address is shown masked only. */
 export function Add() {
@@ -16,7 +17,13 @@ export function Add() {
   const { data, settle, go } = useConsole();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
-  const [problem, setProblem] = useState<'email' | 'name' | null>(null);
+  // `n`: which refusal this is, so the same one twice is a new alert (spoken again).
+  const [problem, setProblem] = useState<{ field: 'email' | 'name'; n: number } | null>(null);
+  const refusals = useRef(0);
+  const refuse = (field: 'email' | 'name') => {
+    setProblem({ field, n: ++refusals.current });
+    (field === 'name' ? nameField : emailField).current?.focus();
+  };
   const [sending, setSending] = useState(false);
   const [last, setLast] = useState<string | null>(null);
   const emailField = useRef<HTMLInputElement>(null);
@@ -42,23 +49,21 @@ export function Add() {
     if (sending || full) return;
     const n = name.trim() ? normalizeDisplayName(name) : '';
     if (n === null) {
-      setProblem('name');
-      nameField.current?.focus();
+      refuse('name');
       return;
     }
     if (!plausibleAddress(email)) {
-      setProblem('email');
-      emailField.current?.focus();
+      refuse('email');
       return;
     }
     setProblem(null);
     setSending(true);
     const typed = email.trim().toLowerCase();
     try {
+      const startedOn = location.hash;
       const o = await addTester(api, typed, n);
       if (o.kind === 'refused' && (o.error === 'invalid_email' || o.error === 'invalid_name')) {
-        setProblem(o.error === 'invalid_name' ? 'name' : 'email');
-        (o.error === 'invalid_name' ? nameField : emailField).current?.focus();
+        refuse(o.error === 'invalid_name' ? 'name' : 'email');
         return;
       }
       // Only a completed add empties the form; after a refusal, an outage or a request still
@@ -68,7 +73,9 @@ export function Add() {
         setName('');
         setLast(maskAddress(typed));
       }
-      await settle(o, n || maskAddress(typed), 'add');
+      await settle(o, n || maskAddress(typed), 'add', startedOn);
+      // A tester list that is now full disables the form, with whatever had focus in it.
+      rescueFocus();
     } finally {
       setSending(false);
     }
@@ -111,7 +118,7 @@ export function Add() {
             value={name}
             readOnly={sending}
             disabled={full}
-            aria-invalid={problem === 'name'}
+            aria-invalid={problem?.field === 'name'}
             aria-describedby="add-name-hint"
             onInput={(e) => setName((e.target as HTMLInputElement).value)}
           />
@@ -133,7 +140,7 @@ export function Add() {
             value={email}
             readOnly={sending}
             disabled={full}
-            aria-invalid={problem === 'email'}
+            aria-invalid={problem?.field === 'email'}
             aria-describedby="add-email-hint"
             onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
           />
@@ -142,8 +149,8 @@ export function Add() {
           </small>
         </label>
         {problem && (
-          <p class="problem" role="alert" data-testid="add-problem">
-            {problem === 'name'
+          <p key={problem.n} class="problem" role="alert" data-testid="add-problem">
+            {problem.field === 'name'
               ? t('admin.name.invalid', { max: DISPLAY_NAME_MAX })
               : t('admin.add.invalid')}
           </p>

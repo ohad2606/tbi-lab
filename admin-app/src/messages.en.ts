@@ -229,6 +229,8 @@ export const consoleEn = {
   'console.signups.delete.confirm.ok': 'Delete request',
   'console.signups.delete.done': 'Request {id}: deleted.',
   'console.signups.delete.gone': 'Request {id}: it was already gone.',
+  'console.signups.delete.unconfirmed':
+    'Request {id}: we could not confirm the deletion. The request may still be stored.',
   'console.signups.delete.rateLimited':
     'Request {id}: not deleted. Too many requests; wait a minute and try again.',
   'console.signups.delete.rateLimitedFor':
@@ -245,6 +247,8 @@ export const consoleEn = {
     'Request {id}: not deleted. Your sign-in has expired; sign in again.',
   'console.signups.delete.failed.unavailable':
     'Request {id}: not deleted. The service is not available right now; try again later.',
+  'console.signups.delete.failed.off':
+    'Request {id}: not deleted. Sign-up administration is off or unavailable on the server, so the request may still be stored.',
   'console.signups.delete.failed.invalid_id':
     'Request {id}: not deleted. This request ID is not valid.',
 } as const;
