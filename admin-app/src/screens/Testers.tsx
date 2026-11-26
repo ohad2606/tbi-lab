@@ -141,7 +141,11 @@ export function Testers() {
                 <tr key={a.target} data-testid="tester-row" data-target={a.target}>
                   <td>
                     <div class="name" data-testid="tester-name">
-                      {a.displayName ? <bdi dir="auto">{a.displayName}</bdi> : a.masked}
+                      {a.displayName ? (
+                        <bdi dir="auto">{a.displayName}</bdi>
+                      ) : (
+                        <bdi dir="ltr">{a.masked}</bdi>
+                      )}
                     </div>
                     {a.displayName && (
                       <div class="muted small">
@@ -187,7 +191,11 @@ export function Testers() {
               >
                 <div class="item-head">
                   <strong class="name" data-testid="tester-name">
-                    {a.displayName ? <bdi dir="auto">{a.displayName}</bdi> : a.masked}
+                    {a.displayName ? (
+                      <bdi dir="auto">{a.displayName}</bdi>
+                    ) : (
+                      <bdi dir="ltr">{a.masked}</bdi>
+                    )}
                   </strong>
                   <StatusBadge a={a} />
                 </div>
@@ -242,12 +250,25 @@ export function TesterDetail({ target }: { target: string }) {
       }}
     />
   );
-  if (!accounts) return <Loading />;
+  // The h1 sits at the same place as in the loaded screen, so route focus survives the loading.
+  const title = (
+    <div class="item-head">
+      <h1>{t('console.tester.title')}</h1>
+    </div>
+  );
+  if (!accounts)
+    return (
+      <section class="stack">
+        {back}
+        {title}
+        <Loading />
+      </section>
+    );
   if (!accounts.ok)
     return (
       <section class="stack">
         {back}
-        <h1>{t('console.testers.heading')}</h1>
+        {title}
         <Problem error={accounts.error} unavailable="console.accounts.unavailable" />
       </section>
     );
@@ -256,7 +277,7 @@ export function TesterDetail({ target }: { target: string }) {
     return (
       <section class="stack">
         {back}
-        <h1>{t('console.testers.heading')}</h1>
+        {title}
         <p class="problem" role="alert" data-testid="tester-missing">
           {t('console.tester.notFound')}
         </p>

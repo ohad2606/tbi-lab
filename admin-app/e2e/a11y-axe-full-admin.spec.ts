@@ -134,7 +134,18 @@ async function rendered(page: Page, lang: Lang) {
 /** Screens that must show data: no error panel on them. */
 const noProblem = (page: Page) => expect(page.locator('.problem')).toHaveCount(0);
 
-type Walk = (page: Page, request: APIRequestContext, check: Check) => Promise<void>;
+/** The headings that tell otherwise similar (error) states apart. */
+const TITLES = {
+  testers: { he: 'בודקים', en: 'Testers' },
+  tester: { he: 'בודק/ת', en: 'Tester' },
+  add: { he: 'הוספת בודק/ת', en: 'Add tester' },
+  report: { he: 'דיווח', en: 'Report' },
+};
+const h1 = (page: Page) => page.getByRole('heading', { level: 1 });
+const titled = async (page: Page, lang: Lang, screen: keyof typeof TITLES) =>
+  expect(h1(page)).toHaveText(TITLES[screen][lang]);
+
+type Walk = (page: Page, request: APIRequestContext, check: Check, lang: Lang) => Promise<void>;
 
 const WALKS: Record<string, { subject?: string; walk: Walk }> = {
   'today, activity, settings, more': {
@@ -158,7 +169,7 @@ const WALKS: Record<string, { subject?: string; walk: Walk }> = {
     },
   },
   'testers and a tester: filters, rename, confirmations, pending, missing': {
-    walk: async (page, request, check) => {
+    walk: async (page, request, check, lang) => {
       await open(page, '#/testers');
       await expect(page.getByTestId('tester-row')).toHaveCount(3);
       await noProblem(page);
@@ -202,6 +213,7 @@ const WALKS: Record<string, { subject?: string; walk: Walk }> = {
 
       await open(page, `#/testers/t_${'A'.repeat(16)}`);
       await visible(page, 'tester-missing');
+      await titled(page, lang, 'tester');
       await check('tester not found');
     },
   },
@@ -231,7 +243,7 @@ const WALKS: Record<string, { subject?: string; walk: Walk }> = {
     },
   },
   'feedback: empty, list, report, delete confirmations': {
-    walk: async (page, request, check) => {
+    walk: async (page, request, check, lang) => {
       await open(page, '#/feedback');
       await visible(page, 'feedback-empty');
       await check('feedback empty');
@@ -241,6 +253,14 @@ const WALKS: Record<string, { subject?: string; walk: Walk }> = {
       await expect(page.getByTestId('report-row')).toHaveCount(2);
       await noProblem(page);
       await check('feedback list');
+      // Each link is named by what the row shows, including the report's own short ID.
+      for (const row of await page.getByTestId('report-row').all()) {
+        const id = (await row.getAttribute('data-id'))!.slice(0, 9);
+        await expect(row.getByRole('link')).toHaveAccessibleName(
+          new RegExp(`${TITLES.report[lang]} ${id}`),
+        );
+        await expect(row.locator('bdi[dir="ltr"]', { hasText: id })).toBeVisible();
+      }
       await page.getByTestId('report-row').first().locator('a').click();
       await visible(page, 'report-detail', 'report-text', 'report-delete');
       await check('report');
@@ -278,7 +298,7 @@ const WALKS: Record<string, { subject?: string; walk: Walk }> = {
     },
   },
   'unavailable data': {
-    walk: async (page, request, check) => {
+    walk: async (page, request, check, lang) => {
       await request.post(`${FAKE}/__test/admin-history?usage=0&audit=0`);
       const unavailable = { status: 503, contentType: 'application/json', body: '{"error":"x"}' };
       await page.route('**/admin-api/signups/**', (r) => r.fulfill(unavailable));
@@ -301,15 +321,19 @@ const WALKS: Record<string, { subject?: string; walk: Walk }> = {
       await check('today, accounts and capacity unavailable');
       await open(page, '#/testers');
       await visible(page, 'problem');
+      await titled(page, lang, 'testers');
       await check('testers unavailable');
       await open(page, '#/add');
       await visible(page, 'problem');
+      await titled(page, lang, 'add');
       await check('add unavailable');
       await open(page, `#/testers/${ALEX}`);
       await visible(page, 'problem', 'tester-back');
+      await titled(page, lang, 'tester');
       await check('tester, accounts unavailable');
       await open(page, '#/feedback/AAAA-BBBB-CCCC');
       await visible(page, 'problem', 'report-back');
+      await titled(page, lang, 'report');
       await check('report that cannot be loaded');
     },
   },
@@ -371,15 +395,81 @@ test.afterAll(async ({ playwright }) => {
 });
 
 for (const lang of ['he', 'en'] as const) {
+  // Two reports alike in everything the list shows except their IDs.
+  test(`(${lang}) identical reports have different link names`, async ({
+    page,
+    context,
+    request,
+  }) => {
+    await signIn(context, lang);
+    await report(request, 'Same report.');
+    await report(request, 'Same report.');
+    await open(page, '#/feedback');
+    const links = page.getByTestId('report-row').getByRole('link');
+    await expect(links).toHaveCount(2);
+    const names: string[] = [];
+    for (const row of await page.getByTestId('report-row').all()) {
+      const name = `${TITLES.report[lang]} ${(await row.getAttribute('data-id'))!.slice(0, 9)}`;
+      await expect(row.getByRole('link')).toHaveAccessibleName(new RegExp(name));
+      names.push(name);
+    }
+    expect(new Set(names).size).toBe(2);
+  });
+
+  // The heading takes the route focus while the report loads, and keeps it: one focus, one node.
+  for (const outcome of ['loaded', 'unavailable'] as const)
+    test(`(${lang}) report loading then ${outcome}: the heading keeps focus`, async ({
+      page,
+      context,
+      request,
+    }) => {
+      await signIn(context, lang);
+      await report(request, 'Held report.');
+      let release!: () => void;
+      const held = new Promise<void>((r) => (release = r));
+      await page.route(/\/reports\/[0-9A-Z-]{14}$/, async (r) => {
+        await held;
+        if (outcome === 'loaded') await r.continue();
+        else await r.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+      });
+      await open(page, '#/feedback');
+      const row = page.getByTestId('report-row');
+      const id = (await row.getAttribute('data-id'))!;
+      await page.evaluate(() => {
+        const w = window as unknown as { h1Focus: number };
+        w.h1Focus = 0;
+        document.addEventListener('focusin', (e) => {
+          if ((e.target as Element).tagName === 'H1') w.h1Focus++;
+        });
+      });
+      await row.getByRole('link').click();
+      await titled(page, lang, 'report');
+      await expect(h1(page)).toBeFocused();
+      await expect(page.getByText(lang === 'he' ? /^טוען/ : /^Loading/)).toBeVisible();
+      const node = await h1(page).elementHandle();
+      release();
+      if (outcome === 'loaded') {
+        await visible(page, 'report-detail', 'report-text');
+        await expect(h1(page)).toHaveText(id);
+      } else {
+        await visible(page, 'problem');
+        await titled(page, lang, 'report');
+      }
+      await expect(h1(page)).toBeFocused();
+      expect(await node!.evaluate((e) => e === document.activeElement)).toBe(true);
+      expect(await page.evaluate(() => (window as unknown as { h1Focus: number }).h1Focus)).toBe(1);
+    });
+
   for (const [name, { subject, walk }] of Object.entries(WALKS)) {
     test(`axe (${lang}) ${name}`, async ({ page, context, request }) => {
       test.setTimeout(120_000);
       await signIn(context, lang, subject);
       const found: string[] = [];
-      await walk(page, request, async (state) => {
+      const check: Check = async (state) => {
         await rendered(page, lang);
         found.push(...(await scan(page)).map((f) => `${state}: ${f}`));
-      });
+      };
+      await walk(page, request, check, lang);
       expect(found).toEqual([]);
     });
 
@@ -391,10 +481,11 @@ for (const lang of ['he', 'en'] as const) {
         await page.setViewportSize({ width, height: 700 });
         await signIn(context, lang, subject);
         const found: string[] = [];
-        await walk(page, request, async (state) => {
+        const check: Check = async (state) => {
           await rendered(page, lang);
           found.push(...(await reflowProblems(page)).map((f) => `${state}: ${f}`));
-        });
+        };
+        await walk(page, request, check, lang);
         expect(found).toEqual([]);
       });
   }
