@@ -107,3 +107,16 @@ describe('deleteSignup', () => {
     expect(f.calls).toHaveLength(0);
   });
 });
+
+describe('deleteSignup: 404', () => {
+  it('is "already gone" only for the service answer not_found', async () => {
+    expect(await deleteSignup(fake(404, { error: 'not_found' }).fn, ID)).toEqual({
+      kind: 'not_found',
+    });
+    for (const body of [undefined, {}, { error: 'other' }, null])
+      expect(await deleteSignup(fake(404, body).fn, ID)).toEqual({
+        kind: 'failed',
+        error: 'unavailable',
+      });
+  });
+});

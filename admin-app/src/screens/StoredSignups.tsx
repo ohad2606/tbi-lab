@@ -22,6 +22,8 @@ import {
 const ltr = (s: string) => `⁦${s}⁩`;
 /** How long typing in the filter rests before the number of matches is announced. */
 const COUNT_WAIT_MS = 600;
+/** How long a delete's announcement waits for the reload before the outcome is spoken alone. */
+const RELOAD_WAIT_MS = 3000;
 
 /** A translated sentence whose `{id}` / `{address}` sit in their own left-to-right <bdi>. */
 function Sentence({ k, values }: { k: MessageKey; values: Record<string, string> }) {
@@ -47,20 +49,29 @@ function Sentence({ k, values }: { k: MessageKey; values: Record<string, string>
 
 /**
  * The modal confirmation of one deletion (native modal dialog: the page behind it is inert).
- * Cancel takes focus; Escape cancels; Tab stays inside.
+ * Cancel takes focus; Escape cancels; Tab stays inside. `notice` is what changed after it opened:
+ * the page's live region is inert behind the modal, so the dialog has its own.
  */
 function DeleteDialog({
   children,
+  notice,
   onCancel,
   onConfirm,
 }: {
   children: ComponentChildren;
+  notice: string;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const t = useT();
   const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
+  const [spoken, setSpoken] = useState('');
+  useEffect(() => {
+    setSpoken('');
+    const frame = requestAnimationFrame(() => setSpoken(notice));
+    return () => cancelAnimationFrame(frame);
+  }, [notice]);
   useEffect(() => {
     dialog.current?.showModal();
     cancel.current?.focus();
@@ -96,6 +107,9 @@ function DeleteDialog({
       <h2 id="delete-title">{t('console.signups.delete.confirm.title')}</h2>
       <div id="delete-body" class="stack">
         {children}
+      </div>
+      <div role="status" class="visually-hidden" data-testid="delete-dialog-live">
+        {spoken}
       </div>
       <div class="actions">
         <button
@@ -136,14 +150,16 @@ interface Outcome {
  */
 export function StoredSignups({
   say,
+  alsoSay,
   version,
   approving,
   onChanged,
 }: {
   say: (text: string) => void;
+  alsoSay: (text: string) => void;
   version: number;
   approving: ReadonlySet<string>;
-  onChanged: () => void;
+  onChanged: (gone: string | null) => void;
 }) {
   const t = useT();
   const { date, go } = useConsole();
@@ -154,6 +170,8 @@ export function StoredSignups({
   const [confirming, setConfirming] = useState<SignupRecord | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const listRef = useRef(list);
+  listRef.current = list;
   const inFlight = useRef(false);
   const turn = useRef(0);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -169,19 +187,25 @@ export function StoredSignups({
   const countText = (rows: SignupRecord[], q: string) =>
     t('console.signups.all.count', { shown: filterByEmail(rows, q).length, total: rows.length });
 
-  /** The list from the server. A passing failure keeps the rows already shown, marked stale. */
-  const load = async (): Promise<Loaded<SignupRecord[]> | null> => {
+  /**
+   * The list from the server. A passing failure keeps the rows already shown, marked stale.
+   * null: a newer load (or hiding the list) overtook this one.
+   */
+  const load = async () => {
     const mine = ++turn.current;
     const v = await loadAllSignups(api);
     if (mine !== turn.current) return null;
     const passing = !v.ok && (v.error === 'network' || v.error === 'rate_limited');
     setList((old) => (passing && old?.ok ? old : v));
     setStale(passing);
-    return v;
+    return { v, stale: passing && !!listRef.current?.ok };
   };
 
   useEffect(() => {
-    if (open) void load();
+    if (open)
+      void load().then((r) => {
+        if (r?.stale) alsoSay(t('console.signups.all.stale'));
+      });
   }, [version]);
   useEffect(
     () => () => {
@@ -199,6 +223,28 @@ export function StoredSignups({
     (found ?? filter.current ?? toggle.current)?.focus();
   }, [focusTick]);
 
+  // The confirmation never outlives its row: a reload that fails for good, or no longer holds the
+  // request, closes it, says why and moves focus to the filter, else the show/hide button.
+  useEffect(() => {
+    if (!confirming || !list) return;
+    const { id } = confirming;
+    if (!list.ok) {
+      say(
+        list.error === 'unavailable'
+          ? t('console.signups.all.unavailable')
+          : t(`admin.error.${list.error}`),
+      );
+    } else if (!list.value.some((x) => x.id === id)) {
+      const key: MessageKey = 'console.signups.delete.gone';
+      setOutcome({ id, key, gone: true });
+      say(t(key, { id: ltr(id) }));
+      onChanged(id);
+    } else return;
+    setConfirming(null);
+    focusNext.current = [];
+    setFocusTick((n) => n + 1);
+  }, [list]);
+
   const show = async () => {
     if (open) {
       turn.current++;
@@ -211,8 +257,8 @@ export function StoredSignups({
       return;
     }
     setOpen(true);
-    const v = await load();
-    if (v?.ok) say(countText(v.value, ''));
+    const r = await load();
+    if (r?.v.ok) say(countText(r.v.value, ''));
   };
 
   const type = (q: string) => {
@@ -222,6 +268,13 @@ export function StoredSignups({
       const rows = list.value;
       countTimer.current = setTimeout(() => say(countText(rows, q)), COUNT_WAIT_MS);
     }
+  };
+
+  /** Opens the confirmation and reloads the list, so its warnings are current. */
+  const ask = (r: SignupRecord) => {
+    if (inFlight.current) return;
+    setConfirming(r);
+    void load();
   };
 
   const cancel = () => {
@@ -244,9 +297,19 @@ export function StoredSignups({
     try {
       const v = deleteOutcomeView(await deleteSignup(api, r.id));
       const done: Outcome = { ...v, id: r.id, key: v.key as MessageKey };
-      say(t(done.key, { id: ltr(r.id), seconds: v.seconds ?? '' }));
-      onChanged();
+      const text = t(done.key, { id: ltr(r.id), seconds: v.seconds ?? '' });
+      onChanged(v.gone ? r.id : null);
+      // One announcement for the outcome and a failed reload; a slow reload is not waited for.
+      let spoken = false;
+      const timer = setTimeout(() => {
+        spoken = true;
+        say(text);
+      }, RELOAD_WAIT_MS);
       const next = await load();
+      clearTimeout(timer);
+      const stale = next?.stale ? t('console.signups.all.stale') : '';
+      if (!spoken) say(stale ? `${text} ${stale}` : text);
+      else if (stale) alsoSay(stale);
       setOutcome(done);
       // Gone on the server: never keep showing it, even when the reload failed.
       if (v.gone)
@@ -255,10 +318,11 @@ export function StoredSignups({
         );
       // Move focus only if the person has not moved elsewhere meanwhile.
       const at = document.activeElement;
-      if (!at || at === document.body || at.closest(`[data-stored-id="${r.id}"]`)) {
+      if (!at || at === document.body || at.closest(`[data-stored-id="${CSS.escape(r.id)}"]`)) {
         const after = focusAfterRemoval(ids, r.id);
         const before = ids[ids.indexOf(r.id) - 1] ?? null;
-        focusNext.current = !v.gone && next?.ok !== false ? [r.id, after, before] : [after, before];
+        focusNext.current =
+          !v.gone && next?.v.ok !== false ? [r.id, after, before] : [after, before];
         setFocusTick((n) => n + 1);
       }
     } finally {
@@ -285,6 +349,14 @@ export function StoredSignups({
   const target =
     confirming && ((list?.ok && list.value.find((x) => x.id === confirming.id)) || confirming);
   const warning = target && deleteAccountWarning(target, approving);
+  const notice = [
+    warning && confirming && warning !== deleteAccountWarning(confirming, approving)
+      ? t(`console.signups.delete.confirm.${warning}`)
+      : '',
+    stale ? t('console.signups.all.stale') : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <section aria-labelledby="stored-h" class="stack" data-testid="stored-signups">
@@ -389,7 +461,7 @@ export function StoredSignups({
                               })
                         }
                         aria-disabled={busy ? 'true' : undefined}
-                        onClick={() => !inFlight.current && setConfirming(r)}
+                        onClick={() => ask(r)}
                       >
                         {t(
                           busy === r.id
@@ -405,7 +477,7 @@ export function StoredSignups({
           </>
         ))}
       {target && (
-        <DeleteDialog onCancel={cancel} onConfirm={() => void remove(target)}>
+        <DeleteDialog notice={notice} onCancel={cancel} onConfirm={() => void remove(target)}>
           <p>
             <Sentence
               k="console.signups.delete.confirm.target"

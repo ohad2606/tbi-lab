@@ -228,7 +228,7 @@ export const consoleEn = {
   'console.signups.delete.rateLimited':
     'Request {id}: not deleted. Too many requests; wait a minute and try again.',
   'console.signups.delete.rateLimitedFor':
-    'Request {id}: not deleted. Too many requests; try again in {seconds} seconds.',
+    'Request {id}: not deleted. Too many requests; try again later. Seconds to wait: {seconds}.',
   'console.signups.delete.failed.server':
     'Request {id}: the deletion did not finish. The record is kept; try again.',
   'console.signups.delete.failed.network':

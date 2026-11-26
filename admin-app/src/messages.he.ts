@@ -219,7 +219,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.delete.gone': 'בקשה {id}: היא כבר לא קיימת.',
   'console.signups.delete.rateLimited': 'בקשה {id}: לא נמחקה. יותר מדי בקשות; המתינו דקה ונסו שוב.',
   'console.signups.delete.rateLimitedFor':
-    'בקשה {id}: לא נמחקה. יותר מדי בקשות; נסו שוב בעוד {seconds} שניות.',
+    'בקשה {id}: לא נמחקה. יותר מדי בקשות; נסו שוב מאוחר יותר. שניות להמתנה: {seconds}.',
   'console.signups.delete.failed.server': 'בקשה {id}: המחיקה לא הושלמה. הרשומה נשמרה; נסו שוב.',
   'console.signups.delete.failed.network':
     'בקשה {id}: השרת לא ענה, ולכן לא ידוע אם היא נמחקה. בדקו את הרשימה ונסו שוב.',

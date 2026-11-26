@@ -44,6 +44,13 @@ and the screen says what happened, naming the request ID only.
 | 500 ("did not finish; the record is kept") | A file could not be removed (the record is kept so a retry can finish; the log has the error class only). Try again; if it repeats, the operator checks the store directory permissions. |
 | no answer ("the server did not answer") | Unknown whether it was deleted. Check the reloaded list (Refresh requests) and try again if the row is still there. |
 
+The service answers the same 404 `not_found` when the sign-up routes have been switched off, so
+after "already gone" check the reloaded list: if it says the requests are not available, nothing was
+checked. Any other 404 is reported as "service not available".
+
+**If auto-approve is on**, check Testers after deleting any pending request: it may have been
+approved just before the deletion.
+
 Deleting the request does **not** remove an account that was already added. Step 3 does that.
 
 **An account add may still be in progress.** If the request was approved but not marked **Account
