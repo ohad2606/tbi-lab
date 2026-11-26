@@ -116,6 +116,8 @@ describe('session_end: user stop, client release, disconnect, timeout, shutdown'
     s.run();
     await waitEvent(s, (e) => e.type === 'serial');
     expect(lines).toHaveLength(0); // nothing before the session is terminal
+    // A wall-clock step during the session must not shorten its measured life.
+    s.createdAt.setTime(s.createdAt.getTime() + 60_000);
     s.stop();
     await terminal(s);
     const rec = only(lines, s, [art.sha256]);

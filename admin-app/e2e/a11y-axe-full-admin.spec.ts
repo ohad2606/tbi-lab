@@ -447,7 +447,7 @@ for (const lang of ['he', 'en'] as const) {
       await row.getByRole('link').click();
       await titled(page, lang, 'report');
       await expect(h1(page)).toBeFocused();
-      await expect(page.getByText(lang === 'he' ? /^טוען/ : /^Loading/)).toBeVisible();
+      await expect(page.getByTestId('loading')).toHaveText(LOADING[lang]);
       const node = await h1(page).elementHandle();
       release();
       if (outcome === 'loaded') {
@@ -478,7 +478,7 @@ for (const lang of ['he', 'en'] as const) {
       });
       await open(page, '#/today');
       await page.getByTestId('nav-feedback').click();
-      await expect(page.getByText(LOADING[lang])).toBeVisible();
+      await expect(page.getByTestId('loading')).toHaveText(LOADING[lang]);
       await expect(h1(page)).toHaveCount(1);
       await titled(page, lang, 'feedback');
       await expect(h1(page)).toBeFocused();
@@ -499,7 +499,7 @@ for (const lang of ['he', 'en'] as const) {
       await r.continue();
     });
     await open(page, '#/add');
-    await expect(page.getByText(LOADING[lang])).toBeVisible();
+    await expect(page.getByTestId('loading')).toHaveText(LOADING[lang]);
     await expect(h1(page)).toHaveCount(1);
     await expect(h1(page)).toHaveText('TBI Lab Admin');
     expect(await scan(page)).toEqual([]);

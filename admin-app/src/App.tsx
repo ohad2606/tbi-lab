@@ -10,8 +10,17 @@ import {
   requestResult,
   type MutationOutcome,
 } from '@tbi-lab/admin-client';
-import { Icon, SIGN_IN_URL, SIGN_OUT_URL, Loading, useWide, type IconName } from './common.js';
+import {
+  Icon,
+  SIGN_IN_URL,
+  SIGN_OUT_URL,
+  Loading,
+  LoadingStatus,
+  useWide,
+  type IconName,
+} from './common.js';
 import { ConsoleContext, api, type Console, type Data, type MutationAction } from './context.js';
+import { rescueFocus } from './focus-rescue.js';
 import { getLocale, storeLocale, storedLocale, translate, type MessageKey } from './i18n.js';
 import { TABS, afterRoute, parseRoute, routeHash, section, tab, type Route } from './views.js';
 import { Activity } from './screens/Activity.js';
@@ -154,12 +163,18 @@ export function App() {
     setPending(null);
     setNotice(outcomeText(o, pending.label, pending.action));
     await refresh(['accounts', 'capacity', 'audit']);
+    // The reloaded data may have removed what had focus (a row that left the list).
+    rescueFocus();
   };
   // 202: the helper has not answered yet; ask again on its own for a while.
   useEffect(() => {
     if (!pending || pending.tries >= POLL_TRIES) return;
     const timer = setTimeout(() => void checkPending(), POLL_MS);
     return () => clearTimeout(timer);
+  }, [pending]);
+  // The "check again" button leaves with its request, whatever the answer.
+  useEffect(() => {
+    if (!pending) rescueFocus();
   }, [pending]);
 
   const ctx: Console = useMemo(
@@ -196,6 +211,10 @@ export function App() {
   const loads = Object.values(data) as Data[keyof Data][];
   const signedOut = loads.some((l) => l && !l.ok && l.error === 'signed_out');
   const forbidden = loads.some((l) => l && !l.ok && l.error === 'forbidden');
+  // The access page replaces the whole app, with whatever had focus in it.
+  useEffect(() => {
+    if (signedOut || forbidden) rescueFocus();
+  }, [signedOut, forbidden]);
   let body;
   if (signedOut || forbidden)
     body = (
@@ -330,5 +349,11 @@ export function App() {
       </div>
     );
   }
-  return <ConsoleContext.Provider value={ctx}>{body}</ConsoleContext.Provider>;
+  return (
+    <ConsoleContext.Provider value={ctx}>
+      {/* Outside the body, which is replaced as the app loads: the region stays the same node. */}
+      <LoadingStatus />
+      {body}
+    </ConsoleContext.Provider>
+  );
 }
