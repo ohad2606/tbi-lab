@@ -64,7 +64,12 @@ export function Testers() {
   );
   if (!accounts) return <Loading />;
   if (!accounts.ok)
-    return <Problem error={accounts.error} unavailable="console.accounts.unavailable" />;
+    return (
+      <section class="stack">
+        <h1>{t('console.testers.heading')}</h1>
+        <Problem error={accounts.error} unavailable="console.accounts.unavailable" />
+      </section>
+    );
   const counts = accountCounts(accounts.value);
   const rows = testerList(accounts.value, usage?.ok ? usage.value : null, { filter, query });
   const open = (a: AccountRow) => (e: Event) => {
@@ -177,7 +182,6 @@ export function Testers() {
               <a
                 class="item-link"
                 href={`#/testers/${a.target}`}
-                aria-label={t('console.testers.open.label', { account: accountLabel(a) })}
                 data-testid={`tester-open-${a.target}`}
                 onClick={open(a)}
               >
@@ -240,12 +244,19 @@ export function TesterDetail({ target }: { target: string }) {
   );
   if (!accounts) return <Loading />;
   if (!accounts.ok)
-    return <Problem error={accounts.error} unavailable="console.accounts.unavailable" />;
+    return (
+      <section class="stack">
+        {back}
+        <h1>{t('console.testers.heading')}</h1>
+        <Problem error={accounts.error} unavailable="console.accounts.unavailable" />
+      </section>
+    );
   const a = accounts.value.accounts.find((r) => r.target === target);
   if (!a)
     return (
       <section class="stack">
         {back}
+        <h1>{t('console.testers.heading')}</h1>
         <p class="problem" role="alert" data-testid="tester-missing">
           {t('console.tester.notFound')}
         </p>

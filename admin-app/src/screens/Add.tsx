@@ -24,7 +24,12 @@ export function Add() {
   const { accounts } = data;
   if (!accounts) return <Loading />;
   if (!accounts.ok)
-    return <Problem error={accounts.error} unavailable="console.accounts.unavailable" />;
+    return (
+      <section class="stack">
+        <h1>{t('console.add.heading')}</h1>
+        <Problem error={accounts.error} unavailable="console.accounts.unavailable" />
+      </section>
+    );
   const full = capFull(accounts.value);
 
   const submit = async () => {

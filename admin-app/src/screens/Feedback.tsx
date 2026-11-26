@@ -40,7 +40,6 @@ export function Feedback() {
                 <a
                   class="item-link"
                   href={`#/feedback/${r.id}`}
-                  aria-label={t('admin.reports.open.label', { id: r.id })}
                   data-testid={`report-open-${r.id}`}
                   onClick={(e) => {
                     e.preventDefault();
@@ -102,6 +101,7 @@ export function Report({ id }: { id: string }) {
     return (
       <section class="stack">
         {back}
+        <h1>{t('console.feedback.heading')}</h1>
         <Problem error={detail.error} unavailable="console.reports.unavailable" />
       </section>
     );

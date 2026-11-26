@@ -139,7 +139,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.reject': 'דחייה',
   'console.signups.resend': 'שליחת המייל שוב',
   'console.signups.approveFor': 'אישור הבקשה של {name}',
-  'console.signups.rejectFor': 'דחיית הבקשה של {name}',
+  'console.signups.rejectFor': 'דחייה: הבקשה של {name}',
   'console.signups.resendFor': 'שליחת המייל שוב אל {name}',
   'console.signups.confirm.title': 'לדחות את הבקשה של {name}?',
   'console.signups.confirm.body': 'לא יישלח מייל לאדם הזה. הבקשה תיסגר.',
