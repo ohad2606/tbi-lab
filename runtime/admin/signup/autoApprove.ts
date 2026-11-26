@@ -238,6 +238,11 @@ interface AutoState {
   retries: number;
   /** Persisted cut-off when TBI_SIGNUP_AUTO_SINCE is unset: the first time a sweep ran. */
   since?: string;
+  /**
+   * DEC-11: true once a sweep ran un-paused, false after a paused sweep that followed. Seeing it
+   * false on an un-paused sweep = re-enable: the cut-off is reset to now. Absent = never ran.
+   */
+  active?: boolean;
   /** Ids claimed by this service and not finished yet: the only ids ever retried. */
   claims: Record<string, Claim>;
 }
@@ -264,6 +269,7 @@ function validState(c: unknown): c is AutoState {
   if (typeof s.day !== 'string' || !DAY_RE.test(s.day) || !isCount(s.count) || !isCount(s.retries))
     return false;
   if (s.since !== undefined && !isTime(s.since)) return false;
+  if (s.active !== undefined && typeof s.active !== 'boolean') return false;
   if (!s.claims || typeof s.claims !== 'object' || Array.isArray(s.claims)) return false;
   for (const [id, e] of Object.entries(s.claims)) {
     if (!ID_RE.test(id) || !e || typeof e !== 'object') return false;
@@ -364,6 +370,8 @@ export class AutoApprover {
   /** Errno classes of failed record marks already logged (once each). */
   private readonly markErrors = new Set<string>();
   private spoolId: string | null = null;
+  /** DEC-11 (L2): a paused sweep failed to record the pause; the next un-paused sweep resets. */
+  private pauseUnrecorded = false;
 
   constructor(private readonly d: AutoApproverDeps) {}
 
@@ -483,7 +491,8 @@ export class AutoApprover {
             : e.message;
       }
     let cutoff: number | null = null;
-    if (this.d.since !== undefined) cutoff = this.d.since;
+    if (this.d.since !== undefined)
+      cutoff = Math.max(this.d.since, state?.since ? Date.parse(state.since) : -Infinity);
     else if (state?.since) cutoff = Date.parse(state.since);
     else unknown.cutoff = state ? 'not_recorded' : unknown.count!;
     let backlog: number | null = null;
@@ -512,14 +521,60 @@ export class AutoApprover {
     };
   }
 
+  /**
+   * DEC-11: remembers pause/resume in the state file. On a re-enable (paused after an un-paused
+   * sweep, now un-paused) the cut-off is reset to now, so requests that arrived while it was off
+   * are never auto-approved by mistake; the owner approves those by hand. The first un-paused
+   * sweep only records `active: true` (a first enable resets nothing). Returns the new cut-off
+   * (ms) on a reset, else null. Runs under the state-dir mutex like every other writer.
+   */
+  private trackActive(isPaused: boolean): Promise<number | null> {
+    return exclusive(this.d.dir, async () => {
+      if (isPaused) {
+        try {
+          const s = await this.readState(this.today());
+          if (s.active === true) await this.writeState({ ...s, active: false });
+        } catch (e) {
+          // The pause could not be recorded: the sweep still stops (the error propagates); this
+          // process remembers it so its next un-paused sweep still resets the cut-off.
+          this.pauseUnrecorded = true;
+          throw e;
+        }
+        return null;
+      }
+      const s = await this.readState(this.today());
+      if (s.active === false || this.pauseUnrecorded) {
+        // Never earlier than a stored cut-off, even after a clock step back.
+        const stored = s.since ? Date.parse(s.since) : -Infinity;
+        const since = new Date(Math.max(this.now(), stored)).toISOString();
+        await this.writeState({ ...s, since, active: true });
+        this.pauseUnrecorded = false;
+        this.log(
+          'signup: auto-approve re-enabled; cut-off reset (only requests created from now on)',
+        );
+        return Date.parse(since);
+      }
+      // First un-paused sweep (also an old state file or an env cut-off with nothing claimed yet):
+      // mark it, so that a later pause -> resume resets the cut-off.
+      if (s.active === undefined) await this.writeState({ ...s, active: true });
+      return null;
+    });
+  }
+
   /** The cut-off (ms): the configured one, else the persisted first-run time (written now if new). */
   private sinceMs(): Promise<number> {
-    if (this.d.since !== undefined) return Promise.resolve(this.d.since);
+    if (this.d.since !== undefined) {
+      const env = this.d.since;
+      // A re-enable reset (DEC-11) may be newer than the configured cut-off: the later one wins.
+      return this.readState(this.today()).then((s) =>
+        s.since ? Math.max(env, Date.parse(s.since)) : env,
+      );
+    }
     return exclusive(this.d.dir, async () => {
       const s = await this.readState(this.today());
       if (s.since) return Date.parse(s.since);
       const since = new Date(this.now()).toISOString();
-      await this.writeState({ ...s, since });
+      await this.writeState({ ...s, since, active: true });
       this.log('signup: auto-approve cut-off recorded (only requests created from now on)');
       return Date.parse(since);
     });
@@ -544,6 +599,7 @@ export class AutoApprover {
         const at = new Date(this.now()).toISOString();
         const taken: AutoState = {
           ...s,
+          active: true,
           count: s.count + 1,
           claims: { ...s.claims, [id]: { at, attempts: 1, lastAttemptAt: at } },
         };
@@ -671,8 +727,12 @@ export class AutoApprover {
 
   private async sweepInner(out: SweepResult): Promise<SweepResult> {
     if (await this.checkStateDir()) return { ...out, stopped: 'state_dir_unsafe' };
-    const since = await this.sinceMs();
-    if (await this.paused()) return { ...out, stopped: 'paused' };
+    let since = await this.sinceMs();
+    const isPaused = await this.paused();
+    if (isPaused) {
+      await this.trackActive(true);
+      return { ...out, stopped: 'paused' };
+    }
     const approver = this.d.approver({
       onSpoolRequest: (sid) => {
         this.spoolId = sid;
@@ -686,6 +746,8 @@ export class AutoApprover {
       return { ...out, stopped: 'no_owner' };
     }
     this.noOwnerLogged = false;
+    const mark = await this.trackActive(false);
+    if (mark !== null) since = Math.max(since, mark);
     const records = await this.d.store.list(); // oldest first
     const state = await this.prune(new Map(records.map((r) => [r.id, r])));
     // 1. Earlier claims of THIS service whose account step did not finish: no new slot, bounded.
