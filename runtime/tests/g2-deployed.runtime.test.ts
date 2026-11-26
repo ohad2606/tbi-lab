@@ -32,8 +32,10 @@
  * MemAvailable < 300 MiB twice in a row; load1 > max(4 x CPUs, 12) for 60 s; session-host or build
  * unit working set (memory.stat anon + kernel + shmem; MemoryCurrent is reported only) >= 90 % of
  * MemoryMax; a new oom_kill or kernel OOM line; 3 failed samples in a row; the pipeline lock no
- * longer held; or the manual stop file $TBI_RUNTIME_HOME/g2-stop. Without aborting, the run FAILS on
- * MemAvailable < 400 MiB at any sample, load1 > 2 x CPUs for 60 s, or > 10 % failed samples.
+ * longer held (or 3 checks in a row without an answer); or the manual stop file
+ * $TBI_RUNTIME_HOME/g2-stop, read first. A whole sample has 15 s. Without aborting, the run FAILS on
+ * MemAvailable < 400 MiB at any sample, load1 > 2 x CPUs for 60 s, > 10 % failed samples, or more
+ * than 30 s between two good samples.
  * G4 counts only builder_busy / memory_pressure / storage_pressure / capacity_timeout as a refusal
  * (any 429 fails); zero successful builds is flagged `dec32`. Every report lists `notCovered`.
  * Reports (numbers and fixed codes only): $TBI_RUNTIME_HOME/results/g2-deployed-<run>[-FAILED].json.
@@ -89,12 +91,12 @@ const FETCH_MS = 15_000;
 const sudo = (...args: string[]) =>
   spawnSync('sudo', ['-n', ...args], { encoding: 'utf8', timeout: 10_000, maxBuffer: 1 << 28 });
 /** the sampler's reads: same argv rules, but without blocking the event loop */
-const sudoAsync: L.G2Run = (argv) =>
+const sudoAsync: L.G2Run = (argv, signal) =>
   new Promise((resolve) => {
     execFile(
       'sudo',
       ['-n', ...argv],
-      { encoding: 'utf8', timeout: 10_000, maxBuffer: 1 << 24 },
+      { encoding: 'utf8', timeout: 10_000, maxBuffer: 1 << 24, signal },
       (error, stdout) =>
         resolve({
           status: !error ? 0 : typeof error.code === 'number' ? error.code : null,
@@ -250,7 +252,6 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
       const sinceEpochS = Math.floor(Date.now() / 1000);
       /** kernel lines are read since the start of the last good sample */
       let kernelSinceS = sinceEpochS;
-      let sampledAt: number | undefined;
       let sampler: ReturnType<typeof L.g2Loop> | undefined;
       const stop = (why: L.G2Autostop) => {
         if (abort.signal.aborted) return;
@@ -258,32 +259,26 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         abort.abort(new Error(`autostop:${why}`));
         void cleanup();
       };
+      const tick = L.g2Ticker(() => pipelineLockStatus(10_000), sudoAsync);
       const takeSample = async () => {
+        // first, so that slow reads cannot delay it
+        if (existsSync(STOP_FILE)) return stop('manual');
         let breach: L.G2Autostop | null;
         try {
           const startedS = Math.floor(Date.now() / 1000);
-          const lock = L.g2LockState(await pipelineLockStatus(10_000));
-          const r = await L.g2TakeSample(sudoAsync, kernelSinceS);
+          const r = await tick(kernelSinceS);
           if (!r.sample) metrics.lastSamplerExit = r.exit;
-          // a lock check without an answer leaves the sample blind
-          const sample = lock === 'unknown' ? null : r.sample;
-          const now = performance.now();
-          breach = L.g2Evaluate(watch, sample, now);
-          if (sample) {
-            kernelSinceS = startedS;
-            metrics.maxSampleGapMs = Math.round(
-              Math.max(metrics.maxSampleGapMs ?? 0, now - (sampledAt ?? now)),
-            );
-            sampledAt = now;
-          }
-          if (lock === 'lost') breach = 'lock';
-          if (existsSync(STOP_FILE)) breach = 'manual';
+          breach = L.g2Evaluate(watch, r.sample, performance.now());
+          if (r.sample) kernelSinceS = startedS;
+          breach = L.g2LockBreach(watch, r.lock) ?? breach;
         } catch {
           breach = 'sampler';
         }
         Object.assign(metrics, {
           sampleCount: watch.samples,
           sampleFailures: watch.failures,
+          lockUnknown: watch.lockUnknown,
+          maxSampleGapMs: Math.round(watch.maxGapMs),
           minMemAvailableMiB: Math.round(watch.minAvailMiB),
           maxLoad1: watch.maxLoad1,
           nproc: watch.nproc,
@@ -300,6 +295,8 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           !progress.failures!.includes('mem_below_400')
         )
           fail('mem_below_400');
+        if (watch.maxGapMs > L.G2_MAX_GAP_MS && !progress.failures!.includes('sample_gap'))
+          fail('sample_gap');
         if (watch.loadFail && !progress.failures!.includes('load_above_2x_cpus'))
           fail('load_above_2x_cpus');
         if (breach) stop(breach);

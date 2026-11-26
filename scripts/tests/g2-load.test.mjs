@@ -95,7 +95,7 @@ describe('auto-stop thresholds', () => {
     ]);
     expect(blind(10, 9)).toBe(false); // below the minimum count: 3 in a row still aborts
   });
-  it('only exit 0 holds the lock; a refusal is lost, no exit code is a failed sample', () => {
+  it('only exit 0 holds the lock; a refusal is lost, no exit code is unknown', () => {
     expect([0, 75, 70, 64, 1, null].map(L.g2LockState)).toEqual([
       'held',
       'lost',
@@ -105,6 +105,26 @@ describe('auto-stop thresholds', () => {
       'unknown',
     ]);
     expect(L.G2_AUTOSTOPS).toContain('lock');
+  });
+  it('an unknown lock is counted apart from samples; 3 in a row stop the run, lost at once', () => {
+    const s = L.g2WatchState();
+    const run = ['unknown', 'unknown', 'held', 'unknown', 'unknown', 'unknown'];
+    expect(run.map((l) => L.g2LockBreach(s, l))).toEqual([null, null, null, null, null, 'lock']);
+    expect([s.lockUnknown, s.failures, L.g2LockBreach(s, 'lost')]).toEqual([5, 0, 'lock']);
+  });
+  it('the largest gap between good samples is bounded by 3 intervals plus the tick deadline', () => {
+    const s = L.g2WatchState();
+    for (const [x, at] of [
+      [good, 0],
+      [null, 20_000],
+      [good, 30_000],
+      [good, 35_000],
+    ])
+      L.g2Evaluate(s, x, at);
+    expect([s.maxGapMs, L.G2_LIMITS.tickDeadlineMs, L.G2_MAX_GAP_MS]).toEqual([
+      30_000, 15_000, 30_000,
+    ]);
+    expect(L.G2_MAX_GAP_MS).toBeGreaterThan(L.G2_LIMITS.sampleMs + L.G2_LIMITS.tickDeadlineMs);
   });
   it('the sampler loop never overlaps and stop() waits for the sample in flight', async () => {
     vi.useFakeTimers();
@@ -207,6 +227,47 @@ describe('sampling commands', () => {
     const noMax = async (a) =>
       a[1] === 'show' ? { status: 0, stdout: 'MemoryCurrent=[not set]\n' } : answer(a);
     expect((await L.g2TakeSample(noMax, 1)).sample).toBeNull();
+  });
+  it('one deadline per tick: a miss is a failed sample, aborted, never overlapped or leaked', async () => {
+    vi.useFakeTimers();
+    try {
+      const calls = [];
+      let fail;
+      const tick = L.g2Ticker(
+        async () => 0,
+        (argv, signal) => (calls.push(signal), new Promise((_, reject) => (fail = reject))),
+      );
+      let got;
+      void tick(1).then((r) => (got = r));
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(got).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(got).toEqual({ lock: 'held', sample: null, exit: -1 });
+      expect(calls[0].aborted).toBe(true);
+      // the older command has not ended: nothing new is started
+      expect(await tick(1)).toEqual({ lock: 'unknown', sample: null, exit: -1 });
+      expect(calls).toHaveLength(1);
+      fail(new Error('late')); // handled: vitest fails the run on an unhandled rejection
+      await vi.advanceTimersByTimeAsync(1);
+      void tick(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(calls).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('a lock check that fails or hangs does not discard a good resource sample', async () => {
+    vi.useFakeTimers();
+    try {
+      for (const lock of [() => Promise.reject(new Error('x')), () => new Promise(() => {})]) {
+        const p = L.g2Ticker(lock, async (a) => answer(a))(1);
+        await vi.advanceTimersByTimeAsync(15_000);
+        const r = await p;
+        expect([r.lock, r.sample?.nproc]).toEqual(['unknown', 4]);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('an unreadable or incomplete memory.stat is a failed sample', async () => {
     for (const stat of [

@@ -94,8 +94,9 @@ reads the host's unit environment, sim plans config, health, resource figures, j
 journal (`sudo -n`, read-only, with timeouts). Its writes are its own builds, sessions, queue tickets
 and the Free pause file. It samples every 5 s and aborts on low memory, very high load, a service
 whose working set (cgroup `memory.stat`) is near its memory limit, an OOM kill, a failing sampler, a
-lost pipeline lock or the manual stop file `$TBI_RUNTIME_HOME/g2-stop`. Sustained load above 2 x CPUs
-or more than 10 % failed samples fail the run without stopping it.
+lost pipeline lock (or 3 lock checks in a row without an answer) or the manual stop file
+`$TBI_RUNTIME_HOME/g2-stop`. A whole sample has a 15 s deadline. Sustained load above 2 x CPUs, more
+than 10 % failed samples or more than 30 s between good samples fail the run without stopping it.
 One clean-up (success, failure, timeout, SIGINT/SIGTERM/SIGHUP) removes only what the run created and
 counts the rest. The root relays exit when the harness's stdin pipe to them closes. A killed process
 (SIGKILL, power loss) cannot clean up: sessions then end by their lease,

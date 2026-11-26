@@ -39,10 +39,18 @@ export const G2_LIMITS = {
   loadForMs: 60_000,
   unitMemoryRatio: 0.9,
   samplerFailures: 3,
+  /** one whole sampler tick (lock check and all reads) */
+  tickDeadlineMs: 15_000,
+  lockUnknownInRow: 3,
   /** a run with more than this share of failed samples (of at least blindMinSamples) fails */
   blindRatio: 0.1,
   blindMinSamples: 20,
 };
+/**
+ * A run with a longer gap between two good samples fails. With every tick within its deadline the
+ * gap is at most sampleMs + tickDeadlineMs, so only missed samples can exceed this.
+ */
+export const G2_MAX_GAP_MS = 3 * G2_LIMITS.sampleMs + G2_LIMITS.tickDeadlineMs;
 /** a waiter not polled for this long is polled again; far below queue.vanishMs (30 s) */
 export const G2_KEEP_MS = 10_000;
 /** DEC-31: the idle limit the instance must report, and the allowed error of its end */
@@ -92,7 +100,10 @@ export interface G2Sample {
   kernelOom: number;
   qemuUnits: number;
 }
-export type G2Run = (argv: string[]) => Promise<{ status: number | null; stdout: string }>;
+export type G2Run = (
+  argv: string[],
+  signal?: AbortSignal,
+) => Promise<{ status: number | null; stdout: string }>;
 
 const OOM_LINE = /out of memory|oom-kill|oom_reaper|invoked oom-killer/i;
 const num = (re: RegExp, text: string): number => Number(re.exec(text)?.[1] ?? NaN);
@@ -169,6 +180,10 @@ export const g2WatchState = () => ({
   samples: 0,
   failures: 0,
   failuresInRow: 0,
+  lockUnknown: 0,
+  lockUnknownInRow: 0,
+  lastGoodMs: null as number | null,
+  maxGapMs: 0,
   lowMemInRow: 0,
   loadSince: null as number | null,
   loadAbortSince: null as number | null,
@@ -194,6 +209,8 @@ export function g2Evaluate(s: G2WatchState, x: G2Sample | null, nowMs: number): 
   }
   s.failuresInRow = 0;
   s.samples++;
+  s.maxGapMs = Math.max(s.maxGapMs, nowMs - (s.lastGoodMs ?? nowMs));
+  s.lastGoodMs = nowMs;
   s.nproc = x.nproc;
   s.minAvailMiB = Math.min(s.minAvailMiB, x.availMiB);
   s.maxLoad1 = Math.max(s.maxLoad1, x.load1);
@@ -229,9 +246,59 @@ export const g2SamplerBlind = (s: Pick<G2WatchState, 'samples' | 'failures'>): b
   return total >= G2_LIMITS.blindMinSamples && s.failures > total * G2_LIMITS.blindRatio;
 };
 
-/** Exit code of `pipeline-lock.mjs check`; null (no answer) counts as a failed sample. */
+/** Exit code of `pipeline-lock.mjs check`; null = no answer. */
 export const g2LockState = (status: number | null): 'held' | 'lost' | 'unknown' =>
   status === 0 ? 'held' : status === null ? 'unknown' : 'lost';
+
+/** Feed the lock state of one tick: lost stops at once, unknown after 3 in a row. */
+export function g2LockBreach(
+  s: Pick<G2WatchState, 'lockUnknown' | 'lockUnknownInRow'>,
+  lock: ReturnType<typeof g2LockState>,
+): 'lock' | null {
+  if (lock !== 'unknown') {
+    s.lockUnknownInRow = 0;
+    return lock === 'lost' ? 'lock' : null;
+  }
+  s.lockUnknown++;
+  return ++s.lockUnknownInRow >= G2_LIMITS.lockUnknownInRow ? 'lock' : null;
+}
+
+/**
+ * One sampler tick under one deadline: the lock check and the reads run side by side; what has not
+ * answered in time is an unknown lock or a failed sample. At the deadline the running command is
+ * aborted and no further one starts; until the older tick has ended, a new one starts nothing.
+ */
+export function g2Ticker(lockStatus: () => Promise<number | null>, run: G2Run) {
+  let busy = false;
+  return async (sinceEpochS: number) => {
+    const out = {
+      lock: 'unknown' as ReturnType<typeof g2LockState>,
+      sample: null as G2Sample | null,
+      exit: -1,
+    };
+    if (busy) return out;
+    busy = true;
+    const late = new AbortController();
+    const guarded: G2Run = async (argv) =>
+      late.signal.aborted ? { status: null, stdout: '' } : run(argv, late.signal);
+    // allSettled: a rejection, early or late, is handled here
+    const work = Promise.allSettled([
+      Promise.resolve()
+        .then(lockStatus)
+        .then((code) => void (out.lock = g2LockState(code))),
+      g2TakeSample(guarded, sinceEpochS).then((r) => void Object.assign(out, r)),
+    ]).then(() => void (busy = false));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      work,
+      new Promise<void>((r) => (timer = setTimeout(r, G2_LIMITS.tickDeadlineMs))),
+    ]);
+    clearTimeout(timer);
+    const result = { ...out }; // a late answer must not change it
+    late.abort();
+    return result;
+  };
+}
 
 /** Runs `tick` every `intervalMs` (from start to start), never two at once. */
 export function g2Loop(

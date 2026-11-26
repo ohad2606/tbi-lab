@@ -80,7 +80,7 @@ export const G2_METRICS = [
   'journalBad', 'journalUnparsable', 'secretLeaks', 'leftoverLive', 'leftoverWaiting',
   'leftoverMetered', 'leftoverUnits', 'leftoverDirs', 'otherUnits', 'otherDirs',
   'unconfirmedCreates', 'unresolvedBuilds', 'deleteFailures', 'maxUnitCurrentRatio',
-  'maxSampleGapMs',
+  'maxSampleGapMs', 'lockUnknown',
 ] as const; // prettier-ignore
 export const G2_FLAGS = ['dec32'] as const;
 export const G2_FAILURES = [
@@ -98,6 +98,7 @@ export const G2_FAILURES = [
   'secret_in_journal',
   'load_above_2x_cpus',
   'sampler_blind',
+  'sample_gap',
 ] as const;
 export type G2Failure = (typeof G2_FAILURES)[number];
 
