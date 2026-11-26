@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { LoadError } from '@tbi-lab/admin-client';
 import { rescueFocus } from './focus-rescue.js';
 import { formatCount, type MessageKey } from './i18n.js';
@@ -115,7 +115,10 @@ export function Confirm({
 }) {
   const t = useT();
   const cancel = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
+  // A layout effect: in the same task as the render that removed the opener. A passive effect runs
+  // after paint, and a deferred focus rescue could first move focus from <body> to the heading,
+  // which would then be taken for the opener.
+  useLayoutEffect(() => {
     // The caller may already have removed the opener's node (focus is then on <body>), so the
     // opener is the last element that had focus; its replacement is found by id / test id.
     const opener = lastFocused;
