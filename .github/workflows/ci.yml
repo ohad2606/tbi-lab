@@ -30,12 +30,32 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Real Caddy for site/tests/signup-proxy.test.mjs: official release tarball, pinned version and
+      # sha512 (from that release's caddy_2.6.2_checksums.txt). 2.6.2 is the version the tests are
+      # written against. Loopback tests only; unpacked under RUNNER_TEMP, no sudo.
+      - name: Install pinned Caddy
+        env:
+          CADDY_VERSION: 2.6.2
+          CADDY_SHA512: ae18c0facae7c8ee872492a1ba63a4c7608915d6d9fe267aef4f869cf65ebd4b7f9ff57f609aff2bd52db98c761d877b574aea2c0c9ddc2ec53d0d5e174cb542
+        run: |
+          set -euo pipefail
+          dir="$(mktemp -d "$RUNNER_TEMP/caddy.XXXXXX")"
+          tarball="caddy_${CADDY_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL --proto '=https' --retry 3 -o "$dir/$tarball" \
+            "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/$tarball"
+          echo "$CADDY_SHA512  $dir/$tarball" | sha512sum --check --strict
+          tar -xzf "$dir/$tarball" -C "$dir" caddy
+          "$dir/caddy" version
+          echo "$dir" >> "$GITHUB_PATH"
       - run: npm run typecheck
       # ESLint + Prettier on production code, plus the experiments/ import boundary guard.
       - run: npm run lint
       # Sprint 0/1 unit suites + packages/domain + app unit tests (includes the he/en key
       # completeness and hard-coded-string checks in app/tests/i18n.test.ts).
       - run: npm test
+        env:
+          # A missing or too old caddy fails the run instead of skipping the proxy tests.
+          TBI_REQUIRE_CADDY: '1'
 
   browser:
     name: Browser acceptance (Chromium)
