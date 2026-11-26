@@ -43,11 +43,14 @@
  *                  carries `autoApprovedAt`, or `<state>/auto-approve.marker` exists (both survive
  *                  a restart), a missing state file gets max(now, TBI_SIGNUP_AUTO_SINCE) ("state
  *                  missing, cut-off = now"). The empty marker is written (only into a dir that
- *                  passed the check) on every paused / no_owner sweep and with the first persisted
- *                  cut-off; an error looking for it counts as present. Limits: a deleted state
- *                  dir (or state file and marker, with no marked record), and a run that only ever
- *                  saw an unsafe dir (nothing is written there), look like a first run after a
- *                  restart.
+ *                  passed the check) on every paused / no_owner sweep, on every sweep that ends
+ *                  `counter_unreadable` (a failed write there is logged, at most hourly per errno,
+ *                  and retried by the next such sweep) and with the first persisted cut-off; an
+ *                  error looking for it counts as present. Limits, each looking like a first run
+ *                  after a restart: state file and marker deleted (or the whole state dir) with no
+ *                  marked record; state removed before any sweep of this release saw it (and no
+ *                  marked record); a run that only ever saw an unsafe dir (nothing is written
+ *                  there); a failed marker write followed by a restart.
  *   Kill switch    while `<state>/auto-approve.paused` exists (any entry: file, dir, symlink, even
  *                  dangling; lstat, never followed) nothing is auto-approved; every check error
  *                  other than ENOENT counts as paused (fail closed). Checked before every claim
@@ -418,6 +421,8 @@ export class AutoApprover {
    * never be a first run (a backdated TBI_SIGNUP_AUTO_SINCE must not apply), see confirm().
    */
   private sawInactive = false;
+  /** Last time (ms) each marker-write failure errno was logged: at most once per hour each. */
+  private readonly markerFailLoggedAt = new Map<string, number>();
   /** This process has read a state file (so a later ENOENT is lost state, not a first run). */
   private hadState = false;
 
@@ -599,7 +604,13 @@ export class AutoApprover {
     this.sawInactive = true;
     return exclusive(this.d.dir, async () => {
       // First, so that it is there even when the state cannot be read or written.
-      await this.writeMarker();
+      try {
+        await this.writeMarker();
+      } catch (e) {
+        // An unreadable state still ends as counter_unreadable (the sweep retries the marker).
+        await this.readState(this.today());
+        throw e;
+      }
       const s = await this.readState(this.today());
       if (s.active !== false) await this.writeState({ ...s, active: false });
     });
@@ -650,6 +661,28 @@ export class AutoApprover {
       await fh.close();
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    }
+  }
+
+  /**
+   * A sweep that ends counter_unreadable leaves the marker, so a new process does not take a
+   * later missing state file for a first run. Nothing goes into an unsafe dir. Never throws: a
+   * failed write is logged (errno only) and the next such sweep tries again.
+   */
+  private async markUnreadable(): Promise<void> {
+    try {
+      if (await this.checkStateDir()) return;
+      await this.writeMarker();
+    } catch (e) {
+      const cls = errnoOf(e);
+      const last = this.markerFailLoggedAt.get(cls);
+      const t = this.now();
+      if (last === undefined || t - last >= AUTO_UNREADABLE_LOG_MS || t < last) {
+        this.markerFailLoggedAt.set(cls, t);
+        this.log(
+          `signup: auto-approve marker not written (${cls}); retried at the next unreadable-state sweep`,
+        );
+      }
     }
   }
 
@@ -860,6 +893,7 @@ export class AutoApprover {
             `signup: auto-approve counter unreadable (${e.message}); treated as cap reached`,
           );
         }
+        await this.markUnreadable();
         return { ...out, stopped: 'counter_unreadable' };
       }
       if (e instanceof ResetFailed) {

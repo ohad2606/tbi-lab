@@ -100,14 +100,21 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
   - In other cases lost state is not treated as a first run when there is evidence of an earlier run: this process
     saw a pause, a missing owner principal, an unsafe directory or an unreadable state file, or had read the file
     before; or the marker file `auto-approve.marker` is in the directory (empty, written on every paused or
-    owner-not-recorded sweep and with the first stored cut-off; kept across restarts; an error looking for it counts
-    as present); or a request already carries an auto-approve mark. The log then says
-    `auto-approve state missing, cut-off = now` and the cut-off is now (or a later `TBI_SIGNUP_AUTO_SINCE`): a past
-    value is **not** applied, and requests that arrived before it stay for you. Leave the marker file in place.
-  - Limits: with none of that evidence the sweep is a first run again and a past `TBI_SIGNUP_AUTO_SINCE` **is**
-    applied. This is the case after a restart if the whole state directory was deleted (or the state file and the
-    marker, with no marked request), or if the earlier run only ever found the directory unsafe (nothing is written
-    into an unsafe directory), or if it ran only the previous release (no marker) and approved nothing.
+    owner-not-recorded sweep, on every sweep that ends with an unreadable state in a safe directory, and with the
+    first stored cut-off; kept across restarts; an error looking for it counts as present); or a request already
+    carries an auto-approve mark. The log then says `auto-approve state missing, cut-off = now` and the cut-off is
+    now (or a later `TBI_SIGNUP_AUTO_SINCE`): a past value is **not** applied, and requests that arrived before it
+    stay for you. Leave the marker file in place.
+  - If the marker cannot be written on an unreadable-state sweep, nothing is approved, the log says
+    `auto-approve marker not written (<ERRNO>)` (at most hourly) and the next such sweep tries again.
+  - Limits: after a restart the sweep can be a first run again, and a past `TBI_SIGNUP_AUTO_SINCE` **is** applied,
+    in these remaining cases:
+    - the state file and the marker were deleted (or the whole state directory) and no request carries a mark;
+    - the state file was removed before any sweep of this release saw it (no marker yet, for example after a
+      previous release that approved nothing) and no request carries a mark;
+    - the earlier run only ever found the directory unsafe (nothing is written into an unsafe directory);
+    - the marker write failed and the service restarted before a later write succeeded (and no request carries a
+      mark).
   - So before you delete or replace the state file: create the pause file and wait for the `auto-approve paused` line,
     remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in, change the file, run `sudo systemctl daemon-reload`, restart,
     wait for a **new** `auto-approve paused` line, and only then remove the pause file.
@@ -130,7 +137,8 @@ Alert on (owner action needed or capacity reached):
 | `auto-approve pause check failed (<ERRNO>); treated as paused` | The directory cannot be read. Check the owner and mode. |
 | `auto-approve state dir unsafe (<reason>); manual only` | The owner, mode, symlink or parent of the directory is wrong. It resumes by itself once fixed, after a cut-off reset: requests that arrived before the first approving sweep after the fix stay for you (manual). With no state file then, the same process sets the cut-off to now (`state missing, cut-off = now`); after a restart see the limits under the state file above. |
 | `auto-approve not started (state dir unsafe: <reason>); manual only` | Same problem at start. Fix it, then restart. |
-| `auto-approve counter unreadable (<class>); treated as cap reached` | The state file is corrupt, or (`future_day`) the clock went back. Inspect it before you remove it (removing it resets today's count and the cut-off); create the pause file first and back the file up (`cp -p`) before any removal. |
+| `auto-approve counter unreadable (<class>); treated as cap reached` | The state file is corrupt, or (`future_day`) the clock went back. Inspect it before you remove it (removing it resets today's count and the cut-off); create the pause file first, back the file up (`cp -p`) and remove `TBI_SIGNUP_AUTO_SINCE` (steps above) before any removal. |
+| `auto-approve marker not written (<ERRNO>); retried at the next unreadable-state sweep` | The state is unreadable and the marker could not be created. Do not restart or remove the state file yet: create the pause file, fix the directory (mode, disk), and check that `auto-approve.marker` exists. |
 | `auto-approve retry limit reached (N today); the rest wait` | The account helper keeps failing. Check the helper. |
 | `auto-approve could not mark a claimed request (<ERRNO>); ...` | The store write failed. Check the store's disk and permissions. |
 | `auto-approve sweep failed (<class>)` | An unexpected sweep error. Read the lines around it. |
