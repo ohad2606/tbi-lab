@@ -3,8 +3,9 @@
  * Disabled unless TBI_SIGNUP_INTAKE=1 (exit 0, one log line). Enabled but misconfigured or with a
  * missing secret: one log line with a class code (never a path or a value) and exit 1; nothing
  * listens. SIGTERM / SIGINT: stop accepting, close connections, exit.
- * K12: TBI_FUNNEL_COUNTERS=1 + TBI_FUNNEL_DIR (absolute, private) count `signup_submitted`
- * (funnel/counters.ts); off by default, and a bad setting only turns the counters off.
+ * K12: TBI_FUNNEL_COUNTERS=1 + TBI_FUNNEL_DIR (absolute, private) count `signup_submitted` and
+ * `signup_form_view` (form tokens issued) (funnel/counters.ts); off by default, and a bad setting
+ * only turns the counters off.
  */
 import { funnelCountersFromEnv } from '../funnel/counters.js';
 import { errorClass } from './errors.js';

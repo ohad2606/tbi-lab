@@ -15,17 +15,19 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { open } from 'node:fs/promises';
+import { open, rename } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   FUNNEL_DAY_CAP,
   FUNNEL_EVENTS,
   FUNNEL_FILE,
   FUNNEL_LOCK,
+  FUNNEL_LOCK_RETRY_MS,
+  FUNNEL_WRITE_INTERVAL_MS,
   FunnelCounters,
   funnelCountersFromEnv,
   parseFunnelFile,
@@ -40,6 +42,7 @@ import { PendingStore } from '../signup/store.js';
 const roots: string[] = [];
 const closers: (() => Promise<void>)[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
   for (const c of closers.splice(0)) await c();
   for (const d of roots.splice(0)) {
     try {
@@ -329,6 +332,134 @@ describe('funnel counters: store', () => {
     expect((await c!.snapshot()).days).toEqual({ '2026-11-24': { landing_view: 1 } });
     expect(logs.at(-1)).toBe('funnel: counters on');
     expect(logs.join('\n')).not.toContain(good);
+  });
+});
+
+describe('funnel counters: write rate and cap', () => {
+  /** Fake timers (and Date) with real file I/O; `writes()` = completed atomic writes. */
+  async function timed(opts: { cap?: number; minWriteIntervalMs?: number } = {}) {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    let renames = 0;
+    let opens = 0;
+    const s = await counters({
+      ...opts,
+      io: {
+        open: (async (p: string, flags: string, mode: number) => {
+          opens++;
+          return open(p, flags, mode);
+        }) as typeof open,
+        rename: async (a, b) => {
+          await rename(a, b);
+          renames++;
+        },
+      },
+    });
+    /** Waits for the writes already queued, without forcing one. */
+    const settled = () => (s.c as unknown as { chain: Promise<void> }).chain;
+    const advance = async (ms: number) => {
+      await vi.advanceTimersByTimeAsync(ms);
+      await settled();
+    };
+    return { ...s, settled, advance, writes: () => renames, opens: () => opens };
+  }
+
+  it('a burst causes at most one write per interval (default 5 s)', async () => {
+    expect(FUNNEL_WRITE_INTERVAL_MS).toBe(5_000);
+    const s = await timed();
+    s.c.increment('landing_view');
+    await s.settled();
+    expect(s.writes()).toBe(1); // the first one is not delayed
+    for (let i = 0; i < 100; i++) s.c.increment('landing_view');
+    await s.advance(4_999);
+    expect(s.writes()).toBe(1);
+    await s.advance(1);
+    expect(s.writes()).toBe(2);
+    expect(readFileSync(s.file, 'utf8')).toContain('"landing_view":101');
+    // Steady traffic, one increment per 100 ms for 20 s: one write per 5 s.
+    for (let i = 0; i < 200; i++) {
+      s.c.increment('landing_view');
+      await s.advance(100);
+    }
+    expect(s.writes()).toBe(6);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('increments during a write wait for the next interval', async () => {
+    const s = await timed();
+    s.c.increment('landing_view');
+    await Promise.resolve(); // the write has started
+    s.c.increment('landing_view');
+    await s.settled();
+    expect(s.writes()).toBe(1);
+    await s.advance(5_000);
+    expect(s.writes()).toBe(2);
+  });
+
+  it('flush writes at once and clears the delay timer', async () => {
+    const s = await timed();
+    s.c.increment('signup_submitted');
+    await s.settled();
+    s.c.increment('signup_submitted');
+    expect(vi.getTimerCount()).toBe(1);
+    await s.c.flush(); // no time passes
+    expect(s.writes()).toBe(2);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(readFileSync(s.file, 'utf8')).toContain('"signup_submitted":2');
+  });
+
+  it('a busy lock is retried after 100 ms, not after the write interval', async () => {
+    const s = await timed();
+    const lock = join(s.dir, FUNNEL_LOCK);
+    writeFileSync(lock, '', { mode: 0o600 });
+    utimesSync(lock, T0 / 1000, T0 / 1000);
+    s.c.increment('signup_submitted');
+    await s.settled();
+    const opens = s.opens();
+    for (let i = 0; i < 50; i++) s.c.increment('signup_submitted');
+    await s.settled();
+    expect(s.opens()).toBe(opens); // no extra lock attempts while the retry is pending
+    rmSync(lock);
+    await s.advance(FUNNEL_LOCK_RETRY_MS);
+    expect(s.writes()).toBe(1);
+    expect(readFileSync(s.file, 'utf8')).toContain('"signup_submitted":51');
+  });
+
+  it('over-cap increments are refused and cause no write and no timer', async () => {
+    const s = await timed({ cap: 3 });
+    for (let i = 0; i < 3; i++) s.c.increment('signup_form_view');
+    await s.c.flush();
+    const opens = s.opens();
+    for (let i = 0; i < 100; i++) expect(s.c.increment('signup_form_view')).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    await s.advance(60_000);
+    await s.c.flush();
+    expect([s.writes(), s.opens()]).toEqual([1, opens]);
+  });
+
+  it('increments during the write that reaches the cap are refused', async () => {
+    const s = await timed({ cap: 2 });
+    s.c.increment('landing_view');
+    s.c.increment('landing_view');
+    await Promise.resolve(); // the write has started
+    expect(s.c.increment('landing_view')).toBe(false);
+    await s.settled();
+    expect(s.c.increment('landing_view')).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('a cap filled by another writer (or before a restart) is learned without writing', async () => {
+    const s = await timed({ cap: 3 });
+    const full = '{"v":1,"days":{"2026-11-24":{"signup_form_view":3}}}\n';
+    writeFileSync(s.file, full, { mode: 0o600 });
+    expect(s.c.increment('signup_form_view')).toBe(true); // not known yet
+    await s.c.flush();
+    expect(s.writes()).toBe(0);
+    expect(s.c.increment('signup_form_view')).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(readFileSync(s.file, 'utf8')).toBe(full);
+    // The next day counts again.
+    s.setNow(T0 + DAY);
+    expect(s.c.increment('signup_form_view')).toBe(true);
   });
 });
 

@@ -15,10 +15,17 @@
  * deltas, so two writers do not lose each other's counts. Processes running as different users
  * (the intake and the admin service) each get their own directory (one file each).
  *
- * Bounds: at most `FUNNEL_DAY_CAP` per day per event (above it: silently not counted); days older
+ * Bounds: at most `FUNNEL_DAY_CAP` per day per event (above it: silently not counted). Once this
+ * process has seen a total at the cap in the file, `increment` refuses and nothing is written for
+ * it (after a restart, the first such increment costs one read under the lock). Days older
  * than `FUNNEL_KEEP_DAYS` are pruned on every write. A file that cannot be parsed is renamed aside
  * (`funnel-counters.json.corrupt-<ms>`, kept for the operator) and one log line says so; it is
  * never silently reset or overwritten.
+ *
+ * Write rate: at least `FUNNEL_WRITE_INTERVAL_MS` between write starts; increments in between are
+ * kept in memory and written together. `flush()` (SIGTERM / SIGINT) writes at once. A crash or a
+ * kill without a flush loses the counts not yet written: at most that window while writes succeed
+ * (more while they fail, see below).
  *
  * Failure: `increment` is synchronous, O(1), never throws and never waits for I/O. The write runs
  * later; a failing write (unwritable or full disk) keeps the deltas in memory (bounded by the cap
@@ -47,6 +54,8 @@ export const FUNNEL_LOCK = 'funnel-counters.lock';
 export const FUNNEL_DAY_CAP = 10_000;
 /** Days kept (by UTC date, counted back from the newest write). */
 export const FUNNEL_KEEP_DAYS = 400;
+/** Minimum time between two write starts (`flush` does not wait). */
+export const FUNNEL_WRITE_INTERVAL_MS = 5_000;
 /** A lock file older than this is from a crashed writer and is removed. */
 export const FUNNEL_LOCK_STALE_MS = 30_000;
 /** Lock busy: retry the write after this long, at most `FUNNEL_LOCK_RETRIES` times in a row. */
@@ -121,8 +130,15 @@ export interface FunnelIo {
 export class FunnelCounters implements FunnelSink {
   /** Deltas not yet written: `${day} ${event}` -> count. */
   private pending = new Map<string, number>();
+  /** Deltas of the write in progress (same keys as `pending`). */
+  private inflight = new Map<string, number>();
+  /** Today's totals as last seen in the file by a write: `${day} ${event}` -> total. */
+  private known = new Map<string, number>();
   private chain: Promise<void> = Promise.resolve();
-  private scheduled = false;
+  /** A write is queued on `chain` and has not started yet. */
+  private queued = false;
+  private delayTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastWriteStart = Number.NEGATIVE_INFINITY;
   private retries = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly lastLog = new Map<string, number>();
@@ -135,6 +151,7 @@ export class FunnelCounters implements FunnelSink {
       log?: (line: string) => void;
       cap?: number;
       keepDays?: number;
+      minWriteIntervalMs?: number;
       io?: Partial<FunnelIo>;
     } = {},
   ) {}
@@ -185,7 +202,8 @@ export class FunnelCounters implements FunnelSink {
       const day = new Date(this.now()).toISOString().slice(0, 10);
       const key = `${day} ${event}`;
       const cur = this.pending.get(key) ?? 0;
-      if (cur >= this.cap) return false;
+      const total = (this.known.get(key) ?? 0) + (this.inflight.get(key) ?? 0) + cur;
+      if (total >= this.cap) return false;
       this.pending.set(key, cur + 1);
       this.schedule();
       return true;
@@ -195,27 +213,64 @@ export class FunnelCounters implements FunnelSink {
     }
   }
 
-  private schedule(): void {
-    if (this.scheduled) return;
-    this.scheduled = true;
+  /**
+   * Queues a write: `immediate` (flush, lock retry) at once, otherwise not before the minimum
+   * interval since the last write start has passed.
+   */
+  private schedule(immediate = false): void {
+    if (this.queued) return;
+    if (!immediate) {
+      // A pending lock retry or delayed write will pick this up.
+      if (this.delayTimer || this.retryTimer) return;
+      const interval = this.opts.minWriteIntervalMs ?? FUNNEL_WRITE_INTERVAL_MS;
+      // Clamped, so a wall clock set back never delays a write by more than one interval.
+      const wait = Math.min(interval, this.lastWriteStart + interval - Date.now());
+      if (wait > 0) {
+        this.delayTimer = setTimeout(() => {
+          this.delayTimer = null;
+          this.schedule(true);
+        }, wait);
+        this.delayTimer.unref?.();
+        return;
+      }
+    }
+    this.stop();
+    this.queued = true;
     this.chain = this.chain
       .then(() => {
-        this.scheduled = false;
+        this.queued = false;
         return this.writeOnce();
       })
       .catch((e: unknown) => this.log(errClass(e), 'write failed'));
   }
 
-  /** Waits until the deltas known now have been written (or the attempt failed). Never throws. */
+  /**
+   * Writes the deltas known now at once (no interval wait) and waits for that attempt. Never
+   * throws.
+   */
   async flush(): Promise<void> {
-    if (this.pending.size > 0) this.schedule();
+    this.stop();
+    if (this.pending.size > 0) this.schedule(true);
     await this.chain;
   }
 
-  /** Stops a pending lock retry (shutdown, tests). */
+  /** Stops the pending timers: delayed write and lock retry (shutdown, tests). */
   stop(): void {
+    if (this.delayTimer) clearTimeout(this.delayTimer);
+    this.delayTimer = null;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = null;
+  }
+
+  /** Remembers today's totals from the file; deltas for an event already at the cap are dropped. */
+  private learn(days: FunnelDays): void {
+    const today = new Date(this.now()).toISOString().slice(0, 10);
+    this.known = new Map();
+    for (const [ev, n] of Object.entries(days[today] ?? {})) {
+      const key = `${today} ${ev}`;
+      this.known.set(key, n);
+      if (n >= this.cap) this.pending.delete(key);
+    }
   }
 
   private mergeBack(d: Map<string, number>): void {
@@ -231,11 +286,26 @@ export class FunnelCounters implements FunnelSink {
     if (this.pending.size === 0) return;
     const deltas = this.pending;
     this.pending = new Map();
+    this.inflight = deltas;
+    // Set before any await, so increments during this write wait for the next interval.
+    const previousStart = this.lastWriteStart;
+    this.lastWriteStart = Date.now();
     let locked = false;
     try {
       locked = await this.lock();
       if (!locked) throw new FunnelError('lock_busy');
       const days = await this.readForWrite();
+      // Everything already at the cap in the file (e.g. filled by another writer): no write.
+      const full = ([k]: [string, number]) => {
+        const [day, ev] = k.split(' ') as [string, FunnelEvent];
+        return (days[day]?.[ev] ?? 0) >= this.cap;
+      };
+      if ([...deltas].every(full)) {
+        this.inflight = new Map();
+        this.learn(days);
+        this.retries = 0;
+        return;
+      }
       for (const [k, n] of deltas) {
         const [day, ev] = k.split(' ') as [string, FunnelEvent];
         const row = (days[day] ??= {});
@@ -244,8 +314,11 @@ export class FunnelCounters implements FunnelSink {
       const oldest = this.oldestKeptDay();
       for (const day of Object.keys(days)) if (day < oldest) delete days[day];
       await this.writeAtomic({ v: 1, days: sortDays(days) });
+      this.inflight = new Map();
+      this.learn(days);
       this.retries = 0;
     } catch (e) {
+      this.inflight = new Map();
       // Deltas outside the kept window are dropped; the rest wait for the next attempt.
       const oldest = this.oldestKeptDay();
       for (const k of [...deltas.keys()]) if (k.slice(0, 10) < oldest) deltas.delete(k);
@@ -256,10 +329,12 @@ export class FunnelCounters implements FunnelSink {
         this.retries < FUNNEL_LOCK_RETRIES
       ) {
         this.retries++;
+        // Nothing was written: this attempt does not count as a write start.
+        this.lastWriteStart = previousStart;
         if (!this.retryTimer) {
           this.retryTimer = setTimeout(() => {
             this.retryTimer = null;
-            this.schedule();
+            this.schedule(true);
           }, FUNNEL_LOCK_RETRY_MS);
           this.retryTimer.unref?.();
         }

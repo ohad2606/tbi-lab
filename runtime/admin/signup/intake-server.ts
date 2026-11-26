@@ -191,7 +191,7 @@ export async function startIntake(
     fetch: FetchLike;
     log: (line: string) => void;
     now?: () => number;
-    /** K12: funnel counters (`signup_submitted`); null / unset = off (see funnel/counters.ts). */
+    /** K12: funnel counters (`signup_submitted`, `signup_form_view`); null / unset = off (see funnel/counters.ts). */
     counters?: FunnelSink | null;
   },
 ): Promise<RunningIntake> {
