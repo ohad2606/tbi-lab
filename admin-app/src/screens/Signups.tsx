@@ -371,7 +371,41 @@ export function Signups() {
       // A definite account failure: nothing is left that could still add the account.
       if (o.kind === 'error' && (o.error === 'cap_reached' || o.error === 'account_error'))
         approving.current.delete(r.id);
+      // With sign-up administration off the service answers `not_found` too: only a list that
+      // loads shows that the request is really gone (a hung one is not waited for).
+      let check: Loaded<SignupRecord[]> | null = null;
+      if (o.kind === 'error' && o.error === 'not_found') {
+        check = await Promise.race([
+          loadOpenSignups(api),
+          new Promise<null>((r) => setTimeout(() => r(null), STATUS_WAIT_MS)),
+        ]);
+        if (!alive.current) return;
+      }
       setStoredVersion((n) => n + 1);
+      if (o.kind === 'error' && o.error === 'not_found' && !check?.ok) {
+        const text = t('console.signups.err.not_found.unconfirmed', { name: isolate(r.name) });
+        say(text);
+        // Focus moves only if the person has not gone elsewhere meanwhile.
+        const at = document.activeElement;
+        const follow =
+          !at || at === document.body || !!at.closest(`[data-signup-id="${CSS.escape(r.id)}"]`);
+        if (check && !check.ok && check.error === 'unavailable') {
+          // The whole list is replaced by its problem text; focus goes to Refresh.
+          listTurn.current++;
+          if (follow) focusId.current = null;
+          setList(check);
+        } else {
+          setMessages((m) => ({
+            ...m,
+            [r.id]: { key: 'console.signups.err.not_found.unconfirmed', ok: false },
+          }));
+          if (follow) {
+            keptId.current = r.id;
+            setKeptTick((n) => n + 1);
+          }
+        }
+        return;
+      }
       const v = signupOutcomeView(o, action);
       const text = t(v.key as MessageKey, { name: isolate(r.name) });
       // The list as it is now: a request deleted meanwhile must not come back.

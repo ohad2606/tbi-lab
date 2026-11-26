@@ -20,6 +20,8 @@ const TEXT = {
       `בקשה ⁦${id}⁩: לא נמחקה. ניהול ההרשמה כבוי או לא זמין בשרת, ולכן ייתכן שהבקשה עדיין שמורה.`,
     gone: /כבר לא קיימת/,
     stays: /הוא נשאר/,
+    actionOff: (name: string) =>
+      `הבקשה של ${name}: לא הצלחנו לאשר מה קרה. ניהול ההרשמה אולי כבוי או לא זמין בשרת, וייתכן שהבקשה עדיין שמורה.`,
     noWarning: 'אזהרת החשבון כבר לא רלוונטית לבקשה הזאת.',
     unconfirmed: (id: string) =>
       `בקשה ⁦${id}⁩: לא הצלחנו לאשר את המחיקה. ייתכן שהבקשה עדיין שמורה.`,
@@ -32,6 +34,8 @@ const TEXT = {
       `Request ⁦${id}⁩: not deleted. Sign-up administration is off or unavailable on the server, so the request may still be stored.`,
     gone: /already gone/,
     stays: /it stays/,
+    actionOff: (name: string) =>
+      `Request of ${name}: we could not confirm what happened. Sign-up administration may be off or unavailable on the server, so the request may still be stored.`,
     noWarning: 'The account warning no longer applies to this request.',
     unconfirmed: (id: string) =>
       `Request ⁦${id}⁩: we could not confirm the deletion. The request may still be stored.`,
@@ -422,10 +426,82 @@ for (const lang of ['he', 'en'] as const) {
     await expect(del(page, 1)).not.toHaveAttribute('aria-disabled');
     await expect(page.getByTestId('stored-row')).toHaveCount(3);
     await expect(del(page, 1)).toBeFocused();
-    // The late list drops the focused row: focus does not fall to the page.
+    // The late list drops the focused row: focus does not fall to the page, and it settles what
+    // happened: the visible and the spoken sentence follow it.
     reload.release();
     await expect(page.getByTestId('stored-row')).toHaveCount(2);
     await expect(page.getByTestId('stored-filter')).toBeFocused();
+    const result = page.getByTestId('delete-result');
+    await expect(result).toHaveAttribute('data-key', 'console.signups.delete.gone');
+    await expect(live(page)).toContainText(text.gone);
+  });
+
+  test(`announce (${lang}): a late "off" answer replaces "unconfirmed"`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    const m = await mock(page);
+    await signups(page);
+    await openStored(page);
+    await askDelete(page, m, 1);
+    const reload = gate();
+    const off = { status: 404, json: { error: 'not_found' } };
+    m.remove = () => off;
+    m.all = async () => {
+      await reload.held;
+      return off;
+    };
+    await page.getByTestId('delete-ok').click();
+    await expect(live(page)).toHaveText(text.unconfirmed(id(1)), { timeout: 6000 });
+    reload.release();
+    await expect(live(page)).toHaveText(text.off(id(1)));
+    await expect(page.getByTestId('delete-result')).toHaveAttribute(
+      'data-key',
+      'console.signups.delete.failed.off',
+    );
+    await expect(page.getByTestId('stored-toggle')).toBeFocused();
+  });
+
+  test(`announce (${lang}): a background reload that drops the focused row keeps focus`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    const m = await mock(page);
+    const approve = gate();
+    m.approve = async () => {
+      await approve.held;
+      return { json: { record: row(2, 'email_sent', true) } };
+    };
+    await signups(page);
+    await openStored(page);
+    await page
+      .locator(`[data-signup-id="${id(2)}"]`)
+      .getByTestId('signup-approve')
+      .click();
+    await del(page, 1).focus();
+    m.all = () => ({ json: { signups: [row(2), row(3)] } });
+    approve.release();
+    await expect(page.getByTestId('stored-row')).toHaveCount(2);
+    await expect(page.getByTestId('stored-filter')).toBeFocused();
+  });
+
+  test(`announce (${lang}): approve with sign-up admin off never says the request is gone`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    const m = await mock(page);
+    await signups(page);
+    const approve = page.locator(`[data-signup-id="${id(1)}"]`).getByTestId('signup-approve');
+    await expect(approve).toBeVisible();
+    const off = { status: 404, json: { error: 'not_found' } };
+    m.approve = m.open = () => off;
+    await approve.press('Enter');
+    await expect(live(page)).toHaveText(text.actionOff('\u2068Sample 1\u2069'));
+    await expect(page.getByTestId('signups-problem')).toBeVisible();
+    await expect(page.getByTestId('signups-refresh')).toBeFocused();
   });
 
   test(`announce (${lang}): leaving while the action is being sent: focus is rescued`, async ({
