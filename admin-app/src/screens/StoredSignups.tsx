@@ -194,7 +194,21 @@ export function StoredSignups({
   const listRef = useRef(list);
   listRef.current = list;
   const inFlight = useRef(false);
+  /** Counts deletes: a late list settles only the newest one's sentence. */
+  const deletes = useRef(0);
   const turn = useRef(0);
+  const section = useRef<HTMLElement>(null);
+  /** Whether the latest focus on the page was inside this section. */
+  const focusedHere = useRef(false);
+  useEffect(() => {
+    const track = (e: FocusEvent) => {
+      focusedHere.current = !!section.current?.contains(e.target as Node);
+    };
+    document.addEventListener('focusin', track);
+    return () => document.removeEventListener('focusin', track);
+  }, []);
+  /** Takes a lost focus's place: only focus that was in this section stays in it. */
+  const successor = () => (focusedHere.current ? (filter.current ?? toggle.current) : null);
   const toggle = useRef<HTMLButtonElement>(null);
   const filter = useRef<HTMLInputElement>(null);
   const countTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -226,6 +240,8 @@ export function StoredSignups({
     if (open)
       void load().then((r) => {
         if (r?.stale) alsoSay(t('console.signups.all.stale'));
+        // The reloaded list may no longer hold the row that has focus.
+        rescueFocus(successor);
       });
   }, [version]);
   useEffect(
@@ -269,6 +285,7 @@ export function StoredSignups({
   const show = async () => {
     if (open) {
       turn.current++;
+      deletes.current++;
       clearTimeout(countTimer.current);
       setOpen(false);
       setList(null);
@@ -311,6 +328,7 @@ export function StoredSignups({
     // A ref, not state: a second activation in the same tick must not send a second request.
     if (inFlight.current || !list?.ok) return;
     inFlight.current = true;
+    const mine = ++deletes.current;
     clearTimeout(countTimer.current);
     const ids = filterByEmail(list.value, query).map((x) => x.id);
     setConfirming(null);
@@ -340,12 +358,6 @@ export function StoredSignups({
       ]);
       clearTimeout(timer);
       const next = first === 'slow' ? null : first;
-      if (first === 'slow')
-        void reload.then((late) => {
-          if (late?.stale) alsoSay(t('console.signups.all.stale'));
-          // A late list may no longer hold the row that has focus.
-          rescueFocus(() => filter.current ?? toggle.current);
-        });
       if (unsure) {
         const got = next?.v;
         ({ v, done, text } = view(
@@ -362,11 +374,32 @@ export function StoredSignups({
       const stale = next?.stale ? t('console.signups.all.stale') : '';
       say(stale ? `${text} ${stale}` : text);
       setOutcome(done);
+      if (first === 'slow')
+        void reload.then((late) => {
+          if (late?.stale) alsoSay(t('console.signups.all.stale'));
+          // The list that arrives after all settles an "unconfirmed" outcome, unless a newer
+          // delete (or hiding the list) came first.
+          if (unsure && late && mine === deletes.current) {
+            const got = late.v;
+            const settled = view(
+              got.ok ? 'listed' : got.error === 'unavailable' ? 'off' : 'unconfirmed',
+            );
+            if (settled.done.key !== done.key) {
+              say(settled.text);
+              setOutcome(settled.done);
+              onChanged(settled.v.gone ? r.id : null);
+              if (settled.v.gone) drop();
+            }
+          }
+          // A late list may no longer hold the row that has focus.
+          rescueFocus(successor);
+        });
       // Gone on the server: never keep showing it, even when the reload failed.
-      if (v.gone)
+      const drop = () =>
         setList((old) =>
           old?.ok ? { ok: true, value: old.value.filter((x) => x.id !== r.id) } : old,
         );
+      if (v.gone) drop();
       // Move focus only if the person has not moved elsewhere meanwhile.
       const at = document.activeElement;
       if (!at || at === document.body || at.closest(`[data-stored-id="${CSS.escape(r.id)}"]`)) {
@@ -413,7 +446,7 @@ export function StoredSignups({
     .join(' ');
 
   return (
-    <section aria-labelledby="stored-h" class="stack" data-testid="stored-signups">
+    <section ref={section} aria-labelledby="stored-h" class="stack" data-testid="stored-signups">
       <h2 id="stored-h">{t('console.signups.all.heading')}</h2>
       <p class="muted">{t('console.signups.all.intro')}</p>
       <div class="actions">

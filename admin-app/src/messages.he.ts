@@ -181,6 +181,8 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.err.email_failed':
     'החשבון של {name} נוסף, אבל שליחת המייל נכשלה. השתמשו בשליחת המייל שוב.',
   'console.signups.err.not_found': 'הבקשה של {name} כבר לא קיימת.',
+  'console.signups.err.not_found.unconfirmed':
+    'הבקשה של {name}: לא הצלחנו לאשר מה קרה. ניהול ההרשמה אולי כבוי או לא זמין בשרת, וייתכן שהבקשה עדיין שמורה. אפשר ללחוץ על רענון הבקשות.',
   'console.signups.openStale':
     'טעינת הבקשות הפתוחות מחדש נכשלה וייתכן שהרשימה לא מעודכנת. אפשר ללחוץ על רענון הבקשות.',
   'console.signups.all.heading': 'בקשות שמורות ומחיקה',

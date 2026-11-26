@@ -171,6 +171,8 @@ export function Signups() {
   const [messages, setMessages] = useState<Record<string, RowMessage>>({});
   const [announce, setAnnounce] = useState('');
   const [openStale, setOpenStale] = useState(false);
+  // The request whose outcome is unconfirmed while a problem text stands in place of the list.
+  const [lost, setLost] = useState<{ id: string; name: string } | null>(null);
   const focusId = useRef<string | null | undefined>(undefined);
   const refreshBtn = useRef<HTMLButtonElement>(null);
   const alive = useRef(true);
@@ -246,6 +248,7 @@ export function Signups() {
         old?.ok ? { ok: true, value: old.value.filter((x) => x.id !== gone) } : old,
       );
       setConfirming((c) => (c === gone ? null : c));
+      setLost((l) => (l?.id === gone ? null : l));
     }
     const mine = ++listTurn.current;
     const v = await loadOpenSignups(api);
@@ -257,6 +260,7 @@ export function Signups() {
     }
     setOpenStale(false);
     setList(v);
+    setLost((l) => (v.ok || l?.id === gone ? null : l));
     setMessages({});
     setConfirming((c) => (v.ok && v.value.some((x) => x.id === c) ? c : null));
   };
@@ -281,6 +285,7 @@ export function Signups() {
     if (current) {
       setOpenStale(false);
       setList(v);
+      setLost(null);
       setMessages({});
       setConfirming(null);
     }
@@ -371,7 +376,49 @@ export function Signups() {
       // A definite account failure: nothing is left that could still add the account.
       if (o.kind === 'error' && (o.error === 'cap_reached' || o.error === 'account_error'))
         approving.current.delete(r.id);
+      // With sign-up administration off the service answers `not_found` too: only a list that
+      // loads shows that the request is really gone (a hung one is not waited for).
+      let check: Loaded<SignupRecord[]> | null = null;
+      let superseded = false;
+      if (o.kind === 'error' && o.error === 'not_found') {
+        const turn = listTurn.current;
+        check = await Promise.race([
+          loadOpenSignups(api),
+          new Promise<null>((r) => setTimeout(() => r(null), STATUS_WAIT_MS)),
+        ]);
+        if (!alive.current) return;
+        // A newer load, or the request's deletion here, tells more than this old answer.
+        superseded =
+          turn !== listTurn.current ||
+          !(listRef.current?.ok && listRef.current.value.some((x) => x.id === r.id));
+      }
       setStoredVersion((n) => n + 1);
+      if (superseded) return;
+      if (o.kind === 'error' && o.error === 'not_found' && !check?.ok) {
+        const text = t('console.signups.err.not_found.unconfirmed', { name: isolate(r.name) });
+        say(text);
+        // Focus moves only if the person has not gone elsewhere meanwhile.
+        const at = document.activeElement;
+        const follow =
+          !at || at === document.body || !!at.closest(`[data-signup-id="${CSS.escape(r.id)}"]`);
+        if (check && !check.ok && check.error === 'unavailable') {
+          // The whole list is replaced by its problem text; focus goes to Refresh.
+          listTurn.current++;
+          if (follow) focusId.current = null;
+          setList(check);
+          setLost({ id: r.id, name: r.name });
+        } else {
+          setMessages((m) => ({
+            ...m,
+            [r.id]: { key: 'console.signups.err.not_found.unconfirmed', ok: false },
+          }));
+          if (follow) {
+            keptId.current = r.id;
+            setKeptTick((n) => n + 1);
+          }
+        }
+        return;
+      }
       const v = signupOutcomeView(o, action);
       const text = t(v.key as MessageKey, { name: isolate(r.name) });
       // The list as it is now: a request deleted meanwhile must not come back.
@@ -452,6 +499,12 @@ export function Signups() {
           </p>
         )}
       </div>
+      {lost && list && !list.ok && (
+        // Not a live region: the same sentence is already spoken above.
+        <p class="result warn" data-testid="signups-unconfirmed">
+          {t('console.signups.err.not_found.unconfirmed', { name: isolate(lost.name) })}
+        </p>
+      )}
       {!list ? (
         <Loading />
       ) : !list.ok ? (
