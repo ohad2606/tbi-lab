@@ -902,6 +902,13 @@ select {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  /* The box is wider than most of its buttons: only the buttons take the pointer, so the drawing
+     beside and between them stays clickable. */
+  pointer-events: none;
+}
+
+.canvas-controls button {
+  pointer-events: auto;
 }
 
 .canvas-hint {

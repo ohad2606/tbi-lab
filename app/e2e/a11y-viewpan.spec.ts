@@ -181,6 +181,26 @@ for (const lang of ['en', 'he'] as const) {
       await expect(page.locator('[data-hit="component"]').first()).toHaveAttribute('tabindex', '0');
     });
 
+    test('2D: the empty part of the control box lets the pointer reach the drawing', async ({
+      page,
+    }) => {
+      await openCircuit(page, lang);
+      for (const wrap of ['.canvas-wrap', '.schematic-wrap']) {
+        if (wrap === '.schematic-wrap') await page.getByTestId('view-schematic').click();
+        const controls = page.locator(`${wrap} .canvas-controls`);
+        await expect(controls).toBeVisible();
+        const box = await rect(controls);
+        // Beside the single column of buttons, above the pan buttons.
+        const reachesDrawing = await page.evaluate(
+          ([x, y, selector]) =>
+            document.elementFromPoint(x, y)?.closest('svg') ===
+            document.querySelector(`${selector} > svg`),
+          [box.x + 4, box.y + 4, wrap] as const,
+        );
+        expect(reachesDrawing, wrap).toBe(true);
+      }
+    });
+
     test('3D: pan and tilt by buttons and keys; arrows go the same way as in 2D', async ({
       page,
     }) => {
