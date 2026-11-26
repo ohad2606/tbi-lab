@@ -10,6 +10,7 @@
 import type { MutableRef } from 'preact/hooks';
 import { PanButtons, SHORT_VIEW_PX } from './PanButtons.js';
 import { revealDelta, type Box } from './revealDelta.js';
+import { ScrollNote } from './scrollNote.js';
 import { panCamera } from './viewPan.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
@@ -77,6 +78,7 @@ import {
   stepWireSelection,
   wirePosition,
   wireBracketStep,
+  routeMiddle,
   repickIsStale,
   repickSwallowsKey,
   type WireKbAction,
@@ -809,6 +811,9 @@ export function Canvas({
     }
     const w = doc.layout.wires.find((x) => x.id === step.id)!;
     store.select({ ...emptySelection(), wires: [step.id] });
+    // Brought into view after the render: the hint changes with the selection.
+    const route = wireRoute(doc, w);
+    if (route) requestAnimationFrame(() => revealPoint(routeMiddle(route)));
     // Probe mode: Enter probes the selected wire, so the focus ring must not stay on a part.
     const focused = document.activeElement;
     if (probeMode && focused?.closest('[data-hit="component"], [data-hit="junction"]'))
@@ -976,14 +981,11 @@ export function Canvas({
     else if (wire) {
       // The keyboard has no click point: the pin goes on the middle segment of the wire.
       const route = wireRoute(doc, wire);
-      if (route) {
-        const i = Math.floor((route.length - 2) / 2);
-        const [a, b] = [route[i]!, route[i + 1]!];
-        input = probeAt({ kind: 'wire', id: wire.id } as ReturnType<typeof hitOf>, {
-          x: (a.x + b.x) / 2,
-          y: (a.y + b.y) / 2,
-        });
-      }
+      if (route)
+        input = probeAt(
+          { kind: 'wire', id: wire.id } as ReturnType<typeof hitOf>,
+          routeMiddle(route),
+        );
     } else if (part?.dataset.id) input = { kind: 'current', component: part.dataset.id };
     else return false;
     e.preventDefault();
@@ -1099,6 +1101,25 @@ export function Canvas({
     if (dx || dy) setCamera((c) => ({ ...c, x: c.x + dx / c.scale, y: c.y + dy / c.scale }));
   };
 
+  /** The same for a point of the drawing (world units). */
+  const revealPoint = (p: Point) => {
+    const frame = svgRef.current?.getBoundingClientRect();
+    if (!frame) return;
+    const x = frame.left + (p.x - camera.x) * camera.scale;
+    const y = frame.top + (p.y - camera.y) * camera.scale;
+    const m = KB_TARGET_MARGIN * camera.scale;
+    reveal({ left: x - m, right: x + m, top: y - m, bottom: y + m });
+  };
+  /** The hint grew over the focused part or pin: bring that item clear again (2.4.11). */
+  const revealFocused = (hintBox: Element) => {
+    const el = document.activeElement;
+    // While wiring the user follows the candidate, not the focused pin.
+    if (kb.mode === 'wiring' || !el || el === svgRef.current) return;
+    if (!svgRef.current?.contains(el) || !el.matches(':focus-visible')) return;
+    const item = (el.querySelector('.focus-ring') ?? el).getBoundingClientRect();
+    if (item.bottom > hintBox.getBoundingClientRect().top) reveal(item);
+  };
+
   // Focus follows the roving pin; it and the candidate are panned clear when hidden.
   const kbPinKey =
     kb.mode === 'pins'
@@ -1137,12 +1158,7 @@ export function Canvas({
     kbCandidate?.target.kind === 'junction' ? kbCandidate.target.junction : undefined;
   const kbWirePoint = kbCandidate?.target.kind === 'wire' ? kbCandidate.target : undefined;
   useEffect(() => {
-    if (!kbCandidatePos) return;
-    const frame = svgRef.current!.getBoundingClientRect();
-    const x = frame.left + (kbCandidatePos.x - camera.x) * camera.scale;
-    const y = frame.top + (kbCandidatePos.y - camera.y) * camera.scale;
-    const m = KB_TARGET_MARGIN * camera.scale;
-    reveal({ left: x - m, right: x + m, top: y - m, bottom: y + m });
+    if (kbCandidatePos) revealPoint(kbCandidatePos);
   }, [kbCandidatePos?.x, kbCandidatePos?.y]);
   // Leaving the document state (simulation start, component removed) ends keyboard wiring.
   useEffect(() => {
@@ -1838,7 +1854,12 @@ export function Canvas({
         overlaysLimited ||
         conflictLines.length > 0 ||
         conflicts.unchecked.length > 0) && (
-        <div class="canvas-hint" dir={state.locale.dir} data-testid="canvas-hint">
+        <ScrollNote
+          class="canvas-hint"
+          dir={state.locale.dir}
+          data-testid="canvas-hint"
+          onResize={revealFocused}
+        >
           {!readOnly &&
             t(hint, {
               enter: isolateLtr('Enter'),
@@ -1884,7 +1905,7 @@ export function Canvas({
               {t('canvas.routeLimit', { count: limited.length })}
             </div>
           )}
-        </div>
+        </ScrollNote>
       )}
     </div>
   );

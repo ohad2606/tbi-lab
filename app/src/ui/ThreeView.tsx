@@ -8,6 +8,7 @@
  */
 
 import { isolateLtr } from '../i18n/i18n.js';
+import { ScrollNote } from './scrollNote.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { viewerPan } from '../views/scene3d/camera.js';
 import { PanButtons, SHORT_VIEW_PX } from './PanButtons.js';
@@ -774,7 +775,7 @@ export function ThreeView() {
               ))}
             </dl>
           )}
-          <div class="view-note" dir={locale.dir}>
+          <ScrollNote class="view-note" dir={locale.dir}>
             {t('view3d.note')}
             {running && hasActuators && (
               <div class="view-note-hint" data-testid="view3d-controls-hint">
@@ -791,7 +792,7 @@ export function ThreeView() {
                 {t('view3d.routeLimit', { wires: isolateLtr(routeLimits) })}
               </div>
             )}
-          </div>
+          </ScrollNote>
         </>
       )}
     </div>

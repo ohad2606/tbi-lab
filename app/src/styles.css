@@ -3104,21 +3104,17 @@ select {
   max-inline-size: calc(100% - 10.5rem);
 }
 
-/* 2.4.11: long hints and notes are capped (and scroll in short views); the preset buttons are
-   painted above the 3D note. */
+/* 2.4.11: long hints and notes are capped and scroll (ui/scrollNote.tsx; they stay
+   click-through); the preset buttons are painted above the 3D note. */
 .canvas-wrap > .canvas-hint,
 .view3d-wrap > .view-note {
   max-block-size: 50%;
   overflow-y: auto;
 }
 
+/* A short view keeps room between the controls and the hint for the focused item. */
 .view-short > .canvas-hint {
-  max-block-size: calc(100% - 4.5rem);
-  pointer-events: auto;
-}
-
-.view3d-wrap.view-short > .view-note {
-  pointer-events: auto;
+  max-block-size: min(45%, calc(100% - 4.5rem));
 }
 
 .view3d-wrap > .view3d-presets {

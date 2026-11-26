@@ -67,6 +67,7 @@ export const en = {
   'connections.select': 'Select {ref} on the canvas',
   'canvas.label': 'Schematic canvas',
   'canvas.controls': 'Circuit view controls',
+  'view.messages': 'View messages',
   'canvas.zoomIn': 'Zoom in',
   'canvas.zoomOut': 'Zoom out',
   'canvas.zoomFit': 'Fit to view',

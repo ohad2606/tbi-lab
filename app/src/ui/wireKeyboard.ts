@@ -621,3 +621,10 @@ export function wireListEntries(
     to: endName(w.to),
   }));
 }
+
+/** The centre of the middle segment of a wire route: where the keyboard points at a wire. */
+export function routeMiddle(route: readonly { x: number; y: number }[]): { x: number; y: number } {
+  const i = Math.floor((route.length - 2) / 2);
+  const [a, b] = [route[i]!, route[i + 1]!];
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}

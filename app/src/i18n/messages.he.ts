@@ -69,6 +69,7 @@ export const he: Record<MessageKey, string> = {
   'connections.select': 'בחירת {ref} על משטח השרטוט',
   'canvas.label': 'משטח השרטוט',
   'canvas.controls': 'פקדי תצוגת המעגל',
+  'view.messages': 'הודעות התצוגה',
   'canvas.zoomIn': 'הגדלה',
   'canvas.zoomOut': 'הקטנה',
   'canvas.zoomFit': 'התאמה לתצוגה',
