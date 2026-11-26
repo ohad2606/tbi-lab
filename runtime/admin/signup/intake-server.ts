@@ -20,19 +20,32 @@
  *                                 (design §3: no silent fallback that puts every client in one bucket).
  *                                 Requests without a valid IP in it are logged (throttled) as
  *                                 `source_header_missing` (they share the proxy's rate bucket)
+ *   TBI_SIGNUP_WEB                BETA-G1 s8: exactly `1` adds the browser route (`GET /signup/form-token`,
+ *                                 `POST /signup/web`); unset / empty / `0` = off (both paths 404); any
+ *                                 other value = refusal to start. docs/plans/BETA-G1-WEB-INTAKE.md
+ *   TBI_SIGNUP_WEB_ORIGINS        REQUIRED when TBI_SIGNUP_WEB=1, no default: comma-separated exact
+ *                                 `https://host[:port]` origins of the sign-up page
  */
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { FunnelSink } from '../funnel/counters.js';
 import { errorClass } from './errors.js';
 import { NonceCache } from './hmac.js';
-import { handleSignupRequest, parseSourceHeader, readSecret } from './http.js';
+import {
+  handleSignupRequest,
+  handleWebSignupRequest,
+  parseSourceHeader,
+  readSecret,
+  WEB_SIGNUP_PATH,
+  WEB_TOKEN_PATH,
+} from './http.js';
 import { SlidingWindowLimiter } from './limits.js';
 import { TELEGRAM_TOKEN_RE, TelegramNotifier, type FetchLike } from './notify.js';
 import { parseQuiet, type QuietWindow } from './quietHours.js';
 import { readSecretFile } from './secret-file.js';
 import { SignupIntake } from './service.js';
 import { PendingStore } from './store.js';
+import { deriveWebKey, parseOrigins, WEB_TOKEN_TTL_MS } from './web.js';
 
 export interface IntakeConfig {
   dir: string;
@@ -45,6 +58,8 @@ export interface IntakeConfig {
   sourceHeader: string;
   /** Quiet hours (null / unset = off). */
   quiet?: QuietWindow | null;
+  /** BETA-G1 s8: the browser route; null / unset = off (its paths answer 404). */
+  web?: { origins: string[] } | null;
 }
 
 export const INTAKE_DRAIN_MS = 60_000;
@@ -61,6 +76,24 @@ export const INTAKE_DRAIN_MS = 60_000;
 export const INTAKE_SOURCE_LIMIT = { count: 30, windowMs: 60_000 } as const;
 export const INTAKE_GLOBAL_LIMIT = { count: 200, windowMs: 3_600_000 } as const;
 export const INTAKE_MAX_RECORDS = 5_000;
+/**
+ * BETA-G1 s8: at most this many web-origin records in the store at once (a sub-cap of
+ * INTAKE_MAX_RECORDS). Past it the web route answers 503 `unavailable` while `/signup` (Apps
+ * Script) keeps the remaining 3,500 slots, so a flood through the unauthenticated browser route
+ * cannot stop the existing form. Slots free up when records are purged (retention).
+ */
+export const WEB_MAX_RECORDS = 1_500;
+
+/**
+ * BETA-G1 s8, the browser route (docs/plans/BETA-G1-WEB-INTAKE.md). Here the source key IS a
+ * person's address (the proxy's last hop), unlike the signed route's shared forwarder pool, so the
+ * per-source limits are small: a few page loads and a few retries (typos, `too_fast`). The global
+ * budget is separate from the signed route's and is spent only by requests carrying a token this
+ * intake issued; a real person never retries a 429 automatically, so it is generous.
+ */
+export const WEB_TOKEN_SOURCE_LIMIT = { count: 20, windowMs: 10 * 60_000 } as const;
+export const WEB_POST_SOURCE_LIMIT = { count: 10, windowMs: 10 * 60_000 } as const;
+export const WEB_GLOBAL_LIMIT = { count: 200, windowMs: 3_600_000 } as const;
 
 /** At most one `source_header_missing` line per this interval. */
 export const SOURCE_FALLBACK_LOG_MS = 10 * 60_000;
@@ -113,10 +146,21 @@ export function intakeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Intak
   } catch (e) {
     return bad((e as Error).message);
   }
+  let web: { origins: string[] } | null = null;
+  const webFlag = env.TBI_SIGNUP_WEB ?? '';
+  if (webFlag === '1') {
+    const origins = parseOrigins(env.TBI_SIGNUP_WEB_ORIGINS);
+    if (!origins)
+      return bad(
+        'TBI_SIGNUP_WEB_ORIGINS is required with TBI_SIGNUP_WEB=1 (comma-separated https origins)',
+      );
+    web = { origins };
+  } else if (webFlag !== '' && webFlag !== '0') return bad('TBI_SIGNUP_WEB must be 1, 0 or unset');
   return {
     enabled: true,
     config: {
       quiet,
+      web,
       dir: dir!,
       hmacFile: hmacFile!,
       tokenFile: tokenFile!,
@@ -131,6 +175,8 @@ export function intakeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Intak
 
 export interface RunningIntake {
   server: Server;
+  /** The intake itself (tests await `settled()` for web-route alerts). */
+  intake: SignupIntake;
   port: number;
   close(): Promise<void>;
 }
@@ -159,7 +205,11 @@ export async function startIntake(
   );
   if (token.length === 0) throw new Error('token_empty');
   if (!TELEGRAM_TOKEN_RE.test(token)) throw new Error('token_malformed');
-  const store = new PendingStore(c.dir, { now: io.now, maxRecords: INTAKE_MAX_RECORDS });
+  const store = new PendingStore(c.dir, {
+    now: io.now,
+    maxRecords: INTAKE_MAX_RECORDS,
+    maxWebRecords: WEB_MAX_RECORDS,
+  });
   await store.init();
   const now = io.now ?? Date.now;
   const intake = new SignupIntake({
@@ -178,6 +228,18 @@ export async function startIntake(
     nonces: new NonceCache(),
     log: io.log,
     counters: io.counters ?? null,
+    ...(c.web
+      ? {
+          web: {
+            webKey: deriveWebKey(secret),
+            tokenRate: new SlidingWindowLimiter(WEB_TOKEN_SOURCE_LIMIT, now),
+            sourceRate: new SlidingWindowLimiter(WEB_POST_SOURCE_LIMIT, now),
+            globalRate: new SlidingWindowLimiter(WEB_GLOBAL_LIMIT, now),
+            // Its own cache: a used token is remembered for 2 x its TTL (outlives every valid use).
+            nonces: new NonceCache({ windowMs: WEB_TOKEN_TTL_MS }),
+          },
+        }
+      : {}),
   });
   let lastFallbackLog = -Infinity;
   const onSourceFallback = () => {
@@ -188,6 +250,14 @@ export async function startIntake(
   };
   const server = createServer((req, res) => {
     const path = (req.url ?? '').split('?')[0];
+    if (c.web && (path === WEB_TOKEN_PATH || path === WEB_SIGNUP_PATH)) {
+      void handleWebSignupRequest(req, res, intake, path, {
+        sourceHeader: c.sourceHeader,
+        origins: c.web.origins,
+        onSourceFallback,
+      });
+      return;
+    }
     if (path !== '/signup') {
       res.statusCode = 404;
       res.setHeader('content-type', 'application/json');
@@ -214,13 +284,16 @@ export async function startIntake(
     drainTimer = setInterval(tick, INTAKE_DRAIN_MS);
     drainTimer.unref();
   }
+  if (c.web) io.log(`web route on (${c.web.origins.length} origin(s))`);
   return {
     server,
+    intake,
     port: (server.address() as AddressInfo).port,
     close: () =>
       new Promise<void>((resolve) => {
         if (drainTimer) clearInterval(drainTimer);
-        server.close(() => resolve());
+        // Web-route alerts still in flight finish first (each is bounded by the notifier timeout).
+        server.close(() => void intake.settled().then(resolve, resolve));
         server.closeAllConnections();
       }),
   };

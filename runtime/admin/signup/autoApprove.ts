@@ -12,9 +12,12 @@
  *
  *   State dir      `<state>` = TBI_SIGNUP_AUTO_STATE_DIR (default: the store dir). Holds the pause
  *                  file and the state file. It must be a real directory owned by this process's
- *                  uid and not group/world-writable, else auto-approve does not start / stops
- *                  (logged once; manual mode stays). For Alpha it must be an admin-only directory
- *                  the intake user cannot write (deploy item).
+ *                  uid and not group/world-writable, its path must be its own realpath (no
+ *                  symlink component), and every parent up to / must be owned by this uid or root
+ *                  and not group/world-writable unless sticky (autoStateDirCheck); else
+ *                  auto-approve does not start / stops (logged once; manual mode stays). For
+ *                  Alpha it must be an admin-only 0700 directory the intake user cannot write
+ *                  (deploy item).
  *   Daily cap      at most `dailyCap` requests are CLAIMED for auto-approval per Israel calendar
  *                  day (Asia/Jerusalem, DST-correct via Intl). The count, the ids claimed by this
  *                  service and the cut-off live in `<state>/auto-approve.state.json` (0600, atomic
@@ -22,8 +25,10 @@
  *                  touched (a crash can waste a slot, never exceed the cap). Over the cap a request
  *                  simply stays `pending` (the "waitlist"): it is never lost, the owner may approve
  *                  it by hand, and later days' sweeps take it oldest first. An unreadable state
- *                  file, or one dated after today = cap reached (fail closed, logged once per
- *                  sweep, never reset silently).
+ *                  file, or one dated after today = cap reached (fail closed, logged at most once
+ *                  an hour per reason, never reset silently). If marking the record fails after
+ *                  the claim, the claim is released (or pruned as an orphan next sweep) but the
+ *                  slot stays used.
  *   Cut-off        only requests created after TBI_SIGNUP_AUTO_SINCE (or, unset, after the time
  *                  auto-approve first ran, persisted in the state file) are auto-approved.
  *   Kill switch    while `<state>/auto-approve.paused` exists (any entry: file, dir, symlink, even
@@ -32,7 +37,11 @@
  *                  so `touch` / `rm` takes effect without a restart.
  *   Who is eligible  `pending`, created after the cut-off, not in the claim set and never marked
  *                  (`autoApprovedAt` unset), and without an error from an earlier approve attempt
- *                  (`lastError` null: those need the owner).
+ *                  (`lastError` null: those need the owner). Web-origin requests (`origin: 'web'`,
+ *                  BETA-G1 s8 browser route) are NOT eligible unless TBI_SIGNUP_AUTO_WEB=included
+ *                  (default `excluded`, until the owner decides O1 of BETA-G1-WEB-INTAKE.md): an
+ *                  unauthenticated route must not be able to spend the daily cap and starve the
+ *                  Apps Script requests, nor get accounts without the owner looking.
  *   Retries        only ids in the admin-owned claim set (never on record fields alone: the intake
  *                  can write records) whose account step answered `account_pending` (status
  *                  `approved`, nothing sent yet). At most one per record per
@@ -43,8 +52,8 @@
  * Single writer: only one admin service runs the sweep (the in-process mutex below, plus the
  * per-id lock shared with the owner's actions, locks.ts).
  */
-import { lstat as lstatAsync, open, readFile, rename, unlink } from 'node:fs/promises';
-import { isAbsolute, join, normalize } from 'node:path';
+import { lstat as lstatAsync, open, readFile, realpath, rename, unlink } from 'node:fs/promises';
+import { dirname, isAbsolute, join, normalize } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { errorClass } from './errors.js';
 import { serialById } from './locks.js';
@@ -61,11 +70,22 @@ export const AUTO_TZ = 'Asia/Jerusalem';
 export const AUTO_RETRY_BACKOFF_MS = 15 * 60_000;
 /** Retries per sweep (the rest wait for the next sweep), so new claims are not starved. */
 export const AUTO_RETRIES_PER_SWEEP = 2;
+/** The unreadable-counter line repeats at most once per this window per reason. */
+export const AUTO_UNREADABLE_LOG_MS = 60 * 60_000;
 
 export type AutoApproveConfigResult =
   | { enabled: false; error?: false; reason: string }
   | { enabled: false; error: true; reason: string }
-  | { enabled: true; dailyCap: number; stateDir?: string; since?: number };
+  | {
+      enabled: true;
+      dailyCap: number;
+      stateDir?: string;
+      since?: number;
+      webSignups: AutoWebSignups;
+    };
+
+/** Whether web-origin requests may be auto-approved (default: excluded). */
+export type AutoWebSignups = 'excluded' | 'included';
 
 const ISO_ZONED = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/;
 
@@ -74,6 +94,8 @@ const ISO_ZONED = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:
  *   TBI_SIGNUP_AUTO_DAILY_CAP   required when enabled: whole number 1..1000
  *   TBI_SIGNUP_AUTO_STATE_DIR   optional absolute, normalized path (default: the store dir)
  *   TBI_SIGNUP_AUTO_SINCE       optional ISO time with zone; only newer requests are taken
+ *   TBI_SIGNUP_AUTO_WEB         optional `excluded` (default when unset/empty) or `included`:
+ *                               whether browser-route (`origin: 'web'`) requests are eligible
  * Any other value is an error: auto-approve stays OFF (manual approval keeps working).
  */
 export function autoApproveConfigFromEnv(env: NodeJS.ProcessEnv): AutoApproveConfigResult {
@@ -89,9 +111,19 @@ export function autoApproveConfigFromEnv(env: NodeJS.ProcessEnv): AutoApproveCon
   const cap = env.TBI_SIGNUP_AUTO_DAILY_CAP;
   if (cap === undefined || !/^\d{1,4}$/.test(cap) || Number(cap) < 1 || Number(cap) > AUTO_CAP_MAX)
     return bad(`TBI_SIGNUP_AUTO_DAILY_CAP must be a whole number from 1 to ${AUTO_CAP_MAX}`);
-  const out: { enabled: true; dailyCap: number; stateDir?: string; since?: number } = {
+  const web = env.TBI_SIGNUP_AUTO_WEB;
+  if (web !== undefined && web !== '' && web !== 'excluded' && web !== 'included')
+    return bad('TBI_SIGNUP_AUTO_WEB must be excluded, included or unset');
+  const out: {
+    enabled: true;
+    dailyCap: number;
+    stateDir?: string;
+    since?: number;
+    webSignups: AutoWebSignups;
+  } = {
     enabled: true,
     dailyCap: Number(cap),
+    webSignups: web === 'included' ? 'included' : 'excluded',
   };
   const sd = env.TBI_SIGNUP_AUTO_STATE_DIR;
   if (sd !== undefined && sd !== '') {
@@ -143,19 +175,45 @@ export async function autoPauseCheck(
   }
 }
 
+interface DirStat {
+  uid: number;
+  mode: number;
+  isDirectory(): boolean;
+}
+
 /**
- * The state dir must be a real directory (lstat: a symlink is refused), owned by this process's
- * uid, and not group/world-writable. Returns null when safe, else a fixed reason
- * (`not_dir` | `owner` | `mode` | an errno name).
+ * Whether the state dir can be swapped or rewritten by anyone but this process's uid (and root).
+ * Returns null when safe, else a fixed reason, checked in this order:
+ *   `not_dir`         the path itself is not a real directory (lstat: a symlink is refused)
+ *   `owner` / `mode`  the dir is not owned by this uid, or is group/world-writable
+ *   `symlink`         some component of the path is a symlink (realpath differs from the path)
+ *   `ancestor_owner`  a parent (up to /) is owned by neither this uid nor root
+ *   `ancestor_mode`   a parent is group/world-writable without the sticky bit (/tmp-style
+ *                     1777 is fine: others can not rename or remove entries they do not own)
+ *   an errno name     any lstat/realpath error (fail closed)
+ * With no uid (non-POSIX) the owner checks are skipped. `lstat` is a test hook.
  */
-export async function autoStateDirCheck(path: string): Promise<string | null> {
+export async function autoStateDirCheck(
+  rawPath: string,
+  opts: { lstat?: (p: string) => Promise<DirStat> } = {},
+): Promise<string | null> {
+  // A trailing slash is the same directory: strip it before the checks (a symlink is still refused: lstat says not_dir).
+  const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') || '/' : rawPath;
+  const stat = opts.lstat ?? lstatAsync;
+  const uid = process.getuid?.();
   try {
-    const st = await lstatAsync(path);
+    const st = await stat(path);
     if (!st.isDirectory()) return 'not_dir';
-    const uid = process.getuid?.();
     if (uid !== undefined && st.uid !== uid) return 'owner';
     if ((st.mode & 0o022) !== 0) return 'mode';
-    return null;
+    if ((await realpath(path)) !== path) return 'symlink';
+    for (let p = dirname(path); ; p = dirname(p)) {
+      const a = await stat(p);
+      if (!a.isDirectory()) return 'not_dir';
+      if (uid !== undefined && a.uid !== uid && a.uid !== 0) return 'ancestor_owner';
+      if ((a.mode & 0o022) !== 0 && (a.mode & 0o1000) === 0) return 'ancestor_mode';
+      if (dirname(p) === p) return null;
+    }
   } catch (e) {
     return errnoOf(e);
   }
@@ -184,7 +242,15 @@ interface AutoState {
   claims: Record<string, Claim>;
 }
 
-class CounterUnreadable extends Error {}
+class CounterUnreadable extends Error {
+  /** The errno name when the read itself failed (status route); the message stays the log class. */
+  constructor(
+    message: string,
+    readonly errno?: string,
+  ) {
+    super(message);
+  }
+}
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ID_RE = /^[0-9A-Za-z]{1,64}$/;
@@ -228,6 +294,8 @@ export interface AutoApproverDeps {
   dailyCap: number;
   /** TBI_SIGNUP_AUTO_SINCE (ms); unset: the persisted first-run time. */
   since?: number;
+  /** TBI_SIGNUP_AUTO_WEB; unset = `excluded` (web-origin requests stay for the owner). */
+  webSignups?: AutoWebSignups;
   /**
    * The approver for one sweep (built with the owner's principal as the spool actor, because the
    * root helper accepts account requests from the owner only), or null when the owner principal
@@ -247,7 +315,41 @@ export interface SweepResult {
   /** Approve calls made (claims plus retries of earlier claims). */
   attempted: number;
   /** Why the sweep stopped early, if it did. */
-  stopped?: 'paused' | 'cap' | 'no_owner' | 'counter_unreadable' | 'busy' | 'state_dir_unsafe';
+  stopped?:
+    | 'paused'
+    | 'cap'
+    | 'no_owner'
+    | 'counter_unreadable'
+    | 'busy'
+    | 'state_dir_unsafe'
+    | 'mark_failed';
+}
+
+/**
+ * The owner's read-only view of auto-approve (`GET /signups/auto-approve`, slice 5). Counts, the
+ * cap, booleans, the Israel day, the cut-off time and fixed reason codes only: never an id, name,
+ * address or path. A value that cannot be read is the string `unknown` (never a guessed number),
+ * with its reason (an errno name or a fixed class) in `unknownReasons`.
+ */
+export interface AutoApproveStatus {
+  /** The Israel calendar day the count belongs to (`YYYY-MM-DD`). */
+  day: string;
+  dailyCap: number;
+  /** Requests claimed today (0 when the state file is from an earlier day or absent). */
+  count: number | 'unknown';
+  capReached: boolean | 'unknown';
+  /** The kill switch, as the sweep sees it: any check error but ENOENT counts as paused. */
+  paused: boolean;
+  /** The errno name when the pause check failed (paused is then true, fail closed). */
+  pauseError?: string;
+  /** Whether the sweep accepts the state dir (autoStateDirCheck). */
+  stateDir: 'ok' | 'unsafe';
+  stateDirReason?: string;
+  /** Only requests created after this ISO time are auto-approved. */
+  cutoff: string | 'unknown';
+  /** Pending requests created at or before the cut-off: never auto-approved, they need the owner. */
+  waitingBacklog: number | 'unknown';
+  unknownReasons?: { count?: string; cutoff?: string; waitingBacklog?: string };
 }
 
 export class AutoApprover {
@@ -257,6 +359,10 @@ export class AutoApprover {
   private retryLoggedDay: string | null = null;
   private unsafeLogged: string | null = null;
   private noOwnerLogged = false;
+  /** Last time (ms) each unreadable-counter reason was logged: at most once per hour each. */
+  private readonly unreadableLoggedAt = new Map<string, number>();
+  /** Errno classes of failed record marks already logged (once each). */
+  private readonly markErrors = new Set<string>();
   private spoolId: string | null = null;
 
   constructor(private readonly d: AutoApproverDeps) {}
@@ -313,7 +419,7 @@ export class AutoApprover {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT')
         return { v: 2, day, count: 0, retries: 0, claims: {} };
-      throw new CounterUnreadable(errorClass(e));
+      throw new CounterUnreadable(errorClass(e), errnoOf(e));
     }
     let c: unknown;
     try {
@@ -353,6 +459,59 @@ export class AutoApprover {
     return (await this.readState(this.today())).count;
   }
 
+  /**
+   * Read-only status for the owner's UI: no write, no lock, no log line, no change to the
+   * transition/once-only log memory of the sweep. Reads the state file without the claim mutex
+   * (it is replaced by an atomic rename, so a read sees one whole version). In an unsafe state
+   * dir the state file is not read at all (the pause entry is only lstat'ed, never followed).
+   */
+  async status(): Promise<AutoApproveStatus> {
+    const day = this.today();
+    const unknown: NonNullable<AutoApproveStatus['unknownReasons']> = {};
+    const bad = await autoStateDirCheck(this.d.dir);
+    const pause = await autoPauseCheck(join(this.d.dir, AUTO_PAUSE_FILE), this.d.stat);
+    let state: AutoState | null = null;
+    if (bad) unknown.count = 'state_dir_unsafe';
+    else
+      try {
+        state = await this.readState(day);
+      } catch (e) {
+        unknown.count = !(e instanceof CounterUnreadable)
+          ? errorClass(e)
+          : e.errno && e.errno !== 'unknown'
+            ? e.errno
+            : e.message;
+      }
+    let cutoff: number | null = null;
+    if (this.d.since !== undefined) cutoff = this.d.since;
+    else if (state?.since) cutoff = Date.parse(state.since);
+    else unknown.cutoff = state ? 'not_recorded' : unknown.count!;
+    let backlog: number | null = null;
+    if (cutoff === null) unknown.waitingBacklog = unknown.cutoff!;
+    else
+      try {
+        const records = await this.d.store.list();
+        backlog = records.filter(
+          (r) => r.status === 'pending' && !(Date.parse(r.createdAt) > cutoff),
+        ).length;
+      } catch (e) {
+        unknown.waitingBacklog = errnoOf(e) === 'unknown' ? errorClass(e) : errnoOf(e);
+      }
+    return {
+      day,
+      dailyCap: this.d.dailyCap,
+      count: state ? state.count : 'unknown',
+      capReached: state ? state.count >= this.d.dailyCap : 'unknown',
+      paused: pause.paused,
+      ...(pause.error ? { pauseError: pause.error } : {}),
+      stateDir: bad ? 'unsafe' : 'ok',
+      ...(bad ? { stateDirReason: bad } : {}),
+      cutoff: cutoff === null ? 'unknown' : new Date(cutoff).toISOString(),
+      waitingBacklog: backlog ?? 'unknown',
+      ...(Object.keys(unknown).length > 0 ? { unknownReasons: unknown } : {}),
+    };
+  }
+
   /** The cut-off (ms): the configured one, else the persisted first-run time (written now if new). */
   private sinceMs(): Promise<number> {
     if (this.d.since !== undefined) return Promise.resolve(this.d.since);
@@ -371,21 +530,44 @@ export class AutoApprover {
    * claim are persisted first, then the record is marked (`autoApprovedAt`). Atomic with the
    * owner's actions (per-id lock) and with other claims (state-dir mutex).
    */
-  private claim(id: string, since: number): Promise<'claimed' | 'ineligible' | 'cap'> {
+  private claim(
+    id: string,
+    since: number,
+  ): Promise<'claimed' | 'ineligible' | 'cap' | 'mark_failed'> {
     return exclusive(this.d.dir, async () => {
       const day = this.today();
       const s = await this.readState(day);
       if (s.count >= this.d.dailyCap) return 'cap';
       return serialById(id, async () => {
         const cur = await this.d.store.get(id).catch(() => null);
-        if (!cur || !eligible(cur, s, since)) return 'ineligible' as const;
+        if (!cur || !eligible(cur, s, since, this.d.webSignups)) return 'ineligible' as const;
         const at = new Date(this.now()).toISOString();
-        await this.writeState({
+        const taken: AutoState = {
           ...s,
           count: s.count + 1,
           claims: { ...s.claims, [id]: { at, attempts: 1, lastAttemptAt: at } },
-        });
-        await this.d.store.update(id, { autoApprovedAt: at });
+        };
+        await this.writeState(taken);
+        try {
+          await this.d.store.update(id, { autoApprovedAt: at });
+        } catch (e) {
+          // Approve was never called, so the claim is released (the request becomes eligible
+          // again), but the slot stays used: the count never goes down, so the cap holds. If the
+          // release itself fails, prune drops the orphan claim at the next sweep.
+          const released = await this.writeState({ ...taken, claims: s.claims }).then(
+            () => true,
+            () => false,
+          );
+          const cls = errnoOf(e);
+          if (!this.markErrors.has(cls) && this.markErrors.size < 16) {
+            this.markErrors.add(cls);
+            this.log(
+              `signup: auto-approve could not mark a claimed request (${cls}); ` +
+                `${released ? 'claim released' : 'claim left for the next sweep'}, slot stays used`,
+            );
+          }
+          return 'mark_failed' as const;
+        }
         return 'claimed' as const;
       });
     });
@@ -421,19 +603,28 @@ export class AutoApprover {
     });
   }
 
-  /** Drops claims that are finished or now the owner's (or whose record is gone). */
+  /**
+   * Drops claims that are finished or now the owner's (or whose record is gone), and orphan
+   * claims: still `pending` and never marked, i.e. the mark failed or the process died between
+   * the claim and the mark (outside this mutex a live claim is always marked). Approve was never
+   * called for an orphan, so its request may be claimed again (with a new slot).
+   */
   private prune(records: Map<string, SignupRecord>): Promise<AutoState> {
     return exclusive(this.d.dir, async () => {
       const s = await this.readState(this.today());
       const keep: Record<string, Claim> = {};
       let dropped = false;
+      const fresh = (id: string) => this.d.store.get(id).catch(() => undefined);
       for (const [id, e] of Object.entries(s.claims)) {
         // Not in this sweep's listing (claimed meanwhile, or purged): drop only when it is gone.
-        const r = records.get(id) ?? (await this.d.store.get(id).catch(() => undefined));
+        let r = records.get(id) ?? (await fresh(id));
+        // The listing may predate a claim made since: re-read before calling it an orphan.
+        if (r?.status === 'pending' && !r.autoApprovedAt) r = await fresh(id);
         const open =
           r !== undefined &&
           !r.emailAttemptedAt &&
-          (r.status === 'approved' || (r.status === 'pending' && r.lastError === null));
+          (r.status === 'approved' ||
+            (r.status === 'pending' && r.lastError === null && !!r.autoApprovedAt));
         if (open) keep[id] = e;
         else dropped = true;
       }
@@ -461,7 +652,15 @@ export class AutoApprover {
       return await this.sweepInner(out);
     } catch (e) {
       if (e instanceof CounterUnreadable) {
-        this.log(`signup: auto-approve counter unreadable (${e.message}); treated as cap reached`);
+        const last = this.unreadableLoggedAt.get(e.message);
+        const t = this.now();
+        // A clock stepped back also logs again (never silent for longer than the window).
+        if (last === undefined || t - last >= AUTO_UNREADABLE_LOG_MS || t < last) {
+          this.unreadableLoggedAt.set(e.message, t);
+          this.log(
+            `signup: auto-approve counter unreadable (${e.message}); treated as cap reached`,
+          );
+        }
         return { ...out, stopped: 'counter_unreadable' };
       }
       throw e;
@@ -515,7 +714,7 @@ export class AutoApprover {
     }
     // 2. New claims.
     for (const r of records) {
-      if (!eligible(r, state, since)) continue;
+      if (!eligible(r, state, since, this.d.webSignups)) continue;
       if (await this.paused()) return { ...out, stopped: 'paused' };
       const c = await this.claim(r.id, since);
       if (c === 'cap') {
@@ -528,6 +727,7 @@ export class AutoApprover {
         }
         return { ...out, stopped: 'cap' };
       }
+      if (c === 'mark_failed') return { ...out, stopped: 'mark_failed' };
       if (c !== 'claimed') continue;
       out.claimed++;
       out.attempted++;
@@ -537,9 +737,15 @@ export class AutoApprover {
   }
 }
 
-function eligible(r: SignupRecord, s: AutoState, since: number): boolean {
+function eligible(
+  r: SignupRecord,
+  s: AutoState,
+  since: number,
+  web: AutoWebSignups = 'excluded',
+): boolean {
   return (
     r.status === 'pending' &&
+    (web === 'included' || r.origin !== 'web') &&
     !r.autoApprovedAt &&
     r.lastError === null &&
     !Object.hasOwn(s.claims, r.id) &&

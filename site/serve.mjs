@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), 'dist');
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
@@ -25,7 +26,7 @@ createServer(async (req, res) => {
     res.writeHead(200, {
       'content-type': TYPES[extname(path)] ?? 'application/octet-stream',
       'content-security-policy':
-        "default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'",
+        "default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'",
     });
     res.end(data);
   } catch {

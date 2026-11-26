@@ -513,6 +513,12 @@ export interface SignupRecord {
   lastError: string | null;
   /** While `email_queued`: when the email may go out (quiet hours end); else null. */
   emailSendAfter: string | null;
+  /** When the automatic approver approved this request (BETA-G1); null when a person did or it is undecided. */
+  autoApprovedAt: string | null;
+  /** BETA-G1: how the person heard about us (free text, <= 80 chars, shown as plain text only); null when absent. */
+  heardFrom: string | null;
+  /** BETA-G1: 'web' when the request came from the public web form; null otherwise. */
+  origin: 'web' | null;
   createdAt: string;
 }
 
@@ -556,6 +562,15 @@ function signupRecord(v: unknown): SignupRecord | null {
     emailAttempts: typeof v.emailAttempts === 'number' ? v.emailAttempts : 0,
     lastError: typeof v.lastError === 'string' ? v.lastError : null,
     emailSendAfter: typeof v.emailSendAfter === 'string' ? v.emailSendAfter : null,
+    autoApprovedAt:
+      typeof v.autoApprovedAt === 'string' && v.autoApprovedAt !== '' ? v.autoApprovedAt : null,
+    heardFrom:
+      typeof v.heardFrom === 'string' &&
+      v.heardFrom.trim() !== '' &&
+      [...v.heardFrom.trim()].length <= 80
+        ? v.heardFrom.trim()
+        : null,
+    origin: v.origin === 'web' ? 'web' : null,
     createdAt: str(v.createdAt),
   };
 }
@@ -574,6 +589,54 @@ export async function loadOpenSignups(fetchFn: Fetch): Promise<Loaded<SignupReco
     .filter((x): x is SignupRecord => x !== null)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   return { ok: true, value: rows };
+}
+
+/** A read-only status value: the real value, or the explicit "unknown" (never a guessed number). */
+export type Known<T> = T | 'unknown';
+
+/** The auto-approve status route (BETA-G1 slice 5, design section 9), every field validated. */
+export interface AutoApproveStatus {
+  enabled: Known<boolean>;
+  running: Known<boolean>;
+  paused: Known<boolean>;
+  capReached: Known<boolean>;
+  count: Known<number>;
+  dailyCap: Known<number>;
+  waitingBacklog: Known<number>;
+  stateDir: 'ok' | 'unsafe' | 'unknown';
+  /** A fixed code such as `ancestor_mode`; null when absent or not shaped like a code. */
+  stateDirReason: string | null;
+}
+
+const bool = (v: unknown): Known<boolean> => (typeof v === 'boolean' ? v : 'unknown');
+const count = (v: unknown): Known<number> =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : 'unknown';
+
+/** Parse the route's answer. Anything missing or malformed becomes "unknown", never 0 or false. */
+export function parseAutoApproveStatus(body: unknown): AutoApproveStatus | null {
+  if (!isObj(body)) return null;
+  const reason = body.stateDirReason;
+  return {
+    enabled: bool(body.enabled),
+    running: bool(body.running),
+    paused: bool(body.paused),
+    capReached: bool(body.capReached),
+    count: count(body.count),
+    dailyCap: count(body.dailyCap),
+    waitingBacklog: count(body.waitingBacklog),
+    stateDir: body.stateDir === 'ok' || body.stateDir === 'unsafe' ? body.stateDir : 'unknown',
+    stateDirReason:
+      typeof reason === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(reason) ? reason : null,
+  };
+}
+
+/** Read-only status of the automatic approver. 404 (feature off on the server) is "unavailable". */
+export async function loadAutoApproveStatus(fetchFn: Fetch): Promise<Loaded<AutoApproveStatus>> {
+  const r = await request(fetchFn, '/signups/auto-approve');
+  if (r.status === 404) return { ok: false, error: 'unavailable' };
+  if (r.status !== 200) return { ok: false, error: loadError(r.status) };
+  const v = parseAutoApproveStatus(r.body);
+  return v ? { ok: true, value: v } : { ok: false, error: 'network' };
 }
 
 /** The answer of a sign-up mutation, by the status codes of design §6.1. */

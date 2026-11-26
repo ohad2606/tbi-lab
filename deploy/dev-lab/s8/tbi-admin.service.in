@@ -32,6 +32,25 @@ Environment=TBI_ADMIN_DIR=/var/lib/tbi-admin
 Environment=TBI_RUNTIME_HEALTH=unix:/run/@N@-runtime/health.sock
 RuntimeDirectory=@N@-admin
 RuntimeDirectoryMode=0755
+# BETA-G1 auto-approve control state (docs/plans/BETA-G1-AUTO-APPROVE.md §2, runbook
+# docs/alpha/SIGNUP-AUTO-APPROVE-RUNBOOK.md): the pause file and the state file (daily count,
+# claims, cut-off). systemd creates /var/lib/@N@-admin-auto owned by User=/Group= with mode 0700 and
+# puts a wrong owner back at start. It may NOT correct a loosened mode (verify with stat, see the
+# runbook; autoStateDirCheck refuses only group/world-WRITABLE), so the internet-facing intake user
+# is kept out by the 0700 mode as created plus that check. Its parents (/var/lib, /var, /) are the host's root-owned 0755 directories, as
+# autoStateDirCheck requires. A sibling of the helper's /var/lib/tbi-admin, never inside it (systemd
+# would chown that tree) and never inside the sign-up store (owned by the intake user). This is the
+# only writable path added; ProtectSystem=strict makes a StateDirectory writable by itself.
+StateDirectory=@N@-admin-auto
+StateDirectoryMode=0700
+# Inert while auto-approve is off: the variable is read only when TBI_SIGNUP_AUTO_APPROVE=1.
+Environment=TBI_SIGNUP_AUTO_STATE_DIR=/var/lib/@N@-admin-auto
+# Auto-approve is OFF by default: installing this unit never enables it. The owner enables it with a
+# drop-in (runbook), after choosing the daily cap. <OWNER_CAP> is a placeholder on purpose: these
+# lines uncommented as they stand still leave it off (the cap is not a number: one config log line).
+#Environment=TBI_SIGNUP_AUTO_APPROVE=1
+#Environment=TBI_SIGNUP_AUTO_DAILY_CAP=<OWNER_CAP>
+#Environment=TBI_SIGNUP_AUTO_SINCE=<ISO time with zone, optional>
 BindReadOnlyPaths=@NODE@:/opt/tbi-node
 BindReadOnlyPaths=@BUNDLES@:/opt/tbi-build
 # Only what it needs of the helper's tree: the spool (write), the results and views (read).

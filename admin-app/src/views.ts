@@ -11,6 +11,7 @@ import {
   type AccountFilter,
   type AccountRow,
   type AccountsView,
+  type AutoApproveStatus,
   type AuditEntry,
   type AuditView,
   type ReportMeta,
@@ -296,6 +297,68 @@ export function signupRowKind(r: SignupRecord): SignupRowKind {
   if (canResend(r)) return 'resend';
   if (r.status === 'approved') return 'retry';
   return 'decide';
+}
+
+/** What the web form added to a request: the free-text answer (plain text) and the web mark. */
+export const signupSource = (r: SignupRecord): { heardFrom: string | null; web: boolean } => ({
+  heardFrom: r.heardFrom ?? null,
+  web: r.origin === 'web',
+});
+
+/** Badge class of the auto-approve state: unknown is neutral (dashed), not the danger style. */
+export const autoStateClass = (s: AutoApproveState): string =>
+  s === 'running'
+    ? 'badge-auto'
+    : s === 'paused'
+      ? 'badge-pending'
+      : s === 'unknown'
+        ? 'badge-unknown'
+        : 'badge-off';
+
+/** True when the record carries the automatic approver's mark (BETA-G1). */
+export const isAutoApproved = (r: SignupRecord): boolean => r.autoApprovedAt !== null;
+
+/** What the auto-approve block shows (BETA-G1). "off" is a single line; "unknown" means enabled is unreadable. */
+export type AutoApproveState = 'running' | 'paused' | 'notRunning' | 'unknown';
+export type AutoApproveView =
+  | { mode: 'off' }
+  | { mode: 'unknown' }
+  | {
+      mode: 'on';
+      state: AutoApproveState;
+      count: AutoApproveStatus['count'];
+      dailyCap: AutoApproveStatus['dailyCap'];
+      capReached: boolean;
+      waitingBacklog: AutoApproveStatus['waitingBacklog'];
+      /** Fixed code of an unsafe state directory, shown as a technical token. */
+      reason: string | null;
+    };
+
+/**
+ * The state is the least favourable fact we can prove: not running (the sweep is stopped, or the
+ * state directory is unsafe) wins over paused; "running" needs every one of running, not paused
+ * and a safe directory to be known; anything else unreadable is "unknown", never assumed healthy.
+ */
+export function autoApproveView(s: AutoApproveStatus): AutoApproveView {
+  if (s.enabled === false) return { mode: 'off' };
+  if (s.enabled !== true) return { mode: 'unknown' };
+  const notRunning = s.running === false || s.stateDir === 'unsafe';
+  const state: AutoApproveState = notRunning
+    ? 'notRunning'
+    : s.paused === true
+      ? 'paused'
+      : s.running === true && s.paused === false && s.stateDir === 'ok'
+        ? 'running'
+        : 'unknown';
+  return {
+    mode: 'on',
+    state,
+    count: s.count,
+    dailyCap: s.dailyCap,
+    capReached: s.capReached === true,
+    waitingBacklog: s.waitingBacklog,
+    reason: s.stateDir === 'unsafe' ? s.stateDirReason : null,
+  };
 }
 
 /** The text for one outcome: its key (in console.signups.*) and whether the row leaves the list. */

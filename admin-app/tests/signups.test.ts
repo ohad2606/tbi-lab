@@ -1,10 +1,19 @@
 /** TBI-022 slice D: the sign-up screen's logic without the DOM; texts exist in both locales. */
 import { describe, expect, it } from 'vitest';
-import { SIGNUP_ERRORS, interpretSignup, type SignupRecord } from '@tbi-lab/admin-client';
+import {
+  SIGNUP_ERRORS,
+  interpretSignup,
+  type AutoApproveStatus,
+  type SignupRecord,
+} from '@tbi-lab/admin-client';
 import { LOCALES, isMessageKey } from '../src/i18n.js';
 import {
+  autoApproveView,
   canResend,
   focusAfterRemoval,
+  isAutoApproved,
+  signupSource,
+  autoStateClass,
   isOpenSignup,
   signupRowKind,
   signupCountKey,
@@ -25,7 +34,36 @@ const rec = (status: string, accountAdded = false): SignupRecord => ({
   emailAttempts: 0,
   lastError: null,
   emailSendAfter: null,
+  autoApprovedAt: null,
+  heardFrom: null,
+  origin: null,
   createdAt: '2026-11-01T10:00:00Z',
+});
+
+describe('automatic approval flag', () => {
+  const body = { id: 'a1', status: 'approved', accountAdded: true };
+  const parse = (extra: object) => {
+    const o = interpretSignup(200, { record: { ...body, ...extra }, note: null });
+    return o.kind === 'done' ? o.record : null;
+  };
+  it('the client keeps autoApprovedAt when it is a non-empty string, else null', () => {
+    expect(parse({ autoApprovedAt: '2026-11-23T10:00:00.000Z' })?.autoApprovedAt).toBe(
+      '2026-11-23T10:00:00.000Z',
+    );
+    for (const bad of [undefined, null, '', 5, true, {}])
+      expect(parse({ autoApprovedAt: bad })?.autoApprovedAt, String(bad)).toBeNull();
+  });
+  it('isAutoApproved is true only for a record that carries the mark', () => {
+    expect(
+      isAutoApproved({ ...rec('approved', true), autoApprovedAt: '2026-11-23T10:00:00Z' }),
+    ).toBe(true);
+    expect(isAutoApproved(rec('approved', true))).toBe(false);
+    expect(isAutoApproved(rec('pending'))).toBe(false);
+  });
+  it('the badge text exists in both locales', () => {
+    for (const l of LOCALES)
+      expect(l.messages['console.signups.autoApproved'], l.code).toBeTruthy();
+  });
 });
 
 describe('sign-up requests view logic', () => {
@@ -151,5 +189,110 @@ describe('sign-up requests view logic', () => {
     }
     const he = LOCALES.find((l) => l.code === 'he')!;
     expect(he.messages['console.signups.confirm.body' as keyof typeof he.messages]).toBeTruthy();
+  });
+});
+
+const AUTO_KEYS = [
+  'console.signups.auto.heading',
+  'console.signups.auto.off',
+  'console.signups.auto.unknown',
+  'console.signups.auto.unavailable',
+  'console.signups.auto.today',
+  'console.signups.auto.capReached',
+  'console.signups.auto.state.label',
+  'console.signups.auto.state.running',
+  'console.signups.auto.state.paused',
+  'console.signups.auto.state.notRunning',
+  'console.signups.auto.state.unknown',
+  'console.signups.auto.reason',
+  'console.signups.auto.backlog',
+  'console.signups.auto.value.unknown',
+];
+describe('autoApproveView', () => {
+  const ok: AutoApproveStatus = {
+    enabled: true,
+    running: true,
+    paused: false,
+    capReached: false,
+    count: 3,
+    dailyCap: 20,
+    waitingBacklog: 4,
+    stateDir: 'ok',
+    stateDirReason: null,
+  };
+  const state = (x: Partial<AutoApproveStatus>) => {
+    const v = autoApproveView({ ...ok, ...x });
+    return v.mode === 'on' ? v.state : v.mode;
+  };
+  it('off and unreadable-enabled are their own modes', () => {
+    expect(state({ enabled: false })).toBe('off');
+    expect(state({ enabled: 'unknown' })).toBe('unknown');
+  });
+  it('running only when running, not paused and the directory is safe are all known', () => {
+    expect(state({})).toBe('running');
+    expect(state({ paused: true })).toBe('paused');
+    expect(state({ paused: 'unknown' })).toBe('unknown');
+    expect(state({ running: 'unknown' })).toBe('unknown');
+    expect(state({ stateDir: 'unknown' })).toBe('unknown');
+  });
+  it('not running wins over paused (stopped sweep or unsafe directory)', () => {
+    expect(state({ running: false, paused: true })).toBe('notRunning');
+    expect(state({ stateDir: 'unsafe', paused: true, stateDirReason: 'ancestor_mode' })).toBe(
+      'notRunning',
+    );
+    expect(state({ running: 'unknown', stateDir: 'unsafe' })).toBe('notRunning');
+  });
+  it('keeps unknown numbers unknown and carries the reason only when unsafe', () => {
+    const v = autoApproveView({
+      ...ok,
+      count: 'unknown',
+      stateDir: 'unsafe',
+      stateDirReason: 'x_y',
+    });
+    expect(v).toMatchObject({ count: 'unknown', reason: 'x_y', dailyCap: 20 });
+    expect(autoApproveView({ ...ok, stateDirReason: 'x_y' })).toMatchObject({ reason: null });
+    expect(autoApproveView({ ...ok, capReached: 'unknown' })).toMatchObject({ capReached: false });
+  });
+  it('has HE and EN texts for every key', () => {
+    for (const l of LOCALES)
+      for (const k of AUTO_KEYS) expect(l.messages[k as never], k).toBeTruthy();
+  });
+});
+
+describe('web intake source (BETA-G1 s10)', () => {
+  const body = { id: 'a1', status: 'pending', accountAdded: false };
+  const parse = (extra: object) => {
+    const o = interpretSignup(200, { record: { ...body, ...extra }, note: null });
+    return o.kind === 'done' ? o.record : null;
+  };
+  it('the client keeps heardFrom (trimmed text, <= 80) and origin web, else null', () => {
+    const r = parse({ heardFrom: ' a friend ', origin: 'web' });
+    expect(r?.heardFrom).toBe('a friend');
+    expect(r?.origin).toBe('web');
+    for (const bad of [undefined, null, '', '   ', 5, true, {}, 'x'.repeat(81)])
+      expect(parse({ heardFrom: bad })?.heardFrom, String(bad)).toBeNull();
+    for (const bad of [undefined, null, 'mail', 'WEB', 1, true])
+      expect(parse({ origin: bad })?.origin, String(bad)).toBeNull();
+  });
+  it('signupSource: nothing for an old record, text only for heardFrom', () => {
+    expect(signupSource(rec('pending'))).toEqual({ heardFrom: null, web: false });
+    expect(
+      signupSource({ ...rec('pending'), heardFrom: '<a href="x">x</a>', origin: 'web' }),
+    ).toEqual({ heardFrom: '<a href="x">x</a>', web: true });
+  });
+  it('texts exist in both locales with the same keys', () => {
+    for (const k of ['console.signups.heardFrom', 'console.signups.origin.web'])
+      for (const l of LOCALES)
+        expect(isMessageKey(k) && l.messages[k as never], l.code + k).toBeTruthy();
+  });
+  it('the unknown auto state has its own neutral class, not the off (danger) one', () => {
+    expect(autoStateClass('unknown')).toBe('badge-unknown');
+    expect(autoStateClass('notRunning')).toBe('badge-off');
+    expect(autoStateClass('running')).toBe('badge-auto');
+    expect(autoStateClass('paused')).toBe('badge-pending');
+  });
+  it('the Hebrew auto-approve count has no plural verb that disagrees with the number', () => {
+    const he = LOCALES.find((l) => l.code === 'he')!;
+    expect(he.messages['console.signups.auto.today' as never]).not.toMatch(/אושרו/);
   });
 });

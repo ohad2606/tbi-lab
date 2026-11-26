@@ -33,11 +33,30 @@ const ROWS = () => [
 ];
 
 type Mode = 'list' | 'empty' | 'error';
-async function mock(page: Page, mode: Mode, actions: Record<string, unknown> = {}) {
+type Auto = { status: number; json: unknown };
+const AUTO_ON = {
+  enabled: true,
+  running: true,
+  day: '2026-11-23',
+  dailyCap: 20,
+  count: 3,
+  capReached: false,
+  paused: false,
+  stateDir: 'ok',
+  cutoff: '2026-11-20T00:00:00.000Z',
+  waitingBacklog: 4,
+};
+async function mock(
+  page: Page,
+  mode: Mode,
+  actions: Record<string, unknown> = {},
+  auto: Auto = { status: 200, json: { enabled: false } },
+) {
   let rows = mode === 'list' ? ROWS() : [];
   const calls: string[] = [];
   await page.route('**/admin-api/signups/**', async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/auto-approve')) return route.fulfill(auto);
     if (url.pathname.endsWith('/open')) {
       if (mode === 'error') return route.fulfill({ status: 503, json: { error: 'unavailable' } });
       return route.fulfill({ json: { signups: rows } });
@@ -123,12 +142,301 @@ for (const lang of ['he', 'en'] as const) {
     await mock(page, 'empty');
     await open(page, context, baseURL!, lang);
     await expect(page.getByTestId('signups-empty')).toBeVisible();
-    await expect(page.getByRole('region', { name: /\S/ })).toBeVisible();
+    await expect(page.locator('section[aria-labelledby="signups-h"]')).toBeVisible();
     await expect(page.getByTestId('signups-live')).not.toBeEmpty();
     await page.unroute('**/admin-api/signups/**');
     await mock(page, 'error');
     await page.getByTestId('signups-refresh').click();
     await expect(page.getByTestId('signups-problem')).toBeVisible();
+  });
+}
+
+for (const lang of ['he', 'en'] as const) {
+  test(`signups (${lang}): web-form badge and "how they heard" are plain text; absent shows nothing`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list');
+    await page.unroute('**/admin-api/signups/**');
+    const web = {
+      ...row('r1', 'Dana Levi', 'dana@example.com', '2026-11-01T10:00:00Z'),
+      origin: 'web',
+      heardFrom: '<a href="https://evil.example">a friend</a> שלום',
+    };
+    const old = row('r2', 'Omer Cohen', 'omer@example.com', '2026-11-02T10:00:00Z');
+    await page.route('**/admin-api/signups/open', (route) =>
+      route.fulfill({ json: { signups: [web, old] } }),
+    );
+    await open(page, context, baseURL!, lang);
+    const r1 = page.locator('[data-signup-id="r1"]');
+    await expect(r1.getByTestId('signup-origin-web')).toHaveText(
+      lang === 'he' ? 'טופס אינטרנט' : 'Web form',
+    );
+    const heard = r1.getByTestId('signup-heard-from');
+    await expect(heard).toContainText(lang === 'he' ? 'איך שמעו עלינו' : 'How they heard about us');
+    await expect(heard).toContainText('<a href="https://evil.example">a friend</a>');
+    await expect(heard.locator('a')).toHaveCount(0);
+    const r2 = page.locator('[data-signup-id="r2"]');
+    await expect(r2.getByTestId('signup-origin-web')).toHaveCount(0);
+    await expect(r2.getByTestId('signup-heard-from')).toHaveCount(0);
+    expect(await r2.evaluate((e) => (e as HTMLElement).innerText)).not.toContain('undefined');
+  });
+}
+
+for (const lang of ['he', 'en'] as const) {
+  test(`signups (${lang}): "approved automatically" badge is text in the row, with enough contrast`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list');
+    // Replace the first mocked list: r1 was approved by the automatic approver, r2 by nobody yet.
+    await page.unroute('**/admin-api/signups/**');
+    const auto = {
+      ...row('r1', 'Dana Levi', 'dana@example.com', '2026-11-01T10:00:00Z'),
+      status: 'approved',
+      accountAdded: true,
+      autoApprovedAt: '2026-11-23T10:00:00.000Z',
+    };
+    const manual = row('r2', 'Omer Cohen', 'omer@example.com', '2026-11-02T10:00:00Z');
+    await page.route('**/admin-api/signups/open', (route) =>
+      route.fulfill({ json: { signups: [auto, manual] } }),
+    );
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('signup-row')).toHaveCount(2);
+    const text = lang === 'he' ? 'אושרה אוטומטית' : 'Approved automatically';
+    const r1 = page.locator('[data-signup-id="r1"]');
+    const badge = r1.getByTestId('signup-auto-approved');
+    await expect(badge).toHaveText(text);
+    await expect(badge).toBeVisible();
+    // Part of the row's own text (so a screen reader reads it with the row), not an icon or colour.
+    expect(await r1.evaluate((e) => (e as HTMLElement).innerText)).toContain(text);
+    await expect(
+      page.locator('[data-signup-id="r2"]').getByTestId('signup-auto-approved'),
+    ).toHaveCount(0);
+    // Contrast of the badge text on its background: at least 4.5:1 (WCAG 1.4.3).
+    const ratio = await badge.evaluate((e) => {
+      const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+      const lum = ([r, g, b]: number[]) => {
+        const f = (v: number) => {
+          const x = v / 255;
+          return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * f(r!) + 0.7152 * f(g!) + 0.0722 * f(b!);
+      };
+      const cs = getComputedStyle(e);
+      const a = lum(rgb(cs.color));
+      const b = lum(rgb(cs.backgroundColor));
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    });
+    expect(ratio).toBeGreaterThanOrEqual(4.5);
+    // It stays inside the viewport at 320 px (reflow), in both directions.
+    await page.setViewportSize({ width: 320, height: 700 });
+    const box = await badge.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+  });
+}
+
+// ------------------------------------------------ the auto-approve status block (BETA-G1 s6)
+
+const T = {
+  en: {
+    heading: 'Auto-approve status',
+    off: 'Auto-approve is off.',
+    today: (n: string, c: string) => `Auto-approved today: ${n} of ${c}`,
+    running: 'Running',
+    paused: 'Paused (kill switch)',
+    notRunning: 'Not running',
+    unknown: 'Unknown',
+    unavailable: 'Auto-approve status is unavailable right now.',
+    unknownWord: 'unknown',
+    backlog: (n: string) => `Older requests waiting for you: ${n}`,
+  },
+  he: {
+    heading: 'סטטוס אישור אוטומטי',
+    off: 'האישור האוטומטי כבוי.',
+    today: (n: string, c: string) => `אישורים אוטומטיים היום: ${n} מתוך ${c}`,
+    running: 'פעיל',
+    paused: 'מושהה (מתג עצירה)',
+    notRunning: 'לא פועל',
+    unknown: 'לא ידוע',
+    unavailable: 'סטטוס האישור האוטומטי אינו זמין כרגע.',
+    unknownWord: 'לא ידוע',
+    backlog: (n: string) => `בקשות ישנות שממתינות לך: ${n}`,
+  },
+} as const;
+
+const contrast = (loc: ReturnType<Page['getByTestId']>) =>
+  loc.evaluate((e) => {
+    const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+    const lum = ([r, g, b]: number[]) => {
+      const f = (v: number) => {
+        const x = v / 255;
+        return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * f(r!) + 0.7152 * f(g!) + 0.0722 * f(b!);
+    };
+    let bg: Element | null = e;
+    let bgc = 'rgba(0, 0, 0, 0)';
+    while (bg && /rgba\(.*, 0\)|transparent/.test((bgc = getComputedStyle(bg).backgroundColor)))
+      bg = bg.parentElement;
+    const a = lum(rgb(getComputedStyle(e).color));
+    const b = lum(rgb(bgc));
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  });
+
+for (const lang of ['he', 'en'] as const) {
+  const x = T[lang];
+  test(`signups (${lang}): auto-approve block is a named region; off is a text line`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list');
+    await open(page, context, baseURL!, lang);
+    const block = page.getByTestId('auto-status');
+    await expect(block.getByTestId('auto-off')).toHaveText(x.off);
+    await expect(page.getByRole('region', { name: x.heading })).toBeVisible();
+    await expect(block.getByRole('heading', { level: 2, name: x.heading })).toBeVisible();
+    // Updated only on load and Refresh: not a live region of its own, and nothing writable.
+    await expect(block.locator('[aria-live], [role=status], button, input, a')).toHaveCount(0);
+  });
+
+  test(`signups (${lang}): on and running shows today's count against the cap, LTR numbers`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(
+      page,
+      'list',
+      {},
+      { status: 200, json: { ...AUTO_ON, count: 20, capReached: true } },
+    );
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('auto-today')).toHaveText(x.today('20', '20'));
+    await expect(page.getByTestId('auto-state')).toHaveText(x.running);
+    await expect(page.getByTestId('auto-cap-reached')).toBeVisible();
+    await expect(page.getByTestId('auto-backlog')).toHaveText(x.backlog('4'));
+    for (const b of await page.getByTestId('auto-today').locator('bdi').all())
+      expect(await b.evaluate((n) => getComputedStyle(n).direction)).toBe('ltr');
+    expect(await contrast(page.getByTestId('auto-state'))).toBeGreaterThanOrEqual(4.5);
+    expect(await contrast(page.getByTestId('auto-today'))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test(`signups (${lang}): paused, not running (wins over paused), unsafe directory reason`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list', {}, { status: 200, json: { ...AUTO_ON, paused: true } });
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('auto-state')).toHaveText(x.paused);
+    await expect(page.getByTestId('auto-state')).toHaveAttribute('data-state', 'paused');
+    expect(await contrast(page.getByTestId('auto-state'))).toBeGreaterThanOrEqual(4.5);
+
+    await page.unroute('**/admin-api/signups/**');
+    await mock(
+      page,
+      'list',
+      {},
+      {
+        status: 200,
+        json: { ...AUTO_ON, paused: true, stateDir: 'unsafe', stateDirReason: 'ancestor_mode' },
+      },
+    );
+    await page.getByTestId('signups-refresh').click();
+    await expect(page.getByTestId('auto-state')).toHaveText(x.notRunning);
+    const reason = page.getByTestId('auto-reason').locator('bdi');
+    await expect(reason).toHaveText('ancestor_mode');
+    expect(await reason.evaluate((n) => getComputedStyle(n).direction)).toBe('ltr');
+    expect(await contrast(page.getByTestId('auto-state'))).toBeGreaterThanOrEqual(4.5);
+
+    await page.unroute('**/admin-api/signups/**');
+    await mock(
+      page,
+      'list',
+      {},
+      { status: 200, json: { ...AUTO_ON, running: false, paused: true } },
+    );
+    await page.getByTestId('signups-refresh').click();
+    await expect(page.getByTestId('auto-state')).toHaveText(x.notRunning);
+  });
+
+  test(`signups (${lang}): unknown values are the word "unknown", never 0`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(
+      page,
+      'list',
+      {},
+      {
+        status: 200,
+        json: {
+          ...AUTO_ON,
+          count: 'unknown',
+          waitingBacklog: 'unknown',
+          running: 'unknown',
+          capReached: 'unknown',
+        },
+      },
+    );
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('auto-today')).toHaveText(x.today(x.unknownWord, '20'));
+    await expect(page.getByTestId('auto-state')).toHaveText(x.unknown);
+    await expect(page.getByTestId('auto-backlog')).toHaveText(x.backlog(x.unknownWord));
+    await expect(page.getByTestId('auto-cap-reached')).toHaveCount(0);
+  });
+
+  test(`signups (${lang}): a failed status fetch says so, the list still works; Refresh retries`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list', {}, { status: 500, json: { error: 'x' } });
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('auto-unavailable')).toHaveText(x.unavailable);
+    await expect(page.getByTestId('signup-row')).toHaveCount(3);
+    await page.unroute('**/admin-api/signups/**');
+    await mock(page, 'list', {}, { status: 200, json: AUTO_ON });
+    await page.getByTestId('signups-refresh').click();
+    await expect(page.getByTestId('auto-today')).toHaveText(x.today('3', '20'));
+    await expect(page.getByTestId('auto-unavailable')).toHaveCount(0);
+  });
+
+  test(`signups (${lang}): 320 px, the status block does not overflow`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await mock(
+      page,
+      'list',
+      {},
+      {
+        status: 200,
+        json: { ...AUTO_ON, stateDir: 'unsafe', stateDirReason: 'ancestor_mode', paused: true },
+      },
+    );
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('auto-state')).toBeVisible();
+    const m = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      inner: window.innerWidth,
+      wide: [...document.querySelectorAll<HTMLElement>('[data-testid=auto-status] *')].filter(
+        (e) => {
+          const r = e.getBoundingClientRect();
+          return r.width > 0 && (r.right > window.innerWidth + 0.5 || r.left < -0.5);
+        },
+      ).length,
+    }));
+    expect(m.wide).toBe(0);
+    expect(m.scroll).toBeLessThanOrEqual(m.inner);
   });
 }
 

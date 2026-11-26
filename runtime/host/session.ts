@@ -190,6 +190,8 @@ export class HostSession {
   readonly sm = new SessionStateMachine();
   readonly log: EventLog;
   readonly createdAt = new Date();
+  /** Monotonic twin of `createdAt` for durations: the wall clock may step backwards. */
+  private readonly createdPerf = performance.now();
   endedAt: Date | null = null;
   lastActivity = performance.now();
   /**
@@ -417,7 +419,7 @@ export class HostSession {
         reason: this.sm.reason,
         from: h[h.length - 2]?.state,
         ran: this.runStartedAt !== null,
-        lifeMs: (this.endedAt ?? new Date()).getTime() - this.createdAt.getTime(),
+        lifeMs: now - this.createdPerf,
         runMs: this.runStartedAt === null ? null : now - this.runStartedAt,
         simNs: this.simNs,
         runtime:

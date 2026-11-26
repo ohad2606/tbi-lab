@@ -15,6 +15,23 @@ export const LEGAL_PAGES = ['privacy', 'accessibility'];
 
 /** Sign-up form (Google Forms). Empty = applications not open: the CTA keeps its "opens soon" state. https only. */
 export const APPLY_URL = 'https://forms.gle/iSfCbg4BwWF7HqDCA';
+/**
+ * Own sign-up page (BETA-G1 s9). While the flag is false the page and its script are not built at all (only the
+ * e2e/preview build `--signup-preview` adds them, noindex and unlinked). The owner flips it when the intake endpoint is
+ * live; then the page is built, the nav link appears, the home/alpha CTAs point to the page instead of APPLY_URL, and
+ * noindex is dropped.
+ */
+export const SIGNUP_PAGE_ENABLED = false;
+/** Base of the intake routes: GET <base>/form-token, POST <base>/web. Relative = same origin (proxied by the web server). */
+export const SIGNUP_API_BASE = '/signup';
+/** Stable values sent to the server (admin reads these); the visible labels live in each language below, same order. */
+export const SIGNUP_ROLE_VALUES = [
+  'Student',
+  'Maker or hobbyist',
+  'Engineer or technician',
+  'Teacher or instructor',
+  'Other',
+];
 /** Approved testers sign in here. */
 export const LAB_URL = 'https://lab.tbi-tech.net/';
 /** The one public contact address. */
@@ -81,7 +98,13 @@ const en = {
   footerLabel: 'Legal and contact',
   switchTo: 'עברית',
   switchToLang: 'he',
-  navNames: { home: 'Home', product: 'Product', alpha: 'Alpha program', faq: 'FAQ' },
+  navNames: {
+    home: 'Home',
+    product: 'Product',
+    alpha: 'Alpha program',
+    faq: 'FAQ',
+    signup: 'Sign up',
+  },
   footerNames: { privacy: 'Privacy', accessibility: 'Accessibility statement' },
   contactLabel: 'Contact',
   signIn: 'Tester sign-in',
@@ -94,6 +117,65 @@ const en = {
   desktopNote: 'Works on a computer with Chrome or Edge.',
   interimNote: 'Interim text. It will be replaced by a reviewed version.',
   screenshotsH: 'See it in the Lab',
+  signup: {
+    required: 'All fields are required except the one marked (optional).',
+    name: 'Name',
+    email: 'Email address',
+    emailHint: 'We will write to this address when we approve your request.',
+    role: 'Which best describes you?',
+    rolePick: 'Choose one',
+    roles: [
+      'Student',
+      'Maker or hobbyist',
+      'Engineer or technician',
+      'Teacher or instructor',
+      'Other',
+    ],
+    heard: 'How did you hear about us?',
+    optional: '(optional)',
+    age: 'I am 18 or older, or a parent has approved my sign-up.',
+    consentBefore: 'I have read the ',
+    consentLink: 'privacy notice',
+    consentAfter:
+      ', and I agree that TBI may use my details to handle my request and give me access.',
+    submit: 'Send my request',
+    newTab: '(opens in a new tab)',
+    nojs: 'The sign-up form could not load. It needs [[JavaScript]]. Please turn it on in your browser and reload the page, or write to us at support@tbi-tech.net.',
+    honeypot: 'Leave this field empty',
+    privacyH: 'What we do with your details',
+    privacy: [
+      'We use the details in this form to review your request, give you access to the Alpha and update you about it. We will not sell your details or pass them on to others.',
+      'Requests that are not approved are deleted within 90 days. Other requests are kept for up to 12 months. To see or delete your details, write to support@tbi-tech.net.',
+    ],
+    errName: 'Enter your name.',
+    errEmail: 'Enter a valid email address.',
+    errRole: 'Choose the option that describes you best.',
+    errHeard: 'Use at most 80 characters.',
+    errAge: 'Confirm that you are 18 or older, or that a parent approved your sign-up.',
+    errConsent: 'Confirm that you have read the privacy notice and agree.',
+    summaryFieldsH: 'Please fix these before sending:',
+    summaryFailH: 'We could not send your request',
+    statusSending: 'Sending your request…',
+    statusErrors: 'Your request was not sent. Some fields need attention.',
+    msgInvalid: 'Some of the details were not accepted. Please check the fields and send again.',
+    msgTooFast: 'That was very quick. Please wait a few seconds and send again.',
+    msgRate:
+      'There have been too many requests from your connection. Please wait a few minutes and try again.',
+    msgUnavailable:
+      'Sign-up is temporarily unavailable. Your details were not sent. Please try again in a little while.',
+    msgNetwork:
+      'We could not reach the server. Check your connection and send again. Nothing you typed was lost.',
+    msgForbidden:
+      'We could not accept this request from this page. Please reload the page and try again.',
+    msgGeneric:
+      'Something went wrong and your request was not sent. Please try again in a little while.',
+    msgSession: 'The form session was renewed. Please send again.',
+    successH: 'Thank you. We received your request.',
+    successP: [
+      'Places in the Alpha are limited, so we approve requests gradually. When we approve yours, we will email you the link to the lab.',
+      'If you have a question, write to us at support@tbi-tech.net.',
+    ],
+  },
   pages: {
     home: {
       title: 'TBI Lab — an electronics engineering lab for the classic ESP32 in your browser',
@@ -273,6 +355,14 @@ const en = {
         { id: 'q-lang', h: 'Which languages are available?', p: ['Hebrew and English.'] },
       ],
     },
+    signup: {
+      title: 'Sign up for early access — TBI Lab',
+      description:
+        'Request a place in the free TBI Lab Alpha: an electronics and classic [[ESP32]] lab in your browser. Places are limited.',
+      h1: 'Sign up for early access (Alpha)',
+      lead: 'TBI Lab is an electronics lab in your browser. You build a circuit, write Arduino code and run it on a simulated classic [[ESP32]]. The Alpha is free and places are limited. We approve requests gradually and let you know by email. You need a computer with Chrome or Edge and a screen at least 1024 pixels wide. The lab is not designed for phones.',
+      sections: [],
+    },
     privacy: {
       title: 'Privacy — TBI Lab',
       description: 'Interim privacy notice for the TBI Lab public site and Alpha sign-up.',
@@ -362,7 +452,13 @@ const he = {
   footerLabel: 'משפטי ויצירת קשר',
   switchTo: 'English',
   switchToLang: 'en',
-  navNames: { home: 'דף הבית', product: 'המוצר', alpha: 'תוכנית אלפא', faq: 'שאלות נפוצות' },
+  navNames: {
+    home: 'דף הבית',
+    product: 'המוצר',
+    alpha: 'תוכנית אלפא',
+    faq: 'שאלות נפוצות',
+    signup: 'הרשמה',
+  },
   footerNames: { privacy: 'פרטיות', accessibility: 'הצהרת נגישות' },
   contactLabel: 'יצירת קשר',
   signIn: 'כניסת בודקים',
@@ -375,6 +471,53 @@ const he = {
   desktopNote: 'עובד במחשב עם Chrome או Edge.',
   interimNote: 'טקסט ביניים. יוחלף בגרסה שנבדקה.',
   screenshotsH: 'ככה זה נראה במעבדה',
+  signup: {
+    required: 'כל השדות חובה, חוץ מהשדה שמסומן (לא חובה).',
+    name: 'שם',
+    email: 'כתובת אימייל',
+    emailHint: 'לכתובת הזאת נכתוב כשנאשר את הבקשה.',
+    role: 'מה מתאר אתכם הכי טוב?',
+    rolePick: 'בחרו אפשרות',
+    roles: ['סטודנט/ית', 'מייקר/ית או תחביב', 'מהנדס/ת או טכנאי/ת', 'מורה או מדריך/ה', 'אחר'],
+    heard: 'איך הגעת אלינו?',
+    optional: '(לא חובה)',
+    age: 'אני בן/בת 18 ומעלה, או שהורה אישר לי להירשם.',
+    consentBefore: 'קראתי את ',
+    consentLink: 'הודעת הפרטיות',
+    consentAfter: ', ואני מסכים/ה ש-[[TBI]] תשתמש בפרטים כדי לטפל בבקשה ולתת גישה.',
+    submit: 'שליחת הבקשה',
+    newTab: '(נפתח בלשונית חדשה)',
+    nojs: 'טופס ההרשמה לא נטען. הוא דורש [[JavaScript]]. הפעילו אותו בדפדפן וטענו את הדף מחדש, או כתבו לנו ל-support@tbi-tech.net.',
+    honeypot: 'השאירו שדה זה ריק',
+    privacyH: 'מה אנחנו עושים עם הפרטים',
+    privacy: [
+      'אנחנו משתמשים בפרטים בטופס כדי לבחון את הבקשה, לתת גישה לאלפא ולעדכן אתכם לגביה. לא נמכור את הפרטים ולא נעביר אותם לאחרים.',
+      'בקשות שלא אושרו יימחקו בתוך 90 יום, ושאר הבקשות יישמרו עד 12 חודשים. לעיון או למחיקה כתבו לנו ל-support@tbi-tech.net.',
+    ],
+    errName: 'הזינו את השם שלכם.',
+    errEmail: 'הזינו כתובת אימייל תקינה.',
+    errRole: 'בחרו את האפשרות שמתארת אתכם הכי טוב.',
+    errHeard: 'כתבו עד 80 תווים.',
+    errAge: 'אשרו שאתם בני 18 ומעלה, או שהורה אישר לכם להירשם.',
+    errConsent: 'אשרו שקראתם את הודעת הפרטיות ושאתם מסכימים.',
+    summaryFieldsH: 'יש לתקן לפני השליחה:',
+    summaryFailH: 'לא הצלחנו לשלוח את הבקשה',
+    statusSending: 'שולחים את הבקשה…',
+    statusErrors: 'הבקשה לא נשלחה. יש שדות שדורשים תיקון.',
+    msgInvalid: 'חלק מהפרטים לא התקבלו. בדקו את השדות ושלחו שוב.',
+    msgTooFast: 'זה היה מהיר מאוד. המתינו כמה שניות ושלחו שוב.',
+    msgRate: 'היו יותר מדי בקשות מהחיבור שלכם. המתינו כמה דקות ונסו שוב.',
+    msgUnavailable: 'ההרשמה אינה זמינה זמנית. הפרטים לא נשלחו. נסו שוב בעוד זמן קצר.',
+    msgNetwork: 'לא הצלחנו להתחבר לשרת. בדקו את החיבור ושלחו שוב. מה שהקלדתם לא אבד.',
+    msgForbidden: 'לא הצלחנו לקבל את הבקשה מהדף הזה. טענו את הדף מחדש ונסו שוב.',
+    msgGeneric: 'משהו השתבש והבקשה לא נשלחה. נסו שוב בעוד זמן קצר.',
+    msgSession: 'חיבור הטופס חודש. שלחו שוב.',
+    successH: 'תודה. קיבלנו את הבקשה.',
+    successP: [
+      'מספר המקומות באלפא מוגבל, ולכן אנחנו מאשרים בקשות בהדרגה. כשנאשר את הבקשה שלכם, נשלח אליכם במייל את הקישור למעבדה.',
+      'יש שאלה? כתבו לנו ל-support@tbi-tech.net.',
+    ],
+  },
   pages: {
     home: {
       title: 'TBI Lab — מעבדת הנדסת אלקטרוניקה ל-ESP32 קלאסי בדפדפן',
@@ -549,6 +692,14 @@ const he = {
         },
         { id: 'q-lang', h: 'באילו שפות זה זמין?', p: ['עברית ואנגלית.'] },
       ],
+    },
+    signup: {
+      title: 'הרשמה לגישה מוקדמת — TBI Lab',
+      description:
+        'בקשה למקום באלפא החינמית של TBI Lab: מעבדת אלקטרוניקה ו-[[ESP32]] קלאסי בדפדפן. מספר המקומות מוגבל.',
+      h1: 'הרשמה לגישה מוקדמת ([[Alpha]])',
+      lead: '[[TBI Lab]] היא מעבדת אלקטרוניקה בדפדפן. בונים מעגל, כותבים קוד [[Arduino]] ומריצים אותו על [[ESP32]] קלאסי מדומה. ה-[[Alpha]] חינמי, ומספר המקומות מוגבל. אנחנו מאשרים בקשות בהדרגה ונשלח הודעה במייל. דרוש מחשב עם דפדפן [[Chrome]] או [[Edge]], ומסך ברוחב 1024 פיקסלים לפחות. המעבדה לא מיועדת לטלפון.',
+      sections: [],
     },
     privacy: {
       title: 'פרטיות — TBI Lab',

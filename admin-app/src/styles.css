@@ -515,6 +515,21 @@ fieldset {
   color: var(--warning-ink);
   background: var(--warning-bg);
 }
+.badge-auto {
+  color: var(--text);
+  border-color: var(--ok);
+}
+.badge-off {
+  color: var(--text);
+  border-color: var(--danger);
+  border-width: 2px;
+}
+.badge-unknown {
+  color: var(--text);
+  border-color: var(--muted);
+  border-style: dashed;
+  border-width: 2px;
+}
 .badge-new {
   background: var(--accent);
   border-color: var(--accent);

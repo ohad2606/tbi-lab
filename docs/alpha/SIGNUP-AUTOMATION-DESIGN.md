@@ -13,6 +13,12 @@ BETA-G1 (public beta) adds an **opt-in, off-by-default** auto-approve with a dai
 the admin service through the same approve path: see `docs/plans/BETA-G1-AUTO-APPROVE.md`. Without its flag,
 everything below holds unchanged.
 
+BETA-G1 s8 adds an **opt-in, off-by-default browser route** on the same intake (`GET /signup/form-token`,
+`POST /signup/web`) for our own HE/EN sign-up page: a stateless, domain-separated form token instead of the HMAC
+secret, plus origin allow-list, strict JSON, honeypot, minimum fill time and its own limits, feeding the same
+store / dedupe / alert path. `POST /signup` below is unchanged. Design and threat model:
+`docs/plans/BETA-G1-WEB-INTAKE.md`.
+
 1. The existing form stays. A form-response script (outside this repo's runtime) POSTs each response, signed, to
    `POST <ALPHA_HOST>/signup`.
 2. The intake stores a PENDING request and sends the owner a Telegram message: name, role, link to the admin page
@@ -178,6 +184,7 @@ JSON, `no-store`. Mutations need `content-type: application/json`, a same-origin
 | `GET /signups` | 200 `{signups: Record[]}` all statuses |
 | `GET /signups/pending` | 200 `{signups: Record[]}` only `status: "pending"` |
 | `GET /signups/open` | 200 `{signups: Record[]}` `pending`, `approved`, `email_queued`, `email_failed`: the admin UI list, so a queued or failed email is still shown (with Resend) after a reload |
+| `GET /signups/auto-approve` | BETA-G1, read-only: 200 `{enabled:false}` when auto-approve is off, else the counts against the daily cap, the pause state, the state-dir check, the cut-off and the backlog before it; unreadable values are `"unknown"` with a reason (docs/plans/BETA-G1-AUTO-APPROVE.md section 9); other methods 405 |
 | `POST /signups/<id>/approve` | 200 `{record, note?}` (`note`: `already_done` or `email_not_resent`); 202 `account_pending` (helper has not answered yet; retry); 409 `bad_state` / `email_failed_use_resend`; 502 `cap_reached` / `account_error` / `email_failed`; 404 |
 | `POST /signups/<id>/reject` | 200 `{record}`; sends nothing; 409 if already approved |
 | `POST /signups/<id>/resend` | 200 only after a failed or interrupted send for an added account; 409 otherwise |
@@ -200,7 +207,8 @@ HMAC secret, a missing Telegram token or an unsafe store directory is a refusal 
 Settings: `TBI_SIGNUP_DIR`, `TBI_SIGNUP_HMAC_FILE`, `TBI_SIGNUP_TELEGRAM_TOKEN_FILE`, `TBI_SIGNUP_TELEGRAM_CHAT_ID`,
 `TBI_SIGNUP_ADMIN_LINK` (https), `TBI_SIGNUP_LISTEN` (loopback only, default `127.0.0.1:7411`),
 `TBI_SIGNUP_SOURCE_HEADER` (required, no default). Secrets are read from files, never from the environment, and never logged. Serves
-`POST /signup` only; SIGTERM / SIGINT close the listener.
+`POST /signup` only (plus, only with `TBI_SIGNUP_WEB=1` and `TBI_SIGNUP_WEB_ORIGINS`, the browser route of
+`docs/plans/BETA-G1-WEB-INTAKE.md`); SIGTERM / SIGINT close the listener.
 
 ## 7. What the owner must change on Alpha (private details later, in the private ops repo)
 

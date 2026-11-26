@@ -16,7 +16,16 @@ import { isQuiet, nextSendAt, type QuietWindow } from './quietHours.js';
 import type { EmailSender } from './email.js';
 import { serialById } from './locks.js';
 import { PendingStore, StoreError, type DeleteOutcome, type SignupRecord } from './store.js';
-import { validateSignup } from './validate.js';
+import { validateSignup, type SignupInput } from './validate.js';
+import {
+  checkToken,
+  HONEYPOT_FIELD,
+  issueToken,
+  TOKEN_FIELD,
+  WEB_MIN_FILL_MS,
+  WEB_TOKEN_TTL_MS,
+  type TokenFailure,
+} from './web.js';
 
 export type IntakeOutcome =
   | { status: 202 }
@@ -34,6 +43,8 @@ export interface IntakeDeps {
   quiet?: QuietWindow | null;
   windowMs?: number;
   log?: (line: string) => void;
+  /** BETA-G1 s8: the browser route (`POST /signup/web`); absent = the route does not exist. */
+  web?: WebIntakeDeps;
   /** K12: funnel counters (`signup_submitted` per new request); null / unset = off. */
   counters?: FunnelSink | null;
 }
@@ -47,7 +58,36 @@ function count(sink: FunnelSink | null | undefined, event: FunnelEvent): void {
   }
 }
 
+/**
+ * The web route's own limiters and nonce cache (separate instances from the signed route's, so a
+ * flood on one route cannot spend the other's budget or fill its replay cache).
+ */
+export interface WebIntakeDeps {
+  /** Derived token key (web.ts `deriveWebKey`), never the raw secret. */
+  webKey: Buffer;
+  /** Per-source limit of `GET /signup/form-token`. */
+  tokenRate: SlidingWindowLimiter;
+  /** Per-source limit of `POST /signup/web` (checked before the token). */
+  sourceRate: SlidingWindowLimiter;
+  globalRate: SlidingWindowLimiter;
+  /** Used-token nonces; its window must cover the token TTL. */
+  nonces: NonceCache;
+  ttlMs?: number;
+  minFillMs?: number;
+}
+
+export type WebOutcome =
+  { status: 200 } | { status: 400 | 401 | 404 | 429 | 503; error: string; retryAfterMs?: number };
+
+export type TokenOutcome =
+  | { status: 200; token: string; ttl: number; minFill: number }
+  | { status: 404 | 429; error: string; retryAfterMs?: number };
+
 const statusOf = (_r: VerifyFailure): 401 => 401;
+
+/** Missing, forged and replayed tokens share one code; an expired one tells the page to refetch. */
+const webAuthError = (r: Exclude<TokenFailure, 'too_fast'>): string =>
+  r === 'expired' ? 'expired' : 'unauthorized';
 
 export class SignupIntake {
   constructor(private readonly d: IntakeDeps) {}
@@ -90,20 +130,150 @@ export class SignupIntake {
     }
     const val = validateSignup(raw);
     if (!val.ok) return { status: 400, error: 'invalid' };
+    const a = await this.accept(val.value, now, true);
+    return a === 'unavailable' ? { status: 503, error: 'unavailable' } : { status: 202 };
+  }
+
+  /**
+   * `GET /signup/form-token`: a fresh stateless token (web.ts), per-source rate limited. `ttl` and
+   * `minFill` are in seconds. Nothing is stored; the token carries its own issue time and MAC.
+   */
+  issueWebToken(source: string): TokenOutcome {
+    const w = this.d.web;
+    if (!w) return { status: 404, error: 'not_found' };
+    const r = w.tokenRate.take(source);
+    if (!r.ok) {
+      this.d.log?.('signup: web refused (token_limit)');
+      return { status: 429, error: 'rate_limited', retryAfterMs: r.retryAfterMs };
+    }
+    const now = (this.d.now ?? Date.now)();
+    const ttlMs = w.ttlMs ?? WEB_TOKEN_TTL_MS;
+    // The page waits this long after the token arrives before it posts (fixed, whole seconds,
+    // rounded up so the page never waits less than the server requires).
+    const minFill = Math.ceil((w.minFillMs ?? WEB_MIN_FILL_MS) / 1000);
+    return {
+      status: 200,
+      token: issueToken(w.webKey, now),
+      ttl: Math.floor(ttlMs / 1000),
+      minFill,
+    };
+  }
+
+  /**
+   * `POST /signup/web` after the HTTP checks (method, origin, content type, size cap, source key).
+   * Order: the per-source limit (before any crypto), the token (MAC, age, minimum fill time; not
+   * consumed), the honeypot (a hit records nothing, so it cannot fill the nonce cache; a resend
+   * is bounded by the per-source limit), field validation
+   * (not consumed: the person fixes a typo and retries), the GLOBAL limit (taken only by requests
+   * that would be stored, so honeypot hits and junk cannot drain it; a 429 does not consume the
+   * token), then the token is consumed (single use) and the request takes the same path as
+   * `/signup`, marked `origin: 'web'` (web sub-cap). If the store refuses (503, nothing stored)
+   * the token is released again, so the page may retry with it; it was reserved during the store
+   * call, so a concurrent post with the same token gets 401 and never a second record.
+   * A duplicate address answers exactly like a new one (200), see `accept`.
+   */
+  async submitWeb(source: string, body: Buffer): Promise<WebOutcome> {
+    const w = this.d.web;
+    if (!w) return { status: 404, error: 'not_found' };
+    const now = (this.d.now ?? Date.now)();
+    const refuse = (why: string) => this.d.log?.(`signup: web refused (${why})`);
+    const s = w.sourceRate.take(source);
+    if (!s.ok) {
+      refuse('source_limit');
+      return { status: 429, error: 'rate_limited', retryAfterMs: s.retryAfterMs };
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(body.toString('utf8'));
+    } catch {
+      refuse('bad_json');
+      return { status: 400, error: 'invalid' };
+    }
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      refuse('bad_json');
+      return { status: 400, error: 'invalid' };
+    }
+    const {
+      [TOKEN_FIELD]: token,
+      [HONEYPOT_FIELD]: honey,
+      ...fields
+    } = raw as Record<string, unknown>;
+    const t = checkToken(w.webKey, token, now, { ttlMs: w.ttlMs, minFillMs: w.minFillMs });
+    if (!t.ok) {
+      refuse(t.reason);
+      return t.reason === 'too_fast'
+        ? { status: 400, error: 'too_fast' }
+        : { status: 401, error: webAuthError(t.reason) };
+    }
+    if (honey !== '') {
+      // Same answer as a typo. The nonce is NOT recorded (Fable review finding 2): honeypot hits
+      // from many sources would otherwise fill the bounded cache and lock real people out. The
+      // same token may therefore be resent here; that is bounded by the per-source limit above.
+      refuse('honeypot');
+      return { status: 400, error: 'invalid' };
+    }
+    const val = validateSignup(fields, { heardFrom: true });
+    if (!val.ok) {
+      refuse(`invalid_${val.field}`);
+      return { status: 400, error: 'invalid' };
+    }
+    // An already used token is refused before it can spend the global budget.
+    if (w.nonces.has(t.nonce, now)) {
+      refuse('replayed');
+      return { status: 401, error: 'unauthorized' };
+    }
+    const g = w.globalRate.take('all');
+    if (!g.ok) {
+      refuse('global_limit');
+      return { status: 429, error: 'rate_limited', retryAfterMs: g.retryAfterMs };
+    }
+    if (!w.nonces.take(t.nonce, now)) {
+      refuse('replayed');
+      return { status: 401, error: 'unauthorized' };
+    }
+    const a = await this.accept(val.value, now, false, 'web');
+    if (a === 'unavailable') {
+      // Nothing was stored: give the token back so the page can retry with it.
+      w.nonces.release(t.nonce);
+      return { status: 503, error: 'unavailable' };
+    }
+    return { status: 200 };
+  }
+
+  /** Alerts the web route started without waiting (tests and shutdown can await them). */
+  private readonly pendingAlerts = new Set<Promise<void>>();
+
+  async settled(): Promise<void> {
+    while (this.pendingAlerts.size) await Promise.all([...this.pendingAlerts]);
+  }
+
+  /**
+   * The one downstream path of both routes: de-duplicate -> store -> alert (or defer it in quiet
+   * hours). `stored` also for a duplicate (nothing written, nothing alerted). The auto-approve
+   * sweep (admin service) picks the record up from the store like any other pending request.
+   */
+  private async accept(
+    input: SignupInput,
+    now: number,
+    awaitNotify: boolean,
+    origin?: 'web',
+  ): Promise<'stored' | 'unavailable'> {
     // Duplicate address already waiting or accepted: answer as success, store and notify nothing.
     // Atomic (mutex + hash-keyed O_EXCL marker in the store), so concurrent posts give one record.
     let rec: SignupRecord;
     try {
-      const r = await this.d.store.createIfNew(val.value);
+      const r = await (origin
+        ? this.d.store.createIfNew(input, { origin })
+        : this.d.store.createIfNew(input));
       if (!r.created) {
         this.d.log?.('signup: duplicate ignored');
-        return { status: 202 };
+        return 'stored';
       }
       rec = r.record;
       count(this.d.counters, 'signup_submitted');
     } catch (e) {
       this.d.log?.(`signup: store failed (${e instanceof StoreError ? e.code : errorClass(e)})`);
-      return { status: 503, error: 'unavailable' };
+      return 'unavailable';
     }
     if (this.d.notifier && isQuiet(now, this.d.quiet ?? null)) {
       // Stored now, alerted when quiet hours end (drainNotifications).
@@ -117,15 +287,25 @@ export class SignupIntake {
         this.d.log?.(`signup: notify defer failed (${errorClass(e)}); kept in memory`);
       }
     } else if (this.d.notifier) {
-      try {
-        await this.d.notifier.notify({ name: rec.name, role: rec.role });
-        await this.d.store.markNotified(rec.id);
-      } catch (e) {
-        // The request is stored; the owner sees it in the admin list. Error class only.
-        this.d.log?.(`signup: notify failed (${errorClass(e)})`);
+      const notifier = this.d.notifier;
+      const send = async () => {
+        try {
+          await notifier.notify({ name: rec.name, role: rec.role });
+          await this.d.store.markNotified(rec.id);
+        } catch (e) {
+          // The request is stored; the owner sees it in the admin list. Error class only.
+          this.d.log?.(`signup: notify failed (${errorClass(e)})`);
+        }
+      };
+      // The web route does not wait for the alert: a new address must not answer measurably
+      // slower than a known one (the network round trip would reveal it). Same alert, same logs.
+      if (awaitNotify) await send();
+      else {
+        const p: Promise<void> = send().finally(() => this.pendingAlerts.delete(p));
+        this.pendingAlerts.add(p);
       }
     }
-    return { status: 202 };
+    return 'stored';
   }
 
   private draining = false;

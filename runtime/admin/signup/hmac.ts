@@ -56,6 +56,25 @@ export class NonceCache {
     this.seen.set(nonce, now + this.ttlMs);
     return true;
   }
+
+  /** Number of recorded entries (expired ones are dropped lazily by `take`). */
+  get size(): number {
+    return this.seen.size;
+  }
+
+  /** Whether the nonce is recorded and not yet expired (does not record it). */
+  has(nonce: string, now: number): boolean {
+    const exp = this.seen.get(nonce);
+    return exp !== undefined && exp > now;
+  }
+
+  /**
+   * Forgets a nonce taken by `take` (BETA-G1 s8: the web route gives a token back when nothing
+   * was stored). Only for a nonce this caller just took; never used by the signed route.
+   */
+  release(nonce: string): void {
+    this.seen.delete(nonce);
+  }
 }
 
 export interface VerifyInput {
