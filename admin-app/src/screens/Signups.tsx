@@ -50,6 +50,9 @@ const rowFocus = (id: string) =>
 /** How long the count announcement waits for the auto-approve status before it is spoken alone. */
 const STATUS_WAIT_MS = 3000;
 
+/** Two spoken sentences in one announcement. */
+const join = (a: string, b: string) => (a ? `${a.replace(/([^.!?…])$/, '$1.')} ${b}` : b);
+
 const N_SLOT = '\uE000';
 const C_SLOT = '\uE001';
 
@@ -164,6 +167,7 @@ export function Signups() {
   const [confirming, setConfirming] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, RowMessage>>({});
   const [announce, setAnnounce] = useState('');
+  const [openStale, setOpenStale] = useState(false);
   const focusId = useRef<string | null | undefined>(undefined);
   const refreshBtn = useRef<HTMLButtonElement>(null);
   const alive = useRef(true);
@@ -180,10 +184,15 @@ export function Signups() {
 
   // A live region only speaks when its text changes: clear it, then set it on the next frame, so
   // the same sentence twice in a row is announced twice.
-  // `spoken` counts announcements and reloads, so a reload that was overtaken stays silent.
+  // `spoken` counts announcements and reloads (only the latest is put in the region). `topic`
+  // changes when an announcement replaces what came before, not when a sentence is added to it,
+  // so an addition never silences a reload's count. `quiet` changes when a pending status result
+  // must stay unspoken: a newer reload, or a deliberate silence.
   const spoken = useRef(0);
+  const topic = useRef(0);
+  const quiet = useRef(0);
   const said = useRef('');
-  const say = (text: string) => {
+  const post = (text: string) => {
     said.current = text;
     const n = ++spoken.current;
     setAnnounce('');
@@ -192,11 +201,13 @@ export function Signups() {
     });
   };
 
-  /** Adds a sentence to the latest announcement instead of replacing it. */
-  const alsoSay = (text: string) => {
-    const before = said.current.replace(/([^.!?…])$/, '$1.');
-    say(before ? `${before} ${text}` : text);
+  const say = (text: string) => {
+    topic.current++;
+    post(text);
   };
+
+  /** Adds a sentence to the latest announcement instead of replacing it. */
+  const alsoSay = (text: string) => post(join(said.current, text));
 
   /**
    * After a deletion on this screen: a request that is gone leaves the open list at once, then the
@@ -214,7 +225,8 @@ export function Signups() {
     const v = await loadOpenSignups(api);
     if (!alive.current || mine !== listTurn.current) return;
     if (!v.ok && (v.error === 'network' || v.error === 'rate_limited') && listRef.current?.ok)
-      return;
+      return setOpenStale(true);
+    setOpenStale(false);
     setList(v);
     setMessages({});
     setConfirming((c) => (v.ok && v.value.some((x) => x.id === c) ? c : null));
@@ -222,7 +234,9 @@ export function Signups() {
 
   const reload = async () => {
     // The status is independent of the list: its failure shows its own message and never blocks it.
-    const turn = ++spoken.current;
+    spoken.current++;
+    const turn = ++topic.current;
+    const run = ++quiet.current;
     said.current = '';
     const mine = ++listTurn.current;
     const status = loadAutoApproveStatus(api).then((st) => {
@@ -231,9 +245,13 @@ export function Signups() {
     });
     const v = await loadOpenSignups(api);
     if (!alive.current || mine !== listTurn.current) return;
+    setOpenStale(false);
     setList(v);
     setMessages({});
     setConfirming(null);
+    const unavailable = t('console.signups.auto.unavailable');
+    /** What was spoken last when the count went out; unset: no count was spoken. */
+    let counted: number | undefined;
     if (v.ok) {
       const c = signupCountView(v.value);
       const count = t(c.key, { count: c.count });
@@ -242,16 +260,22 @@ export function Signups() {
         status,
         new Promise<null>((r) => setTimeout(() => r(null), STATUS_WAIT_MS)),
       ]);
-      if (!alive.current || turn !== spoken.current) return;
-      say(st && !st.ok ? `${count}. ${t('console.signups.auto.unavailable')}` : count);
-      if (st) return;
-      // The status was not waited for: a failure arriving later is shown, so it is also spoken,
-      // unless a newer announcement or reload came first.
-      const after = spoken.current;
-      const late = await status;
-      if (alive.current && !late.ok && after === spoken.current)
-        say(t('console.signups.auto.unavailable'));
+      if (!alive.current || run !== quiet.current) return;
+      if (turn === topic.current) {
+        const line = st && !st.ok ? join(count, unavailable) : count;
+        // A sentence added while this reload was pending (a stale list) stays, after the count.
+        say(said.current ? join(line, said.current) : line);
+        counted = spoken.current;
+        if (st) return;
+      }
     }
+    // The status was not part of the count's announcement: its failure is shown, so it is also
+    // spoken, unless a newer reload (or a deliberate silence) came first. It replaces only the
+    // count; anything newer is kept and this is added to it.
+    const late = await status;
+    if (!alive.current || late.ok || run !== quiet.current) return;
+    if (counted === spoken.current) say(unavailable);
+    else alsoSay(unavailable);
   };
   useEffect(() => {
     alive.current = true;
@@ -321,14 +345,22 @@ export function Signups() {
       // focus: no live announcement then (it would be read twice). Every other outcome is spoken
       // by the live region (the row is gone, or focus is on a button).
       const messageFocused = present && !v.removed && signupRowKind(v.record ?? r) === 'queued';
-      if (messageFocused) {
+      // This answer came in the background: focus moves only when its row is still listed and the
+      // person has not gone elsewhere (focus is on the row, or nowhere because its control went).
+      const at = document.activeElement;
+      const follow =
+        present &&
+        (!at || at === document.body || !!at.closest(`[data-signup-id="${CSS.escape(r.id)}"]`));
+      if (messageFocused && follow) {
         // Silence counts as an announcement: a pending one (e.g. a late status) must not follow.
+        quiet.current++;
+        topic.current++;
         spoken.current++;
         said.current = '';
         setAnnounce('');
       } else say(text);
       if (v.removed) {
-        focusId.current = focusAfterRemoval(ids, r.id);
+        if (follow) focusId.current = focusAfterRemoval(ids, r.id);
         setList((old) =>
           old?.ok ? { ok: true, value: old.value.filter((x) => x.id !== r.id) } : old,
         );
@@ -340,8 +372,10 @@ export function Signups() {
           );
         }
         setMessages((m) => ({ ...m, [r.id]: { key: v.key as MessageKey, ok: v.ok } }));
-        keptId.current = r.id;
-        setKeptTick((n) => n + 1);
+        if (follow) {
+          keptId.current = r.id;
+          setKeptTick((n) => n + 1);
+        }
       }
     } finally {
       if (alive.current) setBusy(null);
@@ -372,6 +406,14 @@ export function Signups() {
         {announce}
       </div>
       <AutoApproveBlock status={autoStatus} />
+      {/* In the page before it has text; empty, it takes no room (styles.css). */}
+      <div role="status" class="notice-slot" data-testid="signups-open-status">
+        {openStale && (
+          <p class="result warn" data-testid="signups-open-stale">
+            {t('console.signups.openStale')}
+          </p>
+        )}
+      </div>
       {!list ? (
         <Loading />
       ) : !list.ok ? (

@@ -181,6 +181,8 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.err.email_failed':
     'החשבון של {name} נוסף, אבל שליחת המייל נכשלה. השתמשו בשליחת המייל שוב.',
   'console.signups.err.not_found': 'הבקשה של {name} כבר לא קיימת.',
+  'console.signups.openStale':
+    'טעינת הבקשות הפתוחות מחדש נכשלה וייתכן שהרשימה לא מעודכנת. אפשר ללחוץ על רענון הבקשות.',
   'console.signups.all.heading': 'בקשות שמורות ומחיקה',
   'console.signups.all.intro':
     'כל הבקשות שעדיין שמורות אצלנו, בכל סטטוס. כאן מוחקים את הבקשה של אדם שביקש זאת.',
@@ -213,6 +215,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
     'לבקשה הזאת כבר נוסף חשבון, והוא נשאר גם אחרי המחיקה. כדי לסיים את הגישה שלו, פתחו את מסך הבודקים ובחרו השבתה.',
   'console.signups.delete.confirm.inFlight':
     'אזהרה: הוספת החשבון של הבקשה הזאת עדיין עשויה להסתיים אחרי המחיקה. בדקו את מסך הבודקים בעוד כמה דקות, ואם החשבון מופיע שם, השביתו אותו.',
+  'console.signups.delete.confirm.noWarning': 'אזהרת החשבון כבר לא רלוונטית לבקשה הזאת.',
   'console.signups.delete.confirm.testers': 'מעבר למסך הבודקים',
   'console.signups.delete.confirm.ok': 'מחיקת הבקשה',
   'console.signups.delete.done': 'בקשה {id}: נמחקה.',

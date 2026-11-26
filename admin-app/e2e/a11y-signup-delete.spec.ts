@@ -474,6 +474,220 @@ for (const lang of ['he', 'en'] as const) {
   });
 }
 
+/** The #127 follow-ups: what is announced, and that a late answer never moves focus. */
+for (const lang of ['he', 'en'] as const) {
+  const word = (en: RegExp, he: RegExp) => (lang === 'he' ? he : en);
+  const stale = word(/may be out of date/, /לא מעודכנת/);
+  const count = word(/2 requests waiting/, /2 בקשות ממתינות/);
+  const noStatus = word(/status is unavailable/, /סטטוס האישור האוטומטי אינו זמין/);
+  const failure = { status: 500, json: { error: 'internal' } };
+  /** A promise and the function that resolves it. */
+  const gate = () => {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    return { held, release };
+  };
+  const openList = (page: Page, rows: () => unknown[]) =>
+    page.route('**/admin-api/signups/open', (r) => r.fulfill({ json: { signups: rows() } }));
+
+  test(`stored (${lang}): Refresh with a stale stored list still announces the open count`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mock(page);
+    await openList(page, () => [row(1, 'alpha'), row(2, 'bravo')]);
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('stored-row')).toHaveCount(3);
+    // The open list answers after the stored list has already failed.
+    m.listStatus = 500;
+    await page.route('**/admin-api/signups/open', async (r) => {
+      await new Promise((done) => setTimeout(done, 500));
+      await r.fulfill({ json: { signups: [row(1, 'alpha'), row(2, 'bravo')] } });
+    });
+    await page.getByTestId('signups-refresh').click();
+    await expect(live(page)).toContainText(stale);
+    await expect(live(page)).toContainText(count);
+    await expect(live(page)).toContainText(stale);
+  });
+
+  for (const [what, answer] of [
+    ['leaves the list', { json: { record: row(2, 'bravo', 'email_sent', true) } }],
+    ['keeps its row', { status: 202, json: { error: 'account_pending' } }],
+  ] as const)
+    test(`stored (${lang}): a late approve of a deleted row (${what}) leaves focus alone`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      await mock(page);
+      let rows = [row(1, 'alpha'), row(2, 'bravo')];
+      await openList(page, () => rows);
+      const approve = gate();
+      await page.route('**/admin-api/signups/*/approve', async (r) => {
+        await approve.held;
+        await r.fulfill(answer);
+      });
+      await open(page, context, baseURL!, lang);
+      await page
+        .locator(`[data-signup-id="${id(2)}"]`)
+        .getByTestId('signup-approve')
+        .click();
+      rows = [row(1, 'alpha')];
+      await del(page, 2).click();
+      await page.getByTestId('delete-ok').click();
+      await expect(page.getByTestId('signup-row')).toHaveCount(1);
+      await expect(del(page, 3)).toBeFocused();
+      // Focus nowhere in particular: a background answer must not claim it.
+      await del(page, 3).evaluate((b: HTMLElement) => b.blur());
+      const answered = page.waitForResponse('**/approve');
+      approve.release();
+      await answered;
+      await page.waitForTimeout(500);
+      expect(await page.evaluate(() => document.activeElement?.tagName)).toBe('BODY');
+      await expect(page.locator(`[data-signup-id="${id(2)}"]`)).toHaveCount(0);
+    });
+
+  test(`stored (${lang}): an approve answered while focus is elsewhere does not move it`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page);
+    await openList(page, () => [row(1, 'alpha'), row(2, 'bravo')]);
+    const approve = gate();
+    await page.route('**/admin-api/signups/*/approve', async (r) => {
+      await approve.held;
+      await r.fulfill({ json: { record: row(1, 'alpha', 'email_sent', true) } });
+    });
+    await open(page, context, baseURL!, lang);
+    await page
+      .locator(`[data-signup-id="${id(1)}"]`)
+      .getByTestId('signup-approve')
+      .click();
+    await page.getByTestId('stored-filter').focus();
+    approve.release();
+    await expect(page.getByTestId('signup-row')).toHaveCount(1);
+    await page.waitForTimeout(300);
+    await expect(page.getByTestId('stored-filter')).toBeFocused();
+  });
+
+  test(`stored (${lang}): a warning that no longer applies is said once, focus stays inside`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page);
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('stored-row')).toHaveCount(3);
+    const reload = gate();
+    await page.route('**/admin-api/signups', async (r) => {
+      await reload.held;
+      await r.fulfill({ json: { signups: [row(3, 'charlie')] } });
+    });
+    await del(page, 3).click();
+    const said = page.getByTestId('delete-dialog-live');
+    await expect(page.getByTestId('delete-warning')).toBeVisible();
+    await expect(said).toHaveText('');
+    // Focus is on the link that goes away with the warning.
+    await page.getByTestId('delete-testers').focus();
+    reload.release();
+    await expect(page.getByTestId('delete-warning')).toHaveCount(0);
+    await expect(said).toHaveText(
+      word(
+        /^The account warning no longer applies to this request\.$/,
+        /^אזהרת החשבון כבר לא רלוונטית לבקשה הזאת\.$/,
+      ),
+    );
+    await expect(page.getByTestId('delete-cancel')).toBeFocused();
+  });
+
+  test(`stored (${lang}): no warning at all: nothing is said about one`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mock(page);
+    await open(page, context, baseURL!, lang);
+    await del(page, 1).click();
+    await expect.poll(() => m.calls.filter((c) => c === 'GET').length).toBe(2);
+    await page.waitForTimeout(300);
+    await expect(page.getByTestId('delete-dialog-live')).toHaveText('');
+  });
+
+  test(`stored (${lang}): the open list says when it could not be reloaded, until it is`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page);
+    let down = false;
+    await page.route('**/admin-api/signups/open', (r) =>
+      r.fulfill(down ? failure : { json: { signups: [row(1, 'alpha'), row(2, 'bravo')] } }),
+    );
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('signup-row')).toHaveCount(2);
+    // The live region is in the page before it has anything to say.
+    const region = page.getByTestId('signups-open-status');
+    await expect(region).toHaveAttribute('role', 'status');
+    await expect(region).toHaveText('');
+    down = true;
+    await del(page, 1).click();
+    await page.getByTestId('delete-ok').click();
+    await expect(region).toContainText(stale);
+    await expect(page.getByTestId('signups-open-stale')).toBeVisible();
+    await expect(page.getByTestId('signup-row')).toHaveCount(1);
+    await expect(del(page, 2)).toBeFocused();
+    down = false;
+    await page.getByTestId('signups-refresh').click();
+    await expect(page.getByTestId('signup-row')).toHaveCount(2);
+    await expect(region).toHaveText('');
+  });
+
+  test(`stored (${lang}): a late status failure is announced after a newer announcement`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page);
+    await openList(page, () => [row(1, 'alpha'), row(2, 'bravo')]);
+    const status = gate();
+    await page.route('**/admin-api/signups/auto-approve', async (r) => {
+      await status.held;
+      await r.fulfill(failure);
+    });
+    await context.addCookies([{ name: 'tbi_test_user', value: 'e2e-owner', url: baseURL! }]);
+    await context.addInitScript((l) => localStorage.setItem('tbi-admin.locale', l), lang);
+    await page.goto('/#/signups');
+    // The count is spoken without the status once the wait is over.
+    await expect(live(page)).toContainText(count, { timeout: 6000 });
+    await page.getByTestId('stored-toggle').click();
+    await expect(live(page)).toContainText(/3.*3/);
+    await page.getByTestId('stored-filter').fill('bravo');
+    await expect(live(page)).toContainText(/1.*3/);
+    status.release();
+    await expect(live(page)).toContainText(noStatus);
+    await expect(live(page)).toContainText(/1.*3/);
+    await expect(page.getByTestId('stored-filter')).toBeFocused();
+  });
+
+  test(`stored (${lang}): a status failure is announced also when the open list failed`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page);
+    await page.route('**/admin-api/signups/open', (r) => r.fulfill(failure));
+    await page.route('**/admin-api/signups/auto-approve', async (r) => {
+      await new Promise((done) => setTimeout(done, 300));
+      await r.fulfill(failure);
+    });
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('signups-problem')).toBeVisible();
+    await expect(live(page)).toContainText(noStatus);
+  });
+}
+
 test.describe('stored: the real routes and store', () => {
   test.beforeEach(async ({ request }) => {
     await request.post(`${FAKE}/__test/reset-admin`);

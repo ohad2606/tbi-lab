@@ -67,6 +67,12 @@ function DeleteDialog({
   const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const [spoken, setSpoken] = useState('');
+  // A reload can remove the focused control (the Testers link goes with its warning): focus then
+  // returns to Cancel, inside the dialog.
+  useLayoutEffect(() => {
+    if (dialog.current?.open && !dialog.current.contains(document.activeElement))
+      cancel.current?.focus();
+  });
   useEffect(() => {
     setSpoken('');
     const frame = requestAnimationFrame(() => setSpoken(notice));
@@ -170,6 +176,8 @@ export function StoredSignups({
   const [stale, setStale] = useState(false);
   const [query, setQuery] = useState('');
   const [confirming, setConfirming] = useState<SignupRecord | null>(null);
+  /** Whether the open confirmation has shown an account warning. */
+  const warned = useRef(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const listRef = useRef(list);
@@ -275,6 +283,7 @@ export function StoredSignups({
   /** Opens the confirmation and reloads the list, so its warnings are current. */
   const ask = (r: SignupRecord) => {
     if (inFlight.current) return;
+    warned.current = false;
     setConfirming(r);
     void load();
   };
@@ -351,10 +360,13 @@ export function StoredSignups({
   const target =
     confirming && ((list?.ok && list.value.find((x) => x.id === confirming.id)) || confirming);
   const warning = target && deleteAccountWarning(target, approving);
+  if (warning) warned.current = true;
   const notice = [
     warning && confirming && warning !== deleteAccountWarning(confirming, approving)
       ? t(`console.signups.delete.confirm.${warning}`)
       : '',
+    // A warning that was on screen and is gone is said once; no warning at all says nothing.
+    confirming && !warning && warned.current ? t('console.signups.delete.confirm.noWarning') : '',
     stale ? t('console.signups.all.stale') : '',
   ]
     .filter(Boolean)

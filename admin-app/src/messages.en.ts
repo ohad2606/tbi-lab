@@ -189,6 +189,8 @@ export const consoleEn = {
   'console.signups.err.email_failed':
     'The account for {name} was added, but the email could not be sent. Use Resend email.',
   'console.signups.err.not_found': 'The request of {name} no longer exists.',
+  'console.signups.openStale':
+    'The open requests could not be reloaded and may be out of date. Use Refresh requests.',
   'console.signups.all.heading': 'Stored requests and deletion',
   'console.signups.all.intro':
     "Every request we still hold, in any status. Use it to delete a person's request when they ask.",
@@ -221,6 +223,8 @@ export const consoleEn = {
     'An account was added for this request, and it stays after the deletion. To end its access, open Testers and use Disable.',
   'console.signups.delete.confirm.inFlight':
     'Warning: an account add for this request may still complete after the deletion. Check the Testers screen after a few minutes and use Disable if the account appears.',
+  'console.signups.delete.confirm.noWarning':
+    'The account warning no longer applies to this request.',
   'console.signups.delete.confirm.testers': 'Open Testers',
   'console.signups.delete.confirm.ok': 'Delete request',
   'console.signups.delete.done': 'Request {id}: deleted.',

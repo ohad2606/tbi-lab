@@ -542,6 +542,11 @@ fieldset {
   font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   font-size: 0.9rem;
 }
+/* An empty live region stays in the accessibility tree without adding a gap to its stack. */
+.notice-slot:empty {
+  position: absolute;
+}
+
 .result.ok {
   color: var(--ok);
 }
