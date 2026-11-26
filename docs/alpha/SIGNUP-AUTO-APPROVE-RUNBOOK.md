@@ -97,12 +97,17 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
   unfinished approvals to retry is lost. The new cut-off depends on the process:
   - A running process that has set its cut-off, and has had no pause, missing owner or unsafe directory since,
     resets it at the next sweep, to now or to a later `TBI_SIGNUP_AUTO_SINCE`. A past value is **not** applied again.
-  - Lost state is never a first run: if this process saw a pause, a missing owner principal, an unsafe directory
-    or an unreadable state file, or had read the file before, or any request already carries an auto-approve mark
-    (left by an earlier run, also across a restart), the log says `auto-approve state missing, cut-off = now` and
-    the cut-off is now (or a later `TBI_SIGNUP_AUTO_SINCE`): a past value is **not** applied, and requests that
-    arrived before it stay for you. Only a true first run (no file, no mark on any request) applies a past
-    `TBI_SIGNUP_AUTO_SINCE`.
+  - In other cases lost state is not treated as a first run when there is evidence of an earlier run: this process
+    saw a pause, a missing owner principal, an unsafe directory or an unreadable state file, or had read the file
+    before; or the marker file `auto-approve.marker` is in the directory (empty, written on every paused or
+    owner-not-recorded sweep and with the first stored cut-off; kept across restarts; an error looking for it counts
+    as present); or a request already carries an auto-approve mark. The log then says
+    `auto-approve state missing, cut-off = now` and the cut-off is now (or a later `TBI_SIGNUP_AUTO_SINCE`): a past
+    value is **not** applied, and requests that arrived before it stay for you. Leave the marker file in place.
+  - Limits: with none of that evidence the sweep is a first run again and a past `TBI_SIGNUP_AUTO_SINCE` **is**
+    applied. This is the case after a restart if the whole state directory was deleted (or the state file and the
+    marker, with no marked request), or if the earlier run only ever found the directory unsafe (nothing is written
+    into an unsafe directory), or if it ran only the previous release (no marker) and approved nothing.
   - So before you delete or replace the state file: create the pause file and wait for the `auto-approve paused` line,
     remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in, change the file, run `sudo systemctl daemon-reload`, restart,
     wait for a **new** `auto-approve paused` line, and only then remove the pause file.
@@ -123,7 +128,7 @@ Alert on (owner action needed or capacity reached):
 | `auto-approve daily cap reached (N); the rest stay pending` | Today's cap is used up. The rest wait for tomorrow or for you; a restart or resume before then leaves them all for you (manual). If this happens often, review the cap (pending requests are purged after 90 days). |
 | `auto-approve paused` / `auto-approve resumed` | The kill switch changed. Check that it was you. |
 | `auto-approve pause check failed (<ERRNO>); treated as paused` | The directory cannot be read. Check the owner and mode. |
-| `auto-approve state dir unsafe (<reason>); manual only` | The owner, mode, symlink or parent of the directory is wrong. It resumes by itself once fixed, after a cut-off reset: requests that arrived before the first approving sweep after the fix stay for you (manual). With no state file then, the cut-off is now (`state missing, cut-off = now`), never a past `TBI_SIGNUP_AUTO_SINCE`. |
+| `auto-approve state dir unsafe (<reason>); manual only` | The owner, mode, symlink or parent of the directory is wrong. It resumes by itself once fixed, after a cut-off reset: requests that arrived before the first approving sweep after the fix stay for you (manual). With no state file then, the same process sets the cut-off to now (`state missing, cut-off = now`); after a restart see the limits under the state file above. |
 | `auto-approve not started (state dir unsafe: <reason>); manual only` | Same problem at start. Fix it, then restart. |
 | `auto-approve counter unreadable (<class>); treated as cap reached` | The state file is corrupt, or (`future_day`) the clock went back. Inspect it before you remove it (removing it resets today's count and the cut-off); create the pause file first and back the file up (`cp -p`) before any removal. |
 | `auto-approve retry limit reached (N today); the rest wait` | The account helper keeps failing. Check the helper. |

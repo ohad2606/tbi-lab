@@ -281,7 +281,9 @@ export class FunnelCounters implements FunnelSink {
         left < FUNNEL_LOCK_RETRY_MS
       )
         break;
-      await new Promise<void>((r) => setTimeout(r, FUNNEL_LOCK_RETRY_MS).unref?.());
+      // Deliberately ref'd (bounded by the deadline): at shutdown nothing else may keep the
+      // process alive, and an unref'd wait would let Node exit before the write or the log line.
+      await new Promise<void>((r) => setTimeout(r, FUNNEL_LOCK_RETRY_MS));
     }
     // Other error classes were already logged by the write itself (throttled, class only).
     if (this.lastFailure !== 'lock_busy') return;
@@ -394,7 +396,11 @@ export class FunnelCounters implements FunnelSink {
     }
   }
 
-  /** O_EXCL lock file; a stale one (crashed writer) is removed once. False = busy. */
+  /**
+   * O_EXCL lock file; a stale one (crashed writer) is removed once. False = busy. Known race (not
+   * fixed): stat then unlink is not atomic, so two writers taking over the same stale lock can
+   * remove each other's fresh one and both write (counts may be lost; indicative numbers only).
+   */
   private async lock(): Promise<boolean> {
     const p = join(this.dir, FUNNEL_LOCK);
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -457,11 +463,13 @@ export class FunnelCounters implements FunnelSink {
   }
 
   /**
-   * The written counts (after writing what is pending). A missing file is empty; an unreadable
-   * one throws `corrupt` (it is moved aside by the next write, not here).
+   * The written counts, after ONE attempt to write what is pending (a busy lock is not waited
+   * for: those counts stay in memory, retried later, and are not in the answer). A missing file
+   * is empty; an unreadable one throws `corrupt` (moved aside by the next write, not here).
    */
   async snapshot(): Promise<FunnelSnapshot> {
-    await this.flush();
+    if (this.pending.size > 0) this.schedule(true);
+    await this.chain;
     let text: string;
     try {
       text = await readFile(this.file, 'utf8');

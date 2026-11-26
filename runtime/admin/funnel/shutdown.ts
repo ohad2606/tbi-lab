@@ -16,12 +16,16 @@ export const INTAKE_CLOSE_MS = 1_000;
 /** Admin: the flush after the drain (finished or timed out) gets at most this long. */
 export const ADMIN_FLUSH_MS = 1_000;
 
-/** Resolves when `p` settles (either way) or after `ms`, whichever is first. Never rejects. */
-export function within(p: unknown, ms: number): Promise<void> {
+/**
+ * Resolves when `p` settles (either way) or after `ms`, whichever is first. Never rejects. The
+ * deadline timer is cleared on settle; with `keepAlive` (default) it keeps the process alive until
+ * then, so the steps after it run even when nothing else holds the event loop.
+ */
+export function within(p: unknown, ms: number, keepAlive = true): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const t = new Promise<void>((r) => {
     timer = setTimeout(r, ms);
-    timer.unref?.();
+    if (!keepAlive) timer.unref?.();
   });
   return Promise.race([Promise.resolve(p).then(noop, noop), t]).finally(() => clearTimeout(timer));
 }
@@ -58,6 +62,7 @@ export async function drainThenFlush(
   counters: Flushable | null | undefined,
   flushMs: number = ADMIN_FLUSH_MS,
 ): Promise<void> {
-  await within(drain(), drainMs);
+  // Counters off: the drain deadline stays unref'd, as before.
+  await within(drain(), drainMs, !!counters);
   if (counters) await within(counters.flush(flushMs), flushMs);
 }

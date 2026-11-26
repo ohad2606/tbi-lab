@@ -40,8 +40,14 @@
  *                  the next sweep; the daily count is never lowered by it. Lost state is never a
  *                  first run: once this process saw a paused / no_owner / unsafe-dir sweep or an
  *                  unreadable state, or the state file vanished after it had one, or any record
- *                  carries `autoApprovedAt` (an earlier run left it; survives a restart), a missing
- *                  state file gets max(now, TBI_SIGNUP_AUTO_SINCE) ("state missing, cut-off = now").
+ *                  carries `autoApprovedAt`, or `<state>/auto-approve.marker` exists (both survive
+ *                  a restart), a missing state file gets max(now, TBI_SIGNUP_AUTO_SINCE) ("state
+ *                  missing, cut-off = now"). The empty marker is written (only into a dir that
+ *                  passed the check) on every paused / no_owner sweep and with the first persisted
+ *                  cut-off; an error looking for it counts as present. Limits: a deleted state
+ *                  dir (or state file and marker, with no marked record), and a run that only ever
+ *                  saw an unsafe dir (nothing is written there), look like a first run after a
+ *                  restart.
  *   Kill switch    while `<state>/auto-approve.paused` exists (any entry: file, dir, symlink, even
  *                  dangling; lstat, never followed) nothing is auto-approved; every check error
  *                  other than ENOENT counts as paused (fail closed). Checked before every claim
@@ -75,6 +81,8 @@ import type { PendingStore, SignupRecord } from './store.js';
 export const AUTO_PAUSE_FILE = 'auto-approve.paused';
 /** Day count, retries, claim set and cut-off (admin-owned state). */
 export const AUTO_STATE_FILE = 'auto-approve.state.json';
+/** Empty file: "an earlier run used this dir". Must not end in `.mark` / `.tmp` (store purge). */
+export const AUTO_MARKER_FILE = 'auto-approve.marker';
 export const AUTO_CAP_MAX = 1000;
 export const AUTO_APPROVE_INTERVAL_MS = 60_000;
 export const AUTO_TZ = 'Asia/Jerusalem';
@@ -534,8 +542,15 @@ export class AutoApprover {
             : e.message;
       }
     let cutoff: number | null = null;
+    // As confirm() will judge it: lost state is no first run (also not while paused).
     const firstRun =
-      state && this.unconfirmed && !this.sawInactive && !state.since && state.active === undefined;
+      state &&
+      this.unconfirmed &&
+      !state.since &&
+      state.active === undefined &&
+      !pause.paused &&
+      !this.hadState &&
+      !(await this.lostState());
     if (state && !firstRun && (this.unconfirmed || state.active !== true || !state.since)) {
       // The stored cut-off is replaced by the next approving sweep: neither it nor a backlog
       // counted against it is shown (neutral `unknown`, reason reset_pending).
@@ -583,6 +598,8 @@ export class AutoApprover {
     this.unconfirmed = true;
     this.sawInactive = true;
     return exclusive(this.d.dir, async () => {
+      // First, so that it is there even when the state cannot be read or written.
+      await this.writeMarker();
       const s = await this.readState(this.today());
       if (s.active !== false) await this.writeState({ ...s, active: false });
     });
@@ -603,7 +620,7 @@ export class AutoApprover {
       const env = this.d.since;
       let firstRun = this.unconfirmed && s.since === undefined && s.active === undefined;
       // Lost state (not a true first run): fail closed, the cut-off is now (or a later SINCE).
-      if (firstRun && (this.sawInactive || (await this.earlierRunInStore()))) {
+      if (firstRun && (await this.lostState())) {
         firstRun = false;
         this.log('signup: auto-approve state missing, cut-off = now');
       }
@@ -612,6 +629,8 @@ export class AutoApprover {
         : Math.max(this.now(), s.since ? Date.parse(s.since) : -Infinity, env ?? -Infinity);
       try {
         await this.writeState({ ...s, since: new Date(since).toISOString(), active: true });
+        // After the state, so a failed first write stays a first run; nothing is claimed without it.
+        await this.writeMarker();
       } catch (e) {
         throw new ResetFailed(errnoOf(e));
       }
@@ -622,6 +641,29 @@ export class AutoApprover {
           : 'signup: auto-approve cut-off reset (only requests created from now on)',
       );
     });
+  }
+
+  /** Creates the marker when no entry of that name exists (the caller has checked the dir). */
+  private async writeMarker(): Promise<void> {
+    try {
+      const fh = await open(join(this.d.dir, AUTO_MARKER_FILE), 'wx', 0o600);
+      await fh.close();
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    }
+  }
+
+  /** Whether a missing cut-off means lost state rather than a first run. Read-only. */
+  private async lostState(): Promise<boolean> {
+    if (this.sawInactive) return true;
+    try {
+      await lstatAsync(join(this.d.dir, AUTO_MARKER_FILE));
+      return true;
+    } catch (e) {
+      // Any error but "no such entry" counts as present (fail closed).
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return true;
+    }
+    return this.earlierRunInStore();
   }
 
   /**

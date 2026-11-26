@@ -207,3 +207,18 @@ describe('flush under a busy lock', () => {
     expect(oldParse(text)).toEqual(days(dir));
   });
 });
+
+describe('snapshot under a busy lock', () => {
+  it('answers at once without waiting for the lock and logs no give-up; the count is kept', async () => {
+    const { c, dir, logs } = await counters();
+    writeFileSync(join(dir, FUNNEL_LOCK), '');
+    c.increment('signup_submitted');
+    const start = performance.now();
+    expect(await c.snapshot()).toEqual({ v: 1, days: {} });
+    expect(performance.now() - start).toBeLessThan(500);
+    expect(logs.filter((l) => /gave up/.test(l))).toEqual([]);
+    unlinkSync(join(dir, FUNNEL_LOCK));
+    await c.flush();
+    expect(total(dir, 'signup_submitted')).toBe(1);
+  });
+});

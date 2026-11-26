@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  AUTO_MARKER_FILE,
   AUTO_STATE_FILE,
   AUTO_PAUSE_FILE,
   AUTO_RETRIES_PER_SWEEP,
@@ -1761,5 +1762,78 @@ describe('before-enable (BACKLOG 12/G1): lost state is never a first run; pause 
     expect(s.retries).toBe(0);
     expect(Object.values(s.claims)[0]!.attempts).toBe(1);
     expect(r.added.length).toBe(addsBefore);
+  });
+});
+
+describe('restart gap: the marker file makes a lost state visible to a new process', () => {
+  const lose = (r: Rig) => rmSync(join(r.dir, AUTO_STATE_FILE));
+  const lostLines = (r: Rig) => r.logs.filter((l) => /state missing, cut-off = now/.test(l));
+
+  for (const [name, first] of [
+    ['paused', {}],
+    ['no_owner', { noOwner: true }],
+    ['a recorded cut-off', {}],
+  ] as const) {
+    it(`earlier run: ${name}, nothing approved, state lost, restart: a past SINCE is not applied`, async () => {
+      const r = await rig();
+      if (name === 'paused') writeFileSync(join(r.dir, AUTO_PAUSE_FILE), '');
+      await r.auto(first).sweep();
+      expect(lstatSync(join(r.dir, AUTO_MARKER_FILE)).mode & 0o777).toBe(0o600);
+      rmSync(join(r.dir, AUTO_PAUSE_FILE), { force: true });
+      lose(r);
+      await createN(r, 1);
+      const next = r.auto();
+      // status() says what the next sweep will do, and writes nothing.
+      const before = readdirSync(r.dir).sort();
+      expect(await next.status()).toMatchObject({
+        cutoff: 'unknown',
+        waitingBacklog: 'unknown',
+        unknownReasons: { cutoff: 'reset_pending' },
+      });
+      expect(readdirSync(r.dir).sort()).toEqual(before);
+      expect(await next.sweep()).toEqual({ claimed: 0, attempted: 0 });
+      expect(lostLines(r)).toHaveLength(1);
+      expect(r.added).toEqual([]);
+    });
+  }
+
+  it('status(): marked records and no state file or marker: reset pending, not the past SINCE', async () => {
+    const r = await rig();
+    const [id] = await createN(r, 1);
+    await r.store.update(id!, { autoApprovedAt: new Date(NOON_IL).toISOString() });
+    expect(await r.auto().status()).toMatchObject({
+      cutoff: 'unknown',
+      waitingBacklog: 'unknown',
+      unknownReasons: { cutoff: 'reset_pending' },
+    });
+    expect(existsSync(join(r.dir, AUTO_MARKER_FILE))).toBe(false);
+  });
+
+  it('a marker entry that is not a plain file (dangling symlink) still counts: fail closed', async () => {
+    const r = await rig();
+    symlinkSync(join(r.dir, 'nowhere'), join(r.dir, AUTO_MARKER_FILE));
+    await createN(r, 1);
+    expect(await r.auto().sweep()).toEqual({ claimed: 0, attempted: 0 });
+    expect(lostLines(r)).toHaveLength(1);
+    expect(existsSync(join(r.dir, 'nowhere'))).toBe(false);
+  });
+
+  it('nothing is written into an unsafe state dir', async () => {
+    const r = await rig();
+    chmodSync(r.dir, 0o777);
+    const before = readdirSync(r.dir).sort();
+    expect((await r.auto().sweep()).stopped).toBe('state_dir_unsafe');
+    expect(readdirSync(r.dir).sort()).toEqual(before);
+  });
+
+  it('rollback: the store listing and purge (unchanged from the previous release) leave the marker', async () => {
+    const r = await rig();
+    await createN(r, 1);
+    await r.auto().sweep();
+    r.clock.t += 400 * DAY_MS;
+    await r.store.purge();
+    expect(await r.store.list()).toEqual([]);
+    expect(existsSync(join(r.dir, AUTO_MARKER_FILE))).toBe(true);
+    expect(await autoStateDirCheck(r.dir)).toBeNull();
   });
 });
