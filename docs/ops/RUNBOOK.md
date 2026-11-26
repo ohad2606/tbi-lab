@@ -74,7 +74,9 @@ Sign-up shutdown (funnel counters on, `TBI_FUNNEL_COUNTERS=1`): on SIGTERM the i
 counters, under one 1.5 s deadline (a hanging close is given up after 1 s); the admin service flushes after its
 drain (at most 5 s, unchanged) has finished or timed out, at most 1 s more. A busy counter lock is retried within
 that bound and never removed unless stale; `funnel: flush gave up (lock_busy), N not written` means N counts were
-lost. Counters off: shutdown is unchanged. Auto-approve after a lost state file: when there is evidence of an
+lost. Only a busy lock logs that count: another failure logs at most a throttled `funnel: <operation> (<error class>)`
+line without it, and a flush that hangs is abandoned at the deadline with no line. So the absence of the line does
+not prove that nothing was lost. Counters off: shutdown is unchanged. Auto-approve after a lost state file: when there is evidence of an
 earlier run (memory, `auto-approve.marker` or a marked request) it logs `auto-approve state missing, cut-off = now`;
 a deleted state directory is not detected (limits: docs/alpha/SIGNUP-AUTO-APPROVE-RUNBOOK.md).
 
