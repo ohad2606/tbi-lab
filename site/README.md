@@ -30,8 +30,11 @@ Deployment is an owner decision and has not been done.
 While `SIGNUP_PAGE_ENABLED` (content.mjs) is `false`, `/he/signup/`, `/en/signup/` and `assets/signup.mjs` are not
 built at all and every other page is byte-identical to the site without the sign-up work (checked against co/main
 hashes in `tests/signup-review-fixes.test.mjs`); the home CTA keeps `APPLY_URL`. `node site/build.mjs --signup-preview`
-(e2e and local preview only, never for publishing) builds the page anyway, `noindex` and linked from nowhere.
-Flipping the flag builds the page, adds the nav link, points the CTAs at the page and drops noindex. The page waits
+(e2e and local preview only, never for publishing) builds the page anyway, linked from nowhere.
+Flipping the flag builds the page, adds the nav link, points the CTAs at the page and switches the privacy text to
+the own-form wording (draft, lawyer review required). `SITE_SIGNUP_ENABLED=1 node site/build.mjs <dir>` builds that
+variant for checks only. The sign-up pages are `noindex` in both modes while `SIGNUP_NOINDEX` (content.mjs) is
+`true`; it is set to `false` on the public launch day only. The page waits
 the server's `minFill` after a token arrives before posting (`tests/signup-contract.test.mjs` runs the real client
 against the real intake). `SIGNUP_API_BASE` (default `/signup`, same origin) is the intake base: the page
 calls `GET <base>/form-token` and `POST <base>/web`. The web server must proxy those two paths (see

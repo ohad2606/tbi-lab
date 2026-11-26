@@ -19,9 +19,14 @@ export const APPLY_URL = 'https://forms.gle/iSfCbg4BwWF7HqDCA';
  * Own sign-up page (BETA-G1 s9). While the flag is false the page and its script are not built at all (only the
  * e2e/preview build `--signup-preview` adds them, noindex and unlinked). The owner flips it when the intake endpoint is
  * live; then the page is built, the nav link appears, the home/alpha CTAs point to the page instead of APPLY_URL, and
- * noindex is dropped.
+ * the privacy page switches to its own-form text. The flag does not touch noindex (SIGNUP_NOINDEX).
  */
 export const SIGNUP_PAGE_ENABLED = false;
+/**
+ * DEC-07: the sign-up pages carry `noindex` whatever SIGNUP_PAGE_ENABLED says. Set to false on the public launch day
+ * (15.12) only, never as part of the flip.
+ */
+export const SIGNUP_NOINDEX = true;
 /** Base of the intake routes: GET <base>/form-token, POST <base>/web. Relative = same origin (proxied by the web server). */
 export const SIGNUP_API_BASE = '/signup';
 /** Stable values sent to the server (admin reads these); the visible labels live in each language below, same order. */
@@ -314,6 +319,11 @@ const en = {
             'Fill in the sign-up form with the button below. It is hosted on Google Forms, outside this site.',
             'Applying does not give access. Approved applicants are notified by email.',
           ],
+          /** Used instead of pOpen when the own sign-up page is enabled (SIGNUP_PAGE_ENABLED). */
+          pOpenOwn: [
+            'Fill in the sign-up form on this site with the button below.',
+            'Applying does not give access. Approved applicants are notified by email.',
+          ],
         },
         {
           id: 'tester-sign-in',
@@ -374,12 +384,24 @@ const en = {
           p: [
             'This website collects no personal data. It sets no cookies, uses no analytics or advertising trackers, and loads no third-party scripts, fonts or images.',
           ],
+          /** Used instead of p when the own sign-up page is enabled. Draft, lawyer review required. */
+          pOwn: [
+            'This website sets no cookies, uses no analytics or advertising trackers, and loads no third-party scripts, fonts or images.',
+            'We ask for personal details on this website in one place: the sign-up form. When you open the sign-up page or send the form, we also briefly use your network address to limit abuse. What we collect and how we use it is described below, under “Signing up for the Alpha”.',
+          ],
         },
         {
           id: 'signup',
           h: 'Signing up for the Alpha',
           p: [
             'To apply you fill in a form hosted on Google Forms. TBI collects the details in the form to review your request, give you access to the Alpha and update you about it. The form is run by Google and is also subject to Google’s own terms.',
+            'We will not sell your details or pass them on to others.',
+          ],
+          /** Used instead of p when the own sign-up page is enabled (SIGNUP_PAGE_ENABLED). Draft, lawyer review required. */
+          pOwn: [
+            'To apply, you fill in the sign-up form on this website. We collect your name, email address, role, the language of the page, your answer to “How did you hear about us?” (optional), and your confirmation that you have read this notice. The details are stored on our own server. We use them only to review your request and to send you the email about it.',
+            'The sign-up form does not use cookies, analytics or advertising trackers, and loads no third-party scripts. Your browser sends the form directly to us. To limit abuse, we briefly use your network address to count requests. We keep that count in memory only and do not store it with your request.',
+            'We use two service providers to run the process. When a request arrives, we send ourselves a [[Telegram]] message with your name and role only. If we approve your request, we send you an email through [[Resend]]. Those providers handle the data they receive under their own terms.',
             'We will not sell your details or pass them on to others.',
           ],
         },
@@ -656,6 +678,11 @@ const he = {
             'ממלאים את טופס ההרשמה בכפתור שלמטה. הטופס מנוהל ב-Google Forms, מחוץ לאתר הזה.',
             'הגשת מועמדות אינה מקנה גישה. מי שיאושר יקבל הודעה במייל.',
           ],
+          /** Used instead of pOpen when the own sign-up page is enabled. */
+          pOpenOwn: [
+            'ממלאים את טופס ההרשמה באתר הזה בכפתור שלמטה.',
+            'הגשת מועמדות אינה מקנה גישה. מי שיאושר יקבל הודעה במייל.',
+          ],
         },
         {
           id: 'tester-sign-in',
@@ -712,12 +739,24 @@ const he = {
           p: [
             'האתר הזה לא אוסף מידע אישי. הוא לא מציב עוגיות, לא משתמש בכלי ניתוח או בעוקבי פרסום, ולא טוען סקריפטים, גופנים או תמונות מצדדים שלישיים.',
           ],
+          /** Used instead of p when the own sign-up page is enabled. Draft, lawyer review required. */
+          pOwn: [
+            'האתר הזה לא מציב עוגיות, לא משתמש בכלי ניתוח או בעוקבי פרסום, ולא טוען סקריפטים, גופנים או תמונות מצדדים שלישיים.',
+            'אנחנו מבקשים פרטים אישיים באתר במקום אחד: טופס ההרשמה. כשפותחים את דף ההרשמה או שולחים את הטופס, אנחנו משתמשים לזמן קצר גם בכתובת הרשת שלכם כדי להגביל ניצול לרעה. מה אנחנו אוספים ואיך אנחנו משתמשים בזה מפורט בהמשך, בסעיף "הרשמה לאלפא".',
+          ],
         },
         {
           id: 'signup',
           h: 'הרשמה לאלפא',
           p: [
             'להגשת מועמדות ממלאים טופס שמנוהל ב-Google Forms. TBI אוספת את הפרטים בטופס כדי לבחון את הבקשה, לתת גישה לאלפא ולעדכן אותך לגביה. הטופס מופעל על ידי גוגל וכפוף גם לתנאים של גוגל.',
+            'לא נמכור את הפרטים ולא נעביר אותם לאחרים.',
+          ],
+          /** Used instead of p when the own sign-up page is enabled. Draft, lawyer review required. */
+          pOwn: [
+            'להגשת מועמדות ממלאים את טופס ההרשמה באתר הזה. אנחנו אוספים את השם, כתובת האימייל, התפקיד, שפת הדף, התשובה לשאלה "איך הגעת אלינו?" (לא חובה) ואת האישור שקראתם את ההודעה הזאת. הפרטים נשמרים בשרת שלנו. אנחנו משתמשים בהם רק כדי לבחון את הבקשה ולשלוח לכם את המייל בעניינה.',
+            'בטופס ההרשמה אין עוגיות, אין כלי ניתוח או מעקב פרסומי, ואין סקריפטים של צד שלישי. הדפדפן שולח את הטופס ישירות אלינו. כדי להגביל ניצול לרעה אנחנו משתמשים לזמן קצר בכתובת הרשת שלכם כדי לספור בקשות. הספירה נשמרת בזיכרון בלבד ואינה נשמרת יחד עם הבקשה.',
+            'אנחנו נעזרים בשני נותני שירות להפעלת התהליך. כשמגיעה בקשה אנחנו שולחים לעצמנו הודעה ב-[[Telegram]] עם השם והתפקיד בלבד. אם נאשר את הבקשה, נשלח לכם מייל באמצעות [[Resend]]. נותני השירות האלה מטפלים במידע שהם מקבלים לפי התנאים שלהם.',
             'לא נמכור את הפרטים ולא נעביר אותם לאחרים.',
           ],
         },

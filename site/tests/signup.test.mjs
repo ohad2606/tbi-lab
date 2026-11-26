@@ -3,7 +3,13 @@ import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildSite } from '../build.mjs';
-import { content, SIGNUP_PAGE_ENABLED, SIGNUP_API_BASE, SIGNUP_ROLE_VALUES } from '../content.mjs';
+import {
+  content,
+  SIGNUP_PAGE_ENABLED,
+  SIGNUP_NOINDEX,
+  SIGNUP_API_BASE,
+  SIGNUP_ROLE_VALUES,
+} from '../content.mjs';
 import { validate, createTokenStore, createSubmitter, MSG, TOKEN_MARGIN_MS } from '../signup.mjs';
 
 let out;
@@ -32,15 +38,32 @@ describe('sign-up page build', () => {
       expect(h).not.toMatch(/\son[a-z]+=|\sstyle=/i);
     },
   );
-  it('is not linked while disabled, linked and indexable when enabled', () => {
+  it('is not linked while disabled, linked when enabled', () => {
     for (const l of ['he', 'en']) {
       for (const p of ['', 'product/', 'alpha/', 'faq/', 'privacy/'])
         expect(readFileSync(join(out, l, p, 'index.html'), 'utf8')).not.toContain(`/${l}/signup/`);
       const home = readFileSync(join(outOn, l, 'index.html'), 'utf8');
       expect(home).toContain(`href="/${l}/signup/"`);
       expect(home).not.toContain('forms.gle');
-      expect(page(outOn, l)).not.toContain('noindex');
     }
+  });
+  // Review finding 4 (DEC-07): noindex does not depend on the flag. SIGNUP_NOINDEX goes false on 15.12 only; that
+  // commit updates the first test here.
+  it('noindex has its own switch, on by default', () => {
+    expect(SIGNUP_NOINDEX).toBe(true);
+  });
+  it.each(['he', 'en'])('%s: the enabled page is still noindex, and only that page', (l) => {
+    expect(page(outOn, l)).toContain('<meta name="robots" content="noindex">');
+    for (const p of ['', 'product/', 'alpha/', 'faq/', 'privacy/', 'accessibility/'])
+      expect(readFileSync(join(outOn, l, p, 'index.html'), 'utf8')).not.toContain('noindex');
+  });
+  it.each([true, false])('signupNoindex=false removes it (signupEnabled=%s)', (enabled) => {
+    const o = buildSite(mkdtempSync(join(tmpdir(), 'tbi-su-idx-')), {
+      signupEnabled: enabled,
+      signupPreview: true,
+      signupNoindex: false,
+    });
+    for (const l of ['he', 'en']) expect(page(o, l)).not.toContain('noindex');
   });
   it.each(['he', 'en'])('%s form fields match the server contract', (l) => {
     const h = page(out, l);

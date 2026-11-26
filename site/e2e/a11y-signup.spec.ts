@@ -60,12 +60,13 @@ async function fillByKeyboard(page: Page) {
 
 for (const { lang, dir } of LANGS) {
   test.describe(lang, () => {
-    test('axe 0 violations: empty form, error state, success; noindex while disabled', async ({
+    test('axe 0 violations: empty form, error state, success; noindex in both modes', async ({
       page,
     }) => {
       await stub(page);
       await page.goto(`/${lang}/signup/`);
       await expect(page.locator('html')).toHaveAttribute('dir', dir);
+      // DEC-07: noindex does not depend on the flag (SIGNUP_NOINDEX)
       await expect(page.locator('meta[name=robots]')).toHaveAttribute('content', 'noindex');
       await expect(page.locator('h1')).toHaveCount(1);
       await expect(page.locator('#signup-form')).toBeVisible();
