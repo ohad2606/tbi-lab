@@ -23,8 +23,22 @@ const FAKE = 'http://127.0.0.1:7499';
 const ALEX = `t_${createHash('sha256').update('account|tester.one@example.invalid').digest('base64url').slice(0, 16)}`;
 
 const TEXT = {
-  he: { loading: 'טוען…', tester: 'בודק/ת', add: 'הוספת בודק/ת', today: 'היום' },
-  en: { loading: 'Loading…', tester: 'Tester', add: 'Add tester', today: 'Today' },
+  he: {
+    loading: 'טוען…',
+    tester: 'בודק/ת',
+    testers: 'בודקים',
+    add: 'הוספת בודק/ת',
+    today: 'היום',
+    badName: "יש להשתמש ב־1–60 אותיות, רווחים ו־. ' - בלבד, ולהתחיל באות.",
+  },
+  en: {
+    loading: 'Loading…',
+    tester: 'Tester',
+    testers: 'Testers',
+    add: 'Add tester',
+    today: 'Today',
+    badName: "Use 1–60 letters, spaces and . ' - only, starting with a letter.",
+  },
 };
 type Lang = keyof typeof TEXT;
 
@@ -58,10 +72,27 @@ const focused = (page: Page) =>
 const settled = (page: Page) => page.waitForTimeout(500);
 const button = (page: Page, id: string) => page.getByTestId(`tester-${id}`);
 
+/**
+ * The confirmation's action, only once its deferred focus on Cancel has landed: before that, an
+ * Enter meant for the action can reach Cancel instead.
+ */
+async function confirmOk(page: Page, how: 'Enter' | 'click' = 'Enter') {
+  await expect(page.getByTestId('confirm-cancel')).toBeFocused();
+  const ok = page.getByTestId('confirm-ok');
+  if (how === 'click') await ok.click();
+  else await ok.press('Enter');
+}
+
+/** Opens the rename editor by keyboard, and waits for its deferred focus on the field. */
+async function openRename(page: Page) {
+  await button(page, 'rename').press('Enter');
+  await expect(page.getByTestId('rename-input')).toBeFocused();
+}
+
 /** Opens the tester and confirms Disable by keyboard. */
 async function disable(page: Page) {
   await button(page, 'disable').press('Enter');
-  await page.getByTestId('confirm-ok').press('Enter');
+  await confirmOk(page);
 }
 
 /** Two open sign-up requests, held in the page: an action removes its row. */
@@ -103,7 +134,7 @@ async function disablePending(page: Page, request: APIRequestContext) {
   await open(page, `#/testers/${ALEX}`);
   await page.getByTestId('tester-disable').click();
   await request.post(`${FAKE}/__test/admin-hold?on=1`);
-  await page.getByTestId('confirm-ok').click();
+  await confirmOk(page, 'click');
   await expect(page.getByTestId('pending-check')).toBeVisible();
 }
 
@@ -135,17 +166,20 @@ for (const lang of ['he', 'en'] as const) {
     await expect(region(page)).toHaveText(text.loading);
     await expect(region(page)).toHaveRole('status');
     await expect(region(page)).toHaveAttribute('aria-live', 'polite');
-    // The visible copies are hidden from assistive technology: the region alone says it.
-    await expect(page.getByTestId('loading')).toBeVisible();
-    await expect(page.getByTestId('loading')).toHaveAttribute('aria-hidden', 'true');
+    // The visible text is not live, but can be found by reading the page.
+    await expect(page.getByTestId('loading')).toHaveText(text.loading);
+    await expect(page.getByRole('main').getByRole('paragraph')).toHaveText(text.loading);
     const node = await region(page).elementHandle();
     // The app's own loader gives way to the screen's several loaders.
     accounts('continue');
     await expect(page.getByTestId('today-metrics')).toHaveCount(0);
     await expect(page.getByTestId('today-testers')).toContainText('2 / 30');
     await expect.poll(() => page.getByTestId('loading').count()).toBeGreaterThan(1);
-    for (const l of await page.getByTestId('loading').all())
-      await expect(l).toHaveAttribute('aria-hidden', 'true');
+    for (const l of await page.getByTestId('loading').all()) {
+      await expect(l).not.toHaveAttribute('aria-hidden');
+      await expect(l).not.toHaveAttribute('aria-live');
+      await expect(l).not.toHaveRole('status');
+    }
     // One of them ending does not clear the others' message.
     usage('continue');
     await expect(page.getByTestId('today-metrics')).toBeVisible();
@@ -215,7 +249,7 @@ for (const lang of ['he', 'en'] as const) {
     await open(page, `#/testers/${ALEX}`);
     await page.getByTestId('tester-disable').click();
     await page.route('**/admin-api/accounts', (r) => fail(r));
-    await page.getByTestId('confirm-ok').press('Enter');
+    await confirmOk(page);
     await expect(page.getByTestId('problem')).toBeVisible();
     await expect(h1(page)).toHaveText(text.tester);
     await expect(h1(page)).toBeFocused();
@@ -257,6 +291,7 @@ for (const lang of ['he', 'en'] as const) {
     await signIn(context, lang);
     await disablePending(page, request);
     await page.getByTestId('nav-today').click();
+    await expect(h1(page)).toBeFocused();
     const link = page.locator('a.more');
     await expect(link).toBeVisible();
     await link.focus();
@@ -340,9 +375,83 @@ for (const lang of ['he', 'en'] as const) {
     await disable(page);
     await expect(button(page, 'reactivate')).toBeFocused();
     await button(page, 'reactivate').press('Enter');
-    await page.getByTestId('confirm-ok').press('Enter');
+    await confirmOk(page);
     await expect(button(page, 'disable')).toBeFocused();
   });
+
+  test(`(${lang}) an invalid new name: an alert, which describes the invalid field`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    await open(page, `#/testers/${ALEX}`);
+    await openRename(page);
+    const field = page.getByTestId('rename-input');
+    await expect(field).toHaveAttribute('aria-invalid', 'false');
+    await expect(field).not.toHaveAttribute('aria-describedby');
+    await field.fill('R2-D2');
+    await field.press('Enter');
+    const problem = page.getByTestId('rename-problem');
+    await expect(problem).toHaveRole('alert');
+    await expect(problem).toHaveText(text.badName);
+    await expect(field).toHaveAttribute('aria-invalid', 'true');
+    await expect(field).toHaveAttribute('aria-describedby', 'rename-problem');
+    await expect(field).toHaveAccessibleDescription(text.badName);
+    await field.fill('Test R.');
+    await expect(problem).toHaveCount(0);
+    await expect(field).toHaveAttribute('aria-invalid', 'false');
+    await expect(field).not.toHaveAttribute('aria-describedby');
+  });
+
+  test(`(${lang}) a pending disable's later reload removes the focused row: heading`, async ({
+    page,
+    context,
+    request,
+  }) => {
+    await signIn(context, lang);
+    await disablePending(page, request);
+    await page.getByTestId('nav-testers').click();
+    // The new screen's deferred focus on its heading first, or it can take the row's.
+    await expect(h1(page)).toBeFocused();
+    const row = page.getByTestId(`tester-open-${ALEX}`);
+    await row.focus();
+    // The answer arrives (the "check again" button goes) before the reloaded list does.
+    const accounts = await hold(page, '**/admin-api/accounts');
+    await request.post(`${FAKE}/__test/admin-hold?on=0`);
+    await expect(page.getByTestId('pending-check')).toHaveCount(0, { timeout: 15_000 });
+    await settled(page);
+    await expect(row).toBeFocused();
+    accounts('continue');
+    await expect(row).toHaveCount(0);
+    await expect(h1(page)).toHaveText(text.testers);
+    await expect(h1(page)).toBeFocused();
+  });
+
+  for (const clicked of [false, true])
+    test(`(${lang}) focused content gone, ${clicked ? 'then a click on the page: a later failure leaves focus' : 'no click: a later failure moves focus to the heading'}`, async ({
+      page,
+      context,
+    }) => {
+      await signIn(context, lang);
+      await open(page, '#/testers');
+      await expect(page.getByTestId('tester-row')).toHaveCount(3);
+      // A focused control that goes away with nothing to rescue it yet (synthetic).
+      await page.evaluate(() => {
+        const b = document.body.appendChild(document.createElement('button'));
+        b.focus();
+        b.remove();
+      });
+      // A blank part of the page, outside <main> (which takes focus itself): the top bar's middle.
+      if (clicked) await page.locator('header.top').click();
+      expect(await focused(page)).toBe('BODY');
+      await page.route('**/admin-api/accounts', (r) => fail(r));
+      // Neither a pointer press nor a focus change, unlike a user's own refresh.
+      await page.getByTestId('refresh').evaluate((b: HTMLElement) => b.click());
+      await expect(page.getByTestId('problem')).toBeVisible();
+      await settled(page);
+      if (clicked) expect(await focused(page)).toBe('BODY');
+      else await expect(h1(page)).toBeFocused();
+    });
 
   for (const how of ['Enter in the field', 'the Save button', 'Cancel'] as const)
     test(`(${lang}) rename closed by ${how}: focus returns to Rename`, async ({
@@ -351,7 +460,7 @@ for (const lang of ['he', 'en'] as const) {
     }) => {
       await signIn(context, lang);
       await open(page, `#/testers/${ALEX}`);
-      await button(page, 'rename').press('Enter');
+      await openRename(page);
       const field = page.getByTestId('rename-input');
       await field.fill('Test R.');
       if (how === 'Enter in the field') await field.press('Enter');
@@ -362,7 +471,9 @@ for (const lang of ['he', 'en'] as const) {
       await expect(button(page, 'rename')).toBeFocused();
     });
 
-  test(`(${lang}) a pending disable that succeeds replaces the focused button: its successor`, async ({
+  // Regression guard only: it exercises no new code. The same DOM node becomes the Enable button,
+  // so focus never leaves it and no rescue runs.
+  test(`(${lang}) regression guard: a pending disable that succeeds keeps focus on the reused button`, async ({
     page,
     context,
     request,
@@ -382,7 +493,7 @@ for (const lang of ['he', 'en'] as const) {
       const accounts = await hold(page, '**/admin-api/accounts');
       if (action === 'disable') await disable(page);
       else {
-        await button(page, 'rename').press('Enter');
+        await openRename(page);
         await page.getByTestId('rename-input').fill('Test R.');
         await page.getByTestId('rename-input').press('Enter');
       }
@@ -436,7 +547,7 @@ for (const lang of ['he', 'en'] as const) {
         if (action === 'approve') await primary.press('Enter');
         else {
           await rows.first().locator('button[data-act="reject"]').press('Enter');
-          await page.getByTestId('confirm-ok').press('Enter');
+          await confirmOk(page);
         }
         await expect(rows).toHaveCount(left);
         await expect(
