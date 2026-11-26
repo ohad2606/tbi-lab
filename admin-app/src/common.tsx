@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { LoadError } from '@tbi-lab/admin-client';
 import { formatCount, type MessageKey } from './i18n.js';
 import { useConsole, useT } from './context.js';
+import { loadingStatus } from './loading-status.js';
 import { barHeights } from './views.js';
 
 /** Where the gate starts a sign-in, and where it ends one (admin app design §1). */
@@ -61,10 +62,28 @@ export function Problem({
   );
 }
 
+/** The visible "loading" text. Screen readers get it from `LoadingStatus`, once. */
 export const Loading = () => {
   const t = useT();
-  return <p class="muted">{t('admin.loading')}</p>;
+  useEffect(() => loadingStatus.begin(), []);
+  return (
+    <p class="muted" data-testid="loading" aria-hidden="true">
+      {t('admin.loading')}
+    </p>
+  );
 };
+
+/** The app's one live region for loading; always in the page, filled while any loader shows. */
+export function LoadingStatus() {
+  const t = useT();
+  const [shown, setShown] = useState(false);
+  useEffect(() => loadingStatus.subscribe(setShown), []);
+  return (
+    <div role="status" aria-live="polite" class="visually-hidden" data-testid="loading-status">
+      {shown ? t('admin.loading') : ''}
+    </div>
+  );
+}
 
 /** The last element that took focus: what a confirmation opened from, even if its node is replaced. */
 let lastFocused: HTMLElement | null = null;

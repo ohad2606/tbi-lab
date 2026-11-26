@@ -10,7 +10,15 @@ import {
   requestResult,
   type MutationOutcome,
 } from '@tbi-lab/admin-client';
-import { Icon, SIGN_IN_URL, SIGN_OUT_URL, Loading, useWide, type IconName } from './common.js';
+import {
+  Icon,
+  SIGN_IN_URL,
+  SIGN_OUT_URL,
+  Loading,
+  LoadingStatus,
+  useWide,
+  type IconName,
+} from './common.js';
 import { ConsoleContext, api, type Console, type Data, type MutationAction } from './context.js';
 import { getLocale, storeLocale, storedLocale, translate, type MessageKey } from './i18n.js';
 import { TABS, afterRoute, parseRoute, routeHash, section, tab, type Route } from './views.js';
@@ -330,5 +338,11 @@ export function App() {
       </div>
     );
   }
-  return <ConsoleContext.Provider value={ctx}>{body}</ConsoleContext.Provider>;
+  return (
+    <ConsoleContext.Provider value={ctx}>
+      {/* Outside the body, which is replaced as the app loads: the region stays the same node. */}
+      <LoadingStatus />
+      {body}
+    </ConsoleContext.Provider>
+  );
 }
