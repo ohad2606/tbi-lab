@@ -17,6 +17,9 @@ const kindKey = (kind: string) => codeKey('report.kind.', kind, 'console.feedbac
 const categoryKey = (category: string) =>
   codeKey('report.category.', category, 'console.feedback.category.other').key;
 
+/** The first two groups of `XXXX-XXXX-XXXX`: enough to tell rows apart, short enough to scan. */
+const shortId = (id: string) => id.slice(0, 9);
+
 /** The feedback list, newest first; "new" is per device (not opened here yet). */
 export function Feedback() {
   const t = useT();
@@ -40,7 +43,6 @@ export function Feedback() {
                 <a
                   class="item-link"
                   href={`#/feedback/${r.id}`}
-                  aria-label={t('admin.reports.open.label', { id: r.id })}
                   data-testid={`report-open-${r.id}`}
                   onClick={(e) => {
                     e.preventDefault();
@@ -62,6 +64,9 @@ export function Feedback() {
                   <div class="muted small">
                     {date(r.receivedAt) ?? '—'} · <bdi dir="ltr">{testerLabel(r.principal)}</bdi> ·{' '}
                     {t('admin.reports.length')} <Num n={r.length} />
+                  </div>
+                  <div class="muted small">
+                    {t('console.report.title')} <bdi dir="ltr">{shortId(r.id)}</bdi>
                   </div>
                 </a>
               </li>
@@ -97,12 +102,18 @@ export function Report({ id }: { id: string }) {
     };
   }, [id]);
   const back = <BackButton testid="report-back" onClick={() => go({ name: 'feedback' })} />;
-  if (!detail) return <Loading />;
-  if (!detail.ok)
+  // Loading, failed and loaded share the section / back / h1 shape, so the heading that took the
+  // route focus stays the same element when the content arrives.
+  if (!detail || !detail.ok)
     return (
       <section class="stack">
         {back}
-        <Problem error={detail.error} unavailable="console.reports.unavailable" />
+        <h1>{t('console.report.title')}</h1>
+        {detail ? (
+          <Problem error={detail.error} unavailable="console.reports.unavailable" />
+        ) : (
+          <Loading />
+        )}
       </section>
     );
   const r = detail.value;

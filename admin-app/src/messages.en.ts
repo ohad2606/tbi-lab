@@ -58,6 +58,7 @@ export const consoleEn = {
   'console.testers.open': 'Details',
   'console.testers.open.label': 'Details for {account}',
 
+  'console.tester.title': 'Tester',
   'console.tester.notFound': 'This tester is not in the list.',
   'console.tester.usage': 'Last 30 days',
   'console.tester.chart.label': '{metric} per day, last 30 days: {total} in total',
@@ -72,6 +73,7 @@ export const consoleEn = {
   'console.add.open': 'Open the tester',
 
   'console.feedback.heading': 'Feedback',
+  'console.report.title': 'Report',
   'console.feedback.new': 'New',
   'console.feedback.newNote': 'New: not opened yet on this device.',
   'console.feedback.kind.other': 'Other feedback',

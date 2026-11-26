@@ -22,9 +22,21 @@ export function Add() {
   const emailField = useRef<HTMLInputElement>(null);
   const nameField = useRef<HTMLInputElement>(null);
   const { accounts } = data;
-  if (!accounts) return <Loading />;
+  if (!accounts)
+    return (
+      <section class="stack">
+        <BackButton testid="add-back" onClick={() => go({ name: 'testers' })} />
+        <h1>{t('console.add.heading')}</h1>
+        <Loading />
+      </section>
+    );
   if (!accounts.ok)
-    return <Problem error={accounts.error} unavailable="console.accounts.unavailable" />;
+    return (
+      <section class="stack">
+        <h1>{t('console.add.heading')}</h1>
+        <Problem error={accounts.error} unavailable="console.accounts.unavailable" />
+      </section>
+    );
   const full = capFull(accounts.value);
 
   const submit = async () => {

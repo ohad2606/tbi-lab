@@ -57,6 +57,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.testers.open': 'פרטים',
   'console.testers.open.label': 'פרטים של {account}',
 
+  'console.tester.title': 'בודק/ת',
   'console.tester.notFound': 'הבודק/ת אינו/ה ברשימה.',
   'console.tester.usage': '30 הימים האחרונים',
   'console.tester.chart.label': '{metric} ליום, 30 הימים האחרונים: {total} בסך הכול',
@@ -71,6 +72,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.add.open': 'פתיחת הבודק/ת',
 
   'console.feedback.heading': 'משוב',
+  'console.report.title': 'דיווח',
   'console.feedback.new': 'חדש',
   'console.feedback.newNote': 'חדש: עדיין לא נפתח במכשיר זה.',
   'console.feedback.kind.other': 'משוב מסוג אחר',
@@ -139,7 +141,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.reject': 'דחייה',
   'console.signups.resend': 'שליחת המייל שוב',
   'console.signups.approveFor': 'אישור הבקשה של {name}',
-  'console.signups.rejectFor': 'דחיית הבקשה של {name}',
+  'console.signups.rejectFor': 'דחייה: הבקשה של {name}',
   'console.signups.resendFor': 'שליחת המייל שוב אל {name}',
   'console.signups.confirm.title': 'לדחות את הבקשה של {name}?',
   'console.signups.confirm.body': 'לא יישלח מייל לאדם הזה. הבקשה תיסגר.',

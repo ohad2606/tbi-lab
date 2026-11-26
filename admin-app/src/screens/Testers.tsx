@@ -64,7 +64,12 @@ export function Testers() {
   );
   if (!accounts) return <Loading />;
   if (!accounts.ok)
-    return <Problem error={accounts.error} unavailable="console.accounts.unavailable" />;
+    return (
+      <section class="stack">
+        <h1>{t('console.testers.heading')}</h1>
+        <Problem error={accounts.error} unavailable="console.accounts.unavailable" />
+      </section>
+    );
   const counts = accountCounts(accounts.value);
   const rows = testerList(accounts.value, usage?.ok ? usage.value : null, { filter, query });
   const open = (a: AccountRow) => (e: Event) => {
@@ -136,7 +141,11 @@ export function Testers() {
                 <tr key={a.target} data-testid="tester-row" data-target={a.target}>
                   <td>
                     <div class="name" data-testid="tester-name">
-                      {a.displayName ? <bdi dir="auto">{a.displayName}</bdi> : a.masked}
+                      {a.displayName ? (
+                        <bdi dir="auto">{a.displayName}</bdi>
+                      ) : (
+                        <bdi dir="ltr">{a.masked}</bdi>
+                      )}
                     </div>
                     {a.displayName && (
                       <div class="muted small">
@@ -177,13 +186,16 @@ export function Testers() {
               <a
                 class="item-link"
                 href={`#/testers/${a.target}`}
-                aria-label={t('console.testers.open.label', { account: accountLabel(a) })}
                 data-testid={`tester-open-${a.target}`}
                 onClick={open(a)}
               >
                 <div class="item-head">
                   <strong class="name" data-testid="tester-name">
-                    {a.displayName ? <bdi dir="auto">{a.displayName}</bdi> : a.masked}
+                    {a.displayName ? (
+                      <bdi dir="auto">{a.displayName}</bdi>
+                    ) : (
+                      <bdi dir="ltr">{a.masked}</bdi>
+                    )}
                   </strong>
                   <StatusBadge a={a} />
                 </div>
@@ -238,14 +250,34 @@ export function TesterDetail({ target }: { target: string }) {
       }}
     />
   );
-  if (!accounts) return <Loading />;
+  // The h1 sits at the same place as in the loaded screen, so route focus survives the loading.
+  const title = (
+    <div class="item-head">
+      <h1>{t('console.tester.title')}</h1>
+    </div>
+  );
+  if (!accounts)
+    return (
+      <section class="stack">
+        {back}
+        {title}
+        <Loading />
+      </section>
+    );
   if (!accounts.ok)
-    return <Problem error={accounts.error} unavailable="console.accounts.unavailable" />;
+    return (
+      <section class="stack">
+        {back}
+        {title}
+        <Problem error={accounts.error} unavailable="console.accounts.unavailable" />
+      </section>
+    );
   const a = accounts.value.accounts.find((r) => r.target === target);
   if (!a)
     return (
       <section class="stack">
         {back}
+        {title}
         <p class="problem" role="alert" data-testid="tester-missing">
           {t('console.tester.notFound')}
         </p>
