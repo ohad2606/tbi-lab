@@ -1,0 +1,372 @@
+/**
+ * K12: "Stored requests and deletion" on the sign-up screen, in Hebrew and English: the modal
+ * confirmation (focus, Tab, Escape), the focus after each outcome, the live region, the account
+ * warnings, and that the typed filter never leaves the page. The REAL admin service routes and
+ * store for the delete itself; mocked answers for the failures. Synthetic data only.
+ */
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+
+const FAKE = 'http://127.0.0.1:7499';
+type Lang = 'he' | 'en';
+
+const id = (n: number) => `01JD000000000000000000000${n}`;
+const address = (who: string) => [who, 'example.invalid'].join('@');
+const row = (n: number, who: string, status = 'pending', accountAdded = false) => ({
+  id: id(n),
+  name: `Sample ${who}`,
+  email: address(who),
+  role: 'Teacher',
+  lang: 'en',
+  status,
+  accountAdded,
+  emailAttempts: 0,
+  lastError: null,
+  createdAt: `2026-11-0${n}T10:00:00Z`,
+});
+const ROWS = () => [
+  row(1, 'alpha'),
+  row(2, 'bravo', 'approved'),
+  row(3, 'charlie', 'email_sent', true),
+];
+
+interface Mock {
+  /** Every request to the sign-up routes: "METHOD /path?query" and the body. */
+  calls: string[];
+  /** Answer of the next deletes; the default deletes the row. */
+  answer: { status: number; json: unknown } | null;
+  /** Holds each delete until resolved. */
+  hold: Promise<void> | null;
+  listStatus: number;
+}
+async function mock(page: Page): Promise<Mock> {
+  const m: Mock = { calls: [], answer: null, hold: null, listStatus: 200 };
+  let rows = ROWS();
+  await page.route('**/admin-api/signups**', async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    const path = url.pathname.replace('/admin-api/signups', '');
+    m.calls.push(`${req.method()} ${path}${url.search} ${req.postData() ?? ''}`.trim());
+    if (path === '/auto-approve') return route.fulfill({ json: { enabled: false } });
+    if (path === '/open') return route.fulfill({ json: { signups: [] } });
+    if (req.method() === 'GET')
+      return route.fulfill({ status: m.listStatus, json: { signups: rows } });
+    await m.hold;
+    if (m.answer) return route.fulfill(m.answer);
+    rows = rows.filter((r) => `/${r.id}` !== path);
+    return route.fulfill({ json: { deleted: true } });
+  });
+  return m;
+}
+const deletes = (m: Mock) => m.calls.filter((c) => c.startsWith('DELETE'));
+
+async function open(page: Page, context: BrowserContext, baseURL: string, lang: Lang) {
+  await context.addCookies([{ name: 'tbi_test_user', value: 'e2e-owner', url: baseURL }]);
+  await context.addInitScript((l) => localStorage.setItem('tbi-admin.locale', l), lang);
+  await page.goto('/#/signups');
+  await page.getByTestId('stored-toggle').click();
+}
+const rowOf = (page: Page, n: number) => page.locator(`[data-stored-id="${id(n)}"]`);
+const del = (page: Page, n: number) => rowOf(page, n).getByTestId('stored-delete');
+const live = (page: Page) => page.getByTestId('signups-live');
+
+for (const lang of ['he', 'en'] as const) {
+  const word = (en: RegExp, he: RegExp) => (lang === 'he' ? he : en);
+
+  test(`stored (${lang}): closed by default; opening lists every status with masked names`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mock(page);
+    await context.addCookies([{ name: 'tbi_test_user', value: 'e2e-owner', url: baseURL! }]);
+    await context.addInitScript((l) => localStorage.setItem('tbi-admin.locale', l), lang);
+    await page.goto('/#/signups');
+    const toggle = page.getByTestId('stored-toggle');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId('signups-empty')).toBeVisible();
+    expect(m.calls.some((c) => c === 'GET')).toBe(false);
+    await toggle.focus();
+    await page.keyboard.press('Enter');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('stored-row')).toHaveCount(3);
+    await expect(live(page)).toContainText('3');
+    const name = (await del(page, 1).getAttribute('aria-label'))!;
+    expect(name).toContain((await del(page, 1).textContent())!);
+    expect(name).toContain(id(1));
+    expect(name).toContain('al***@example.invalid');
+    expect(name).not.toContain(address('alpha'));
+    for (const e of await page.getByTestId('stored-email').all())
+      await expect(e).toHaveAttribute('dir', 'ltr');
+    for (const b of await page.getByTestId('stored-delete').all()) {
+      const box = (await b.boundingBox())!;
+      expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(24);
+    }
+    await toggle.click();
+    await expect(page.getByTestId('stored-row')).toHaveCount(0);
+  });
+
+  test(`stored (${lang}): the filter is local: no request, URL or storage holds it`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mock(page);
+    const logs: string[] = [];
+    page.on('console', (c) => logs.push(c.text()));
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('stored-row')).toHaveCount(3);
+    const urls: string[] = [];
+    page.on('request', (r) => urls.push(`${r.url()} ${r.postData() ?? ''}`));
+    const before = m.calls.length;
+    const filter = page.getByTestId('stored-filter');
+    await expect(filter).toHaveAttribute('autocomplete', 'off');
+    await expect(filter).toHaveAttribute('spellcheck', 'false');
+    await filter.pressSequentially('  BRAVO@');
+    await expect(page.getByTestId('stored-row')).toHaveCount(1);
+    await expect(live(page)).toContainText(/1.*3/);
+    await expect(live(page)).not.toContainText(/bravo/i);
+    await filter.fill('nobody');
+    await expect(page.getByTestId('stored-empty')).toBeVisible();
+    await filter.press('Enter');
+    expect(m.calls).toHaveLength(before);
+    expect(urls).toEqual([]);
+    expect(page.url()).toMatch(/#\/signups$/);
+    const stored = await page.evaluate(
+      () => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }),
+    );
+    expect(stored).not.toMatch(/example\.invalid|nobody/);
+    expect(logs.join('\n')).not.toMatch(/example\.invalid|Sample/);
+  });
+
+  test(`stored (${lang}): modal dialog: Cancel focused, Tab stays, Escape and Cancel return`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mock(page);
+    await open(page, context, baseURL!, lang);
+    await del(page, 1).focus();
+    await page.keyboard.press('Enter');
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toBeVisible();
+    expect(await dialog.evaluate((d) => d.matches(':modal'))).toBe(true);
+    await expect(dialog).toHaveAccessibleName(word(/Delete this request/, /למחוק את הבקשה/));
+    await expect(dialog).toContainText(id(1));
+    await expect(dialog).toContainText('al***@example.invalid');
+    await expect(dialog.getByTestId('delete-warning')).toHaveCount(0);
+    const cancel = page.getByTestId('delete-cancel');
+    const ok = page.getByTestId('delete-ok');
+    await expect(cancel).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(ok).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(cancel).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(ok).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(del(page, 1)).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(cancel).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(dialog).toHaveCount(0);
+    await expect(del(page, 1)).toBeFocused();
+    expect(deletes(m)).toEqual([]);
+  });
+
+  test(`stored (${lang}): account warnings: still in flight, and an account that stays`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mock(page);
+    await open(page, context, baseURL!, lang);
+    await del(page, 2).click();
+    const warning = page.getByTestId('delete-warning');
+    await expect(warning).toHaveAttribute('data-warning', 'inFlight');
+    await expect(warning).toContainText(word(/may still complete/, /עדיין עשויה להסתיים/));
+    await page.keyboard.press('Escape');
+    await del(page, 3).click();
+    await expect(warning).toHaveAttribute('data-warning', 'account');
+    await expect(warning).toContainText(word(/it stays/, /הוא נשאר/));
+    await expect(page.getByTestId('delete-cancel')).toBeFocused();
+    const link = page.getByTestId('delete-testers');
+    await expect(link).toHaveAttribute('href', '#/testers');
+    expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(24);
+    await link.click();
+    await expect(page).toHaveURL(/#\/testers$/);
+    await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    // Nothing was deleted or disabled on the way.
+    expect(m.calls.filter((c) => !c.startsWith('GET'))).toEqual([]);
+  });
+
+  test(`stored (${lang}): an approve answered account_pending warns on that row`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page);
+    // The open list offers Approve for row 1, whose account step then does not finish.
+    await page.route('**/admin-api/signups/open', (r) =>
+      r.fulfill({ json: { signups: [row(1, 'alpha')] } }),
+    );
+    await page.route('**/admin-api/signups/*/approve', (r) =>
+      r.fulfill({ status: 202, json: { error: 'account_pending' } }),
+    );
+    await open(page, context, baseURL!, lang);
+    await page.getByTestId('signup-approve').click();
+    await expect(page.getByTestId('signup-message')).toBeVisible();
+    await del(page, 1).click();
+    await expect(page.getByTestId('delete-warning')).toHaveAttribute('data-warning', 'inFlight');
+  });
+
+  test(`stored (${lang}): confirm sends one DELETE, busy row, outcome and focus move on`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mock(page);
+    let release!: () => void;
+    m.hold = new Promise<void>((r) => (release = r));
+    await open(page, context, baseURL!, lang);
+    await del(page, 1).click();
+    await expect(page.getByTestId('delete-cancel')).toBeFocused();
+    // Two activations in the same tick: only one request.
+    await page.getByTestId('delete-ok').evaluate((b: HTMLElement) => {
+      b.click();
+      b.click();
+    });
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(del(page, 1)).toHaveAttribute('aria-disabled', 'true');
+    await expect(del(page, 1)).toBeFocused();
+    await page.keyboard.press('Enter');
+    await del(page, 2).click({ force: true });
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    expect(deletes(m)).toEqual([`DELETE /${id(1)}`]);
+    const lists = m.calls.filter((c) => c === 'GET').length;
+    release();
+    await expect(page.getByTestId('stored-row')).toHaveCount(2);
+    expect(m.calls.filter((c) => c === 'GET').length).toBe(lists + 1);
+    await expect(page.getByTestId('delete-result')).toContainText(id(1));
+    await expect(page.getByTestId('delete-result')).toContainText(word(/deleted/, /נמחקה/));
+    await expect(live(page)).toContainText(id(1));
+    await expect(live(page)).not.toContainText(/alpha/);
+    await expect(del(page, 2)).toBeFocused();
+  });
+
+  test(`stored (${lang}): the second click of a double click does not confirm`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mock(page);
+    await open(page, context, baseURL!, lang);
+    await del(page, 1).click();
+    await page.getByTestId('delete-ok').dispatchEvent('click', { detail: 2 });
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    expect(deletes(m)).toEqual([]);
+  });
+
+  for (const [what, answer, text] of [
+    ['500', { status: 500, json: { error: 'internal' } }, word(/is kept/, /הרשומה נשמרה/)],
+    [
+      '429',
+      { status: 429, json: { error: 'rate_limited', retryAfterS: 42 } },
+      word(/42 seconds/, /42.*שניות/),
+    ],
+    ['403', { status: 403, json: { error: 'csrf' } }, word(/refused/, /דחה/)],
+  ] as const)
+    test(`stored (${lang}): ${what} keeps the row, says so and keeps focus; retry works`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const m = await mock(page);
+      m.answer = answer;
+      await open(page, context, baseURL!, lang);
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        await del(page, 2).click();
+        await page.getByTestId('delete-ok').click();
+        await expect(rowOf(page, 2).getByTestId('delete-result')).toContainText(text);
+        await expect(live(page)).toContainText(text);
+        await expect(del(page, 2)).toBeFocused();
+        await expect(del(page, 2)).not.toHaveAttribute('aria-disabled', 'true');
+        expect(deletes(m)).toHaveLength(attempt);
+      }
+      m.answer = null;
+      await del(page, 2).click();
+      await page.getByTestId('delete-ok').click();
+      await expect(page.getByTestId('stored-row')).toHaveCount(2);
+      await expect(del(page, 3)).toBeFocused();
+    });
+
+  for (const [what, answer] of [
+    ['404', { status: 404, json: { error: 'not_found' } }],
+    ['already deleted', { status: 200, json: { deleted: true, note: 'already_deleted' } }],
+  ] as const)
+    test(`stored (${lang}): ${what} reads "already gone" and the list is reloaded`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const m = await mock(page);
+      m.answer = answer;
+      await open(page, context, baseURL!, lang);
+      await del(page, 3).click();
+      await page.getByTestId('delete-ok').click();
+      await expect(page.getByTestId('delete-result')).toContainText(
+        word(/already gone/, /כבר לא קיימת/),
+      );
+      await expect(rowOf(page, 3)).toHaveCount(0);
+      await expect(del(page, 2)).toBeFocused();
+      expect(m.calls.filter((c) => c === 'GET')).toHaveLength(2);
+    });
+
+  test(`stored (${lang}): sign-up admin off: "unavailable", no filter and no Delete`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mock(page);
+    m.listStatus = 404;
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('stored-problem')).toHaveAttribute('data-error', 'unavailable');
+    await expect(page.getByTestId('stored-delete')).toHaveCount(0);
+    await expect(page.getByTestId('stored-filter')).toHaveCount(0);
+    expect(m.calls.filter((c) => c.startsWith('GET /') && c.includes('pending'))).toEqual([]);
+  });
+}
+
+test.describe('stored: the real routes and store', () => {
+  test.beforeEach(async ({ request }) => {
+    await request.post(`${FAKE}/__test/reset-admin`);
+    await request.post(`${FAKE}/__test/admin-signups?seed=1&mailFail=0`);
+  });
+  test.afterEach(async ({ request }) => {
+    await request.post(`${FAKE}/__test/admin-signups?seed=0&mailFail=0`);
+  });
+
+  for (const lang of ['he', 'en'] as const)
+    test(`(${lang}) a sent request is found by address, deleted and stays deleted`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      await open(page, context, baseURL!, lang);
+      await expect(page.getByTestId('stored-row')).toHaveCount(6);
+      await page.getByTestId('stored-filter').fill('signup-email-sent');
+      await expect(page.getByTestId('stored-row')).toHaveCount(1);
+      await page.getByTestId('stored-delete').click();
+      await page.getByTestId('delete-ok').click();
+      await expect(page.getByTestId('stored-empty')).toBeVisible();
+      await expect(page.getByTestId('delete-result')).toHaveAttribute(
+        'data-key',
+        'console.signups.delete.done',
+      );
+      await expect(page.getByTestId('stored-filter')).toBeFocused();
+      await page.reload();
+      await page.getByTestId('stored-toggle').click();
+      await expect(page.getByTestId('stored-row')).toHaveCount(5);
+    });
+});

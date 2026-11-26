@@ -22,6 +22,7 @@ import {
   signupRowKind,
   type SignupRowKind,
 } from '../views.js';
+import { StoredSignups } from './StoredSignups.js';
 
 /** A person's name inside a sentence or an accessible name: isolated, so it cannot reorder the text. */
 const isolate = (s: string) => `⁨${s}⁩`;
@@ -167,6 +168,9 @@ export function Signups() {
   const refreshBtn = useRef<HTMLButtonElement>(null);
   const alive = useRef(true);
   const [keptTick, setKeptTick] = useState(0);
+  // K12: bumped when the stored requests may have changed here; ids whose account add may be open.
+  const [storedVersion, setStoredVersion] = useState(0);
+  const approving = useRef(new Set<string>());
   const keptId = useRef<string | null>(null);
 
   // A live region only speaks when its text changes: clear it, then set it on the next frame, so
@@ -179,6 +183,15 @@ export function Signups() {
     requestAnimationFrame(() => {
       if (alive.current && n === spoken.current) setAnnounce(text);
     });
+  };
+
+  /** The open list again, silently: after a deletion, whose outcome is what gets announced. */
+  const reloadQuietly = async () => {
+    const v = await loadOpenSignups(api);
+    if (!alive.current) return;
+    setList(v);
+    setMessages({});
+    setConfirming(null);
   };
 
   const reload = async () => {
@@ -254,6 +267,7 @@ export function Signups() {
     setBusy(r.id);
     setConfirming(null);
     say(t('console.signups.status.working'));
+    if (action === 'approve') approving.current.add(r.id);
     if (action === 'reject') {
       // The confirm unmounts now; keep focus on the row while the request runs.
       requestAnimationFrame(() =>
@@ -265,6 +279,10 @@ export function Signups() {
     try {
       const o = await signupAction(api, r.id, action);
       if (!alive.current) return;
+      // A definite account failure: nothing is left that could still add the account.
+      if (o.kind === 'error' && (o.error === 'cap_reached' || o.error === 'account_error'))
+        approving.current.delete(r.id);
+      setStoredVersion((n) => n + 1);
       const v = signupOutcomeView(o, action);
       const text = t(v.key as MessageKey, { name: isolate(r.name) });
       const ids = list.value.map((x) => x.id);
@@ -306,7 +324,10 @@ export function Signups() {
           type="button"
           class="button"
           data-testid="signups-refresh"
-          onClick={() => void reload()}
+          onClick={() => {
+            setStoredVersion((n) => n + 1);
+            void reload();
+          }}
         >
           {t('console.signups.refresh')}
         </button>
@@ -484,6 +505,12 @@ export function Signups() {
           </ul>
         </>
       )}
+      <StoredSignups
+        say={say}
+        version={storedVersion}
+        approving={approving.current}
+        onChanged={() => void reloadQuietly()}
+      />
     </section>
   );
 }

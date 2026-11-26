@@ -293,6 +293,17 @@ const WALKS: Record<string, { subject?: string; walk: Walk }> = {
       await page.getByTestId('signup-resend').last().click();
       await visible(page, 'signup-message');
       await check('sign-ups, failed outcome');
+      // K12: every stored request, the modal deletion confirmation and its outcome.
+      await page.getByTestId('stored-toggle').click();
+      await expect(page.getByTestId('stored-row')).toHaveCount(6);
+      await check('sign-ups, stored requests');
+      // The last row is a rejected request; the one before it has an account (the longest dialog).
+      await page.getByTestId('stored-delete').nth(4).click();
+      await visible(page, 'delete-dialog', 'delete-warning', 'delete-testers');
+      await check('sign-ups, confirm delete');
+      await page.getByTestId('delete-ok').click();
+      await visible(page, 'delete-result');
+      await check('sign-ups, deleted');
       await request.post(`${FAKE}/__test/admin-signups?seed=0&mailFail=0`);
       await open(page, '#/signups');
       await visible(page, 'signups-empty');

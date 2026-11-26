@@ -14,6 +14,7 @@ import {
   type AutoApproveStatus,
   type AuditEntry,
   type AuditView,
+  type DeleteSignupOutcome,
   type ReportMeta,
   type SignupAction,
   type SignupOutcome,
@@ -438,4 +439,52 @@ export function signupCountView(rows: readonly SignupRecord[]): {
   const queued = kinds.length - action;
   if (action === 0 && queued > 0) return { key: 'console.signups.count.queuedOnly', count: queued };
   return { key: signupCountKey(action), count: action };
+}
+
+// ---------------------------------------------------------------- stored requests: delete (K12)
+
+/** Rows whose address contains the typed text (trimmed, any case). In memory only. */
+export function filterByEmail(rows: readonly SignupRecord[], query: string): SignupRecord[] {
+  const q = query.trim().toLowerCase();
+  return rows.filter((r) => !q || r.email.toLowerCase().includes(q));
+}
+
+const STORED_STATUSES = [...OPEN, 'rejected', 'email_sent'];
+/** The label of a stored request's status; an unknown value is never shown raw. */
+export const storedStatusKey = (status: string) =>
+  `console.signups.all.status.${STORED_STATUSES.includes(status) ? status : 'other'}`;
+
+/**
+ * What the delete confirmation warns about: `account`, one was added and stays; `inFlight`, an
+ * account add may still complete after the delete (approved without it, or an approval from this
+ * screen has not finished); null, no account is involved.
+ */
+export function deleteAccountWarning(
+  r: SignupRecord,
+  approving: ReadonlySet<string>,
+): 'account' | 'inFlight' | null {
+  if (r.accountAdded) return 'account';
+  return r.status === 'approved' || approving.has(r.id) ? 'inFlight' : null;
+}
+
+/** The sentence for one delete outcome; `gone`: the request no longer exists on the server. */
+export function deleteOutcomeView(o: DeleteSignupOutcome): {
+  key: string;
+  gone: boolean;
+  seconds?: number;
+} {
+  const k = 'console.signups.delete.';
+  switch (o.kind) {
+    case 'deleted':
+      return { key: `${k}done`, gone: true };
+    case 'already_deleted':
+    case 'not_found':
+      return { key: `${k}gone`, gone: true };
+    case 'rate_limited':
+      return o.retryAfterS === null
+        ? { key: `${k}rateLimited`, gone: false }
+        : { key: `${k}rateLimitedFor`, gone: false, seconds: o.retryAfterS };
+    case 'failed':
+      return { key: `${k}failed.${o.error}`, gone: false };
+  }
 }
