@@ -22,19 +22,18 @@ export function Add() {
   const emailField = useRef<HTMLInputElement>(null);
   const nameField = useRef<HTMLInputElement>(null);
   const { accounts } = data;
-  if (!accounts)
+  const back = <BackButton testid="add-back" onClick={() => go({ name: 'testers' })} />;
+  // Loading, failed and loaded share the section / back / h1 shape (the heading keeps focus).
+  if (!accounts || !accounts.ok)
     return (
       <section class="stack">
-        <BackButton testid="add-back" onClick={() => go({ name: 'testers' })} />
+        {back}
         <h1>{t('console.add.heading')}</h1>
-        <Loading />
-      </section>
-    );
-  if (!accounts.ok)
-    return (
-      <section class="stack">
-        <h1>{t('console.add.heading')}</h1>
-        <Problem error={accounts.error} unavailable="console.accounts.unavailable" />
+        {accounts ? (
+          <Problem error={accounts.error} unavailable="console.accounts.unavailable" />
+        ) : (
+          <Loading />
+        )}
       </section>
     );
   const full = capFull(accounts.value);
@@ -77,7 +76,7 @@ export function Add() {
 
   return (
     <section aria-labelledby="add-h" class="stack">
-      <BackButton testid="add-back" onClick={() => go({ name: 'testers' })} />
+      {back}
       <h1 id="add-h">{t('console.add.heading')}</h1>
       <p class="muted">
         {t('admin.capacity.testers')}:{' '}

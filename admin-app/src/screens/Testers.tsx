@@ -62,12 +62,18 @@ export function Testers() {
       <span>{t('console.nav.add')}</span>
     </a>
   );
-  if (!accounts) return <Loading />;
-  if (!accounts.ok)
+  // Loading, failed and loaded keep the h1 at the same place, so a focused heading survives.
+  if (!accounts || !accounts.ok)
     return (
       <section class="stack">
-        <h1>{t('console.testers.heading')}</h1>
-        <Problem error={accounts.error} unavailable="console.accounts.unavailable" />
+        <div class="screen-head">
+          <h1>{t('console.testers.heading')}</h1>
+        </div>
+        {accounts ? (
+          <Problem error={accounts.error} unavailable="console.accounts.unavailable" />
+        ) : (
+          <Loading />
+        )}
       </section>
     );
   const counts = accountCounts(accounts.value);

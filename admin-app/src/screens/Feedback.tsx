@@ -25,11 +25,12 @@ export function Feedback() {
   const t = useT();
   const { data, date, seen, go } = useConsole();
   const { reports } = data;
-  if (!reports) return <Loading />;
   return (
     <section aria-labelledby="feedback-h" class="stack">
       <h1 id="feedback-h">{t('console.feedback.heading')}</h1>
-      {!reports.ok ? (
+      {!reports ? (
+        <Loading />
+      ) : !reports.ok ? (
         <Problem error={reports.error} unavailable="console.reports.unavailable" />
       ) : !reports.value.length ? (
         <p class="muted" data-testid="feedback-empty">
