@@ -13,11 +13,23 @@ export const TEMPLATE_PATH = join(
 );
 export const PLACEHOLDERS = ['SITE_HOST', 'SITE_ROOT', 'INTAKE_UPSTREAM', 'SOURCE_HEADER'];
 
-/** Any whitespace, brace, quote, backslash, `#` or control character would break out of a token. */
-const UNSAFE_CHARS = /[\s{}"'`\\#]/;
-const unsafe = (v) =>
-  UNSAFE_CHARS.test(v) || [...v].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f);
-const HEADER_NAME = /^[A-Za-z0-9-]{1,64}$/;
+const DNS_LABEL = '[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?';
+const HOSTNAME = new RegExp(`^(?=.{1,253}$)(?:${DNS_LABEL}\\.)*(?![0-9]+$)${DNS_LABEL}$`);
+/** Absolute, not "/", segments of safe characters only, no `.` / `..` segment. */
+const ABS_PATH = /^(?:\/(?!\.{1,2}(?:\/|$))[A-Za-z0-9._+-]+)+\/?$/;
+const LOOPBACK = /^(?:127\.0\.0\.1|\[::1\]|localhost):([1-9][0-9]{0,4})$/;
+
+/** One allow-list per placeholder: anything not listed is refused. */
+const ALLOWED = {
+  SITE_HOST: (v) => HOSTNAME.test(v),
+  SITE_ROOT: (v) => ABS_PATH.test(v),
+  INTAKE_UPSTREAM: (v) => {
+    const tcp = LOOPBACK.exec(v);
+    if (tcp) return Number(tcp[1]) <= 65535;
+    return v.startsWith('unix//') && v.endsWith('.sock') && ABS_PATH.test(v.slice('unix/'.length));
+  },
+  SOURCE_HEADER: (v) => /^X-Tbi-[A-Za-z0-9-]{1,58}$/.test(v),
+};
 
 /**
  * @param {Record<string, string>} values  exactly the four PLACEHOLDERS
@@ -33,9 +45,8 @@ export function renderCaddyfile(values, opts = {}) {
   for (const k of PLACEHOLDERS) {
     const v = values[k];
     if (typeof v !== 'string' || v === '') throw new Error(`missing value for ${k}`);
-    if (unsafe(v)) throw new Error(`unsafe value for ${k}`);
+    if (!ALLOWED[k](v)) throw new Error(`unsafe value for ${k}`);
   }
-  if (!HEADER_NAME.test(values.SOURCE_HEADER)) throw new Error('unsafe value for SOURCE_HEADER');
   if (!proxy) {
     const out = text.replace(/^\t#proxy-begin\n[\s\S]*?^\t#proxy-end\n/m, '');
     if (out === text) throw new Error('template has no proxy block');

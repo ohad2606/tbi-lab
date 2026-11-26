@@ -57,6 +57,72 @@ describe('renderCaddyfile (offline)', () => {
       renderCaddyfile(ok, { template: '{{SITE_HOST}} {{OTHER}}\n\t#proxy-begin\n\t#proxy-end\n' }),
     ).toThrow(/unreplaced/);
   });
+  it('allow-lists every value: each rejected example', () => {
+    const ok = VALUES('127.0.0.1:7411');
+    const rejected = {
+      SITE_HOST: [
+        '*',
+        '*.example.test',
+        'signup.example.test:443',
+        'a.example.test,b.example.test',
+        'https://signup.example.test',
+        'signup.example.test/x',
+        ':443',
+        '0.0.0.0',
+        '-a.example.test',
+        'a..example.test',
+        'signup\u0085.example.test',
+      ],
+      SITE_ROOT: [
+        '/',
+        '//',
+        '/.',
+        '/..',
+        '/srv/../..',
+        'srv/site',
+        './site',
+        '/srv/*',
+        '/srv/$X',
+        '/srv/a;b',
+        '/srv/a\u0085b',
+      ],
+      INTAKE_UPSTREAM: [
+        '0.0.0.0:7411',
+        '198.51.100.5:7411',
+        'intake.example.test:7411',
+        '127.0.0.1',
+        '127.0.0.1:0',
+        '127.0.0.1:65536',
+        ':7411',
+        'http://127.0.0.1:7411',
+        '127.0.0.1:7411,198.51.100.5:7411',
+        '127.0.0.1.example.test:7411',
+        '[::]:7411',
+        'unix/relative.sock',
+        'unix//tmp/x',
+        'unix//tmp/../x.sock',
+        '127.0.0.1:7411\u0085',
+      ],
+      SOURCE_HEADER: [
+        'Host',
+        'Origin',
+        'Content-Type',
+        'X-Forwarded-For',
+        'X-Real-Ip',
+        'X-Tbi-',
+        'X-Tbi-*',
+        'X-Tbi-Ip\u0085',
+      ],
+    };
+    for (const [key, list] of Object.entries(rejected))
+      for (const bad of list)
+        expect(
+          () => renderCaddyfile({ ...ok, [key]: bad }),
+          `${key} ${JSON.stringify(bad)}`,
+        ).toThrow(`unsafe value for ${key}`);
+    for (const good of ['[::1]:7411', 'localhost:7411', 'unix//run/tbi/intake.sock'])
+      expect(() => renderCaddyfile({ ...ok, INTAKE_UPSTREAM: good }), good).not.toThrow();
+  });
   it('has no log directive, no handle_path, no wildcard route; rollback has no proxy; HSTS only on tls', () => {
     const tls = renderCaddyfile(VALUES('127.0.0.1:7411'));
     const plain = renderCaddyfile(VALUES('127.0.0.1:7411'), { variant: 'plain' });
