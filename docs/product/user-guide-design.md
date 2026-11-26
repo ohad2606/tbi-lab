@@ -51,7 +51,10 @@ Notation: file paths are under `app/src/ui/`. `Mod` = Ctrl or Cmd. "Part focused
 
 | Key | Context | Action | File:line | Test |
 |---|---|---|---|---|
-| Enter, Space | Focused symbol or module | Select it (`aria-pressed`) | SchematicView.tsx:241-246, 340-345 | NO TEST found |
+| Enter, Space | Focused symbol or module | Select it (`aria-pressed`) | SchematicView.tsx:353-358, 455-460 | e2e/a11y-schematic-pan.spec.ts |
+| Arrow keys | Drawing or a symbol focused | Move the view; not mirrored in RTL | SchematicView.tsx:116-134 | e2e/a11y-schematic-pan.spec.ts |
+| + or = / - | Drawing or a symbol focused | Zoom in / out | SchematicView.tsx:116-134 | e2e/a11y-schematic-pan.spec.ts |
+| Home | Drawing or a symbol focused | Fit the whole circuit to the view | SchematicView.tsx:116-134 | e2e/a11y-schematic-pan.spec.ts |
 
 ### 1.4 3D view
 

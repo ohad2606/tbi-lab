@@ -37,6 +37,26 @@ interface Camera {
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 5;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+/** One key press or button click moves the view by this share of its own width or height. */
+const PAN_STEP = 0.1;
+/** Screen pixels kept between a part brought into view and the edges or overlays. */
+const FOCUS_MARGIN = 8;
+/** Below this view height (CSS px) the control column would reach the note: use a top row. */
+const SHORT_VIEW = 280;
+/** Drawing units between a module's body and its focus ring. */
+const RING_GAP = 5;
+const PAN_BUTTONS = [
+  { id: 'left', key: 'schematic.panLeft', dx: -1, dy: 0, path: 'M12 4 6 10l6 6' },
+  { id: 'right', key: 'schematic.panRight', dx: 1, dy: 0, path: 'M8 4l6 6-6 6' },
+  { id: 'up', key: 'schematic.panUp', dx: 0, dy: -1, path: 'M4 12l6-6 6 6' },
+  { id: 'down', key: 'schematic.panDown', dx: 0, dy: 1, path: 'M4 8l6 6 6-6' },
+] as const;
+
+/** How far to move [a, b] so it lies inside [lo, hi]; a span too long to fit is centred. */
+function intoRange(a: number, b: number, lo: number, hi: number): number {
+  if (b - a > hi - lo) return (a + b - lo - hi) / 2;
+  return a < lo ? a - lo : b > hi ? b - hi : 0;
+}
 
 export function SchematicView() {
   const { doc, selection, locale } = useAppState();
@@ -47,6 +67,8 @@ export function SchematicView() {
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [camera, setCamera] = useState<Camera | null>(null);
   const drag = useRef<{ x: number; y: number; camera: Camera } | null>(null);
+  const controls = useRef<HTMLDivElement>(null);
+  const note = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     const el = wrap.current;
@@ -78,6 +100,7 @@ export function SchematicView() {
   if (!doc || !layout || !cam) return null;
   const viewW = size.w / cam.scale;
   const viewH = size.h / cam.scale;
+  const short = size.h < SHORT_VIEW;
 
   const zoomAt = (factor: number, cx = size.w / 2, cy = size.h / 2) => {
     const scale = clamp(cam.scale * factor, MIN_SCALE, MAX_SCALE);
@@ -85,17 +108,80 @@ export function SchematicView() {
     const wy = cam.y + cy / cam.scale;
     setCamera({ scale, x: wx - cx / scale, y: wy - cy / scale });
   };
+  // Arrows and buttons move the view that way (as in the Circuit view); never mirrored in RTL.
+  const pan = (dx: number, dy: number) =>
+    setCamera((c) => {
+      const from = c ?? cam;
+      return {
+        scale: from.scale,
+        x: from.x + (dx * PAN_STEP * size.w) / from.scale,
+        y: from.y + (dy * PAN_STEP * size.h) / from.scale,
+      };
+    });
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Enter and Space are not listed: they stay with the focused part.
+    const act: Record<string, () => void> = {
+      ArrowLeft: () => pan(-1, 0),
+      ArrowRight: () => pan(1, 0),
+      ArrowUp: () => pan(0, -1),
+      ArrowDown: () => pan(0, 1),
+      '+': () => zoomAt(1.25),
+      '=': () => zoomAt(1.25),
+      '-': () => zoomAt(0.8),
+      Home: () => setCamera(null),
+    };
+    const run = act[e.key];
+    if (!run) return;
+    e.preventDefault();
+    run();
+  };
+  /**
+   * A part that gets keyboard focus outside the view, or under the controls or the note, is
+   * brought into view. A pointer focus is not `:focus-visible`: clicking never moves the view.
+   */
+  const reveal = (el: SVGGElement) => {
+    if (drag.current || !el.matches(':focus-visible')) return;
+    const frame = el.ownerSVGElement!.getBoundingClientRect();
+    const part = el.getBoundingClientRect();
+    const overlays = [controls.current!, note.current!].map((o) => o.getBoundingClientRect());
+    const inside =
+      part.left >= frame.left &&
+      part.right <= frame.right &&
+      part.top >= frame.top &&
+      part.bottom <= frame.bottom;
+    const covered = overlays.some(
+      (o) =>
+        part.left < o.right && o.left < part.right && part.top < o.bottom && o.top < part.bottom,
+    );
+    if (inside && !covered) return;
+    const [bar, foot] = overlays as [DOMRect, DOMRect];
+    // The controls are a column at the right edge or, in a short view, a row along the top.
+    const right = short ? frame.right : bar.left;
+    const top = short ? bar.bottom : frame.top;
+    const dx = intoRange(part.left, part.right, frame.left + FOCUS_MARGIN, right - FOCUS_MARGIN);
+    const dy = intoRange(part.top, part.bottom, top + FOCUS_MARGIN, foot.top - FOCUS_MARGIN);
+    setCamera({ scale: cam.scale, x: cam.x + dx / cam.scale, y: cam.y + dy / cam.scale });
+  };
   const selected = new Set(selection.components);
   const select = (id: string) => store.select({ ...emptySelection(), components: [id] });
   const byId = new Map(doc.components.map((c) => [c.id, c]));
   const supplies = new Set(layout.marks.filter((m) => m.kind === 'rail').map((m) => m.supply));
 
   return (
-    <div class="schematic-wrap" ref={wrap} dir="ltr" data-testid="schematic-view">
+    <div
+      class={`schematic-wrap${short ? ' schematic-short' : ''}`}
+      ref={wrap}
+      dir="ltr"
+      data-testid="schematic-view"
+    >
       <svg
         class="schematic"
         role="group"
         aria-label={t('schematic.aria', { name: doc.name })}
+        aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Plus = - Home"
+        tabindex={0}
+        onKeyDown={onKeyDown}
         viewBox={`${cam.x} ${cam.y} ${viewW} ${viewH}`}
         data-parts={layout.parts.map((p) => p.component).join(' ')}
         data-modules={layout.modules.map((m) => m.component).join(' ')}
@@ -137,6 +223,7 @@ export function SchematicView() {
             c={byId.get(m.component)!}
             selected={selected.has(m.component)}
             onSelect={select}
+            onReveal={reveal}
             locale={locale}
           />
         ))}
@@ -147,6 +234,7 @@ export function SchematicView() {
             c={byId.get(p.component)!}
             selected={selected.has(p.component)}
             onSelect={select}
+            onReveal={reveal}
             locale={locale}
           />
         ))}
@@ -161,7 +249,12 @@ export function SchematicView() {
           ))}
         </g>
       </svg>
-      <div class="canvas-controls" role="group" aria-label={t('schematic.controls')}>
+      <div
+        class="canvas-controls schematic-controls"
+        ref={controls}
+        role="group"
+        aria-label={t('schematic.controls')}
+      >
         <button
           type="button"
           class="icon-button"
@@ -192,8 +285,32 @@ export function SchematicView() {
             <path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5" />
           </svg>
         </button>
+        {/* The single-pointer alternative to dragging the drawing. */}
+        <div class="schematic-pan">
+          {PAN_BUTTONS.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              class="icon-button"
+              data-testid={`schematic-pan-${b.id}`}
+              aria-label={t(b.key)}
+              title={t(b.key)}
+              onClick={() => pan(b.dx, b.dy)}
+            >
+              <svg
+                viewBox="0 0 20 20"
+                width="16"
+                height="16"
+                aria-hidden="true"
+                class="control-icon"
+              >
+                <path d={b.path} />
+              </svg>
+            </button>
+          ))}
+        </div>
       </div>
-      <div class="view-note" dir={locale.dir}>
+      <div class="view-note" ref={note} dir={locale.dir}>
         {t('schematic.note')}
       </div>
     </div>
@@ -207,12 +324,14 @@ function PartView({
   c,
   selected,
   onSelect,
+  onReveal,
   locale,
 }: {
   p: SchPart;
   c: ComponentInstance;
   selected: boolean;
   onSelect(id: string): void;
+  onReveal(el: SVGGElement): void;
   locale: LocaleInfo;
 }) {
   const sym = SCHEMATIC_SYMBOLS[c.type];
@@ -233,11 +352,12 @@ function PartView({
       class={`sch-part${selected ? ' selected' : ''}`}
       data-part={c.id}
       data-key={p.key}
-      tabIndex={0}
+      tabindex={0}
       role="button"
       aria-label={[c.id, name, value].filter(Boolean).join(', ')}
       aria-pressed={selected}
       onClick={() => onSelect(c.id)}
+      onFocus={(e) => onReveal(e.currentTarget)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -318,12 +438,14 @@ function ModuleView({
   c,
   selected,
   onSelect,
+  onReveal,
   locale,
 }: {
   m: SchModule;
   c: ComponentInstance;
   selected: boolean;
   onSelect(id: string): void;
+  onReveal(el: SVGGElement): void;
   locale: LocaleInfo;
 }) {
   const name = catalogText(locale, CATALOG[c.type].nameKey);
@@ -332,11 +454,12 @@ function ModuleView({
       class={`sch-part sch-module${selected ? ' selected' : ''}`}
       data-part={c.id}
       data-key="module"
-      tabIndex={0}
+      tabindex={0}
       role="button"
       aria-label={`${c.id}, ${name}`}
       aria-pressed={selected}
       onClick={() => onSelect(c.id)}
+      onFocus={(e) => onReveal(e.currentTarget)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -344,6 +467,14 @@ function ModuleView({
         }
       }}
     >
+      <rect
+        class="sch-focus-ring"
+        x={m.x - RING_GAP}
+        y={m.y - RING_GAP}
+        width={m.width + 2 * RING_GAP}
+        height={m.height + 2 * RING_GAP}
+        rx={3 + RING_GAP}
+      />
       <rect class="sch-module-body" x={m.x} y={m.y} width={m.width} height={m.height} rx={3} />
       <text class="sch-ref" x={m.x + m.width / 2} y={m.y - 10} text-anchor="middle">
         {c.id}

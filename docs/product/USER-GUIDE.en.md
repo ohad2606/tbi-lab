@@ -103,6 +103,11 @@ This list is copied from the shortcuts registry in the app (`app/src/ui/shortcut
 ### Schematic view
 
 - <!-- shortcut:schematicSelect -->`Enter` or `Space`: Select the symbol or module (A symbol has focus)
+- <!-- shortcut:panSchematic -->`Arrow keys`: Move the view (not mirrored in Hebrew) (The drawing or one of its symbols has focus)
+- <!-- shortcut:zoomSchematic -->`+` or `=` or `-`: Zoom in or out (The drawing or one of its symbols has focus)
+- <!-- shortcut:fitSchematic -->`Home`: Fit the whole circuit to the view (The drawing or one of its symbols has focus)
+
+Without dragging: the buttons next to zoom and fit move the view left, right, up and down.
 
 ### 3D view
 
