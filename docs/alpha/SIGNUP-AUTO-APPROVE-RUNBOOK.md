@@ -95,12 +95,14 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
 - After the first enable, remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in (or set it to the recorded cut-off). The
   cut-off is stored in the state file. If that file is deleted, the daily count starts again at 0 and the list of
   unfinished approvals to retry is lost. The new cut-off depends on the process:
-  - A running process that has set its cut-off (and had no pause, missing owner or unsafe directory since) resets
-    it at the next sweep, to now or to a later `TBI_SIGNUP_AUTO_SINCE`. A past value is **not** applied again.
-  - If the file is missing at the first approving sweep of a process that has not set a cut-off yet (for example:
-    deleted, then restarted), that sweep is a first run again: a past `TBI_SIGNUP_AUTO_SINCE` **is** applied, and
-    requests created after it are taken. A paused or owner-not-recorded sweep before it writes the file again, and
-    then the cut-off is the time of the first approving sweep.
+  - A running process that has set its cut-off, and has had no pause, missing owner or unsafe directory since,
+    resets it at the next sweep, to now or to a later `TBI_SIGNUP_AUTO_SINCE`. A past value is **not** applied again.
+  - In every other case the next approving sweep that finds no file is a first run again, and a past
+    `TBI_SIGNUP_AUTO_SINCE` **is** applied: requests created after it are taken. This covers a restarted process, and a
+    running process that was paused, waiting for the owner principal or refusing an unsafe directory and then lost
+    the file. One exception: a paused or owner-not-recorded sweep that runs **after** the deletion writes the file
+    again, and then the cut-off is the later of the first approving sweep's time and `TBI_SIGNUP_AUTO_SINCE`.
+  - So remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in (and restart) **before** you delete or replace the state file.
 
 ## What to watch in the log (monitoring)
 
@@ -118,7 +120,7 @@ Alert on (owner action needed or capacity reached):
 | `auto-approve daily cap reached (N); the rest stay pending` | Today's cap is used up. The rest wait for tomorrow or for you; a restart or resume before then leaves them all for you (manual). If this happens often, review the cap (pending requests are purged after 90 days). |
 | `auto-approve paused` / `auto-approve resumed` | The kill switch changed. Check that it was you. |
 | `auto-approve pause check failed (<ERRNO>); treated as paused` | The directory cannot be read. Check the owner and mode. |
-| `auto-approve state dir unsafe (<reason>); manual only` | The owner, mode, symlink or parent of the directory is wrong. It resumes by itself once fixed, after a cut-off reset: requests that arrived before the first approving sweep after the fix stay for you (manual). Only if no cut-off was ever recorded is that sweep a first run. |
+| `auto-approve state dir unsafe (<reason>); manual only` | The owner, mode, symlink or parent of the directory is wrong. It resumes by itself once fixed, after a cut-off reset: requests that arrived before the first approving sweep after the fix stay for you (manual). That sweep is a first run (a past `TBI_SIGNUP_AUTO_SINCE` applies) if no cut-off was recorded or the state file was removed meanwhile. |
 | `auto-approve not started (state dir unsafe: <reason>); manual only` | Same problem at start. Fix it, then restart. |
 | `auto-approve counter unreadable (<class>); treated as cap reached` | The state file is corrupt, or (`future_day`) the clock went back. Inspect it before you remove it (removing it resets today's count and the cut-off); create the pause file first and back the file up (`cp -p`) before any removal. |
 | `auto-approve retry limit reached (N today); the rest wait` | The account helper keeps failing. Check the helper. |
