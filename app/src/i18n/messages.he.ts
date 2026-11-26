@@ -1392,7 +1392,7 @@ export const he: Record<MessageKey, string> = {
     'סשן ה-ESP32 אבד (החיבור נותק או שהסשן פג). הפרויקט בטוח; לחצו על הרצה לסשן חדש.',
   'sim.runtime.expiring':
     'סשן ה-ESP32 יסתיים בתוך דקה (סשן נמשך לכל היותר {minutes} דק׳). הפרויקט שמור; אחר כך לחצו על הרצה לסשן חדש.',
-  // TBI-018 s3d-5 (NEEDS DOCS REVIEW, tbi-docs): תור הרצה ומגבלות. עותקי מפתחות השרת limit.sim.*
+  // TBI-018 s3d-5: תור הרצה ומגבלות. עותקי מפתחות השרת limit.sim.*
   // בלי הצעות רכישה / שדרוג / עדיפות (עדיין אין כאלה במוצר).
   'sim.limit.queue':
     'כל מקומות ההרצה תפוסים כרגע. אתם במקום {n} בתור. ההרצה תתחיל אוטומטית כשיתפנה מקום. אפשר להמשיך לערוך בינתיים.',
@@ -1417,10 +1417,10 @@ export const he: Record<MessageKey, string> = {
   'sim.limit.daily':
     'הגעתם למגבלה היומית של דקות הסימולציה. היא תתאפס מחר. עדיין אפשר לערוך ולחבר רכיבים.',
   'sim.limit.system_unavailable': 'השירות זמנית לא זמין ולא חויבתם. נסו שוב בעוד רגע.',
-  // BETA-G2 (NEEDS DOCS REVIEW, tbi-docs): the Free kill switch; copy of server key limit.sim.free_paused.
+  // BETA-G2: the Free kill switch; copy of server key limit.sim.free_paused.
   'sim.limit.free_paused':
     'הרצות חדשות מושהות כרגע. נסו שוב מאוחר יותר. אפשר להמשיך לערוך ולחבר רכיבים בינתיים.',
-  // K3-3 (NEEDS DOCS REVIEW, tbi-docs): the "Still there?" prompt and the idle end.
+  // K3-3 (native-speaker review of the Hebrew sim texts is pending): the "Still there?" prompt and the idle end.
   'sim.idle.title': 'עדיין כאן?',
   'sim.idle.body':
     'כבר זמן מה לא זיהינו פעילות בדף הזה. כדי לפנות מקום הרצה למשתמשים אחרים, ההרצה תיעצר בעוד כדקה, אלא אם תבחרו ״להמשיך בהרצה״. עצירת ההרצה לא משנה את הפרויקט.',

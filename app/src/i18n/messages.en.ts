@@ -1453,7 +1453,7 @@ export const en = {
     'The ESP32 session was lost (connection lost or session expired). The project is safe; press Run for a fresh session.',
   'sim.runtime.expiring':
     'This ESP32 session will end within a minute (a session lasts at most {minutes} min). Your project is saved; afterwards, press Run for a fresh session.',
-  // TBI-018 s3d-5 (NEEDS DOCS REVIEW, tbi-docs): sim queue and limits. Copies of the server keys
+  // TBI-018 s3d-5: sim queue and limits. Copies of the server keys
   // limit.sim.* without purchase / upgrade / priority offers (the product has none yet).
   'sim.limit.queue':
     'All run slots are busy right now. You are number {n} in the queue. The run starts automatically when a slot is free. You can keep editing meanwhile.',
@@ -1482,10 +1482,10 @@ export const en = {
     'You have reached the daily limit of simulation minutes. It resets tomorrow. You can still edit and wire parts.',
   'sim.limit.system_unavailable':
     'The service is temporarily unavailable and you were not charged. Please try again shortly.',
-  // BETA-G2 (NEEDS DOCS REVIEW, tbi-docs): the Free kill switch; copy of server key limit.sim.free_paused.
+  // BETA-G2: the Free kill switch; copy of server key limit.sim.free_paused.
   'sim.limit.free_paused':
     'New runs are paused right now. Please try again later. You can keep editing and wiring parts meanwhile.',
-  // K3-3 (NEEDS DOCS REVIEW, tbi-docs): the "Still there?" prompt and the idle end.
+  // K3-3: the "Still there?" prompt and the idle end.
   'sim.idle.title': 'Still there?',
   'sim.idle.body':
     'We have not seen any activity on this page for a while. To free a run slot for other users, the run will stop in about a minute unless you choose “Keep running”. Stopping the run does not change your project.',

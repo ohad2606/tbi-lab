@@ -405,8 +405,8 @@ Runtime/QEMU: one smoke run with metering enabled on staging only, at enabling t
      `queue_timeout` (no dedicated "cancelled" key exists) and never re-enqueues;
    - a registry eviction (cap / per-principal cap / expiry at the cap) of a WAITING ticket cancels its
      adapter entry; the registry sweeps only when at its cap (no full pass per issue);
-   - new `LimitCode` `queue_replaced` (409, `limit.sim.queue_replaced`, HE + EN placeholder texts in
-     `runtime/plans/messages.ts`, NEEDS DOCS REVIEW).
+   - new `LimitCode` `queue_replaced` (409, `limit.sim.queue_replaced`, HE + EN texts in
+     `runtime/plans/messages.ts`; tbi-docs reviewed, native-speaker review of the Hebrew pending).
 4. **s3d-4 run lifecycle.** Beat timer, `remainingMs` stop, new end reasons, `ended` on every terminal
    path, adapter housekeeping, shutdown awaits `ended`. Acceptance: section 11 lifecycle, failure and
    billing cases green; exactly one `sim_close` per session.

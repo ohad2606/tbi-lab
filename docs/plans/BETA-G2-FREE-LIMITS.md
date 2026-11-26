@@ -73,7 +73,7 @@ policy file), the plan map, and the pause file (absent = off).
   Free are operator/owner config (`TBI_POLICY_FILE` + `TBI_HOST_SIM_PLAN_MAP`). Nothing enabled.
 - App UI for the new message (rendering exists through `simLimitText`; no new screen) and an a11y review.
 - Real Free/paid resolution from entitlements (O-1): today only the policy-name map.
-- tbi-docs review of the HE/EN draft wording (marked NEEDS DOCS REVIEW).
+- HE/EN wording: tbi-docs review done; native-speaker review of the Hebrew is still pending.
 
 ## 5a. Beta config in the repo (K2-a, inert)
 
