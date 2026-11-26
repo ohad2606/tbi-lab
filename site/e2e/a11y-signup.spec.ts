@@ -100,6 +100,16 @@ for (const { lang, dir } of LANGS) {
         'aria-describedby',
         'su-hint-email su-err-email',
       );
+      const heard = page.locator('#su-heard');
+      await expect(heard).toHaveAttribute('aria-describedby', 'su-hint-heard');
+      await expect(page.locator('#su-hint-heard')).toBeVisible();
+      // an over-long value (set past maxlength by script) keeps the hint next to the error
+      await heard.evaluate((e: HTMLInputElement) => (e.value = 'x'.repeat(81)));
+      await page.locator('#su-submit').click();
+      await expect(heard).toHaveAttribute('aria-describedby', 'su-hint-heard su-err-heard');
+      await heard.fill('');
+      await expect(heard).toHaveAttribute('aria-describedby', 'su-hint-heard');
+      await expect(page.locator('#su-summary li')).toHaveCount(5);
       // a summary link moves focus to its field
       await page.locator('#su-summary a').first().click();
       await expect(name).toBeFocused();
@@ -201,16 +211,23 @@ for (const { lang, dir } of LANGS) {
       });
       await page.goto(`/${lang}/signup/`);
       await fillByKeyboard(page);
+      const sending = page.locator('#su-sending');
+      await expect(sending).toBeHidden();
       await page.keyboard.press('Enter');
       const btn = page.locator('#su-submit');
+      await expect(sending).toBeVisible();
+      await expect(sending).toHaveAttribute('aria-hidden', 'true');
       await expect(btn).toHaveAttribute('aria-disabled', 'true');
       await expect(btn).toBeFocused();
       const label = await btn.textContent();
       await expect(page.locator('#su-status')).toHaveText(/\S/);
+      // the visible line is the same sentence as the (single) announcement
+      await expect(sending).toHaveText((await page.locator('#su-status').textContent())!);
       expect(await btn.textContent()).toBe(label); // label is stable while sending
       release();
       await expect(page.locator('#su-summary')).toBeFocused();
       await expect(btn).toHaveAttribute('aria-disabled', 'false');
+      await expect(sending).toBeHidden();
     });
 
     test('honeypot is out of the tab order and the accessibility tree', async ({ page }) => {

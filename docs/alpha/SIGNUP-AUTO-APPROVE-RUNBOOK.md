@@ -59,7 +59,11 @@ sudo stat -c '%U:%G %a %F' /var/lib/<N>-admin-auto
 2. `sudo systemctl daemon-reload && sudo systemctl restart <N>-admin.service`
 3. Check the log (next section). Expect `auto-approve on (daily cap N)`. On the first sweep, without
    `TBI_SIGNUP_AUTO_SINCE`, expect `auto-approve cut-off recorded (only requests created from now on)`: the
-   existing backlog stays for you to handle by hand.
+   existing backlog stays for you to handle by hand. A past `TBI_SIGNUP_AUTO_SINCE` is honoured only if that
+   first sweep may approve: if it is paused or the owner principal is not recorded yet, the cut-off becomes the
+   time of the first approving sweep instead.
+   Exception: if the first start finds the state directory unsafe, nothing is recorded, so after the fix a past
+   `TBI_SIGNUP_AUTO_SINCE` still applies (within the daily cap). Remove or update it before you restart.
 4. The admin app's sign-up screen shows the auto-approve status block (count and cap, paused, cut-off).
 
 If the log says `auto-approve off (config: ...)`, the flag or cap value is wrong. Fix the drop-in and restart.
@@ -79,7 +83,18 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
 - One request already in progress may still finish after the `touch`. The next check stops the sweep.
 - While paused, sign-ups are still stored and alerted, and you approve them by hand (manual mode).
 - A pause file in the sign-up store directory has **no** effect. Only the file in `/var/lib/<N>-admin-auto` counts.
-- Prefer a pause to a rollback for short stops: the daily count and the cut-off stay as they are.
+- Resuming resets the cut-off to the time of the first sweep after the `rm`: requests that arrived while it was
+  paused are **not** approved automatically; you approve them by hand. The daily count stays as it is.
+- The pause is checked once per sweep (every 60 s). A pause file created and removed between two sweeps is **not**
+  seen: nothing is paused and no reset happens. Keep the file for at least one sweep interval (see the
+  `auto-approve paused` line in the log) before you rely on it, or restart the service.
+- The same reset happens on **every restart** of the admin service and every re-enable: each new process first
+  moves the cut-off to now (never earlier), so requests that arrived before it are yours to handle. The cost: a
+  restart or resume (also one for an unrelated reason) leaves **all** requests still pending from before it for
+  manual approval, including older ones that were waiting for the next day's cap.
+- After the first enable, remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in (or set it to the recorded cut-off). The
+  cut-off is stored in the state file; if that file is ever deleted, a past `TBI_SIGNUP_AUTO_SINCE` is applied again
+  as a first run (requests created after it are taken) and the daily count starts again at 0.
 
 ## What to watch in the log (monitoring)
 
@@ -94,7 +109,7 @@ Alert on (owner action needed or capacity reached):
 
 | Log line | Meaning / action |
 |---|---|
-| `auto-approve daily cap reached (N); the rest stay pending` | Today's cap is used up. The rest wait for tomorrow or for you. If this happens often, review the cap (pending requests are purged after 90 days). |
+| `auto-approve daily cap reached (N); the rest stay pending` | Today's cap is used up. The rest wait for tomorrow or for you; a restart or resume before then leaves them all for you (manual). If this happens often, review the cap (pending requests are purged after 90 days). |
 | `auto-approve paused` / `auto-approve resumed` | The kill switch changed. Check that it was you. |
 | `auto-approve pause check failed (<ERRNO>); treated as paused` | The directory cannot be read. Check the owner and mode. |
 | `auto-approve state dir unsafe (<reason>); manual only` | The owner, mode, symlink or parent of the directory is wrong. It resumes by itself once fixed. |
@@ -103,10 +118,13 @@ Alert on (owner action needed or capacity reached):
 | `auto-approve retry limit reached (N today); the rest wait` | The account helper keeps failing. Check the helper. |
 | `auto-approve could not mark a claimed request (<ERRNO>); ...` | The store write failed. Check the store's disk and permissions. |
 | `auto-approve sweep failed (<class>)` | An unexpected sweep error. Read the lines around it. |
-| `auto-approve waiting (owner principal not recorded; manual only)` | Record the owner principal. |
+| `auto-approve waiting (owner principal not recorded; manual only)` | Record the owner principal. Requests that arrive meanwhile stay for you (the cut-off is reset once the owner is recorded). |
+| `auto-approve cut-off reset failed (<ERRNO>); nothing approved, retried next sweep` | The state file could not be written. Nothing is approved until it can. Check the directory's owner, mode and disk. |
 | `auto-approve off (config: <reason>)` | The drop-in value is wrong. Auto-approve is off. |
 
-For information only: `auto-approve on (daily cap N)`, `auto-approve processed N`, `auto-approve cut-off recorded`.
+For information only: `auto-approve on (daily cap N)`, `auto-approve processed N`, `auto-approve cut-off recorded`
+(first run ever), `auto-approve cut-off reset (only requests created from now on)` (once per restart, re-enable or
+resume). Until that line, the status block shows the backlog as unknown (reset pending).
 
 ## Roll back (turn auto-approve off)
 
@@ -118,10 +136,8 @@ For information only: `auto-approve on (daily cap N)`, `auto-approve processed N
 - Requests approved automatically stay approved, and their accounts exist. Disable an account by hand in the
   admin app if needed. The sign-up audit log marks those approvals `actor=auto`.
 - The directory `/var/lib/<N>-admin-auto` is kept. It is inert while the flag is off; leave it in place.
-- **Turning it on again later:** the cut-off saved at the first enable is still in the state file. Requests that
-  arrived while auto-approve was off would then be approved automatically (within the cap). To keep them for
-  manual handling, set `TBI_SIGNUP_AUTO_SINCE` to the time you turn it on again, in the drop-in. Removing the
-  state file also moves the cut-off, but it resets today's count as well: do that only on a day with no automatic
-  approvals.
+- **Turning it on again later:** nothing extra is needed. The first sweep of the new process resets the cut-off to
+  now, so requests that arrived while auto-approve was off stay for manual handling. `TBI_SIGNUP_AUTO_SINCE` can
+  only move the cut-off later, never earlier.
 - Never edit or delete the state file while auto-approve is on. Only root and the admin service user can do it,
   and doing so resets the cap for the day.

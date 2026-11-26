@@ -147,7 +147,7 @@ ${msgs}
 ${field('name', f.name, '<input type="text" id="su-name" name="name" autocomplete="name" maxlength="80" dir="auto" aria-required="true">')}
 ${field('email', f.email, '<input type="email" id="su-email" name="email" autocomplete="email" inputmode="email" dir="ltr" maxlength="254" spellcheck="false" autocapitalize="off" aria-required="true" aria-describedby="su-hint-email">', f.emailHint)}
 ${field('role', f.role, `<select id="su-role" name="role" aria-required="true">\n${opts(SIGNUP_ROLE_VALUES, f.roles, f.rolePick)}\n</select>`)}
-${field('heard', f.heard, '<input type="text" id="su-heard" name="heardFrom" maxlength="80" autocomplete="off" dir="auto">', '', ` <span class="optional">${esc(f.optional)}</span>`)}
+${field('heard', f.heard, '<input type="text" id="su-heard" name="heardFrom" maxlength="80" autocomplete="off" dir="auto" aria-describedby="su-hint-heard">', f.heardHint, ` <span class="optional">${esc(f.optional)}</span>`)}
 <div class="hp" aria-hidden="true" inert>
 <label for="su-website">${esc(f.honeypot)}</label>
 <input type="text" id="su-website" name="website" value="" tabindex="-1" autocomplete="off" aria-hidden="true" data-lpignore="true" data-1p-ignore="true">
@@ -157,6 +157,7 @@ ${f.privacy.map((x) => `<p>${rich2(x, lang)}</p>`).join('\n')}
 ${check('age', esc(f.age))}
 ${check('consent', `${esc(f.consentBefore)}<a href="${privacyHref}" target="_blank" rel="noopener">${esc(f.consentLink)}<span class="visually-hidden"> ${esc(f.newTab)}</span></a>${rich(f.consentAfter, lang)}`)}
 <p><button type="submit" class="btn btn-primary" id="su-submit" aria-disabled="false"><span data-label>${esc(f.submit)}</span></button></p>
+<p id="su-sending" class="hint-text" aria-hidden="true" hidden>${esc(f.statusSending)}</p>
 </form>
 <section id="su-success" hidden>
 <h2 id="su-success-h" tabindex="-1">${esc(f.successH)}</h2>

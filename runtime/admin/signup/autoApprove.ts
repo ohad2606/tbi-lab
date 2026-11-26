@@ -29,8 +29,15 @@
  *                  an hour per reason, never reset silently). If marking the record fails after
  *                  the claim, the claim is released (or pruned as an orphan next sweep) but the
  *                  slot stays used.
- *   Cut-off        only requests created after TBI_SIGNUP_AUTO_SINCE (or, unset, after the time
- *                  auto-approve first ran, persisted in the state file) are auto-approved.
+ *   Cut-off        only requests created after the cut-off are auto-approved. The very first run
+ *                  (no state file) records TBI_SIGNUP_AUTO_SINCE, or unset the current time. After
+ *                  that, EVERY process starts unconfirmed: its first sweep that may approve (not
+ *                  paused, owner recorded) first resets the cut-off to max(now, stored cut-off,
+ *                  TBI_SIGNUP_AUTO_SINCE), so any restart, re-enable (env or drop-in off -> on),
+ *                  resume after a pause, or recorded owner after `no_owner` leaves the requests
+ *                  that arrived before it for the owner. The cut-off only moves forward. A reset
+ *                  that cannot be persisted approves nothing (`reset_failed`) and is retried by
+ *                  the next sweep; the daily count is never lowered by it.
  *   Kill switch    while `<state>/auto-approve.paused` exists (any entry: file, dir, symlink, even
  *                  dangling; lstat, never followed) nothing is auto-approved; every check error
  *                  other than ENOENT counts as paused (fail closed). Checked before every claim,
@@ -236,15 +243,22 @@ interface AutoState {
   count: number;
   /** Retries made on `day` (bounded by the daily cap). */
   retries: number;
-  /** Persisted cut-off when TBI_SIGNUP_AUTO_SINCE is unset: the first time a sweep ran. */
+  /** Persisted cut-off: set by the first run, moved forward by every reset (confirm). */
   since?: string;
   /**
-   * DEC-11: true once a sweep ran un-paused, false after a paused sweep that followed. Seeing it
-   * false on an un-paused sweep = re-enable: the cut-off is reset to now. Absent = never ran.
+   * DEC-11: true once a sweep confirmed the cut-off, false after a paused / no_owner sweep. A
+   * reset also happens on every new process (unconfirmed), whatever this says. Absent = never ran.
    */
   active?: boolean;
   /** Ids claimed by this service and not finished yet: the only ids ever retried. */
   claims: Record<string, Claim>;
+}
+
+/** The cut-off reset could not be written: the sweep stops with `reset_failed` (fail closed). */
+class ResetFailed extends Error {
+  constructor(readonly errno: string) {
+    super('reset_failed');
+  }
 }
 
 class CounterUnreadable extends Error {
@@ -328,7 +342,9 @@ export interface SweepResult {
     | 'counter_unreadable'
     | 'busy'
     | 'state_dir_unsafe'
-    | 'mark_failed';
+    | 'mark_failed'
+    /** The cut-off reset of an unconfirmed process could not be persisted: nothing approved. */
+    | 'reset_failed';
 }
 
 /**
@@ -351,7 +367,12 @@ export interface AutoApproveStatus {
   /** Whether the sweep accepts the state dir (autoStateDirCheck). */
   stateDir: 'ok' | 'unsafe';
   stateDirReason?: string;
-  /** Only requests created after this ISO time are auto-approved. */
+  /**
+   * Only requests created after this ISO time are auto-approved. `unknown` with the reason
+   * `reset_pending` while this process has not reset the cut-off yet (before its first
+   * approving sweep, or while paused / without the owner): the stored value is about to be
+   * replaced, so it is not shown.
+   */
   cutoff: string | 'unknown';
   /** Pending requests created at or before the cut-off: never auto-approved, they need the owner. */
   waitingBacklog: number | 'unknown';
@@ -370,8 +391,14 @@ export class AutoApprover {
   /** Errno classes of failed record marks already logged (once each). */
   private readonly markErrors = new Set<string>();
   private spoolId: string | null = null;
-  /** DEC-11 (L2): a paused sweep failed to record the pause; the next un-paused sweep resets. */
-  private pauseUnrecorded = false;
+  /**
+   * BETA-G1 follow-up: every process starts unconfirmed (restart, env/drop-in off -> on). Set
+   * again by every paused or `no_owner` sweep. While true nothing is claimed; the next sweep
+   * that may approve first resets the cut-off (confirm) and only then clears it.
+   */
+  private unconfirmed = true;
+  /** Last time (ms) each reset-failure class was logged: at most once per hour each. */
+  private readonly resetFailLoggedAt = new Map<string, number>();
 
   constructor(private readonly d: AutoApproverDeps) {}
 
@@ -491,7 +518,12 @@ export class AutoApprover {
             : e.message;
       }
     let cutoff: number | null = null;
-    if (this.d.since !== undefined)
+    const firstRun = state && this.unconfirmed && !state.since && state.active === undefined;
+    if (state && !firstRun && (this.unconfirmed || state.active !== true || !state.since)) {
+      // The stored cut-off is replaced by the next approving sweep: neither it nor a backlog
+      // counted against it is shown (neutral `unknown`, reason reset_pending).
+      unknown.cutoff = 'reset_pending';
+    } else if (this.d.since !== undefined)
       cutoff = Math.max(this.d.since, state?.since ? Date.parse(state.since) : -Infinity);
     else if (state?.since) cutoff = Date.parse(state.since);
     else unknown.cutoff = state ? 'not_recorded' : unknown.count!;
@@ -522,62 +554,61 @@ export class AutoApprover {
   }
 
   /**
-   * DEC-11: remembers pause/resume in the state file. On a re-enable (paused after an un-paused
-   * sweep, now un-paused) the cut-off is reset to now, so requests that arrived while it was off
-   * are never auto-approved by mistake; the owner approves those by hand. The first un-paused
-   * sweep only records `active: true` (a first enable resets nothing). Returns the new cut-off
-   * (ms) on a reset, else null. Runs under the state-dir mutex like every other writer.
+   * A paused or `no_owner` sweep: this process becomes unconfirmed (in memory, always) and the
+   * state file records `active: false` (secondary: a failed write still stops the sweep, the
+   * error propagates, and the in-memory flag makes the next approving sweep reset).
+   * Written whenever `active` is not already false, also on an absent state: a paused or
+   * `no_owner` first run is then no longer a first run, so a backdated TBI_SIGNUP_AUTO_SINCE
+   * cannot approve requests that arrived meanwhile (also across a restart). An unreadable state
+   * propagates (fail closed, nothing rewritten).
    */
-  private trackActive(isPaused: boolean): Promise<number | null> {
+  private markInactive(): Promise<void> {
+    this.unconfirmed = true;
     return exclusive(this.d.dir, async () => {
-      if (isPaused) {
-        try {
-          const s = await this.readState(this.today());
-          if (s.active === true) await this.writeState({ ...s, active: false });
-        } catch (e) {
-          // The pause could not be recorded: the sweep still stops (the error propagates); this
-          // process remembers it so its next un-paused sweep still resets the cut-off.
-          this.pauseUnrecorded = true;
-          throw e;
-        }
-        return null;
-      }
       const s = await this.readState(this.today());
-      if (s.active === false || this.pauseUnrecorded) {
-        // Never earlier than a stored cut-off, even after a clock step back.
-        const stored = s.since ? Date.parse(s.since) : -Infinity;
-        const since = new Date(Math.max(this.now(), stored)).toISOString();
-        await this.writeState({ ...s, since, active: true });
-        this.pauseUnrecorded = false;
-        this.log(
-          'signup: auto-approve re-enabled; cut-off reset (only requests created from now on)',
-        );
-        return Date.parse(since);
-      }
-      // First un-paused sweep (also an old state file or an env cut-off with nothing claimed yet):
-      // mark it, so that a later pause -> resume resets the cut-off.
-      if (s.active === undefined) await this.writeState({ ...s, active: true });
-      return null;
+      if (s.active !== false) await this.writeState({ ...s, active: false });
     });
   }
 
-  /** The cut-off (ms): the configured one, else the persisted first-run time (written now if new). */
-  private sinceMs(): Promise<number> {
-    if (this.d.since !== undefined) {
-      const env = this.d.since;
-      // A re-enable reset (DEC-11) may be newer than the configured cut-off: the later one wins.
-      return this.readState(this.today()).then((s) =>
-        s.since ? Math.max(env, Date.parse(s.since)) : env,
-      );
-    }
+  /**
+   * The first approving sweep of an unconfirmed process (and any sweep that finds `active` not
+   * true) persists the cut-off before anything is claimed, under the state-dir mutex:
+   *   first run ever (no cut-off, no `active`): TBI_SIGNUP_AUTO_SINCE, else now;
+   *   otherwise: max(now, stored cut-off, TBI_SIGNUP_AUTO_SINCE), never earlier (clock step back).
+   * The count, retries and claims are written back unchanged. An unreadable state propagates
+   * (counter_unreadable); a failed write throws ResetFailed. Either way the flag stays set.
+   */
+  private confirm(): Promise<void> {
     return exclusive(this.d.dir, async () => {
       const s = await this.readState(this.today());
-      if (s.since) return Date.parse(s.since);
-      const since = new Date(this.now()).toISOString();
-      await this.writeState({ ...s, since, active: true });
-      this.log('signup: auto-approve cut-off recorded (only requests created from now on)');
-      return Date.parse(since);
+      if (!this.unconfirmed && s.active === true && s.since) return;
+      const env = this.d.since;
+      const firstRun = this.unconfirmed && s.since === undefined && s.active === undefined;
+      const since = firstRun
+        ? (env ?? this.now())
+        : Math.max(this.now(), s.since ? Date.parse(s.since) : -Infinity, env ?? -Infinity);
+      try {
+        await this.writeState({ ...s, since: new Date(since).toISOString(), active: true });
+      } catch (e) {
+        throw new ResetFailed(errnoOf(e));
+      }
+      this.unconfirmed = false;
+      this.log(
+        firstRun
+          ? 'signup: auto-approve cut-off recorded (only requests created from now on)'
+          : 'signup: auto-approve cut-off reset (only requests created from now on)',
+      );
     });
+  }
+
+  /**
+   * The cut-off (ms): the later of the configured and the persisted one. Read-only: confirm()
+   * has persisted it before this is asked; none at all = nothing is eligible (fail closed).
+   */
+  private async sinceMs(): Promise<number> {
+    const s = await this.readState(this.today());
+    const t = Math.max(this.d.since ?? -Infinity, s.since ? Date.parse(s.since) : -Infinity);
+    return t === -Infinity ? Infinity : t;
   }
 
   /**
@@ -590,12 +621,16 @@ export class AutoApprover {
     since: number,
   ): Promise<'claimed' | 'ineligible' | 'cap' | 'mark_failed'> {
     return exclusive(this.d.dir, async () => {
+      // Defence in depth: never a claim before this process has reset the cut-off.
+      if (this.unconfirmed) return 'ineligible';
       const day = this.today();
       const s = await this.readState(day);
       if (s.count >= this.d.dailyCap) return 'cap';
+      // The cut-off as persisted now (under the mutex), never older than the sweep's.
+      const cut = Math.max(since, s.since ? Date.parse(s.since) : -Infinity);
       return serialById(id, async () => {
         const cur = await this.d.store.get(id).catch(() => null);
-        if (!cur || !eligible(cur, s, since, this.d.webSignups)) return 'ineligible' as const;
+        if (!cur || !eligible(cur, s, cut, this.d.webSignups)) return 'ineligible' as const;
         const at = new Date(this.now()).toISOString();
         const taken: AutoState = {
           ...s,
@@ -719,6 +754,17 @@ export class AutoApprover {
         }
         return { ...out, stopped: 'counter_unreadable' };
       }
+      if (e instanceof ResetFailed) {
+        const last = this.resetFailLoggedAt.get(e.errno);
+        const t = this.now();
+        if (last === undefined || t - last >= AUTO_UNREADABLE_LOG_MS || t < last) {
+          this.resetFailLoggedAt.set(e.errno, t);
+          this.log(
+            `signup: auto-approve cut-off reset failed (${e.errno}); nothing approved, retried next sweep`,
+          );
+        }
+        return { ...out, stopped: 'reset_failed' };
+      }
       throw e;
     } finally {
       this.sweeping = false;
@@ -726,11 +772,13 @@ export class AutoApprover {
   }
 
   private async sweepInner(out: SweepResult): Promise<SweepResult> {
-    if (await this.checkStateDir()) return { ...out, stopped: 'state_dir_unsafe' };
-    let since = await this.sinceMs();
-    const isPaused = await this.paused();
-    if (isPaused) {
-      await this.trackActive(true);
+    if (await this.checkStateDir()) {
+      // Like a pause (the state is not touched: the dir is not trusted): reset on recovery.
+      this.unconfirmed = true;
+      return { ...out, stopped: 'state_dir_unsafe' };
+    }
+    if (await this.paused()) {
+      await this.markInactive();
       return { ...out, stopped: 'paused' };
     }
     const approver = this.d.approver({
@@ -743,11 +791,14 @@ export class AutoApprover {
         this.noOwnerLogged = true;
         this.log('signup: auto-approve waiting (owner principal not recorded; manual only)');
       }
+      // Like a pause: requests that pile up meanwhile are left for the owner (reset on recovery).
+      await this.markInactive();
       return { ...out, stopped: 'no_owner' };
     }
     this.noOwnerLogged = false;
-    const mark = await this.trackActive(false);
-    if (mark !== null) since = Math.max(since, mark);
+    // The reset completes (persisted) before any retry or claim of this sweep.
+    await this.confirm();
+    const since = await this.sinceMs();
     const records = await this.d.store.list(); // oldest first
     const state = await this.prune(new Map(records.map((r) => [r.id, r])));
     // 1. Earlier claims of THIS service whose account step did not finish: no new slot, bounded.
@@ -757,7 +808,10 @@ export class AutoApprover {
       const e = state.claims[r.id];
       if (!e || r.status !== 'approved' || r.emailAttemptedAt) continue;
       if (this.now() - Date.parse(e.lastAttemptAt) < AUTO_RETRY_BACKOFF_MS) continue;
-      if (await this.paused()) return { ...out, stopped: 'paused' };
+      if (await this.paused()) {
+        this.unconfirmed = true;
+        return { ...out, stopped: 'paused' };
+      }
       const res = await this.reserveRetry(r.id);
       if (res === 'limit') {
         const day = this.today();
@@ -777,7 +831,10 @@ export class AutoApprover {
     // 2. New claims.
     for (const r of records) {
       if (!eligible(r, state, since, this.d.webSignups)) continue;
-      if (await this.paused()) return { ...out, stopped: 'paused' };
+      if (await this.paused()) {
+        this.unconfirmed = true;
+        return { ...out, stopped: 'paused' };
+      }
       const c = await this.claim(r.id, since);
       if (c === 'cap') {
         const day = this.today();

@@ -122,6 +122,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
     'אנשים שביקשו להצטרף, ובקשות שאושרו ועדיין לא נשלח להן מייל. אישור מוסיף את החשבון ושולח את מייל הפתיחה.',
   'console.signups.count.one': 'בקשה אחת ממתינה לך',
   'console.signups.count.other': '{count} בקשות ממתינות לך',
+  'console.signups.count.queuedOnly': 'אין בקשות שדורשות פעולה ממך. מיילים מתוזמנים: {count}',
   'console.signups.empty': 'אין בקשות הצטרפות פתוחות.',
   'console.signups.unavailable': 'בקשות ההצטרפות אינן זמינות כרגע.',
   'console.signups.refresh': 'רענון הבקשות',

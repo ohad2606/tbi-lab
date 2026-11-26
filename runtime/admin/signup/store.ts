@@ -399,8 +399,8 @@ export class PendingStore {
 
   /**
    * K12: the owner deletes one request now (a person asked to be forgotten), whatever its status.
-   * Under the per-id lock shared with the approver and the purge, it removes the `<id>.notified`
-   * and `<id>.notifyq` markers, the address marker (`<sha256>.mark`, the de-duplication lock)
+   * Under the per-id lock shared with the approver and the purge, it removes the `<id>.notified`,
+   * `<id>.notifyq` and `<id>.web` (web sub-cap) markers, the address marker (`<sha256>.mark`, the de-duplication lock)
    * that points to this id, any `<id>.*.tmp` left by a crash, and LAST the record `<id>.json`
    * (a crash part-way leaves the record, so a retry finishes the job). Then one audit line
    * `<time> <id> delete ok` (no personal data). A record file that cannot be parsed is deleted too.
@@ -430,6 +430,9 @@ export class PendingStore {
       };
       await gone(`${id}.notified`);
       await gone(`${id}.notifyq`);
+      // The web marker counts against the web sub-cap: removed before the record (a crash
+      // part-way leaves the record, so a retry finishes), and an orphan one on not_found too.
+      await gone(`${id}.web`);
       for (const f of await readdir(this.dir)) {
         if (f.startsWith(`${id}.`) && f.endsWith('.tmp')) await gone(f);
         else if (/^[0-9a-f]{64}\.mark$/.test(f)) {

@@ -112,19 +112,36 @@ added. This is tested.
     (`spoolId`) for the operator. Polling the earlier request instead of resubmitting is a possible later change.
   - Finished claims (mail attempted, email sent/queued/failed, rejected, back to `pending` with an error, or the
     record gone) are dropped from the set at the next sweep.
-- **Cut-off (Q5, L2).** Only requests created after `TBI_SIGNUP_AUTO_SINCE` are taken. Unset, the first sweep
-  writes the current time as `since` into the state file (one log line `auto-approve cut-off recorded`), so the
-  existing backlog is **not** approved when the flag is first turned on; it stays for the owner. Deleting the state
-  file moves the cut-off to the next sweep's time (fewer requests from the backlog).
-- **Deleting the state file resets today's count** (and clears the claim set): the cap is only as strong as the
-  integrity of the admin-only state dir. Only root or the admin service user can do it; the runbook must say so.
+- **Cut-off (Q5, L2).** Only requests created after the cut-off are taken. The very first run (no state file)
+  writes `TBI_SIGNUP_AUTO_SINCE`, or unset the current time, as `since` (one log line `auto-approve cut-off
+  recorded`), so the existing backlog is **not** approved when the flag is first turned on; it stays for the owner.
+- **Reset on every start, re-enable and resume (G1 follow-up).** Every admin process starts unconfirmed. Its first
+  sweep that may approve (not paused, owner principal recorded) first persists `since = max(now, stored since,
+  TBI_SIGNUP_AUTO_SINCE)` (one log line `auto-approve cut-off reset`), under the state-dir mutex, before any retry
+  or claim. A paused, `no_owner` or `state_dir_unsafe` sweep makes the process unconfirmed again; a paused or
+  `no_owner` sweep also writes `active: false` whenever it is not already false, including on a first run with no
+  state file (so a paused first run is no longer a first run, and a backdated `TBI_SIGNUP_AUTO_SINCE` cannot take
+  the requests of the pause, also across a restart). A pause created and removed between two sweeps is not seen. So any
+  restart, env/drop-in off -> on, pause -> resume or owner recorded after `no_owner` leaves the requests created
+  before it for the owner (manual). The cut-off only moves forward (a clock step back never moves it earlier).
+  Cost: a restart or resume for an unrelated reason also leaves **all** requests still pending from before it
+  (including over-cap ones waiting for the next day) for manual approval. A reset
+  that cannot be written approves nothing (`stopped: reset_failed`, logged at most once an hour per class) and is
+  retried by the next sweep; the count, retries and claims are written back unchanged. Until the reset, the status
+  route answers `cutoff` and `waitingBacklog` as `unknown` with the reason `reset_pending`. Never delete or edit the
+  state file while auto-approve is on.
+- **Deleting the state file resets today's count** (and clears the claim set, and makes the next run a first run
+  that applies `TBI_SIGNUP_AUTO_SINCE` again): the cap is only as strong as the integrity of the admin-only state
+  dir. Only root or the admin service user can do it; the runbook must say so, and says to remove or update
+  `TBI_SIGNUP_AUTO_SINCE` after the first enable.
 - An unreadable or corrupt state file, or one whose `day` is **after** today (a clock stepped back across
   midnight, L1: `future_day`), counts as cap reached (fail closed). Each sweep stops at the first read. The log
   line is written at most **once per hour per reason** (`AUTO_UNREADABLE_LOG_MS`; a new reason logs at once; a
   clock stepped back logs again). It is never reset automatically: the operator inspects it and fixes or
   removes it.
 - **Decision: no new "waitlist" status.** Over the cap a request stays `pending`. It is never lost, it shows in the
-  owner's open list as today, and the next days' sweeps take the backlog oldest first. A new status would touch the
+  owner's open list as today, and the next days' sweeps take the backlog oldest first, as long as the process is
+  not restarted or resumed meanwhile (a reset leaves all older pending requests, over-cap ones included, manual). A new status would touch the
   store schema, the admin client, the UI and both translations for no behavioural gain. The open list could later
   show "waiting for tomorrow's cap" (UI follow-up).
 - Order: by `createdAt` (millisecond resolution). Requests created in the same millisecond have no defined order
@@ -332,6 +349,7 @@ It never writes, takes no lock, writes no log line and does not change the sweep
     listing of the store, like the owner's list.
   - **Explicit failure:** a value that cannot be read is the string `"unknown"`, never a guessed number, and
     `unknownReasons.<field>` names why: an errno name, `corrupt`, `future_day`, `state_dir_unsafe`, or
-    `not_recorded` (no sweep has recorded the default cut-off yet).
+    `not_recorded` (no sweep has recorded the default cut-off yet), `reset_pending` (this process has not reset
+    the cut-off yet: before its first approving sweep, or while paused / without the owner principal).
 - The answer holds counts, the cap, booleans, the day, the cut-off time and fixed codes only: no id, name, address,
   path or secret (tested).

@@ -16,7 +16,7 @@ import {
   autoStateClass,
   focusAfterRemoval,
   isAutoApproved,
-  signupCountKey,
+  signupCountView,
   signupSource,
   signupOutcomeView,
   signupRowKind,
@@ -45,6 +45,9 @@ const STATUS_KEY: Record<SignupRowKind, MessageKey> = {
 const rowFocus = (id: string) =>
   document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`) ??
   document.querySelector<HTMLElement>(`[data-signup-id="${id}"][tabindex="-1"]`);
+
+/** How long the count announcement waits for the auto-approve status before it is spoken alone. */
+const STATUS_WAIT_MS = 3000;
 
 const N_SLOT = '\uE000';
 const C_SLOT = '\uE001';
@@ -168,24 +171,46 @@ export function Signups() {
 
   // A live region only speaks when its text changes: clear it, then set it on the next frame, so
   // the same sentence twice in a row is announced twice.
+  // `spoken` counts announcements and reloads, so a reload that was overtaken stays silent.
+  const spoken = useRef(0);
   const say = (text: string) => {
+    const n = ++spoken.current;
     setAnnounce('');
     requestAnimationFrame(() => {
-      if (alive.current) setAnnounce(text);
+      if (alive.current && n === spoken.current) setAnnounce(text);
     });
   };
 
   const reload = async () => {
     // The status is independent of the list: its failure shows its own message and never blocks it.
-    void loadAutoApproveStatus(api).then((st) => {
+    const turn = ++spoken.current;
+    const status = loadAutoApproveStatus(api).then((st) => {
       if (alive.current) setAutoStatus(st);
+      return st;
     });
     const v = await loadOpenSignups(api);
     if (!alive.current) return;
     setList(v);
     setMessages({});
     setConfirming(null);
-    if (v.ok) say(t(signupCountKey(v.value.length), { count: v.value.length }));
+    if (v.ok) {
+      const c = signupCountView(v.value);
+      const count = t(c.key, { count: c.count });
+      // One announcement for both: a failed status is added to the count (a hung one is not waited for).
+      const st = await Promise.race([
+        status,
+        new Promise<null>((r) => setTimeout(() => r(null), STATUS_WAIT_MS)),
+      ]);
+      if (!alive.current || turn !== spoken.current) return;
+      say(st && !st.ok ? `${count}. ${t('console.signups.auto.unavailable')}` : count);
+      if (st) return;
+      // The status was not waited for: a failure arriving later is shown, so it is also spoken,
+      // unless a newer announcement or reload came first.
+      const after = spoken.current;
+      const late = await status;
+      if (alive.current && !late.ok && after === spoken.current)
+        say(t('console.signups.auto.unavailable'));
+    }
   };
   useEffect(() => {
     alive.current = true;
@@ -247,8 +272,11 @@ export function Signups() {
       // focus: no live announcement then (it would be read twice). Every other outcome is spoken
       // by the live region (the row is gone, or focus is on a button).
       const messageFocused = !v.removed && signupRowKind(v.record ?? r) === 'queued';
-      if (messageFocused) setAnnounce('');
-      else say(text);
+      if (messageFocused) {
+        // Silence counts as an announcement: a pending one (e.g. a late status) must not follow.
+        spoken.current++;
+        setAnnounce('');
+      } else say(text);
       if (v.removed) {
         focusId.current = focusAfterRemoval(ids, r.id);
         setList({ ok: true, value: list.value.filter((x) => x.id !== r.id) });
@@ -266,6 +294,8 @@ export function Signups() {
     }
   };
 
+  // Only rows that need the owner are counted (a queued email needs nothing).
+  const countLine = list?.ok ? signupCountView(list.value) : null;
   return (
     <section aria-labelledby="signups-h" class="stack">
       <h1 id="signups-h">{t('console.signups.heading')}</h1>
@@ -300,7 +330,7 @@ export function Signups() {
       ) : (
         <>
           <p class="muted small" data-testid="signups-count">
-            {t(signupCountKey(list.value.length), { count: list.value.length })}
+            {t(countLine!.key, { count: countLine!.count })}
           </p>
           <ul class="list" data-testid="signups-list">
             {list.value.map((r) => {

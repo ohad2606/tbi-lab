@@ -101,6 +101,30 @@ describe('finding 8: flag off builds no sign-up page', () => {
   });
 });
 
+describe('gate G1 a11y minors: heard hint, email message, visible sending text', () => {
+  const HINT = { he: 'עד 80 תווים.', en: 'Up to 80 characters.' };
+  const CHARS = {
+    he: 'השתמשו באותיות באנגלית, בספרות ובסימנים.',
+    en: 'Use English letters, digits and symbols.',
+  };
+  it.each(['he', 'en'])('%s: the heard input is described by a visible length hint', (l) => {
+    const h = page(preview, l);
+    expect(h).toContain(`<p class="hint-text" id="su-hint-heard">${HINT[l]}</p>`);
+    expect(h.match(/<input[^>]*id="su-heard"[^>]*>/)[0]).toContain(
+      'aria-describedby="su-hint-heard"',
+    );
+  });
+  it.each(['he', 'en'])('%s: the invalid-email message names the accepted characters', (l) => {
+    expect(content[l].signup.errEmail.endsWith(` ${CHARS[l]}`)).toBe(true);
+    expect(normalizeEmail('דנה@example.com')).toBe(null);
+  });
+  it.each(['he', 'en'])('%s: a hidden, aria-hidden sending line follows the button', (l) => {
+    expect(page(preview, l)).toContain(
+      `</button></p>\n<p id="su-sending" class="hint-text" aria-hidden="true" hidden>${content[l].signup.statusSending}</p>\n</form>`,
+    );
+  });
+});
+
 describe('finding 1: "how did you hear about us" is optional free text', () => {
   it.each(['he', 'en'])('%s: a text input, maxlength 80, autocomplete off, not required', (l) => {
     const h = page(preview, l);
