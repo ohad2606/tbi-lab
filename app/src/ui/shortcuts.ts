@@ -80,6 +80,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   { id: 'fitSchematic', scope: 'schematic', keys: ['Home'], file: 'SchematicView.tsx' },
 
   { id: 'rotate3d', scope: 'view3d', keys: ['Arrow Left', 'Arrow Right'], file: 'ThreeView.tsx' },
+  { id: 'tilt3d', scope: 'view3d', keys: ['Arrow Up', 'Arrow Down'], file: 'ThreeView.tsx' },
   { id: 'pan3d', scope: 'view3d', keys: ['Shift + Arrow keys'], file: 'ThreeView.tsx' },
   { id: 'zoom3d', scope: 'view3d', keys: ['+', '=', '-'], file: 'ThreeView.tsx' },
   { id: 'reset3d', scope: 'view3d', keys: ['Home'], file: 'ThreeView.tsx' },

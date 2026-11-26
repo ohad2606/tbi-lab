@@ -3018,36 +3018,74 @@ select {
   box-shadow: inset 0 0 0 5px var(--focus-halo);
 }
 
-.schematic-controls {
+/* Overlay view controls with pan buttons (Circuit, Schematic, 3D). */
+.schematic-controls,
+.view-controls {
   align-items: flex-end;
 }
 
 /* Two by two (left, right / up, down), so the column grows as little as possible. */
-.schematic-pan {
+.view-pan {
   display: grid;
   grid-template-columns: repeat(2, auto);
   gap: 0.25rem;
 }
 
+.view-pan .icon-button,
+.view3d-controls .icon-button {
+  display: grid;
+  place-items: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  padding: 0;
+}
+
+/* The 3D view has more controls: two columns. */
+.view3d-controls {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 0.25rem;
+}
+
+.view3d-controls .view-pan {
+  grid-column: 1 / -1;
+}
+
 /* A short view: one row along the top, so the controls never meet the note along the bottom or
    spill out of the view. */
-.schematic-short .schematic-controls {
+.view-short .canvas-controls {
+  display: flex;
   flex-flow: row wrap;
   justify-content: flex-end;
   align-items: center;
   max-inline-size: calc(100% - 1.5rem);
 }
 
-.schematic-short .schematic-pan {
+.view-short .view-pan {
   grid-template-columns: repeat(4, auto);
 }
 
-.schematic-pan .icon-button {
+/* Both stay clear of the two columns of view controls on the right. */
+.view3d-wrap .view3d-presets,
+.view3d-wrap .view-note {
+  max-inline-size: calc(100% - 6rem);
+}
+
+/* The note stays at the bottom left. */
+.view3d-wrap .view-note {
+  left: 0.75rem;
+  right: auto;
+}
+
+/* A short 3D view: four columns (three rows) instead of a row, beside the preset buttons. */
+.view-short .view3d-controls {
   display: grid;
-  place-items: center;
-  inline-size: 1.75rem;
-  block-size: 1.75rem;
-  padding: 0;
+  grid-template-columns: repeat(4, auto);
+}
+
+.view3d-wrap.view-short .view3d-presets,
+.view3d-wrap.view-short .view-note {
+  max-inline-size: calc(100% - 10.5rem);
 }
 
 .sch-wire {
@@ -3281,7 +3319,8 @@ select {
 .view3d-presets {
   position: absolute;
   inset-block-start: 0.75rem;
-  inset-inline-start: 0.75rem;
+  /* Physical: the view controls stay on the right in every language. */
+  left: 0.75rem;
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;

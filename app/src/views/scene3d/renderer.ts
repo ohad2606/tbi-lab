@@ -36,6 +36,7 @@ export { assetLoadStats, loadAssets };
 import { MODEL_HEIGHT, type SceneDescription, type Vec3 } from './scene.js';
 import { footprintRect } from './labels.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import { tiltedPolar } from './camera.js';
 import { DEFAULT_PRESET, labelAnchors, presetVisibility, type LayerVisibility } from './layers.js';
 import type { Ray } from './pick.js';
 import { TOGGLE_TILT } from './assets/benchParts.js';
@@ -102,6 +103,8 @@ export interface Viewer {
   /** Frame the whole circuit from the current viewing direction. */
   fit(): void;
   rotate(radians: number): void;
+  /** Raise (positive) or lower the camera round the target; never under the bench. */
+  tilt(radians: number): void;
   zoom(factor: number): void;
   /**
    * Move the view (camera and target together) by a fraction of the visible height, right and
@@ -969,6 +972,14 @@ export function createViewer(
       const offset = camera.position.clone().sub(controls.target);
       offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), radians);
       camera.position.copy(controls.target.clone().add(offset));
+      controls.update();
+    },
+    tilt(radians) {
+      const orbit = new THREE.Spherical().setFromVector3(
+        camera.position.clone().sub(controls.target),
+      );
+      orbit.phi = tiltedPolar(orbit.phi, radians, controls.maxPolarAngle);
+      camera.position.setFromSpherical(orbit).add(controls.target);
       controls.update();
     },
     zoom(factor) {
