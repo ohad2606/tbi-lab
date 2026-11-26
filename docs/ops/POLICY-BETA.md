@@ -48,13 +48,30 @@ Pass the repository file the instance was installed with, as for `install.sh`:
 - The temporary policy is the installed file with one change, `defaultPlan: preview`. It applies to
   **every unassigned principal** of the instance while the test runs, and the build service and
   Session Host are restarted twice (live sessions end).
-- Before changing the policy, `s8-policy`, `s8-deployed-policy` and `alpha-deployed-recovery` save the
-  installed bytes and restore exactly those, never a repository file. If the installed file cannot be
-  read or does not validate, they fail before changing anything.
-- A killed run (no `afterAll`) leaves the temporary policy installed. The log prints the path of the
-  saved copy (`policy.before.json`, in the system temporary directory): install it again
-  (`install -m 0400`, as root) and restart both services, before any further run.
+- `s8-policy`, `s8-deployed-policy` and `alpha-deployed-recovery` first require the installed file to
+  equal the repository file **byte for byte**. If it differs, cannot be read or does not validate,
+  they fail before changing anything and print the recovery command. There is no override: an
+  instance whose policy was edited on the server cannot be tested this way. They then restore exactly
+  the saved bytes. Exception: `alpha-deployed-recovery` with fewer than 3 live sessions, where
+  neither the expected nor a readable installed default plan refuses prebuilt uploads, has nothing to
+  run and skips without this check.
+- A killed run (no `afterAll`) leaves the temporary policy installed; the next run fails on it.
+  Recover before anything else:
+  `sudo install -m 0400 <repository file> /etc/<instance>/policy.json`, then
+  `sudo systemctl restart <instance>-build.service <instance>-session-host.service`.
+- If a restore fails, the error names the saved copy (`policy.before.json`, in the system temporary
+  directory); install that and restart both services. The check compares the file only: if the
+  restore installed it but the restart failed, the services still need that restart.
 - `install.sh` without `TBI_S8_POLICY` installs `policy.json`: pass the variable on every reinstall.
+
+### A run with skips is not an acceptance pass
+
+For acceptance set `TBI_ACCEPTANCE_STRICT=1` (only `1` or `0`; other values are an error). In
+`s8-policy`, `s8-deployed-policy` and `alpha-deployed-recovery` every "refused / NOT TESTED" skip then
+fails: no instance named, no mutation gate (including the stale-health case), a refused upload case,
+or fewer than 3 live sessions. So on a host that admits fewer than 3, `alpha-deployed-recovery`
+cannot pass strictly. The other deployed tests (such as `s11-deployed`) do not read this variable:
+check their skip counts.
 
 ## Known follow-ups
 
