@@ -9,6 +9,7 @@ import {
 } from '@tbi-lab/admin-client';
 import { Loading, Problem } from '../common.js';
 import { api, useConsole, useT } from '../context.js';
+import { rescueFocus } from '../focus-rescue.js';
 import type { MessageKey } from '../i18n.js';
 import {
   deleteAccountWarning,
@@ -322,31 +323,44 @@ export function StoredSignups({
       // With sign-up administration off the service answers `not_found` too: only the reloaded
       // list tells that apart from a request that is gone, so nothing is claimed before it.
       const unsure = answer.kind === 'not_found';
-      const view = (off: boolean) => {
-        const v = deleteOutcomeView(answer, off);
+      const view = (reload?: 'listed' | 'off' | 'unconfirmed') => {
+        const v = deleteOutcomeView(answer, reload);
         const done: Outcome = { ...v, id: r.id, key: v.key as MessageKey };
         return { v, done, text: t(done.key, { id: ltr(r.id), seconds: v.seconds ?? '' }) };
       };
-      let { v, done, text } = view(false);
+      let { v, done, text } = view();
       if (!unsure) onChanged(v.gone ? r.id : null);
-      // One announcement for the outcome and a failed reload; a slow reload is not waited for.
-      let spoken = false;
-      const timer = unsure
-        ? undefined
-        : setTimeout(() => {
-            spoken = true;
-            say(text);
-          }, RELOAD_WAIT_MS);
-      const next = await load();
+      // One announcement for the outcome and a failed reload. A slow reload is not waited for:
+      // after the bound the row is released; without a list a `not_found` stays unconfirmed.
+      const reload = load();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const first = await Promise.race([
+        reload,
+        new Promise<'slow'>((done) => (timer = setTimeout(done, RELOAD_WAIT_MS, 'slow'))),
+      ]);
       clearTimeout(timer);
+      const next = first === 'slow' ? null : first;
+      if (first === 'slow')
+        void reload.then((late) => {
+          if (late?.stale) alsoSay(t('console.signups.all.stale'));
+          // A late list may no longer hold the row that has focus.
+          rescueFocus(() => filter.current ?? toggle.current);
+        });
       if (unsure) {
-        const off = !!next && !next.v.ok && next.v.error === 'unavailable';
-        ({ v, done, text } = view(off));
+        const got = next?.v;
+        ({ v, done, text } = view(
+          !got
+            ? 'unconfirmed'
+            : got.ok
+              ? 'listed'
+              : got.error === 'unavailable'
+                ? 'off'
+                : 'unconfirmed',
+        ));
         onChanged(v.gone ? r.id : null);
       }
       const stale = next?.stale ? t('console.signups.all.stale') : '';
-      if (!spoken) say(stale ? `${text} ${stale}` : text);
-      else if (stale) alsoSay(stale);
+      say(stale ? `${text} ${stale}` : text);
       setOutcome(done);
       // Gone on the server: never keep showing it, even when the reload failed.
       if (v.gone)
@@ -358,8 +372,9 @@ export function StoredSignups({
       if (!at || at === document.body || at.closest(`[data-stored-id="${CSS.escape(r.id)}"]`)) {
         const after = focusAfterRemoval(ids, r.id);
         const before = ids[ids.indexOf(r.id) - 1] ?? null;
-        focusNext.current =
-          !v.gone && next?.v.ok !== false ? [r.id, after, before] : [after, before];
+        // An unconfirmed row is kept, with its outcome: focus stays on it.
+        const kept = !v.gone && (unsure || next?.v.ok !== false);
+        focusNext.current = kept ? [r.id, after, before] : [after, before];
         setFocusTick((n) => n + 1);
       }
     } finally {

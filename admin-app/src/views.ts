@@ -469,12 +469,13 @@ export function deleteAccountWarning(
 
 /**
  * The sentence for one delete outcome; `gone`: the request no longer exists on the server.
- * `adminOff`: the sign-up routes are not there (the stored list is unavailable), so a `not_found`
- * deleted nothing and says nothing about the request.
+ * `reload`: what the list reload after a `not_found` showed. `off`: the sign-up routes are not
+ * there (the stored list is unavailable), so nothing was deleted. `unconfirmed`: no list came back.
+ * Neither says the request is gone.
  */
 export function deleteOutcomeView(
   o: DeleteSignupOutcome,
-  adminOff = false,
+  reload: 'listed' | 'off' | 'unconfirmed' = 'listed',
 ): {
   key: string;
   gone: boolean;
@@ -485,7 +486,8 @@ export function deleteOutcomeView(
     case 'deleted':
       return { key: `${k}done`, gone: true };
     case 'not_found':
-      return adminOff ? { key: `${k}failed.off`, gone: false } : { key: `${k}gone`, gone: true };
+      if (reload === 'listed') return { key: `${k}gone`, gone: true };
+      return { key: reload === 'off' ? `${k}failed.off` : `${k}unconfirmed`, gone: false };
     case 'already_deleted':
       return { key: `${k}gone`, gone: true };
     case 'rate_limited':

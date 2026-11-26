@@ -220,6 +220,8 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.delete.confirm.ok': 'מחיקת הבקשה',
   'console.signups.delete.done': 'בקשה {id}: נמחקה.',
   'console.signups.delete.gone': 'בקשה {id}: היא כבר לא קיימת.',
+  'console.signups.delete.unconfirmed':
+    'בקשה {id}: לא הצלחנו לאשר את המחיקה. ייתכן שהבקשה עדיין שמורה.',
   'console.signups.delete.rateLimited': 'בקשה {id}: לא נמחקה. יותר מדי בקשות; המתינו דקה ונסו שוב.',
   'console.signups.delete.rateLimitedFor':
     'בקשה {id}: לא נמחקה. יותר מדי בקשות; נסו שוב מאוחר יותר. שניות להמתנה: {seconds}.',

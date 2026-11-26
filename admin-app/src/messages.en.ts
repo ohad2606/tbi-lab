@@ -229,6 +229,8 @@ export const consoleEn = {
   'console.signups.delete.confirm.ok': 'Delete request',
   'console.signups.delete.done': 'Request {id}: deleted.',
   'console.signups.delete.gone': 'Request {id}: it was already gone.',
+  'console.signups.delete.unconfirmed':
+    'Request {id}: we could not confirm the deletion. The request may still be stored.',
   'console.signups.delete.rateLimited':
     'Request {id}: not deleted. Too many requests; wait a minute and try again.',
   'console.signups.delete.rateLimitedFor':

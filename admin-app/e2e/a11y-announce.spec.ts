@@ -21,6 +21,8 @@ const TEXT = {
     gone: /כבר לא קיימת/,
     stays: /הוא נשאר/,
     noWarning: 'אזהרת החשבון כבר לא רלוונטית לבקשה הזאת.',
+    unconfirmed: (id: string) =>
+      `בקשה ⁦${id}⁩: לא הצלחנו לאשר את המחיקה. ייתכן שהבקשה עדיין שמורה.`,
   },
   en: {
     noStatus: 'Auto-approve status is unavailable right now.',
@@ -31,6 +33,8 @@ const TEXT = {
     gone: /already gone/,
     stays: /it stays/,
     noWarning: 'The account warning no longer applies to this request.',
+    unconfirmed: (id: string) =>
+      `Request ⁦${id}⁩: we could not confirm the deletion. The request may still be stored.`,
   },
 };
 type Lang = keyof typeof TEXT;
@@ -375,5 +379,119 @@ for (const lang of ['he', 'en'] as const) {
     await expect(result).not.toContainText(text.gone);
     await expect(result.locator('bdi[dir="ltr"]')).toHaveText(id(1));
     await expect(page.getByTestId('stored-toggle')).toBeFocused();
+  });
+
+  test(`announce (${lang}): not_found with a failed reload is unconfirmed, the row stays`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    const m = await mock(page);
+    await signups(page);
+    await openStored(page);
+    await askDelete(page, m, 1);
+    m.remove = () => ({ status: 404, json: { error: 'not_found' } });
+    m.all = () => ({ status: 429, json: { error: 'rate_limited' } });
+    await page.getByTestId('delete-ok').click();
+    await expect(live(page)).toHaveText(`${text.unconfirmed(id(1))} ${text.stale}`);
+    const result = page.getByTestId('delete-result');
+    await expect(result).toHaveAttribute('data-key', 'console.signups.delete.unconfirmed');
+    await expect(result).not.toContainText(text.gone);
+    await expect(page.getByTestId('stored-row')).toHaveCount(3);
+    await expect(del(page, 1)).toBeFocused();
+  });
+
+  test(`announce (${lang}): a hung reload ends in "unconfirmed" and frees the row`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    const m = await mock(page);
+    await signups(page);
+    await openStored(page);
+    await askDelete(page, m, 1);
+    const reload = gate();
+    m.remove = () => ({ status: 404, json: { error: 'not_found' } });
+    m.all = async () => {
+      await reload.held;
+      return { json: { signups: [row(2), row(3)] } };
+    };
+    await page.getByTestId('delete-ok').click();
+    await expect(del(page, 1)).toHaveAttribute('aria-disabled', 'true');
+    await expect(live(page)).toHaveText(text.unconfirmed(id(1)), { timeout: 6000 });
+    await expect(del(page, 1)).not.toHaveAttribute('aria-disabled');
+    await expect(page.getByTestId('stored-row')).toHaveCount(3);
+    await expect(del(page, 1)).toBeFocused();
+    // The late list drops the focused row: focus does not fall to the page.
+    reload.release();
+    await expect(page.getByTestId('stored-row')).toHaveCount(2);
+    await expect(page.getByTestId('stored-filter')).toBeFocused();
+  });
+
+  test(`announce (${lang}): leaving while the action is being sent: focus is rescued`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    await page.goto(`${APP}/#/testers/${ALEX}`);
+    await page.getByTestId('tester-disable').click();
+    await expect(page.getByTestId('confirm-cancel')).toBeFocused();
+    const send = gate();
+    const reload = gate();
+    let sending = false;
+    let reloading = false;
+    await page.route('**/admin-api/**', async (route) => {
+      const req = route.request();
+      if (req.method() !== 'GET') {
+        sending = true;
+        await send.held;
+        return route.continue();
+      }
+      if (!sending || !req.url().endsWith('/admin-api/accounts')) return route.continue();
+      reloading = true;
+      await reload.held;
+      const res = await route.fetch();
+      const json = (await res.json()) as { accounts: { target: string }[] };
+      json.accounts = json.accounts.filter((a) => a.target !== ALEX);
+      await route.fulfill({ json });
+    });
+    await page.getByTestId('confirm-ok').click();
+    await expect.poll(() => sending).toBe(true);
+    await page.getByTestId('nav-testers').click();
+    await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
+    const link = page.getByTestId(`tester-open-${ALEX}`);
+    await link.focus();
+    send.release();
+    await expect.poll(() => reloading).toBe(true);
+    reload.release();
+    await expect(link).toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
+  });
+
+  test(`announce (${lang}): the same refused add submitted twice is a new alert each time`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    await page.goto(`${APP}/#/add`);
+    for (const [testid, name, email] of [
+      ['add-name', 'R2-D2', 'ok@example.invalid'],
+      ['add-email', 'Test B.', 'not-an-address'],
+    ] as const) {
+      await page.getByTestId('add-name').fill(name);
+      await page.getByTestId('add-email').fill(email);
+      await page.getByTestId('add-submit').click();
+      const field = page.getByTestId(testid);
+      await expect(field).toBeFocused();
+      await expect(field).toHaveAttribute('aria-invalid', 'true');
+      const problem = page.getByTestId('add-problem');
+      await expect(problem).toHaveRole('alert');
+      const first = (await problem.elementHandle())!;
+      await field.press('Enter');
+      await expect.poll(() => first.evaluate((e) => e.isConnected)).toBe(false);
+      await expect(problem).toHaveCount(1);
+      await expect(problem).toHaveRole('alert');
+      await expect(field).toBeFocused();
+    }
   });
 }

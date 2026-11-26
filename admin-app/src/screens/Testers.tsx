@@ -317,7 +317,8 @@ export function TesterDetail({ target }: { target: string }) {
   const run = async (kind: 'disable' | 'reactivate') => {
     setBusy(true);
     try {
-      await settle(await setAccess(api, kind, a.target), label, kind);
+      const startedOn = location.hash;
+      await settle(await setAccess(api, kind, a.target), label, kind, startedOn);
     } finally {
       setBusy(false);
       setAction(null);
@@ -331,12 +332,13 @@ export function TesterDetail({ target }: { target: string }) {
     }
     setBusy(true);
     try {
+      const startedOn = location.hash;
       const o = await renameTester(api, a.target, n);
       if (o.kind === 'refused' && o.error === 'invalid_name') {
         refuseName();
         return;
       }
-      await settle(o, n, 'rename');
+      await settle(o, n, 'rename', startedOn);
       setAction(null);
     } finally {
       setBusy(false);

@@ -147,9 +147,14 @@ export function App() {
     return t(key as MessageKey, { account: label || o.masked || '***' });
   };
 
-  const settle = async (o: MutationOutcome, label: string, action: MutationAction) => {
+  /** `startedOn`: the screen (hash) the action was sent from, read before sending it. */
+  const settle = async (
+    o: MutationOutcome,
+    label: string,
+    action: MutationAction,
+    startedOn: string,
+  ) => {
     setNotice(outcomeText(o, label, action));
-    const startedOn = location.hash;
     if (o.kind === 'pending') return setPending({ id: o.id, label, action, tries: 0 });
     await refresh(['accounts', 'capacity', 'audit']);
     // Left for another screen meanwhile: the reload may have removed what had focus there. The
