@@ -672,10 +672,11 @@ export const en = {
   'inspector.stopToChange': 'Stop the simulation to change this value.',
 
   'canvas.hint.probe':
-    'Probe: click a terminal or wire for its voltage to GND, or a part for its current. Keyboard: {enter} or {space} on a focused part (current) or a wire selected with {prev} {next} (voltage); {w}, then arrows and {enter} for a pin voltage. {esc} ends.',
+    'Probe: click, or focus a part, a pin ({w}) or a wire ({prev} {next}) and press {enter}. {esc} ends.',
   'probe.kb.added': 'Probe added: {probe}',
   'probe.kb.exists': 'Probe already placed: {probe}',
   'probe.kb.noNet': 'No probe added: this wire has no pin end to read a net from.',
+  'probe.kb.off': 'Probe tool off',
   'probe.kb.pins':
     '{component}: {count} pins, now on {pin}. Arrow keys move between pins, Enter or Space probes the voltage, Escape leaves the pins.',
   'probe.tool': 'Probe',
@@ -2485,14 +2486,15 @@ export const en = {
   'shortcut.cancelPlace.action': 'Cancel placing a part',
   'shortcut.cancelPlace.when': 'While a part from the palette is armed',
   'shortcut.pinMode.action': 'Start wiring from the focused part: choose one of its pins',
-  'shortcut.pinMode.when': 'A part has focus; not while running',
+  'shortcut.pinMode.when':
+    'A part has focus; not while running; not while the probe tool is on (then W only reaches pins to probe)',
   'shortcut.wireSelect.action': 'Select the previous or next wire; its ends are announced',
   'shortcut.wireSelect.when': 'Circuit view, not in pin mode',
   'shortcut.wireRepick.action':
     'Re-pick one end of the selected wire (choose the end, then the new pin)',
   'shortcut.wireRepick.when': 'A wire is selected; not while running or read-only',
   'shortcut.probePlace.action':
-    'Probe the focused part (current), pin or selected wire (voltage); in probe mode W reaches the pins, also while running',
+    'Probe the focused part (current), pin or selected wire (voltage); in probe mode W reaches the pins, also while running; switches and buttons are probed, not operated',
   'shortcut.probePlace.when': 'Probe tool on; not read-only',
   'shortcut.escStep.action':
     'Step back one level: probe mode, armed part, drawing mode, then clear the selection',
@@ -2513,13 +2515,14 @@ export const en = {
     'Fit the whole circuit to the view (the key in the F position on any keyboard layout)',
   'shortcut.fit.when': 'Circuit view',
   'shortcut.toggleSwitch.action': 'Toggle the switch',
-  'shortcut.toggleSwitch.when': 'A switch has focus; simulation running',
+  'shortcut.toggleSwitch.when':
+    'A switch has focus; simulation running; not while the probe tool is on (then Space probes the switch)',
   'shortcut.pinNext.action': 'Next pin of the part',
   'shortcut.pinNext.when': 'Pin mode',
   'shortcut.pinPrev.action': 'Previous pin of the part',
   'shortcut.pinPrev.when': 'Pin mode',
   'shortcut.wireStart.action': 'Start a wire from this pin',
-  'shortcut.wireStart.when': 'Pin mode',
+  'shortcut.wireStart.when': 'Pin mode; not while the probe tool is on (then Enter probes the pin)',
   'shortcut.targetCycle.action':
     'Move between possible targets: pins, junctions and points on wires (Tab is kept inside on purpose)',
   'shortcut.targetCycle.when': 'While choosing where the wire ends',

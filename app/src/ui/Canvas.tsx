@@ -805,6 +805,10 @@ export function Canvas({
     }
     const w = doc.layout.wires.find((x) => x.id === step.id)!;
     store.select({ ...emptySelection(), wires: [step.id] });
+    // Probe mode: Enter probes the selected wire, so the focus ring must not stay on a part.
+    const focused = document.activeElement;
+    if (probeMode && focused?.closest('[data-hit="component"], [data-hit="junction"]'))
+      svgRef.current?.focus({ preventScroll: true });
     kbAnnounce(
       t('kbwire.wireSelected', {
         n: step.n,
@@ -1165,8 +1169,10 @@ export function Canvas({
       return;
     }
     if (e.key === 'Escape') {
-      if (probeMode) onProbeModeChange(false);
-      else if (placing) onPlacingDone();
+      if (probeMode) {
+        onProbeModeChange(false);
+        kbAnnounce(t('probe.kb.off'));
+      } else if (placing) onPlacingDone();
       else if (mode.kind !== 'idle') setMode({ kind: 'idle' });
       else {
         if (selection.wires.length) kbAnnounce(t('kbwire.wireCleared'));
@@ -1801,7 +1807,6 @@ export function Canvas({
           {!readOnly &&
             t(hint, {
               enter: isolateLtr('Enter'),
-              space: isolateLtr('Space'),
               w: isolateLtr('W'),
               prev: isolateLtr('['),
               next: isolateLtr(']'),

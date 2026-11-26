@@ -10,12 +10,14 @@ const TEXT = {
     pins: /Enter or Space probes/,
     added: /Probe added: /,
     exists: /already placed/,
+    off: /Probe tool off/,
     clear: 'Remove all probes',
   },
   he: {
     pins: /Enter או רווח מודדים/,
-    added: /נוסף .*: /,
-    exists: /כבר מוצב/,
+    added: /נוספה .*: /,
+    exists: /נקודת המדידה .*כבר מוצבת/,
+    off: /כלי נקודת המדידה כבוי/,
     clear: /הסרת כל נקודות המדידה/,
   },
 } as const;
@@ -78,12 +80,21 @@ for (const lang of ['en', 'he'] as const) {
 
     // Net probe on a wire selected with ].
     await page.keyboard.press(']');
+    // Focus follows the target: it leaves the part once a wire is selected.
+    await expect(psu).not.toBeFocused();
+    await expect(page.getByTestId('canvas')).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page.locator('[data-testid^="probe-reading-"]')).toHaveCount(4);
     await expect(page.locator('.probe-net')).toHaveCount(1);
     const keyboard = await readings(page);
+    // Tab back to the part: Enter now means the part again.
+    await page.keyboard.press('Tab');
+    await expect(psu).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(status).toHaveText(t.exists);
     await page.keyboard.press('Escape');
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(status).toHaveText(t.off);
 
     // The same targets by pointer give the same probes and readings.
     await page.getByRole('button', { name: t.clear }).click();
