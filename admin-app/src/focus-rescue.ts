@@ -1,6 +1,7 @@
 /**
- * WCAG 2.4.3: content that held focus can be replaced (a failed reload, a lost sign-in), which
- * drops focus on <body>. Then, and only then, it goes to the screen's heading.
+ * WCAG 2.4.3: content that held focus can be replaced (a reload, a closed editor, a lost
+ * sign-in), which drops focus on <body>. Then, and only then, it goes to the control that took its
+ * place, when the caller names one, else to the screen's heading.
  */
 
 /** Where the user's focus is, or was when its node was removed; null once the user left it. */
@@ -20,11 +21,13 @@ if (typeof document !== 'undefined') {
 }
 
 /** Call after content was replaced. Does nothing on a first load or while focus is somewhere. */
-export function rescueFocus(): void {
+export function rescueFocus(successor?: () => HTMLElement | null): void {
   // A frame later: a closing confirmation restores its opener first, if that still exists.
   requestAnimationFrame(() => {
     if (!held || held.isConnected) return;
     if (document.activeElement && document.activeElement !== document.body) return;
+    const next = successor?.();
+    if (next) return next.focus();
     const heading = document.querySelector<HTMLElement>('main h1');
     if (!heading) return;
     heading.tabIndex = -1;
