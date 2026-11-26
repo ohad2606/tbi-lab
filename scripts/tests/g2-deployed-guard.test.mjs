@@ -13,7 +13,7 @@ import {
   g2Report,
   pollUntil,
   G2_FREE_LIVE,
-  G2_NOT_COVERED,
+  G2_PAID_DRILL,
   G2_PAUSE_PROBE,
   G2_PAUSE_REMOVAL_MS,
   G2_QUEUED,
@@ -79,7 +79,15 @@ describe('g2-deployed guard', () => {
       kind: 'run',
       instance: 'tbi-s8',
       previewUsers: ['p1', 'p2'],
+      payingUsers: [],
     });
+  });
+
+  it('takes an optional list of extra paying identities; a repeated one is refused', () => {
+    const d = g2Decision({ ...ok, TBI_G2_EXTRA_PAYING_USERS: ' p3, p4,' }, locked);
+    expect(d).toMatchObject({ kind: 'run', payingUsers: ['p3', 'p4'] });
+    for (const TBI_G2_EXTRA_PAYING_USERS of ['p3,p3', 'p3,p1'])
+      expect(g2Decision({ ...ok, TBI_G2_EXTRA_PAYING_USERS }, locked).kind).toBe('refused');
   });
 });
 
@@ -145,18 +153,31 @@ describe('g2-deployed drill helpers', () => {
         buildsRefused: 2,
         idleStreamEnded: 1,
         heldStreamOpenMs: 400_000,
+        heldStreamOk: 1,
       },
       flags: ['dec32'],
     };
     const passed = g2Report(p, 'PASSED');
-    expect(G2_NOT_COVERED).toHaveLength(1);
     expect(passed).toMatchObject({
       result: 'PASSED',
       metrics: { buildsSucceeded: 0, buildsRefused: 2, idleStreamEnded: 1 },
       flags: ['dec32'],
-      notCovered: [...G2_NOT_COVERED],
+      queueFullAtMaxLength: 'not_run',
+      notCovered: [G2_PAID_DRILL],
     });
-    expect(g2FailedReport(p).notCovered).toEqual([...G2_NOT_COVERED]);
+    expect(g2FailedReport(p).notCovered).toEqual([G2_PAID_DRILL]);
+    const covered = g2Report({ ...p, paidDrill: 'passed' }, 'PASSED');
+    expect([covered.queueFullAtMaxLength, covered.notCovered]).toEqual(['passed', []]);
+    expect(g2FailedReport({ ...p, paidDrill: 'started' })).toMatchObject({
+      queueFullAtMaxLength: 'failed',
+      notCovered: [G2_PAID_DRILL],
+    });
+    for (const heldStreamOk of [0, undefined])
+      expect(() => g2Report({ ...p, metrics: { ...p.metrics, heldStreamOk } }, 'PASSED')).toThrow(
+        'held event stream',
+      );
+    for (const o of [{ failures: ['leftovers'] }, { paidDrill: 'started' }])
+      expect(() => g2Report({ ...p, ...o }, 'PASSED')).toThrow('recorded failure');
     expect(() => g2Report({ ...p, metrics: {} }, 'PASSED')).toThrow('build counts');
     for (const o of [
       { idleStreamEnded: 0 },

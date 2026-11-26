@@ -418,6 +418,46 @@ export function g2IdentityPlan(maxFree: number): { free: number; queueFull: bool
     : { free: base, queueFull: false };
 }
 
+/**
+ * The paid queue_full drill. `queue.maxLength` counts every waiter, a paying one is refused only there,
+ * and Free stops at maxFree: so with maxFree Free waiters it needs maxLength - maxFree paying waiters
+ * plus one refused, none of them holding a seat. `reason` null = run it, with `needed` of those given.
+ */
+export function g2PaidPlan(
+  queue: Pick<PlansConfig['queue'], 'maxLength' | 'maxFree'>,
+  given: number,
+): { needed: number; reason: string | null } {
+  const needed = queue.maxLength - queue.maxFree + 1;
+  const free = g2IdentityPlan(queue.maxFree);
+  let reason: string | null = null;
+  if (!free.queueFull) reason = 'the Free share cannot be filled within the identity budget';
+  else if (free.free + G2_PREVIEW + needed > G2_IDENTITY_BUDGET)
+    reason = `needs ${needed} extra paying identities, beyond the budget of ${G2_IDENTITY_BUDGET}`;
+  else if (given < needed) reason = `needs ${needed} extra paying identities, ${given} given`;
+  return { needed, reason };
+}
+
+/**
+ * Join the queue with one identity after another until an answer is not 202. `waiting` is called for
+ * every accepted waiter (to keep it polled). No refusal at all leaves `refused` undefined.
+ */
+export async function g2FillQueue(
+  users: readonly string[],
+  join: (user: string) => Promise<{ status: number; error?: string; ticket?: string }>,
+  waiting: (w: { user: string; ticket: string }) => Promise<void>,
+) {
+  const accepted: { user: string; ticket: string }[] = [];
+  for (const user of users) {
+    const r = await join(user);
+    if (r.status !== 202)
+      return { accepted, refused: { status: r.status, error: r.error } as const };
+    const w = { user, ticket: r.ticket! };
+    accepted.push(w);
+    await waiting(w);
+  }
+  return { accepted, refused: undefined };
+}
+
 /** May an identity with these earlier new admissions (ms) start one more at `nowMs`? */
 export const g2MayStart = (history: number[], nowMs: number): boolean =>
   history.filter((t) => nowMs - t < G2_START_RATE.windowMs).length < G2_START_RATE.count;

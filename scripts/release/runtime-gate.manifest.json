@@ -28,7 +28,7 @@
       "runner": "vitest",
       "file": "runtime/tests/g2-deployed.runtime.test.ts",
       "test": "G2 deployed: queue, idle and builds under load on staging queue_full at maxLength with paid waiters",
-      "reason": "staging-only load harness, run separately (planned 3.12); no evidence yet. This case is an it.todo: that harness does not cover it either."
+      "reason": "staging-only load harness, run separately (planned 3.12); no evidence yet. This case also skips itself unless the run has enough extra paying identities."
     }
   ]
 }

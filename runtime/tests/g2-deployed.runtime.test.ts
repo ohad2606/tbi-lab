@@ -19,8 +19,11 @@
  *     `idle_timeout` on it; one present session holds a stream too, which must still be open (longer
  *     than the idle limit) at the end of step 9.
  *  7. queue_full (G5): Free join until refusal: exactly maxFree wait, the next gets 429 `queue_full`.
- *     Only the Free share; maxLength with paid waiters is NOT covered (it.todo). Refused (run FAILS) if
- *     it needs more than the identity budget.
+ *     Refused (run FAILS) if it needs more than the identity budget. Then, only with enough extra paying
+ *     identities (maxLength - maxFree + 1, default 5, none holding a seat): they join behind the full
+ *     Free share, `waiting` reaches maxLength and the next paying one gets 429 `queue_full`. With too
+ *     few the drill is `not_run` (report `queueFullAtMaxLength`, metrics `queueFullPaidNeeded` /
+ *     `Given`, its own vitest case skipped with the number needed); it never counts as passed.
  *  8. Abandon (G5): a waiter that never polls leaves within vanishMs + 5 s housekeeping + 10 s.
  *  9. Builds under load and queue_timeout (G4 + G5), concurrently with 6 live: two new builds, each
  *     success or explicit refusal within 600 s (+10 s observation), wait > 120 s flagged `dec32` (not a
@@ -51,6 +54,8 @@
  *   3. TBI_G2_DEPLOYED=tbi-s8 TBI_ALLOW_SERVICE_MUTATION=tbi-s8 TBI_G2_PREVIEW_USERS=<id1>,<id2> \
  *      [TBI_G2_SECONDS=1500] npx vitest run --config vitest.runtime.config.ts \
  *      runtime/tests/g2-deployed.runtime.test.ts
+ *      Optional: TBI_G2_EXTRA_PAYING_USERS=<id3>,...,<id7> (existing identities, also mapped to
+ *      `preview` in the server's policy copy; never committed).
  *   4. Without TBI_G2_DEPLOYED the file does nothing. With it set, CI, a wrong instance, a missing
  *      mutation opt-in or lock, a wrong preview list or an unclean baseline FAILS the test. The only
  *      writes are the pause file and the harness's own builds, sessions and tickets.
@@ -72,7 +77,6 @@ import {
   pollUntil,
   G2_ENV,
   G2_FREE_LIVE,
-  G2_NOT_COVERED,
   G2_PAUSE_PROBE,
   G2_PAUSE_REMOVAL_MS,
   G2_PREVIEW,
@@ -179,6 +183,8 @@ const sketch = (tag: string) =>
   `${readFileSync(new URL('../firmware/arduino/TbiGpioProof/TbiGpioProof.ino', import.meta.url), 'utf8')}\n// g2-deployed ${tag}\n`;
 
 describe('G2 deployed: queue, idle and builds under load on staging', () => {
+  let paidDrill: G2Progress['paidDrill'];
+  let paidNote = 'not run: the drills did not reach it';
   it.skipIf(decision.kind === 'off')(
     `${G2_ENV}: guard, then the queue, idle and build drills`,
     async () => {
@@ -434,6 +440,14 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         const queueProblem = L.g2QueueProblem(queue);
         if (queueProblem) throw new Error(`g2-deployed refused: ${queueProblem}`);
         const identities = L.g2IdentityPlan(queue.maxFree);
+        const paidPlan = L.g2PaidPlan(queue, decision.payingUsers.length);
+        const paying = paidPlan.reason ? [] : decision.payingUsers.slice(0, paidPlan.needed);
+        metrics.queueFullPaidNeeded = paidPlan.needed;
+        metrics.queueFullPaidGiven = decision.payingUsers.length;
+        if (paidPlan.reason) {
+          paidNote = `not run: ${paidPlan.reason}`;
+          console.warn(`g2-deployed: queue_full at maxLength ${paidNote}`);
+        }
 
         BUILD = await relay(`/run/${INSTANCE}-build/api.sock`);
         HOST = await relay(`/run/${INSTANCE}-runtime/api.sock`);
@@ -452,7 +466,7 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           (_, i) => base[i] ?? `g2d-${RUN}-f${i}`,
         );
         const preview = decision.previewUsers;
-        const everyone = [...free, ...preview];
+        const everyone = [...free, ...preview, ...paying];
         for (const u of everyone) secrets.add(u);
 
         // ---- 1. builds
@@ -905,25 +919,38 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         progress.phase = 'queue-full';
         if (!identities.queueFull) fail('queue_full_refused');
         else {
-          const fillers: { user: string; ticket: string }[] = [];
-          let refusedWith: { status: number; error?: string } | undefined;
-          for (const user of free.slice(G2_FREE_LIVE + 1)) {
+          const joinQueue = async (user: string) => {
             const r = await create(user, undefined, L.G2_HOLD_LIFETIME_MS);
-            if (r.status !== 202) {
-              refusedWith = { status: r.status, error: r.body.error };
-              break;
-            }
-            const filler = { user, ticket: r.body.queued.ticket as string };
-            fillers.push(filler);
-            line.add(filler);
+            return { status: r.status, error: r.body.error, ticket: r.body.queued?.ticket };
+          };
+          const keepWaiting = async (w: { user: string; ticket: string }) => {
+            line.add(w);
             await line.keep();
-          }
+          };
+          const { accepted: fillers, refused: refusedWith } = await L.g2FillQueue(
+            free.slice(G2_FREE_LIVE + 1),
+            joinQueue,
+            keepWaiting,
+          );
           metrics.queueFullAccepted = fillers.length;
           metrics.queueFullStatus = refusedWith?.status ?? 0;
           expect([refusedWith?.status, refusedWith?.error]).toEqual([429, 'queue_full']);
           expect(fillers.length).toBe(queue.maxFree);
           await line.keep();
           expect((await health()).waiting).toBe(queue.maxFree);
+          if (paying.length) {
+            progress.paidDrill = paidDrill = 'started';
+            paidNote = 'not passed: see the drills test';
+            const paid = await L.g2FillQueue(paying, joinQueue, keepWaiting);
+            metrics.queueFullPaidAccepted = paid.accepted.length;
+            metrics.queueFullPaidStatus = paid.refused?.status ?? 0;
+            fillers.push(...paid.accepted);
+            expect([paid.refused?.status, paid.refused?.error]).toEqual([429, 'queue_full']);
+            expect(paid.accepted.length).toBe(queue.maxLength - queue.maxFree);
+            await line.keep();
+            expect((await health()).waiting).toBe(queue.maxLength);
+            progress.paidDrill = paidDrill = 'passed';
+          }
           for (const f of fillers) {
             line.remove(f);
             expect(await cancel(f.user, f.ticket)).toBe(204);
@@ -1000,8 +1027,11 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         const heldAt = performance.now();
         metrics.heldStreamOpenMs = Math.round(heldAt - presentTabAt);
         const { lastChunkAtMs, closedAtMs } = presentTab.state;
+        metrics.heldStreamOk = L.g2HeldStreamOk(presentTab.state, metrics.heldStreamOpenMs, heldAt)
+          ? 1
+          : 0;
         expect(
-          L.g2HeldStreamOk(presentTab.state, metrics.heldStreamOpenMs, heldAt),
+          metrics.heldStreamOk === 1,
           `present session's event stream still open after ${metrics.heldStreamOpenMs} ms ` +
             `(last chunk at ${lastChunkAtMs}, closed at ${closedAtMs}, checked at ${heldAt})`,
         ).toBe(true);
@@ -1028,5 +1058,8 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
     L.g2TimeoutMs(decision.kind === 'run' ? SECONDS : 0),
   );
 
-  for (const title of G2_NOT_COVERED) it.todo(title);
+  // After the drills above (same file, in order): passed only if they ran and passed this one.
+  it('queue_full at maxLength with paid waiters', ({ skip }) => {
+    if (paidDrill !== 'passed') skip(paidNote);
+  });
 });
