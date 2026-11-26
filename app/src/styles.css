@@ -3014,6 +3014,31 @@ select {
   cursor: grab;
 }
 
+.schematic:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 5px var(--focus-halo);
+}
+
+.schematic-controls {
+  align-items: flex-end;
+}
+
+/* Two by two (left, right / up, down), so the column grows as little as possible. */
+.schematic-pan {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 0.25rem;
+}
+
+.schematic-pan .icon-button {
+  display: grid;
+  place-items: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  padding: 0;
+}
+
 .sch-wire {
   fill: none;
   stroke: var(--wire);

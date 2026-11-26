@@ -74,6 +74,9 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     keys: ['Enter', 'Space'],
     file: 'SchematicView.tsx',
   },
+  { id: 'panSchematic', scope: 'schematic', keys: ['Arrow keys'], file: 'SchematicView.tsx' },
+  { id: 'zoomSchematic', scope: 'schematic', keys: ['+', '=', '-'], file: 'SchematicView.tsx' },
+  { id: 'fitSchematic', scope: 'schematic', keys: ['Home'], file: 'SchematicView.tsx' },
 
   { id: 'rotate3d', scope: 'view3d', keys: ['Arrow Left', 'Arrow Right'], file: 'ThreeView.tsx' },
   { id: 'pan3d', scope: 'view3d', keys: ['Shift + Arrow keys'], file: 'ThreeView.tsx' },
