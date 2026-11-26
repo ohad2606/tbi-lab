@@ -177,7 +177,11 @@ Evidence replaces the values of `TBI_*` (4 characters or more) and, whatever the
   with `TBI_G2_EXTRA_PAYING_USERS` (existing identities the operator maps to `preview` in the staging
   policy copy). Without enough of them the report can still say `PASSED` with
   `queueFullAtMaxLength: "not_run"`, so read that field. After the run the operator removes those
-  mappings: the harness neither creates nor restores them.
+  mappings: the harness neither creates nor restores them. Mapping and
+  unmapping change the installed staging policy: both need the pipeline lock,
+  `TBI_ALLOW_SERVICE_MUTATION=tbi-s8` and a service restart (which ends live sessions). Unmap after a
+  failed or aborted run too, and compare the installed policy with the bytes saved before the change;
+  a leftover mapping keeps the `preview` entitlement.
 - The older-host compatibility cases of `s11-deployed`, `s11-real` and `s12-real`.
 
 ### Known not excluded (the gate fails on them until decided)
