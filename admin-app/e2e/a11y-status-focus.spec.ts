@@ -73,8 +73,8 @@ const settled = (page: Page) => page.waitForTimeout(500);
 const button = (page: Page, id: string) => page.getByTestId(`tester-${id}`);
 
 /**
- * The confirmation's action, only once its deferred focus on Cancel has landed: before that, an
- * Enter meant for the action can reach Cancel instead.
+ * The confirmation's action. The confirmation focuses Cancel in the task that renders it (a
+ * layout effect); waiting for that first keeps an Enter meant for the action off Cancel.
  */
 async function confirmOk(page: Page, how: 'Enter' | 'click' = 'Enter') {
   await expect(page.getByTestId('confirm-cancel')).toBeFocused();

@@ -10,6 +10,10 @@ import { LOCALES, isMessageKey } from '../src/i18n.js';
 import {
   autoApproveView,
   canResend,
+  deleteAccountWarning,
+  deleteOutcomeView,
+  filterByEmail,
+  storedStatusKey,
   focusAfterRemoval,
   isAutoApproved,
   signupSource,
@@ -339,5 +343,63 @@ describe('web intake source (BETA-G1 s10)', () => {
   it('the Hebrew auto-approve count has no plural verb that disagrees with the number', () => {
     const he = LOCALES.find((l) => l.code === 'he')!;
     expect(he.messages['console.signups.auto.today' as never]).not.toMatch(/אושרו/);
+  });
+});
+
+describe('stored requests: filter, warning, outcome (K12)', () => {
+  const at = (email: string, id = 'a1') => ({ ...rec('pending'), id, email });
+  const rows = [at('Dana@Example.invalid', 'a'), at('omer@example.invalid', 'b')];
+
+  it('filters by address, trimmed and in any case', () => {
+    expect(filterByEmail(rows, '  dANA@ex ').map((r) => r.id)).toEqual(['a']);
+    expect(filterByEmail(rows, '   ')).toHaveLength(2);
+    expect(filterByEmail(rows, 'nobody')).toEqual([]);
+    // Only the address is searched, never the name.
+    expect(filterByEmail(rows, 'Dana Example')).toEqual([]);
+  });
+
+  it('warns about an account that stays, or one that may still be added', () => {
+    const none = new Set<string>();
+    expect(deleteAccountWarning(rec('email_sent', true), none)).toBe('account');
+    expect(deleteAccountWarning(rec('approved', false), none)).toBe('inFlight');
+    expect(deleteAccountWarning(rec('pending'), new Set(['a1']))).toBe('inFlight');
+    expect(deleteAccountWarning(rec('pending'), none)).toBeNull();
+    expect(deleteAccountWarning(rec('rejected'), none)).toBeNull();
+  });
+
+  it('every status and outcome has a text in both languages', () => {
+    const statuses = ['pending', 'approved', 'rejected', 'email_queued', 'email_sent'];
+    for (const s of [...statuses, 'email_failed', '<b>'])
+      expect(isMessageKey(storedStatusKey(s)), s).toBe(true);
+    expect(storedStatusKey('<b>')).toBe('console.signups.all.status.other');
+    const failed = [
+      'csrf',
+      'forbidden',
+      'signed_out',
+      'unavailable',
+      'server',
+      'network',
+      'invalid_id',
+    ] as const;
+    const outcomes = [
+      { kind: 'deleted' as const },
+      { kind: 'already_deleted' as const },
+      { kind: 'not_found' as const },
+      { kind: 'rate_limited' as const, retryAfterS: null },
+      { kind: 'rate_limited' as const, retryAfterS: 30 },
+      ...failed.map((error) => ({ kind: 'failed' as const, error })),
+    ];
+    for (const o of outcomes) {
+      const v = deleteOutcomeView(o);
+      for (const l of LOCALES) {
+        const text = l.messages[v.key as keyof typeof l.messages];
+        expect(text, `${l.code} ${v.key}`).toBeTruthy();
+        // An announcement names the request id and the outcome only.
+        expect(text).toContain('{id}');
+        expect(text).not.toMatch(/\{(name|email)\}/);
+      }
+    }
+    expect(outcomes.filter((o) => deleteOutcomeView(o).gone)).toHaveLength(3);
+    expect(deleteOutcomeView({ kind: 'rate_limited', retryAfterS: 30 }).seconds).toBe(30);
   });
 });
