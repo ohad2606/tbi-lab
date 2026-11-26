@@ -1,5 +1,7 @@
 # TBI Lab external alpha — tester guide (draft for owner review)
 
+Hebrew version (draft, pending native review): [TESTER-GUIDE.he.md](TESTER-GUIDE.he.md)
+
 Thank you for testing TBI Lab. This alpha is a working preview for five invited testers. Please
 read this page once; it takes three minutes.
 
@@ -87,8 +89,8 @@ To report a problem with any of these, or to ask for help, use the channels unde
 you find** below, or the support address support@tbi-tech.net shown at the bottom of every
 screen.
 
-This guide is in English only. There is no Hebrew version, and this text is not shown inside the
-app.
+This guide is available in English and Hebrew (the Hebrew draft awaits native review; English is
+authoritative). Neither text is shown inside the app.
 
 ## MicroPython
 
