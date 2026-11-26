@@ -103,7 +103,8 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
     the file. One exception: a paused or owner-not-recorded sweep that runs **after** the deletion writes the file
     again, and then the cut-off is the later of the first approving sweep's time and `TBI_SIGNUP_AUTO_SINCE`.
   - So before you delete or replace the state file: create the pause file and wait for the `auto-approve paused` line,
-    remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in, change the file, restart, and only then remove the pause file.
+    remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in, change the file, run `sudo systemctl daemon-reload`, restart,
+    wait for a **new** `auto-approve paused` line, and only then remove the pause file.
 
 ## What to watch in the log (monitoring)
 
