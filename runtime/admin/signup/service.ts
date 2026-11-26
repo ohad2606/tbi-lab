@@ -45,7 +45,7 @@ export interface IntakeDeps {
   log?: (line: string) => void;
   /** BETA-G1 s8: the browser route (`POST /signup/web`); absent = the route does not exist. */
   web?: WebIntakeDeps;
-  /** K12: funnel counters (`signup_submitted` per new request); null / unset = off. */
+  /** K12: funnel counters (`signup_submitted`, `signup_form_view`); null / unset = off. */
   counters?: FunnelSink | null;
 }
 
@@ -137,6 +137,12 @@ export class SignupIntake {
   /**
    * `GET /signup/form-token`: a fresh stateless token (web.ts), per-source rate limited. `ttl` and
    * `minFill` are in seconds. Nothing is stored; the token carries its own issue time and MAC.
+   *
+   * K12: each 200 counts `signup_form_view`, which means FORM TOKENS ISSUED, not people and not
+   * distinct visits. The page (site/signup.mjs) fetches a token when it loads (so again after a
+   * reload), on focus or submit when it has none still fresh (failed, or close to expiry; there is
+   * no timer), and after a 401. A bot can raise it to the daily cap (10 000) while staying within
+   * the per-source token limit; accepted for an indicative number (nothing is kept per source).
    */
   issueWebToken(source: string): TokenOutcome {
     const w = this.d.web;
@@ -151,12 +157,9 @@ export class SignupIntake {
     // The page waits this long after the token arrives before it posts (fixed, whole seconds,
     // rounded up so the page never waits less than the server requires).
     const minFill = Math.ceil((w.minFillMs ?? WEB_MIN_FILL_MS) / 1000);
-    return {
-      status: 200,
-      token: issueToken(w.webKey, now),
-      ttl: Math.floor(ttlMs / 1000),
-      minFill,
-    };
+    const token = issueToken(w.webKey, now);
+    count(this.d.counters, 'signup_form_view');
+    return { status: 200, token, ttl: Math.floor(ttlMs / 1000), minFill };
   }
 
   /**
