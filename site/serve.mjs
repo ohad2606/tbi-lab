@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SITE_CSP } from './csp.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), 'dist');
 const TYPES = {
@@ -25,8 +26,7 @@ createServer(async (req, res) => {
     const data = await readFile(join(root, path));
     res.writeHead(200, {
       'content-type': TYPES[extname(path)] ?? 'application/octet-stream',
-      'content-security-policy':
-        "default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'",
+      'content-security-policy': SITE_CSP,
     });
     res.end(data);
   } catch {

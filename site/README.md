@@ -11,7 +11,8 @@ conformance claim). No Terms page until a lawyer reviews one. Config constants i
 
 - `content.mjs` — all copy, `he` and `en` objects with identical keys; `[[TOKEN]]` marks an LTR technical token.
 - `build.mjs` — generator (`buildSite(outDir)`); `site.css` — one stylesheet, logical properties only.
-- `serve.mjs` — tiny static server (used by the e2e config; sends a strict CSP).
+- `serve.mjs` — tiny static server (used by the e2e config; sends the strict CSP from `csp.mjs`).
+- `deploy/` — sign-up site Caddy template + renderer (G1; not deployed; see `docs/ops/G1-SIGNUP-PROXY.md`).
 - `tests/` (vitest, generator), `e2e/a11y-site.spec.ts` (Playwright + axe-core).
 
 ## Commands

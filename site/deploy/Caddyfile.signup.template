@@ -1,0 +1,77 @@
+# BETA-G1 public sign-up site (gate G1): static site + exactly two intake paths.
+# Template only. Render with site/deploy/caddy.mjs (placeholders: SITE_HOST SITE_ROOT
+# INTAKE_UPSTREAM SOURCE_HEADER); see docs/ops/G1-SIGNUP-PROXY.md. Nothing here is deployed.
+# No `log` directive on purpose: no access logs (Origin/Referer/addresses are not logged).
+{
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 10s
+			write 30s
+			idle 60s
+		}
+		max_header_size 16KB
+	}
+}
+
+(tbi_sec_headers) {
+	header {
+		Content-Security-Policy "default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Strict-Transport-Security "max-age=31536000" #tls-only
+		-Server
+	}
+}
+
+https://{{SITE_HOST}} {
+	import tbi_sec_headers
+
+	#proxy-begin
+	# Exact, case-sensitive paths only, matched on the RAW request URI (query allowed). Caddy 2.6
+	# `path` is case-insensitive and `path`/`path_regexp` see a cleaned, decoded path, so
+	# /signup%2Fweb, /signup/%77eb, /signup//web and /x/../signup/web would match them.
+	# The signed /signup (Apps Script forwarder) is NOT routed here.
+	@tbi_intake {
+		expression `{http.request.uri}.matches("^/signup/(form-token|web)([?].*)?$")`
+	}
+	handle @tbi_intake {
+		request_body {
+			max_size 8KB
+		}
+		# Identity strip, before the proxy sets the client address (a wildcard delete inside
+		# header_up would run after the set and remove it).
+		request_header -X-Tbi-*
+		request_header -X-Forwarded-*
+		request_header -Forwarded
+		request_header -X-Real-Ip
+		request_header -True-Client-Ip
+		request_header -CF-Connecting-Ip
+		request_header -Cookie
+		request_header -{{SOURCE_HEADER}}
+		reverse_proxy {{INTAKE_UPSTREAM}} {
+			# Direct peer only. Behind a CDN/balancer this needs trusted_proxies + owner review.
+			header_up {{SOURCE_HEADER}} {remote_host}
+			header_up -X-Forwarded-For
+			header_up -X-Forwarded-Proto
+			header_up -X-Forwarded-Host
+			lb_try_duration 0s
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 10s
+			}
+		}
+	}
+	#proxy-end
+
+	handle {
+		root * {{SITE_ROOT}}
+		file_server
+	}
+
+	handle_errors {
+		import tbi_sec_headers
+		respond "{err.status_code} {err.status_text}" {err.status_code}
+	}
+}

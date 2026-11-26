@@ -124,6 +124,9 @@ posts to its own origin, the origin list is just `<SITE_ORIGIN>`; or (b) cross-o
 public host directly and the CORS headers above apply. Either way the proxy must: set the client-address header
 from the real peer (overwrite, never append the client's), pass `Origin`/`Referer` through unchanged, apply its
 own size and rate limit, not log bodies, and route **only** these two paths plus `/signup` to the intake.
+The site's proxy template for option (a) is `site/deploy/Caddyfile.signup.template`. See
+`docs/ops/G1-SIGNUP-PROXY.md`. It routes only the two web paths: the signed `/signup` keeps its own
+route and is not served from the public site host. Its proxy-level rate limit is OPEN (Caddy core has none).
 
 ## 3. `heardFrom` ("how did you hear about us")
 
