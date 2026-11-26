@@ -4,8 +4,11 @@
  * for staging); skipped otherwise. Fresh test principals per run, so the instance's own users and
  * earlier runs are unaffected. The Session Host is stopped briefly once (stale-health case).
  *
- * The values asserted are the preview plan of deploy/dev-lab/s8/policy.json, which must be the
- * installed policy byte for byte.
+ * The values asserted are the default plan of the repository policy the instance was installed with
+ * (TBI_S8_POLICY, default policy.json), which must be the installed policy byte for byte.
+ * If the default plan refuses prebuilt uploads (policy.beta.json), the refusal is asserted. The cases
+ * that need an upload then run only behind the mutation gate, under a temporary policy (default plan
+ * `preview`; build service and Session Host restarted; the saved bytes restored); else SKIPPED.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -15,6 +18,13 @@ import { mutationAllowed } from './mutation-gate.js';
 import { artifact } from '../harness/env.js';
 import { deployedLimits } from './deployed-limits.js';
 import { loadRequest } from './r2-support.js';
+import {
+  InstalledPolicy,
+  prebuiltMode,
+  previewDefaultPolicy,
+  repoPolicyFile,
+  skipNote,
+} from './s8-installed-policy.js';
 
 const N = process.env.TBI_S8_INSTANCE ?? '';
 const STORE = N === 'tbi' ? '/var/lib/tbi-lab/artifacts' : `/var/lib/${N}-artifacts`;
@@ -23,12 +33,16 @@ const HAVE =
   N !== '' &&
   sudo('test', '-f', `/etc/systemd/system/${N}-build.service`).status === 0 &&
   sudo('true').status === 0;
-/** The repository policy the instance was installed with (install.sh TBI_S8_POLICY; default policy.json). */
-/** The stale-health case STOPS the Session Host (ending every live session): gated. */
+/** Gated: the stale-health case STOPS the Session Host (ending every live session), and a temporary
+ * policy restarts it. */
 const MAY_STOP_HOST = HAVE && mutationAllowed(N);
-const REAL_POLICY =
-  process.env.TBI_S8_POLICY ??
-  new URL('../../deploy/dev-lab/s8/policy.json', import.meta.url).pathname;
+/** The repository policy the instance was installed with (install.sh TBI_S8_POLICY). */
+const REAL_POLICY = repoPolicyFile();
+const INSTALLED = HAVE ? InstalledPolicy.capture(N) : undefined;
+const PREBUILT = INSTALLED ? prebuiltMode(INSTALLED.bytes, MAY_STOP_HOST) : 'installed';
+const BLOCKED = PREBUILT === 'refused';
+const NOTE = skipNote(PREBUILT);
+const UNITS = [`${N}-build`, `${N}-session-host`];
 /** Resolved on the host at run time (`cpus` = the services' CPUs); 1/1/1 on the 1-vCPU DEV host. */
 const LIMITS = HAVE ? deployedLimits(N, REAL_POLICY) : { perUser: 1, maxLive: 1, deferAt: 1 };
 const R1_IMAGE = '5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af';
@@ -132,23 +146,47 @@ const end = (user: string, s: { body: Record<string, unknown> }) =>
     headers: as(user, { authorization: `Bearer ${s.body.token as string}` }),
   });
 
+/** The upload answer under the INSTALLED default plan, taken before any temporary policy. */
+let refusal: Awaited<ReturnType<typeof upload>> | undefined;
+
 beforeAll(async () => {
   if (!HAVE) return;
   BUILD = await relay(`/run/${N}-build/api.sock`);
   HOST = await relay(`/run/${N}-runtime/api.sock`);
   await healthy();
-}, 60_000);
+  if (PREBUILT === 'installed') return;
+  if (BLOCKED) console.warn(NOTE);
+  refusal = await upload(u('free'), r1Bytes());
+  if (PREBUILT === 'temporary') {
+    INSTALLED!.install(previewDefaultPolicy(INSTALLED!.bytes), UNITS);
+    await healthy();
+  }
+}, 180_000);
 afterAll(() => {
   if (!HAVE) return;
-  // In case the (gated) stale-health case stopped it early.
-  if (MAY_STOP_HOST) sudo('systemctl', 'start', `${N}-session-host.service`);
-  for (const r of relays) if (r.pid) sudo('pkill', '-TERM', '-P', String(r.pid));
+  try {
+    INSTALLED!.restore(UNITS); // nothing unless a temporary policy was installed
+    // In case the (gated) stale-health case stopped it early.
+    if (MAY_STOP_HOST) sudo('systemctl', 'start', `${N}-session-host.service`);
+  } finally {
+    for (const r of relays) if (r.pid) sudo('pkill', '-TERM', '-P', String(r.pid));
+  }
 });
 
 describe.skipIf(!HAVE)(`Sprint 8 policy on the deployed instance (${N}, real policy)`, () => {
   it('the installed policy is the repository policy, byte for byte', () => {
-    expect(sudo('cmp', REAL_POLICY, `/etc/${N}/policy.json`).status).toBe(0);
+    // Under a temporary policy: compare the bytes saved before it was installed.
+    if (PREBUILT === 'temporary')
+      expect(INSTALLED!.bytes.equals(readFileSync(REAL_POLICY))).toBe(true);
+    else expect(sudo('cmp', REAL_POLICY, `/etc/${N}/policy.json`).status).toBe(0);
   });
+
+  it.runIf(PREBUILT !== 'installed')(
+    'the installed default plan refuses an Advanced upload: 403 capability_disabled',
+    () => {
+      expect(refusal).toMatchObject({ status: 403, body: { error: 'capability_disabled' } });
+    },
+  );
 
   it('preview build quota (1 active + 1 queued): a third is refused; another user still gets in', async () => {
     const a1 = await submit(u('a'), broken('a1'));
@@ -168,7 +206,8 @@ describe.skipIf(!HAVE)(`Sprint 8 policy on the deployed instance (${N}, real pol
       expect((await until(who, s)).result?.failure).toBe('compile_error');
   });
 
-  it('Advanced .bin: allowed by the preview plan, private to the uploader, rate-limited at 10/h', async () => {
+  it('Advanced .bin: allowed by the preview plan, private to the uploader, rate-limited at 10/h', async (ctx) => {
+    ctx.skip(BLOCKED, NOTE);
     // A private image: a sketch unique to this run (the example programs are global by design).
     const x = await submit(u('x'), `void setup() {} // ${run} private\nvoid loop() {}\n`);
     expect(x.status).toBe(202);
@@ -186,7 +225,8 @@ describe.skipIf(!HAVE)(`Sprint 8 policy on the deployed instance (${N}, real pol
     expect((await lease(u('h'), sha)).status).toBe(404); // still nobody else's
   }, 400_000);
 
-  it('sessions: the per-user quota and the host-wide limit of the installed policy; ownership enforced', async () => {
+  it('sessions: the per-user quota and the host-wide limit of the installed policy; ownership enforced', async (ctx) => {
+    ctx.skip(BLOCKED, NOTE);
     console.log(`resolved limits: ${JSON.stringify(LIMITS)}`);
     const live: [string, Awaited<ReturnType<typeof session>>][] = [];
     try {
@@ -232,7 +272,8 @@ describe.skipIf(!HAVE)(`Sprint 8 policy on the deployed instance (${N}, real pol
     }
   }, 300_000);
 
-  it('live sessions at the defer threshold hold a queued build (nothing stopped); below it a build runs', async () => {
+  it('live sessions at the defer threshold hold a queued build (nothing stopped); below it a build runs', async (ctx) => {
+    ctx.skip(BLOCKED, NOTE);
     const live: [string, Awaited<ReturnType<typeof session>>][] = [];
     const start = async (who: string) => {
       const s = await session(who);
@@ -311,13 +352,10 @@ describe.skipIf(!HAVE)(`Sprint 8 policy on the deployed instance (${N}, real pol
       .stdout.split('\n')
       .filter((l) => l.includes('"event":"admission"'));
     const outcomes = new Set(lines.map((l) => (JSON.parse(l) as { outcome: string }).outcome));
-    for (const o of [
-      'admitted',
-      'build_quota',
-      'rate_limited',
-      'session_quota',
-      'runtime_capacity',
-    ])
+    // With the upload and session cases skipped, only what the remaining cases cause.
+    for (const o of BLOCKED
+      ? ['admitted', 'build_quota', 'capability_disabled']
+      : ['admitted', 'build_quota', 'rate_limited', 'session_quota', 'runtime_capacity'])
       expect(outcomes, o).toContain(o);
     for (const l of lines) {
       const e = JSON.parse(l) as Record<string, string>;

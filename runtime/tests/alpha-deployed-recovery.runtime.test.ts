@@ -7,6 +7,9 @@
  * - timeout: a session whose lifetime is shortened by the client (limits.maxLifetimeMs, only ever
  *   stricter than the host) ends `lifetime_exceeded` while the client is active, and is cleaned up.
  * Both run beside a third session that must keep running, unaffected.
+ * The sessions use an Advanced upload. If the installed default plan refuses it (policy.beta.json),
+ * the refusal is asserted, and the recovery case runs only behind the mutation gate under a temporary
+ * policy (default plan `preview`; services restarted; the saved bytes restored); else SKIPPED.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -14,6 +17,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { artifact } from '../harness/env.js';
 import { loadRequest } from './r2-support.js';
 import { deployedLimits } from './deployed-limits.js';
+import { mutationAllowed } from './mutation-gate.js';
+import {
+  InstalledPolicy,
+  prebuiltMode,
+  previewDefaultPolicy,
+  repoPolicyFile,
+  skipNote,
+} from './s8-installed-policy.js';
 
 const N = process.env.TBI_S8_INSTANCE ?? '';
 const sudo = (...args: string[]) => spawnSync('sudo', ['-n', ...args], { encoding: 'utf8' });
@@ -22,11 +33,12 @@ const HAVE =
   sudo('test', '-f', `/etc/systemd/system/${N}-session-host.service`).status === 0 &&
   sudo('true').status === 0;
 const SESSIONS = `/var/lib/${N}-runtime/sessions`;
-const REAL_POLICY =
-  process.env.TBI_S8_POLICY ??
-  new URL('../../deploy/dev-lab/s8/policy.json', import.meta.url).pathname;
+const REAL_POLICY = repoPolicyFile();
 /** Three concurrent sessions are needed (on the 1-vCPU DEV host the policy admits one: skipped). */
 const ENOUGH = HAVE && deployedLimits(N, REAL_POLICY).maxLive >= 3;
+const INSTALLED = HAVE ? InstalledPolicy.capture(N) : undefined;
+const PREBUILT = INSTALLED ? prebuiltMode(INSTALLED.bytes, mutationAllowed(N)) : 'installed';
+const UNITS = [`${N}-build`, `${N}-session-host`];
 const R1_IMAGE = '5f177cbe95f490dce1f6efe7dda501e03762d523b79771968f967b297d3a44af';
 const LEASE_MS = 30_000; // Session Host default leaseMs (not overridden by the unit)
 const run = Date.now().toString(36);
@@ -64,12 +76,15 @@ const status = async (s: S) =>
     reason?: string;
   };
 
+const upload = (user: string) =>
+  fetch(`${BUILD}/v1/artifacts`, {
+    method: 'POST',
+    headers: as(user),
+    body: readFileSync(artifact('TbiGpioProof').path),
+  });
+
 async function session(user: string, limits?: { maxLifetimeMs: number }): Promise<S> {
-  const bytes = readFileSync(artifact('TbiGpioProof').path);
-  expect(
-    (await fetch(`${BUILD}/v1/artifacts`, { method: 'POST', headers: as(user), body: bytes }))
-      .status,
-  ).toBe(200);
+  expect((await upload(user)).status).toBe(200);
   const l = (await (
     await fetch(`${BUILD}/v1/artifacts/${R1_IMAGE}/lease`, { method: 'POST', headers: as(user) })
   ).json()) as { ticket: string };
@@ -102,17 +117,50 @@ async function cleanedUp(s: S) {
   expect(dirExists(s), 'session dir').toBe(false);
 }
 
+const healthy = async () => {
+  for (let i = 0; i < 100; i++) {
+    try {
+      if ((await fetch(`${BUILD}/v1/health`)).ok && (await fetch(`${HOST}/health`)).ok) return;
+    } catch {
+      /* restarting */
+    }
+    await sleep(200);
+  }
+};
+/** The upload answer under the INSTALLED default plan, taken before any temporary policy. */
+let refusal: { status: number; body: unknown } | undefined;
+
 beforeAll(async () => {
   if (!HAVE) return;
   BUILD = await relay(`/run/${N}-build/api.sock`);
   HOST = await relay(`/run/${N}-runtime/api.sock`);
-}, 60_000);
+  if (PREBUILT === 'installed') return;
+  if (PREBUILT === 'refused') console.warn(skipNote(PREBUILT));
+  await healthy();
+  const r = await upload(u('free'));
+  refusal = { status: r.status, body: await r.json() };
+  if (PREBUILT === 'temporary' && ENOUGH) {
+    INSTALLED!.install(previewDefaultPolicy(INSTALLED!.bytes), UNITS);
+    await healthy();
+  }
+}, 180_000);
 afterAll(() => {
-  for (const r of relays) if (r.pid) sudo('pkill', '-TERM', '-P', String(r.pid));
+  try {
+    INSTALLED?.restore(UNITS); // nothing unless a temporary policy was installed
+  } finally {
+    for (const r of relays) if (r.pid) sudo('pkill', '-TERM', '-P', String(r.pid));
+  }
+});
+
+describe.runIf(PREBUILT !== 'installed')(`Alpha: prebuilt refusal (${N})`, () => {
+  it('the installed default plan refuses an Advanced upload: 403 capability_disabled', () => {
+    expect(refusal).toMatchObject({ status: 403, body: { error: 'capability_disabled' } });
+  });
 });
 
 describe.skipIf(!ENOUGH)(`Alpha: disconnect and timeout recovery (${N})`, () => {
-  it('a cut client ends lease_expired; a lifetime ends lifetime_exceeded; a bystander is unaffected', async () => {
+  it('a cut client ends lease_expired; a lifetime ends lifetime_exceeded; a bystander is unaffected', async (ctx) => {
+    ctx.skip(PREBUILT === 'refused', skipNote(PREBUILT));
     const live: S[] = [];
     const streams: AbortController[] = [];
     try {
