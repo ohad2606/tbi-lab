@@ -171,6 +171,8 @@ export function Signups() {
   const [messages, setMessages] = useState<Record<string, RowMessage>>({});
   const [announce, setAnnounce] = useState('');
   const [openStale, setOpenStale] = useState(false);
+  // The request whose outcome is unconfirmed while a problem text stands in place of the list.
+  const [lost, setLost] = useState<{ id: string; name: string } | null>(null);
   const focusId = useRef<string | null | undefined>(undefined);
   const refreshBtn = useRef<HTMLButtonElement>(null);
   const alive = useRef(true);
@@ -246,6 +248,7 @@ export function Signups() {
         old?.ok ? { ok: true, value: old.value.filter((x) => x.id !== gone) } : old,
       );
       setConfirming((c) => (c === gone ? null : c));
+      setLost((l) => (l?.id === gone ? null : l));
     }
     const mine = ++listTurn.current;
     const v = await loadOpenSignups(api);
@@ -257,6 +260,7 @@ export function Signups() {
     }
     setOpenStale(false);
     setList(v);
+    setLost((l) => (v.ok || l?.id === gone ? null : l));
     setMessages({});
     setConfirming((c) => (v.ok && v.value.some((x) => x.id === c) ? c : null));
   };
@@ -281,6 +285,7 @@ export function Signups() {
     if (current) {
       setOpenStale(false);
       setList(v);
+      setLost(null);
       setMessages({});
       setConfirming(null);
     }
@@ -374,14 +379,21 @@ export function Signups() {
       // With sign-up administration off the service answers `not_found` too: only a list that
       // loads shows that the request is really gone (a hung one is not waited for).
       let check: Loaded<SignupRecord[]> | null = null;
+      let superseded = false;
       if (o.kind === 'error' && o.error === 'not_found') {
+        const turn = listTurn.current;
         check = await Promise.race([
           loadOpenSignups(api),
           new Promise<null>((r) => setTimeout(() => r(null), STATUS_WAIT_MS)),
         ]);
         if (!alive.current) return;
+        // A newer load, or the request's deletion here, tells more than this old answer.
+        superseded =
+          turn !== listTurn.current ||
+          !(listRef.current?.ok && listRef.current.value.some((x) => x.id === r.id));
       }
       setStoredVersion((n) => n + 1);
+      if (superseded) return;
       if (o.kind === 'error' && o.error === 'not_found' && !check?.ok) {
         const text = t('console.signups.err.not_found.unconfirmed', { name: isolate(r.name) });
         say(text);
@@ -394,6 +406,7 @@ export function Signups() {
           listTurn.current++;
           if (follow) focusId.current = null;
           setList(check);
+          setLost({ id: r.id, name: r.name });
         } else {
           setMessages((m) => ({
             ...m,
@@ -486,6 +499,12 @@ export function Signups() {
           </p>
         )}
       </div>
+      {lost && list && !list.ok && (
+        // Not a live region: the same sentence is already spoken above.
+        <p class="result warn" data-testid="signups-unconfirmed">
+          {t('console.signups.err.not_found.unconfirmed', { name: isolate(lost.name) })}
+        </p>
+      )}
       {!list ? (
         <Loading />
       ) : !list.ok ? (

@@ -21,7 +21,7 @@ const TEXT = {
     gone: /כבר לא קיימת/,
     stays: /הוא נשאר/,
     actionOff: (name: string) =>
-      `הבקשה של ${name}: לא הצלחנו לאשר מה קרה. ניהול ההרשמה אולי כבוי או לא זמין בשרת, וייתכן שהבקשה עדיין שמורה.`,
+      `הבקשה של ${name}: לא הצלחנו לאשר מה קרה. ניהול ההרשמה אולי כבוי או לא זמין בשרת, וייתכן שהבקשה עדיין שמורה. אפשר ללחוץ על רענון הבקשות.`,
     noWarning: 'אזהרת החשבון כבר לא רלוונטית לבקשה הזאת.',
     unconfirmed: (id: string) =>
       `בקשה ⁦${id}⁩: לא הצלחנו לאשר את המחיקה. ייתכן שהבקשה עדיין שמורה.`,
@@ -35,7 +35,7 @@ const TEXT = {
     gone: /already gone/,
     stays: /it stays/,
     actionOff: (name: string) =>
-      `Request of ${name}: we could not confirm what happened. Sign-up administration may be off or unavailable on the server, so the request may still be stored.`,
+      `Request of ${name}: we could not confirm what happened. Sign-up administration may be off or unavailable on the server, so the request may still be stored. Use Refresh requests.`,
     noWarning: 'The account warning no longer applies to this request.',
     unconfirmed: (id: string) =>
       `Request ⁦${id}⁩: we could not confirm the deletion. The request may still be stored.`,
@@ -502,6 +502,117 @@ for (const lang of ['he', 'en'] as const) {
     await expect(live(page)).toHaveText(text.actionOff('\u2068Sample 1\u2069'));
     await expect(page.getByTestId('signups-problem')).toBeVisible();
     await expect(page.getByTestId('signups-refresh')).toBeFocused();
+    // Sighted users read it too, not only the hidden live region.
+    const seen = page.getByTestId('signups-unconfirmed');
+    await expect(seen).toBeVisible();
+    await expect(seen).not.toHaveClass(/visually-hidden/);
+    await expect(seen).toHaveText(text.actionOff('\u2068Sample 1\u2069'));
+    m.open = () => ({ json: { signups: [row(1)] } });
+    await page.getByTestId('signups-refresh').click();
+    await expect(page.getByTestId('signup-row')).toHaveCount(1);
+    await expect(seen).toHaveCount(0);
+  });
+
+  for (const status of [500, 404]) {
+    test(`announce (${lang}): deleted while approve's check is pending, then ${status}: the deletion stands`, async ({
+      page,
+      context,
+    }) => {
+      await signIn(context, lang);
+      const m = await mock(page);
+      await signups(page);
+      await openStored(page);
+      const check = gate();
+      let checking = false;
+      m.approve = () => ({ status: 404, json: { error: 'not_found' } });
+      // The first open list after Approve is its check; later ones no longer hold the request.
+      m.open = async () => {
+        if (checking) return { json: { signups: [row(2)] } };
+        checking = true;
+        await check.held;
+        return { status, json: { error: status === 404 ? 'not_found' : 'x' } };
+      };
+      await page
+        .locator(`[data-signup-id="${id(1)}"]`)
+        .getByTestId('signup-approve')
+        .click();
+      await expect.poll(() => checking).toBe(true);
+      await askDelete(page, m, 1);
+      m.all = () => ({ json: { signups: [row(2), row(3)] } });
+      await page.getByTestId('delete-ok').click();
+      const result = page.getByTestId('delete-result');
+      await expect(result).toHaveAttribute('data-key', 'console.signups.delete.done');
+      await expect(live(page)).toContainText(id(1));
+      const spoken = await live(page).textContent();
+      const answered = page.waitForResponse((r) => r.url().endsWith('/signups/open'));
+      check.release();
+      await answered;
+      await page.waitForTimeout(500);
+      await expect(live(page)).toHaveText(spoken!);
+      await expect(page.getByTestId('signups-problem')).toHaveCount(0);
+      await expect(page.getByTestId('signups-unconfirmed')).toHaveCount(0);
+      await expect(page.getByTestId('signup-row')).toHaveCount(1);
+    });
+  }
+
+  test(`announce (${lang}): a Refresh overtakes approve's check: the old answer is dropped`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    const m = await mock(page);
+    await signups(page);
+    await expect(page.getByTestId('signup-row')).toHaveCount(2);
+    const check = gate();
+    let checking = false;
+    m.approve = () => ({ status: 404, json: { error: 'not_found' } });
+    m.open = async () => {
+      if (checking) return { json: { signups: [row(1), row(2), row(3)] } };
+      checking = true;
+      await check.held;
+      return { status: 404, json: { error: 'not_found' } };
+    };
+    const approve = page.locator(`[data-signup-id="${id(1)}"]`).getByTestId('signup-approve');
+    await approve.click();
+    await expect.poll(() => checking).toBe(true);
+    await page.getByTestId('signups-refresh').click();
+    await expect(page.getByTestId('signup-row')).toHaveCount(3);
+    await expect(live(page)).toContainText('3');
+    const spoken = await live(page).textContent();
+    check.release();
+    // The action has ended once the row is released.
+    await expect(approve).not.toHaveAttribute('aria-disabled');
+    await page.waitForTimeout(500);
+    await expect(live(page)).toHaveText(spoken!);
+    await expect(page.getByTestId('signups-problem')).toHaveCount(0);
+    await expect(page.getByTestId('signup-message')).toHaveCount(0);
+    await expect(page.getByTestId('signup-row')).toHaveCount(3);
+  });
+
+  test(`announce (${lang}): focus lost outside the stored list is not moved into its filter`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    const m = await mock(page);
+    await signups(page);
+    await openStored(page);
+    const stored = gate();
+    m.all = async () => {
+      await stored.held;
+      return { json: { signups: [row(2), row(3)] } };
+    };
+    m.open = () => ({ json: { signups: [row(2)] } });
+    await page
+      .locator(`[data-signup-id="${id(1)}"]`)
+      .getByTestId('signup-approve')
+      .focus();
+    // Clicked from script: focus stays on the row that the reload removes.
+    await page.getByTestId('signups-refresh').evaluate((b: HTMLButtonElement) => b.click());
+    await expect(page.getByTestId('signup-row')).toHaveCount(1);
+    stored.release();
+    await expect(page.getByTestId('stored-row')).toHaveCount(2);
+    await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
   });
 
   test(`announce (${lang}): leaving while the action is being sent: focus is rescued`, async ({

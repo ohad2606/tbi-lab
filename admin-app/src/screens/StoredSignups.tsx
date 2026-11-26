@@ -197,6 +197,18 @@ export function StoredSignups({
   /** Counts deletes: a late list settles only the newest one's sentence. */
   const deletes = useRef(0);
   const turn = useRef(0);
+  const section = useRef<HTMLElement>(null);
+  /** Whether the latest focus on the page was inside this section. */
+  const focusedHere = useRef(false);
+  useEffect(() => {
+    const track = (e: FocusEvent) => {
+      focusedHere.current = !!section.current?.contains(e.target as Node);
+    };
+    document.addEventListener('focusin', track);
+    return () => document.removeEventListener('focusin', track);
+  }, []);
+  /** Takes a lost focus's place: only focus that was in this section stays in it. */
+  const successor = () => (focusedHere.current ? (filter.current ?? toggle.current) : null);
   const toggle = useRef<HTMLButtonElement>(null);
   const filter = useRef<HTMLInputElement>(null);
   const countTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -229,7 +241,7 @@ export function StoredSignups({
       void load().then((r) => {
         if (r?.stale) alsoSay(t('console.signups.all.stale'));
         // The reloaded list may no longer hold the row that has focus.
-        rescueFocus(() => filter.current ?? toggle.current);
+        rescueFocus(successor);
       });
   }, [version]);
   useEffect(
@@ -380,7 +392,7 @@ export function StoredSignups({
             }
           }
           // A late list may no longer hold the row that has focus.
-          rescueFocus(() => filter.current ?? toggle.current);
+          rescueFocus(successor);
         });
       // Gone on the server: never keep showing it, even when the reload failed.
       const drop = () =>
@@ -434,7 +446,7 @@ export function StoredSignups({
     .join(' ');
 
   return (
-    <section aria-labelledby="stored-h" class="stack" data-testid="stored-signups">
+    <section ref={section} aria-labelledby="stored-h" class="stack" data-testid="stored-signups">
       <h2 id="stored-h">{t('console.signups.all.heading')}</h2>
       <p class="muted">{t('console.signups.all.intro')}</p>
       <div class="actions">
