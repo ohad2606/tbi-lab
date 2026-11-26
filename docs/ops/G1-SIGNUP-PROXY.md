@@ -107,25 +107,31 @@ options block, which must come first.
    decision (see the warning). Do not overwrite other sites.
 5. **RED:** copy the current live config to a dated backup next to it, and keep it.
 6. **RED:** stage the reviewed config (the rendered file only if the host serves no other site, otherwise the
-   merged one) as a new file next to the live one. Do not touch the live file yet: a restart must never find an
-   unvalidated config.
+   merged one) as a new file next to the live one, with the live file's owner and mode (the Caddy user must be able
+   to read it; the move in step 7 carries both to the live file). Do not touch the live file yet: a restart must never
+   find an unvalidated config.
 7. **RED:** validate the staged file; only if validation passes, move it over the live file and reload (the reload
    needs the live admin endpoint). Run `caddy validate` and `caddy reload` as the Caddy service's user and with its
    environment (see the unit's `User=` and `Environment`/`EnvironmentFile`), not under plain `sudo`: validating as
    another user can create root-owned log or storage files that break the reload, and a different environment can
-   validate a different config. If the reload fails, restore the backup from step 5, then validate and reload it.
-   Never restart other services.
+   validate a different config. Run the move as the user that owns the config directory (often root). Run the three
+   commands one at a time and stop at the first failure. If the reload fails, restore the backup as in step 9. Never
+   restart other services.
 
    ```sh
    live=/path/to/live/Caddyfile # replace
    staged="$live.staged"
-   caddy validate --adapter caddyfile --config "$staged" && mv "$staged" "$live" &&
-     caddy reload --adapter caddyfile --config "$live"
+   # as the Caddy user:
+   caddy validate --adapter caddyfile --config "$staged"
+   # as the owner of the config directory, only after validation passed:
+   mv "$staged" "$live"
+   # as the Caddy user:
+   caddy reload --adapter caddyfile --config "$live"
    ```
 
 8. **RED:** smoke checks from outside: `curl -sI https://<SITE_HOST>/he/` gives 200 with the CSP, nosniff and HSTS
    headers. `curl -s https://<SITE_HOST>/signup/form-token -H 'Origin: https://<SITE_HOST>'` gives 200 JSON
    (with `TBI_SIGNUP_WEB=1`) or 404 (off). `/signup`, `/signup/web/` and `/SIGNUP/WEB` give 404.
-9. **RED (rollback):** install the backup from step 5, or the rollback config, then validate and reload as in
-   step 7. On a multi-site host, never install the rollback render as it is: merge its site block as in step 4. Smoke
+9. **RED (rollback):** copy the backup from step 5 (`cp -p`; never move it, so it is still there afterwards), or the
+   rollback config, to the staged path, then validate, move and reload as in step 7. On a multi-site host, never install the rollback render as it is: merge its site block as in step 4. Smoke
    checks: `/he/` gives 200, and both intake paths give 404.
