@@ -197,9 +197,106 @@ describe('BETA-G1 precondition 5: draft intake unit deploy/signup/tbi-signup.ser
     expect(w.filter((p) => !p.startsWith('-'))).toEqual(FAIL_CLOSED_MASKS);
     expect(w.filter((p) => p.startsWith('-')).map((p) => p.slice(1))).toEqual(OPTIONAL_MASKS);
     expect(w.every((p) => !p.startsWith('+'))).toBe(true);
-    // The admin's socket and credential dirs exist only while it runs: start after it, with it.
+  });
+
+  it('masks are start-time only: bound to the admin, started only after its socket exists', () => {
+    // BindsTo= + After=: stopped whenever the admin stops or restarts (also unexpectedly), so its
+    // recreated /run dirs are never visible unmasked; nothing restarts the intake (fail closed).
     expect(words('After', 'Unit')).toContain('tbi-admin.service');
-    expect(words('Requires', 'Unit')).toEqual(['tbi-admin.service']);
+    expect(all('BindsTo', 'Unit')).toEqual(['tbi-admin.service']);
+    for (const k of ['Requires', 'PartOf', 'Upholds', 'Requisite'])
+      expect(all(k, 'Unit'), k).toEqual([]);
+    expect(TEMPLATE).toMatch(
+      /NOTHING restarts this unit after the admin\n# auto-restarts: it stays down \(fail closed\)/,
+    );
+    expect(TEMPLATE).toMatch(/restart the intake after any change\n# that recreates a masked path/);
+    // The admin unit is Type=simple (After= does not wait for its RuntimeDirectory/credentials) and
+    // restarts through failed/inactive (RestartMode=direct would skip the BindsTo= stop).
+    const admin = adminDirectives();
+    const adminSvc = (k: string) =>
+      admin.filter(([s, kk]) => s === 'Service' && kk === k).map((x) => x[2]);
+    expect(adminSvc('Type')).toEqual([]);
+    expect(adminSvc('RestartMode')).toEqual([]);
+    expect(adminSvc('Restart')).toEqual(['on-failure']);
+    const listen = adminSvc('Environment').find((v) => v.startsWith('TBI_ADMIN_LISTEN='));
+    expect(listen).toBe('TBI_ADMIN_LISTEN=unix:/run/@N@-admin/api.sock');
+    expect(all('AssertPathExists', 'Unit')).toEqual(['/run/tbi-admin/api.sock']);
+    expect(within('/run/tbi-admin/api.sock', '/run/tbi-admin')).toBe(true);
+  });
+
+  it('only allow-listed (section, key) pairs; no empty assignment except the capability sets', () => {
+    const ALLOWED = new Set([
+      'Unit:Description',
+      'Unit:After',
+      'Unit:Wants',
+      'Unit:BindsTo',
+      'Unit:AssertPathExists',
+      'Unit:StartLimitIntervalSec',
+      'Unit:StartLimitBurst',
+      'Unit:AssertVersion',
+      'Service:Type',
+      'Service:User',
+      'Service:Group',
+      'Service:UMask',
+      'Service:Environment',
+      'Service:LoadCredential',
+      'Service:BindReadOnlyPaths',
+      'Service:ExecStart',
+      'Service:Restart',
+      'Service:RestartSec',
+      'Service:RestartPreventExitStatus',
+      'Service:ProtectSystem',
+      'Service:ProtectHome',
+      'Service:PrivateTmp',
+      'Service:ReadWritePaths',
+      'Service:InaccessiblePaths',
+      'Service:PrivatePIDs',
+      'Service:ProtectProc',
+      'Service:ProcSubset',
+      'Service:PrivateDevices',
+      'Service:DevicePolicy',
+      'Service:PrivateIPC',
+      'Service:KeyringMode',
+      'Service:ProtectKernelTunables',
+      'Service:ProtectKernelModules',
+      'Service:ProtectKernelLogs',
+      'Service:ProtectControlGroups',
+      'Service:ProtectClock',
+      'Service:ProtectHostname',
+      'Service:LimitCORE',
+      'Service:NoNewPrivileges',
+      'Service:CapabilityBoundingSet',
+      'Service:AmbientCapabilities',
+      'Service:RestrictSUIDSGID',
+      'Service:RestrictNamespaces',
+      'Service:LockPersonality',
+      'Service:RestrictRealtime',
+      'Service:SystemCallFilter',
+      'Service:SystemCallArchitectures',
+      'Service:SystemCallErrorNumber',
+      'Service:MemoryMax',
+      'Service:TasksMax',
+      'Service:RestrictAddressFamilies',
+      'Service:IPAddressDeny',
+      'Service:IPAddressAllow',
+      'Service:SocketBindAllow',
+      'Service:SocketBindDeny',
+      'Install:WantedBy',
+    ]);
+    for (const [sec, key] of D) expect(ALLOWED.has(`${sec}:${key}`), `${sec}:${key}`).toBe(true);
+    // An empty assignment resets the list (an empty InaccessiblePaths= would drop every mask).
+    for (const [sec, key, v] of D)
+      if (v.trim() === '')
+        expect(['CapabilityBoundingSet', 'AmbientCapabilities'], `${sec}:${key}`).toContain(key);
+    // The parser itself rejects what the allow-list must catch.
+    for (const bad of [
+      'ExecStartPre=+/bin/true',
+      'OpenFile=/etc/shadow',
+      'JoinsNamespaceOf=x.service',
+    ])
+      expect(directives(`[Service]\n${bad}\n`)[0]?.[1]).toMatch(
+        /^(ExecStartPre|OpenFile|JoinsNamespaceOf)$/,
+      );
   });
 
   it('writes only the store (+ optional own funnel dir); containment both ways against every mask', () => {
@@ -239,7 +336,9 @@ describe('BETA-G1 precondition 5: draft intake unit deploy/signup/tbi-signup.ser
     expect(all('AssertVersion', 'Unit')).toEqual(['systemd >= 257']);
     expect(all('Type')).toEqual(['exec']);
     const exec = all('ExecStart');
-    expect(exec).toHaveLength(1);
+    expect(exec).toEqual([
+      `/bin/sh -c 'if [ "$$$$" != 1 ]; then echo "tbi-signup: refusing to start: pid_namespace_missing"; exit 78; fi; exec /opt/tbi-node/bin/node /opt/tbi-build/signup-intake.mjs'`,
+    ]);
     const m = /^\/bin\/sh -c '([^']*)'$/.exec(exec[0] ?? '');
     expect(m).not.toBeNull();
     // systemd turns "$$" into "$": the shell sees "$$" (its own PID).

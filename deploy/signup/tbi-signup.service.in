@@ -12,17 +12,35 @@
 # 0600 files in it, so the intake runs as the admin unit's user and primary group. File modes do NOT
 # separate the two processes: only this sandbox does (masked paths, own PID namespace, no AF_UNIX,
 # no ptrace-like system calls). Any masked path that is missing makes the start FAIL (intended).
+# The admin's files in this store are read with O_NOFOLLOW|O_NONBLOCK and an fstat check (store.ts).
+#
+# Masks are applied ONCE, when this unit starts. A masked path that is later removed and recreated
+# (the admin's /run dirs on every admin restart, or an installer replacing a state/key directory)
+# is NOT masked in the running sandbox: the kernel detaches a mount whose mount point is deleted in
+# another namespace. Hence BindsTo= below, and the runbook rule: restart the intake after any change
+# that recreates a masked path.
 #
 # Directories that must exist before the first start (created by the deploy step, never by this unit):
-#   /var/lib/tbi-signup            0700 tbi-admin:tbi-adminio   the sign-up store (the only writable path)
+#   /var/lib/tbi-signup            0700 tbi-admin:tbi-adminio   the sign-up store (written by both)
+#   /var/lib/tbi-signup-funnel     0700 tbi-admin:tbi-adminio   optional, only with funnel counters
 #   every InaccessiblePaths entry without "-" below, e.g. /var/lib/tbi-mail (create it empty, root 0755,
-#   where the mailer is not installed), /run/@N@-admin and /run/credentials/@N@-admin.service (the admin
-#   unit must be running: Requires=)
+#   where the mailer is not installed), /run/@N@-admin and /run/credentials/@N@-admin.service (created
+#   by the running admin unit: BindsTo=, After=, AssertPathExists= below)
 [Unit]
 Description=TBI Lab public sign-up intake (@N@)
 After=network-online.target @N@-admin.service
 Wants=network-online.target
-Requires=@N@-admin.service
+# BindsTo= (with After=): stopped when the admin stops, is restarted, or stops unexpectedly (a crash,
+# also before its own Restart=on-failure, which goes through failed/inactive with the default
+# RestartMode=normal), so its recreated /run dirs are never seen unmasked. PartOf= adds nothing
+# (BindsTo= already propagates stop and restart). NOTHING restarts this unit after the admin
+# auto-restarts: it stays down (fail closed) until started again (runbook precondition 5).
+BindsTo=@N@-admin.service
+# The admin is Type=simple: "active" right after fork, before systemd has created its
+# RuntimeDirectory and credentials in the child, so After= alone does not order this start after
+# them. Its socket exists only after its exec (after both are set up); a missing socket fails the
+# start (no restart: Restart= does not apply to assert failures).
+AssertPathExists=/run/@N@-admin/api.sock
 StartLimitIntervalSec=600
 StartLimitBurst=5
 # PrivatePIDs= needs systemd >= 257; an older systemd IGNORES the unknown key (warning only).
@@ -32,7 +50,8 @@ AssertVersion=systemd >= 257
 
 [Service]
 Type=exec
-# Shared-user model (see the header): exactly the admin unit's User= and Group=, no extra groups.
+# Shared-user model (see the header): exactly the admin unit's User= and Group=, no extra groups in
+# THIS unit. The user's groups in the host group database still apply (runbook host check: id).
 User=tbi-admin
 Group=tbi-adminio
 UMask=0077
@@ -71,7 +90,9 @@ ReadWritePaths=/var/lib/tbi-signup -/var/lib/tbi-signup-funnel
 InaccessiblePaths=/var/lib/@N@-admin-auto /run/@N@-admin /run/credentials/@N@-admin.service
 InaccessiblePaths=/var/lib/tbi-mail /etc/tbi-signup /etc/@N@ /var/lib/tbi-admin /var/log/tbi-admin
 # Optional (absent on some hosts): artifacts, runtime and build state, DynamicUser state, the
-# runtime sockets, user runtime dirs, the mailer's credentials.
+# runtime sockets, user runtime dirs, the mailer's credentials. /run/@N@-runtime and /run/user hold
+# unix sockets: optional is acceptable only because AF_UNIX is not allowed (RestrictAddressFamilies).
+# An admin TBI_FUNNEL_DIR outside the paths below must be added WITHOUT "-" (drop-in, runbook).
 InaccessiblePaths=-@STORE@ -/var/lib/@N@-runtime -/var/lib/@N@-build -/var/lib/private
 InaccessiblePaths=-/run/@N@-runtime -/run/user -/run/credentials/tbi-mailer.service
 # Same user as the admin: its processes must be neither visible nor signalable.

@@ -72,12 +72,30 @@ other private details are kept in the private ops repository, not here.
      credential sources), `/etc/<N>` (identity key), `/var/lib/tbi-admin` (spool, results, view) and
      `/var/log/tbi-admin`. Optional (`-`): the artifact store, `/var/lib/<N>-runtime`, `/var/lib/<N>-build`,
      `/var/lib/private`, `/run/<N>-runtime`, `/run/user`, `/run/credentials/tbi-mailer.service`. `/run/credentials`
-     is never masked as a whole (the intake's own credentials are there). If the verify key or the admin's funnel
-     directory is configured anywhere else, add that path to a drop-in of the intake, without `-`.
-   - **Create first** (or the intake does not start): `/var/lib/tbi-signup` (0700 `tbi-admin:tbi-adminio`), and every
-     path in the list above. Where the mailer is not installed, create `/var/lib/tbi-mail` empty (root-owned, 0755).
-     `/run/<N>-admin` and `/run/credentials/<N>-admin.service` exist only while the admin service runs: the intake
-     unit has `Requires=` and `After=<N>-admin.service` (stopping the admin also stops the intake).
+     is never masked as a whole (the intake's own credentials are there). **Mandatory:** if the admin's
+     `TBI_FUNNEL_DIR` (funnel counters on) or the verify key lies outside the paths above, add that path to a drop-in
+     of the intake as `InaccessiblePaths=` **without** `-` (never an empty `InaccessiblePaths=`, which drops every
+     mask). The optional `/run/<N>-runtime` and `/run/user` masks hold only unix sockets, which the intake cannot
+     use anyway (no `AF_UNIX`).
+   - **Create first** (or the intake does not start). Required: `/var/lib/tbi-signup` (0700
+     `tbi-admin:tbi-adminio`); `/var/lib/<N>-admin-auto` (created by the admin unit, 0700 `tbi-admin:tbi-adminio`);
+     `/var/lib/tbi-mail` (where the mailer is not installed: empty, `root:root` 0755); `/etc/tbi-signup` and
+     `/etc/<N>` (`root:root` 0755, key files root-owned 0400); `/var/lib/tbi-admin` (the helper's installer);
+     `/var/log/tbi-admin` (the helper's installer; where it does not create it: empty, `root:root` 0755). Optional:
+     `/var/lib/tbi-signup-funnel` (0700 `tbi-admin:tbi-adminio`, only with the intake's funnel counters) and every
+     `-` path. `/run/<N>-admin` and `/run/credentials/<N>-admin.service` exist only while the admin service runs.
+   - **Masks are applied once, at the intake's start.** A masked path that is removed and recreated later is not
+     masked in the running intake (the kernel detaches a mount whose mount point is deleted in another namespace).
+     The admin recreates its two `/run` paths on every start, also on its automatic restart after a crash
+     (`Restart=on-failure`). Therefore the intake has `BindsTo=` and `After=<N>-admin.service`: it is stopped
+     whenever the admin stops or restarts, also unexpectedly (the admin's default `RestartMode=normal` goes through
+     failed/inactive; never set `RestartMode=direct` on the admin). `AssertPathExists=/run/<N>-admin/api.sock`
+     makes it start only after the admin's socket exists: the admin is `Type=simple`, so `After=` alone does not
+     wait for its runtime and credential directories. **Nothing restarts the intake after the admin restarts: it
+     stays down (fail closed)** until the owner starts it again (`systemctl start`, owner session). An automatic
+     restart (`Upholds=` in an admin drop-in, with the admin `Type=exec` or `notify`) is a separate, reviewed
+     decision of the deploy slice. **Rule:** restart the intake after any change that recreates a masked path (an
+     installer or upgrade replacing a state, key or log directory, `/var/lib/tbi-mail`, `/etc/<N>`).
    - **Fail closed on an old systemd:** `PrivatePIDs=` needs systemd **257** or later; an older systemd ignores the
      unknown key with a warning only. `AssertVersion=systemd >= 257` is in the unit but exists only from systemd 258
      (older versions ignore it the same way), so it is not the guard. The guard is the `ExecStart` wrapper: it refuses
@@ -104,15 +122,27 @@ other private details are kept in the private ops repository, not here.
      notification (a test sign-up) with `SystemCallErrorNumber=EPERM` and `@resources` excluded.
 
    **Negative check inside the sandbox** (as root, owner session, with the intake unit installed and the admin unit
-   running). Run the commands with the intake's sandbox, for example
-   `sudo systemd-run --wait --pipe --collect -p ... /bin/sh -c '...'` with the same properties as the unit (or
-   `nsenter` into the running intake's namespaces), as the intake user. Each must give the expected result:
+   running). Test the real unit's sandbox, never a hand copy of its properties: make a check unit from the **same
+   rendered file** with only `ExecStart=` replaced (for example `/run/systemd/system/tbi-signup-check.service`, a
+   copy of the installed unit file with nothing changed but `ExecStart=/bin/sh -c '<checks>'`; results in its journal),
+   then compare
+   `systemctl show tbi-signup.service` with `systemctl show tbi-signup-check.service`: the diff must be empty except
+   `ExecStart*`, the unit name and name-derived fields (`Id`, `Names`, `Description` if changed,
+   credential directory, `InvocationID`, state and timestamps). `nsenter` into the running intake applies its mount
+   and PID namespaces but **not** its seccomp filter, capability bounds or IP/socket-bind filters: do not use it for
+   these checks. Each check must give the expected result:
    - `ls /proc` shows only the sandbox's own PIDs (no admin process).
    - `kill -0 <admin main PID on the host>` fails (`No such process`).
    - Reading `/var/lib/<N>-admin-auto`, `/run/<N>-admin/api.sock` and `/run/credentials/<N>-admin.service` fails
-     (`Permission denied` or not found), also through `/proc/<pid>/root` for any PID visible.
+     (`Permission denied` or not found), also through `/proc/<pid>/root` for any PID visible; the same for every
+     path without `-` in the mask list.
+   - Writing outside the store fails (`Read-only file system` or `Permission denied`), for example
+     `touch /var/tmp/x /etc/x /var/lib/x`; writing a file in `/var/lib/tbi-signup` succeeds (remove it again).
    - A connect to an `AF_UNIX` socket fails (address family not supported).
    - `getent ahosts api.telegram.org` resolves.
+   - **After crashing the admin** (`systemctl kill -s SIGKILL <N>-admin.service`, owner session; it restarts by
+     `Restart=on-failure`): the intake is inactive (`systemctl is-active tbi-signup` is not `active`). Start it
+     again, then repeat every check above.
    - **Any failure → do not set the flags.**
 
 Check the directory (expected answer: `tbi-admin:tbi-adminio 700 directory`):

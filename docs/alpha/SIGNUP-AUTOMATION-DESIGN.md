@@ -90,8 +90,9 @@ Operational rules added by the security review:
   reopens replay of any captured request still inside the 5-minute window, for at most that window (up to 10
   minutes of timestamp validity either side is not reachable: the timestamp check still rejects older requests).
   Accepted; the effect of a replay is a duplicate request, which the dedupe marker absorbs.
-- **Store directory shared between users:** the intake user owns the 0700 directory; the admin service user must
-  reach it through a shared group (dir 0770 is refused by the start check, which demands no group/other access), so
+- **Store directory shared between users:** (original analysis, superseded by the decision at the end of this
+  item) with a separate intake user owning the 0700 directory, the admin service user would have to reach it
+  through a shared group (dir 0770 is refused by the start check, which demands no group/other access), so
   deploy review must choose: run both processes as one user, or a second directory with the admin service pulling
   by a root-owned helper. Until decided the start check stays strict (no repair). Decided for BETA-G1: one shared
   user; the intake's sandbox separates the two (runbook precondition 5).
@@ -217,7 +218,8 @@ Settings: `TBI_SIGNUP_DIR`, `TBI_SIGNUP_HMAC_FILE`, `TBI_SIGNUP_TELEGRAM_TOKEN_F
 
 Nothing below has been done. All of it is an Alpha change and needs the owner in an interactive session.
 
-1. Proxy: route `POST <ALPHA_HOST>/signup` to the intake socket only (no gate login for this path, since the form
+1. Proxy: route `POST <ALPHA_HOST>/signup` to the intake's loopback listener only (`127.0.0.1:7411` in the draft
+   unit) (no gate login for this path, since the form
    script cannot sign in); set the client-address header from the real peer address (overwrite, not append from the
    client); apply a request-size limit and a rate limit at the proxy as well; do not log request bodies.
 2. New systemd unit `tbi-signup` (now a draft, `deploy/signup/tbi-signup.service.in`: the admin service's user and
