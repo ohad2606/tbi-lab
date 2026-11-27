@@ -452,6 +452,120 @@ for (const lang of ['he', 'en'] as const) {
     await expect(page.getByTestId('auto-unavailable')).toHaveText(x.unavailable);
   });
 
+  const checking =
+    lang === 'he' ? 'בודקים את סטטוס האישור האוטומטי…' : 'Checking the auto-approve status…';
+
+  /** Holds every later status request until released, then answers it with a failure. */
+  async function holdStatus(page: Page) {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    await page.route('**/admin-api/signups/auto-approve', async (r) => {
+      await held;
+      await r.fulfill({ status: 500, json: { error: 'x' } });
+    });
+    return release;
+  }
+
+  test(`signups (${lang}): a slow status on Refresh is shown and said as pending, then settles`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list', {}, { status: 200, json: AUTO_ON });
+    await open(page, context, baseURL!, lang);
+    const live = page.getByTestId('signups-live');
+    const count = lang === 'he' ? '3 בקשות ממתינות לך' : '3 requests waiting for you';
+    await expect(live).toHaveText(count);
+    // The region is in the page, empty, before it has anything to say.
+    const region = page.getByTestId('auto-pending-status');
+    await expect(region).toHaveAttribute('role', 'status');
+    await expect(region).toHaveText('');
+    const release = await holdStatus(page);
+    await page.getByTestId('signups-refresh').click();
+    await expect(region).toHaveText(checking, { timeout: 2500 });
+    await expect(page.getByTestId('auto-pending')).toBeVisible();
+    await expect(page.getByTestId('signups-refresh')).toBeFocused();
+    // Past the count's 3 s wait: the count alone, without the pending sentence.
+    await page.waitForTimeout(2800);
+    await expect(live).toHaveText(count);
+    release();
+    await expect(live).toHaveText(x.unavailable);
+    await expect(region).toHaveText('');
+    await expect(page.getByTestId('signups-refresh')).toBeFocused();
+  });
+
+  test(`signups (${lang}): a quick Refresh never says pending`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list', {}, { status: 200, json: AUTO_ON });
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('auto-today')).toBeVisible();
+    await page.evaluate(() => {
+      const w = window as unknown as { pendingSeen: boolean };
+      w.pendingSeen = false;
+      new MutationObserver(() => {
+        if (document.querySelector('[data-testid="auto-pending"]')) w.pendingSeen = true;
+      }).observe(document.body, { subtree: true, childList: true });
+    });
+    await page.getByTestId('signups-refresh').click();
+    await page.waitForTimeout(1600);
+    expect(
+      await page.evaluate(() => (window as unknown as { pendingSeen: boolean }).pendingSeen),
+    ).toBe(false);
+  });
+
+  test(`signups (${lang}): a slow first load says only "loading", no second pending line`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list');
+    const release = await holdStatus(page);
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('signup-row')).toHaveCount(3);
+    await page.waitForTimeout(1600);
+    await expect(page.getByTestId('auto-status')).toContainText(lang === 'he' ? 'טוען' : 'Loading');
+    await expect(page.getByTestId('auto-pending')).toHaveCount(0);
+    release();
+    await expect(page.getByTestId('signups-live')).toContainText(x.unavailable);
+  });
+
+  test(`signups (${lang}): a late status failure is said after a queued outcome took focus`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const queued = {
+      ...ROWS()[0],
+      status: 'email_queued',
+      accountAdded: true,
+      emailSendAfter: '2026-11-28T06:00:00Z',
+    };
+    await mock(
+      page,
+      'list',
+      { 'r1/approve': { status: 200, json: { record: queued, note: 'email_queued' } } },
+      { status: 200, json: AUTO_ON },
+    );
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('auto-today')).toBeVisible();
+    const release = await holdStatus(page);
+    await page.getByTestId('signups-refresh').click();
+    await expect(page.getByTestId('auto-pending')).toBeVisible({ timeout: 2500 });
+    const first = page.locator('[data-signup-id="r1"]');
+    await first.getByTestId('signup-approve').click();
+    const message = first.getByTestId('signup-message');
+    await expect(message).toBeFocused();
+    // The focused sentence is read by focus: the live region stays empty past the count's wait.
+    await page.waitForTimeout(3500);
+    await expect(page.getByTestId('signups-live')).toHaveText('');
+    release();
+    await expect(page.getByTestId('signups-live')).toHaveText(x.unavailable);
+    await expect(message).toBeFocused();
+  });
+
   test(`signups (${lang}): 320 px, the status block does not overflow`, async ({
     page,
     context,

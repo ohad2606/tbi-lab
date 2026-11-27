@@ -50,6 +50,9 @@ const rowFocus = (id: string) =>
 /** How long the count announcement waits for the auto-approve status before it is spoken alone. */
 const STATUS_WAIT_MS = 3000;
 
+/** A status request still open after this long on Refresh is shown, and said, as pending. */
+const PENDING_AFTER_MS = 1000;
+
 /** How long an announcement may still be unspoken, so an added sentence is posted with it. */
 const FRESH_MS = 2000;
 
@@ -166,6 +169,8 @@ export function Signups() {
   const { date } = useConsole();
   const [list, setList] = useState<Loaded<SignupRecord[]> | null>(null);
   const [autoStatus, setAutoStatus] = useState<Loaded<AutoApproveStatus> | null>(null);
+  const [statusPending, setStatusPending] = useState(false);
+  const pendingTimer = useRef<ReturnType<typeof setTimeout>>();
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, RowMessage>>({});
@@ -191,11 +196,11 @@ export function Signups() {
   // the same sentence twice in a row is announced twice.
   // `spoken` counts announcements and reloads (only the latest is put in the region). `topic`
   // changes when an announcement replaces what came before, not when a sentence is added to it,
-  // so an addition never silences a reload's count. `quiet` changes when a pending status result
-  // must stay unspoken: a newer reload, or a deliberate silence.
+  // so an addition never silences a reload's count. `reloads` changes with each reload: only a
+  // newer one leaves an older status result unspoken.
   const spoken = useRef(0);
   const topic = useRef(0);
-  const quiet = useRef(0);
+  const reloads = useRef(0);
   const said = useRef('');
   const saidAt = useRef(0);
   // While the delete dialog is modal this page is inert, its live regions too: sentences are
@@ -269,12 +274,20 @@ export function Signups() {
     // The status is independent of the list: its failure shows its own message and never blocks it.
     spoken.current++;
     const turn = ++topic.current;
-    const run = ++quiet.current;
+    const run = ++reloads.current;
     said.current = '';
     held.current = false;
     const mine = ++listTurn.current;
+    clearTimeout(pendingTimer.current);
+    setStatusPending(false);
+    pendingTimer.current = setTimeout(() => setStatusPending(true), PENDING_AFTER_MS);
     const status = loadAutoApproveStatus(api).then((st) => {
-      if (alive.current) setAutoStatus(st);
+      if (!alive.current) return st;
+      if (run === reloads.current) {
+        clearTimeout(pendingTimer.current);
+        setStatusPending(false);
+      }
+      setAutoStatus(st);
       return st;
     });
     const v = await loadOpenSignups(api);
@@ -300,7 +313,7 @@ export function Signups() {
         status,
         new Promise<null>((r) => setTimeout(() => r(null), STATUS_WAIT_MS)),
       ]);
-      if (!alive.current || run !== quiet.current) return;
+      if (!alive.current || run !== reloads.current) return;
       if (turn === topic.current) {
         const line = st && !st.ok ? join(count, unavailable) : count;
         // A sentence added while this reload was pending (a stale list), not heard yet, stays,
@@ -312,10 +325,11 @@ export function Signups() {
       }
     }
     // The status was not part of the count's announcement: its failure is shown, so it is also
-    // spoken, unless a newer reload (or a deliberate silence) came first. It replaces only the
-    // count; anything newer is kept and this is added to it.
+    // spoken, unless a newer reload came first (also after a deliberate silence: that silences
+    // the count and a sentence read by focus, not this one). It replaces only the count;
+    // anything newer is kept and this is added to it.
     const late = await status;
-    if (!alive.current || late.ok || run !== quiet.current) return;
+    if (!alive.current || late.ok || run !== reloads.current) return;
     if (counted === spoken.current) say(unavailable);
     else alsoSay(unavailable);
   };
@@ -324,6 +338,7 @@ export function Signups() {
     void reload();
     return () => {
       alive.current = false;
+      clearTimeout(pendingTimer.current);
     };
   }, []);
 
@@ -436,8 +451,7 @@ export function Signups() {
         present &&
         (!at || at === document.body || !!at.closest(`[data-signup-id="${CSS.escape(r.id)}"]`));
       if (messageFocused && follow) {
-        // Silence counts as an announcement: a pending one (e.g. a late status) must not follow.
-        quiet.current++;
+        // Silence counts as an announcement: a pending one (e.g. the count) must not follow.
         topic.current++;
         spoken.current++;
         said.current = '';
@@ -491,6 +505,15 @@ export function Signups() {
         {announce}
       </div>
       <AutoApproveBlock status={autoStatus} />
+      {/* A slow Refresh of that status is shown and said here; the region is always in the page
+          (empty, it takes no room). The first load already says "Loading". */}
+      <div role="status" class="notice-slot" data-testid="auto-pending-status">
+        {statusPending && autoStatus && (
+          <p class="muted small" data-testid="auto-pending">
+            {t('console.signups.auto.checking')}
+          </p>
+        )}
+      </div>
       {/* In the page before it has text; empty, it takes no room (styles.css). */}
       <div role="status" class="notice-slot" data-testid="signups-open-status">
         {openStale && (
