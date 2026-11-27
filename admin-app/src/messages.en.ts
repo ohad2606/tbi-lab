@@ -145,6 +145,7 @@ export const consoleEn = {
   'console.signups.auto.heading': 'Auto-approve status',
   'console.signups.auto.off': 'Auto-approve is off.',
   'console.signups.auto.unknown': 'Auto-approve status is unknown.',
+  'console.signups.auto.checking': 'Checking the auto-approve status…',
   'console.signups.auto.unavailable': 'Auto-approve status is unavailable right now.',
   'console.signups.auto.today': 'Auto-approved today: {count} of {cap}',
   'console.signups.auto.capReached': 'The daily cap is reached. New requests wait for tomorrow.',
