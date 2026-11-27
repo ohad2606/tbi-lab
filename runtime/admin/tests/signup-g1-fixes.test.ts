@@ -229,6 +229,48 @@ describe('fix 1: verified mode, a row claiming progress without an admin binding
     expect(r.adds).toHaveLength(1);
   });
 
+  it('a forged email_sent web row: the add runs and binds, no mail, already_done', async () => {
+    for (const accountAdded of [true, false]) {
+      const r = await rig();
+      const id = await webId(r);
+      await r.store.update(id, { status: 'email_sent', accountAdded });
+      expect(await r.owner.approve(id)).toMatchObject({ ok: true, note: 'already_done' });
+      expect(r.adds).toEqual([person(1).email]);
+      expect(bound(r, id)).toBe(true);
+      expect((await r.store.get(id)).accountAdded).toBe(true);
+      expect(r.mails).toEqual([]);
+    }
+  });
+
+  it('a legacy email_sent web row (account exists): resend binds once and sends nothing', async () => {
+    const r = await rig();
+    const id = await webId(r);
+    await r.store.update(id, { status: 'email_sent', accountAdded: true });
+    r.add.out = 'exists';
+    for (let i = 0; i < 2; i++)
+      expect(await r.owner.resend(id)).toMatchObject({ ok: true, note: 'already_done' });
+    expect(r.adds).toHaveLength(1);
+    expect(bound(r, id)).toBe(true);
+    expect(r.mails).toEqual([]);
+  });
+
+  it('an email_sent web row whose add or binding fails: unbound_state, no mail', async () => {
+    for (const fail of ['error', 'cap_reached', 'bind'] as const) {
+      const r = await rig();
+      const id = await webId(r);
+      await r.store.update(id, { status: 'email_sent', accountAdded: true });
+      if (fail === 'bind')
+        r.v.bindApproval = async () => {
+          throw new Error('EACCES');
+        };
+      else r.add.out = fail;
+      expect(await r.owner.approve(id)).toMatchObject({ ok: false, code: 'unbound_state' });
+      expect(await r.owner.resend(id)).toMatchObject({ ok: false, code: 'unbound_state' });
+      expect(bound(r, id)).toBe(false);
+      expect(r.mails).toEqual([]);
+    }
+  });
+
   it('without verified mode (no binding configured) nothing changes: no extra add', async () => {
     const d = dirs();
     const store = new PendingStore(d.storeDir, { now: () => T0 });
@@ -357,6 +399,28 @@ describe('fix 3: contradictory verification settings refuse the sign-up admin wi
       expect(readdirSync(d.stateDir)).toEqual([]);
       expect(existsSync(join(d.root, 'p'))).toBe(false);
     });
+  for (const flag of ['0', ''])
+    it(`AUTO_WEB=included with TBI_SIGNUP_VERIFY="${flag}" is verification off: wired`, async () => {
+      const d = dirs();
+      const logs: string[] = [];
+      const env = {
+        ...base(d.root, d.stateDir),
+        TBI_SIGNUP_AUTO_WEB: 'included',
+        TBI_SIGNUP_VERIFY: flag,
+      };
+      writeFileSync(join(d.root, 'key'), KEY, { mode: 0o600 });
+      expect(await wire(env, logs)).not.toBeNull();
+      expect(logs.filter((l) => /disabled/.test(l))).toEqual([]);
+    });
+  it('AUTO_WEB=included with another non-empty TBI_SIGNUP_VERIFY value is refused', async () => {
+    const d = dirs();
+    const env = {
+      ...base(d.root, d.stateDir),
+      TBI_SIGNUP_AUTO_WEB: 'included',
+      TBI_SIGNUP_VERIFY: 'yes',
+    };
+    expect(await wire(env, [])).toBeNull();
+  });
   it('valid configs still wire: excluded + VERIFY=1, included without VERIFY', async () => {
     for (const extra of <Record<string, string>[]>[
       { TBI_SIGNUP_AUTO_WEB: 'excluded', TBI_SIGNUP_VERIFY: '1', TBI_SIGNUP_SITE_URL: SITE },
@@ -422,6 +486,16 @@ describe('fix 4: the drain holds auto-approved mails while auto-approve.paused e
 });
 
 describe('fix 5: the unverified purge finishes a web request whose .web marker is gone', () => {
+  it('never purges a request whose admin state holds an approval binding', async () => {
+    const r = await rig();
+    const id = await webId(r);
+    await r.v.bindApproval(id, person(1).email);
+    if (existsSync(join(r.storeDir, `${id}.web`))) unlinkSync(join(r.storeDir, `${id}.web`));
+    r.clock.t = T0 + 7 * DAY;
+    expect((await r.v.purgeUnverified(7)).purged).toBe(0);
+    expect((await r.store.list()).map((x) => x.id)).toEqual([id]);
+  });
+
   it('purges the orphan; never a verified, approved, account-added or non-web record', async () => {
     const r = await rig();
     const ids: string[] = [];

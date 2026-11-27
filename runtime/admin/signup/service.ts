@@ -672,12 +672,12 @@ export class SignupApprover {
       if (!r) return { ok: false, code: 'not_found' };
       if (!r.accountAdded || r.status === 'rejected' || r.status === 'pending')
         return { ok: false, code: 'bad_state', record: r };
-      if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
       const unbound = await this.unboundProgress(r);
       if (unbound) {
         if (!unbound.ok) return unbound;
         r = unbound.record;
       }
+      if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
       if (r.status === 'email_queued') return { ok: true, record: r, note: 'email_queued' };
       return this.send(r, false, true);
     }
@@ -689,7 +689,8 @@ export class SignupApprover {
    * binding (`approvedAddr`, written right after a successful account request) proves it. With no
    * binding the account request runs again (an existing account answers `exists`, which counts as
    * added) and the binding is written; if that cannot be done the action is refused
-   * (`unbound_state`) and nothing is sent. Returns null when nothing had to be done (bound, not
+   * (`unbound_state`) and nothing is sent. A web request marked `email_sent` is checked the same
+   * way (the caller then answers `already_done`, with no mail). Returns null when nothing had to be done (bound, not
    * verified mode, or a record that claims no progress), else the outcome or the refreshed record.
    * This only stops intake LOGIC bugs (a wrong field write): while the intake and the admin share
    * one unix user, no code here can protect against a compromised intake (see the runbook).
@@ -699,11 +700,14 @@ export class SignupApprover {
   ): Promise<{ ok: true; record: SignupRecord } | (ApproveOutcome & { ok: false }) | null> {
     const b = this.d.mailBinding;
     if (!b) return null;
+    // A sent mail needs the check only on a web request.
     const claims =
-      r.accountAdded ||
-      r.status === 'approved' ||
-      r.status === 'email_failed' ||
-      r.status === 'email_queued';
+      r.status === 'email_sent'
+        ? r.origin === 'web'
+        : r.accountAdded ||
+          r.status === 'approved' ||
+          r.status === 'email_failed' ||
+          r.status === 'email_queued';
     // `approved` without `accountAdded` takes the normal account step in doApprove.
     if (!claims || (r.status === 'approved' && !r.accountAdded)) return null;
     const bound = await b.hasApproval(r.id).catch(() => null);
@@ -741,13 +745,14 @@ export class SignupApprover {
   private async doApprove(id: string): Promise<ApproveOutcome> {
     let r = await this.load(id);
     if (!r) return { ok: false, code: 'not_found' };
-    if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
     if (r.status === 'rejected') return { ok: false, code: 'bad_state', record: r };
     const unbound = await this.unboundProgress(r);
     if (unbound) {
       if (!unbound.ok) return unbound;
       r = unbound.record;
     }
+    // After the binding check: a web row's "sent" is intake-owned text too. Nothing is mailed.
+    if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
     if (r.status === 'email_queued') return { ok: true, record: r, note: 'email_queued' };
     if (r.status === 'email_failed')
       return { ok: false, code: 'email_failed_use_resend', record: r };

@@ -446,6 +446,15 @@ export function signupOutcomeView(
   }
 }
 
+/** The row badge that replaces the status text after this outcome, else null (keep the status). */
+export function signupBadgeOverride(
+  messageKey: string | undefined,
+): 'console.signups.status.accountUnconfirmed' | null {
+  return messageKey === 'console.signups.err.unbound_state'
+    ? 'console.signups.status.accountUnconfirmed'
+    : null;
+}
+
 /** After a row is removed: the row that should take focus (the next, else the previous), or null. */
 export function focusAfterRemoval(ids: readonly string[], removed: string): string | null {
   const i = ids.indexOf(removed);

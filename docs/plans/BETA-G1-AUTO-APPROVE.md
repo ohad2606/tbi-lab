@@ -396,8 +396,8 @@ Off by default, not deployed. Operator steps, values, deletion times and failure
 - The approval mail goes only to the address the account was added for, with a generic greeting.
 - Verify cut-off: `TBI_SIGNUP_VERIFY_SINCE`, else the first sweep's time, stored in `verify/since.json`. Older requests
   are never mailed.
-- Limits: 50 confirmation mails per Israel day unless set (keep a configured value <= 340: the 256 KB read bound of
-  `mail-counters.json`), 3 per address per 7 days, 10 minutes apart, 5 per request, 3 live links.
+- Limits: 50 confirmation mails per Israel day unless set (`mail-counters.json` has a 2 MiB read bound, so every
+  allowed cap fits), 3 per address per 7 days, 10 minutes apart, 5 per request, 3 live links.
 - Mail caps per hour, Israel day and 30 days apply to all applicant mail; the state fails closed. Verified mode
   requires them.
 - The pause file stops confirmation mails and approvals, not sign-ups, confirmations or deletion. Confirmation mails

@@ -845,7 +845,7 @@ export class Verifier {
             } catch {
               return keep('state_unreadable'); // unreadable verify state = keep
             }
-            if (s?.verifiedAt || s?.usedAt) return false;
+            if (s?.verifiedAt || s?.usedAt || s?.approvedAddr) return false;
             const claims = this.d.claimed ? await this.d.claimed().catch(() => null) : new Set();
             if (!claims) return keep('claims_unreadable');
             if (claims.has(r.id)) return false;

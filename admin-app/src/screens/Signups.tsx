@@ -22,6 +22,7 @@ import {
   verificationKey,
   signupCountView,
   signupSource,
+  signupBadgeOverride,
   signupOutcomeView,
   signupRowKind,
   type SignupRowKind,
@@ -682,7 +683,11 @@ export function Signups() {
             <bdi dir="auto">{r.name}</bdi>
           </strong>
           <span class="badge" data-testid="signup-status">
-            {t(working ? 'console.signups.status.working' : STATUS_KEY[kind])}
+            {t(
+              working
+                ? 'console.signups.status.working'
+                : (signupBadgeOverride(msg?.key) ?? STATUS_KEY[kind]),
+            )}
           </span>
           {src.web && (
             <span class="badge" data-testid="signup-origin-web">

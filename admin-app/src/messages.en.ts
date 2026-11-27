@@ -133,6 +133,7 @@ export const consoleEn = {
   'console.signups.lang.he': 'Hebrew',
   'console.signups.lang.en': 'English',
   'console.signups.lang.other': 'Other',
+  'console.signups.status.accountUnconfirmed': 'Account not confirmed',
   'console.signups.status.pending': 'Waiting for your decision',
   'console.signups.status.emailFailed': 'Account added, but the email was not sent. Use Resend.',
   'console.signups.status.accountPending':
@@ -222,7 +223,7 @@ export const consoleEn = {
   'console.signups.err.mail_cap':
     'The account for {name} was added. The email limit has been reached for now, so the email is waiting and will be sent automatically later.',
   'console.signups.err.unbound_state':
-    'Warning: the request of {name} says it was already approved, but our own records do not confirm that the account was added. Nothing was sent. Check the account of {name} under Testers before you try again.',
+    "Warning: {name}'s request is marked as approved, but we have no record that the account was added. No email was sent. Check in Testers whether {name}'s account exists, then try again. If the warning returns, check free tester places and the server log.",
   'console.signups.err.not_found.unconfirmed':
     'Request of {name}: we could not confirm what happened. Sign-up administration may be off or unavailable on the server, so the request may still be stored. Use Refresh requests.',
   'console.signups.openStale':

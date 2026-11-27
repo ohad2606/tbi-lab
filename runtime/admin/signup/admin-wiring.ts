@@ -628,8 +628,8 @@ export async function signupWiringFromEnv(
   const ver = verifyConfigFromEnv(env, cfg.config.dir);
   // BETA-G1 fix 3: contradictory verification settings refuse the sign-up admin wiring (nothing
   // is read or written in the verify / state dirs). AUTO_WEB=verified without working
-  // verification would bind no approval mail; AUTO_WEB=included with TBI_SIGNUP_VERIFY set would
-  // turn verification off and still auto-approve web requests without proof.
+  // verification would bind no approval mail; AUTO_WEB=included with TBI_SIGNUP_VERIFY set (not
+  // empty or 0, which mean off) would turn verification off and still auto-approve without proof.
   const verifyFlag = env.TBI_SIGNUP_VERIFY ?? '';
   if (env.TBI_SIGNUP_AUTO_WEB === 'verified' && !ver.enabled) {
     await forgetHeartbeat();
@@ -638,7 +638,7 @@ export async function signupWiringFromEnv(
     );
     return null;
   }
-  if (env.TBI_SIGNUP_AUTO_WEB === 'included' && verifyFlag !== '') {
+  if (env.TBI_SIGNUP_AUTO_WEB === 'included' && verifyFlag !== '' && verifyFlag !== '0') {
     await forgetHeartbeat();
     io.log(
       'signup: admin routes disabled (config: TBI_SIGNUP_VERIFY needs TBI_SIGNUP_AUTO_WEB verified or excluded)',

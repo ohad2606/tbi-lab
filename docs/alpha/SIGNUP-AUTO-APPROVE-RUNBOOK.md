@@ -173,9 +173,10 @@ with the log line `admin routes disabled (config: ...)`:
 - With the mail caps set, the verify cap (50 when unset) must not exceed the mail day cap.
 - `TBI_SIGNUP_AUTO_WEB=verified` needs `TBI_SIGNUP_VERIFY=1` with valid verify settings
   (`TBI_SIGNUP_AUTO_WEB=verified needs TBI_SIGNUP_VERIFY=1 with valid settings`).
-- `TBI_SIGNUP_AUTO_WEB=included` together with any `TBI_SIGNUP_VERIFY` value is refused
+- `TBI_SIGNUP_AUTO_WEB=included` with a `TBI_SIGNUP_VERIFY` value other than empty or `0` is refused
   (`TBI_SIGNUP_VERIFY needs TBI_SIGNUP_AUTO_WEB verified or excluded`): it would turn verification off and still
-  approve web requests without proof. Nothing is written in the state or verify directories on these two refusals.
+  approve web requests without proof. Empty or `0` counts as verification off and is not refused (`0` also logs
+  `email verification off (config: ...)`). Nothing is written in the state or verify directories on these two refusals.
 - A bad `TBI_SIGNUP_VERIFY*` or `TBI_SIGNUP_SITE_URL` value with `TBI_SIGNUP_AUTO_WEB` unset or `excluded`:
   `email verification off (config: ...)`; manual approval keeps working.
 
@@ -194,10 +195,15 @@ count and the per-address limits), restart, then resume.
 already added (status approved, email failed or email queued, or "account added") but has no approval binding in the
 admin verify state gets its account request again before any mail; an account that already exists answers "exists"
 and counts as added. Requests approved before verified mode was enabled have no binding: a resend of such a request
-sends one more account request (answered "exists") and then the mail; a request whose mail was already sent shows
-"already approved" as before. If the account request fails, or the verify state cannot be read, the owner sees a
-warning (`unbound_state`: "says it was already approved, but our own records do not confirm ..."), nothing is sent,
-and the log has `unbound record state refused (<class>)`. Check the person under Testers before you try again.
+sends one more account request (answered "exists") and then the mail. A web request marked "email sent" with no
+binding gets the account request and the binding too, sends **no** mail and answers "already approved"; other
+requests whose mail was already sent show "already approved" with no account request. If the account request or the
+binding fails, or the verify state cannot be read, the owner sees a warning (`unbound_state`: "is marked as
+approved, but we have no record that the account was added ..."), nothing is sent, and the log has
+`unbound record state refused (<class>)`. Check the person under Testers before you try again.
+
+Resend (or approve) on a request with no binding runs the account add again. This can **re-create an account you
+removed**, and the answer `exists` also covers a **disabled** tester. Check Testers first.
 This only stops intake logic bugs (a wrong field written to a record). The intake and the admin run as the same unix
 user, so a compromised intake can change the admin's state too; no code in the admin protects against that.
 
@@ -315,7 +321,7 @@ Deleting one person by hand: `docs/alpha/SIGNUP-DATA-DELETION.md`.
 | Condition | What happens |
 |---|---|
 | `verified` mode without the mail caps | `auto-approve off (config: ... needs the mail caps)`; no confirmation mail (`verify mails held (mail_caps_missing)`); resend requests wait; no unconfirmed purge. Links already sent can still be confirmed. Approval mails go only to the address the account was added for (`approval mail refused (addr_changed)`); mails you send by hand are then **not** capped |
-| `verified` mode, verification not set up | one line `warning auto-approve web=verified without email verification; nothing is auto-approved`. Nothing is approved automatically, whatever its origin; no confirmation mail |
+| `verified` mode, verification not set up | the sign-up admin is refused: `admin routes disabled (config: TBI_SIGNUP_AUTO_WEB=verified needs TBI_SIGNUP_VERIFY=1 with valid settings)`; no sign-up admin routes, automatic approval or confirmation mail |
 | Key missing or bad | `verify key unusable (<class>); verification off`: nothing is sent or confirmed, and the unconfirmed purge does not run |
 | State directory unsafe | `verify state dir unsafe (<reason>); verification off` |
 | Cut-off file unreadable | `verify cut-off unreadable; nothing minted or verified` |
@@ -346,7 +352,8 @@ the person has to ask again later. A first mail held by the daily or per-address
 Consequences:
 
 - Links already sent no longer work.
-- Approval mails still queued are sent without the mail caps and without the address binding.
+- Approval mails still queued are sent without the mail caps and without the address binding, **even if the pause
+  file exists** (without the drop-in the admin no longer reads it).
 - The `verify/` directory stays, and deleting a request no longer removes its `verify/<id>.json`. It holds hashes and
   times only; remove the directory by hand if verification will not come back.
 - The verify cut-off is stored in `verify/since.json`. **Before enabling again**, set `TBI_SIGNUP_VERIFY_SINCE` to
