@@ -10,9 +10,7 @@ This is a working draft for the future public site of TBI Lab. It describes the 
 The service is operated by [COMPANY LEGAL NAME TBD], [REGISTRATION NUMBER TBD], [REGISTERED ADDRESS TBD] ("TBI", "we"). Contact: [CONTACT TBD].
 
 ## 3. What the service is
-TBI Lab is a web-based electronics and embedded laboratory for the classic `ESP32`, in English and Hebrew. It is designed for desktop and tablet screens and is not designed for phones. The Alpha is a limited test program. Features may change, be removed, or be unavailable.
-
-**[לבדיקת עו"ד / FOR LAWYER REVIEW: the product scope and public pages say Chrome or Edge on a computer only; the draft says desktop and tablet screens.]**
+TBI Lab is a web-based electronics and embedded laboratory for the classic `ESP32`, in English and Hebrew. The supported setup is Chrome or Edge on a computer. Phones and tablets are not supported. The Alpha is a limited test program. Features may change, be removed, or be unavailable.
 
 ## 4. Applying and access
 - Applying does not give access. We review applications manually, places are limited, and you may be placed on a waiting list.
