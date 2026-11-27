@@ -44,6 +44,10 @@
  * G4 counts only builder_busy / memory_pressure / storage_pressure / capacity_timeout as a refusal
  * (any 429 fails); zero successful builds is flagged `dec32`. Every report lists `notCovered`.
  * Reports (numbers and fixed codes only): $TBI_RUNTIME_HOME/results/g2-deployed-<run>[-FAILED].json.
+ * Capacity A1 (only with TBI_G2_A1=1, g2-metrics.ts): 1 Hz unprivileged cgroup reads for the whole
+ * run and, after step 9, labelled rounds (delay solo, busy loop solo, 3 + 3 together; 120 s each,
+ * up to about 35 min more). They add the report field `a1`; an unfinished round is `a1.status:
+ * incomplete` and does not fail the run, but auto-stop and the run criteria stay in force.
  *
  * RUNBOOK (interactive only, daytime, never from the night runner or CI; staging only):
  *   1. Staging installed per the plan (policy.beta.json, TBI_HOST_MAX_SESSIONS=6, metering on,
@@ -54,6 +58,7 @@
  *   3. TBI_G2_DEPLOYED=tbi-s8 TBI_ALLOW_SERVICE_MUTATION=tbi-s8 TBI_G2_PREVIEW_USERS=<id1>,<id2> \
  *      [TBI_G2_SECONDS=1500] npx vitest run --config vitest.runtime.config.ts \
  *      runtime/tests/g2-deployed.runtime.test.ts
+ *      For the 3.12 capacity numbers add TBI_G2_A1=1 (docs/ops/TEST-SAFETY.md).
  *      Optional: TBI_G2_EXTRA_PAYING_USERS=<id3>,...,<id7> (existing identities, also mapped to
  *      `preview` in the server's policy copy; never committed).
  *   4. Without TBI_G2_DEPLOYED the file does nothing. With it set, CI, a wrong instance, a missing
@@ -62,6 +67,7 @@
  */
 import { execFile, spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, onTestFailed } from 'vitest';
 import { parseConfig } from '../plans/config.js';
@@ -86,8 +92,11 @@ import {
   type G2Progress,
 } from './g2-guard.js';
 import * as L from './g2-load.js';
+import * as M from './g2-metrics.js';
 
 const decision = g2Decision();
+/** Capacity A1: extra CPU/RAM sampling and, after the drills, the labelled workload rounds */
+const A1 = process.env.TBI_G2_A1 === '1';
 const INSTANCE = G2_STAGING;
 const SECONDS = Number(process.env.TBI_G2_SECONDS ?? 1500);
 const LIFETIME_MS = 120_000;
@@ -257,6 +266,18 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
       const health = async () =>
         (await json(await call(`${HEALTH}/health`))).body.capacity as L.G2Capacity;
 
+      // ---- Capacity A1: unprivileged reads only; it never judges or stops the run
+      const a1 = A1
+        ? M.g2A1Recorder(
+            { readFile: (p) => readFile(p, 'utf8'), readdir: (p) => readdir(p) },
+            () => performance.now(),
+            () => progress.phase,
+          )
+        : undefined;
+      let a1Sampler: ReturnType<typeof L.g2Loop> | undefined;
+      /** how the sessions being created are labelled in the A1 report */
+      let a1Label: [M.G2A1Type, M.G2A1Round] = ['gpio_proof', 'drills'];
+
       // ---- G6 sampler
       const watch = L.g2WatchState();
       const sinceEpochS = Math.floor(Date.now() / 1000);
@@ -349,6 +370,7 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         metrics.unresolvedBuilds = openBuilds.size; // no cancel endpoint: counted only
         if (mine.length || tickets.length) await countLeftovers();
         await sampler?.stop();
+        await a1Sampler?.stop();
         if (L.g2SamplerBlind(watch)) fail('sampler_blind');
         await killRelays();
       }
@@ -409,6 +431,11 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         if (written) return;
         written = true;
         progress.seconds = Math.round((performance.now() - t00) / 1000);
+        try {
+          progress.a1 = a1?.report();
+        } catch {
+          console.warn('g2-deployed: the A1 report could not be built'); // keep the run report
+        }
         recordEvidence(
           `g2-deployed-${RUN}${result === 'FAILED' ? '-FAILED' : ''}`,
           g2Report(progress, result),
@@ -436,6 +463,11 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         const cfgText = cfgPath ? sudo('cat', cfgPath) : undefined;
         if (cfgText?.status !== 0)
           throw new Error('g2-deployed refused: the sim plans config of the host is not readable');
+        if (a1)
+          a1.state.config = {
+            ...M.g2A1HostConfig(shown.stdout),
+            cpus: M.g2A1ProcStat(readFileSync('/proc/stat', 'utf8'))?.cpus ?? null,
+          };
         const queue = parseConfig(JSON.parse(cfgText.stdout)).queue;
         const queueProblem = L.g2QueueProblem(queue);
         if (queueProblem) throw new Error(`g2-deployed refused: ${queueProblem}`);
@@ -459,6 +491,7 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         checkAbort();
         if (!watch.samples) throw new Error('g2-deployed refused: resource sampling does not work');
         sampler = L.g2Loop(takeSample, L.G2_LIMITS.sampleMs, () => stop('sampler'));
+        if (a1) a1Sampler = L.g2Loop(a1.tick, M.G2_A1_SAMPLE_MS, () => undefined);
 
         const base = g2FreeUsers(RUN);
         const free = Array.from(
@@ -491,7 +524,7 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           }
           return s;
         };
-        const buildFor = async (user: string, text: string) => {
+        const buildFor = async (user: string, text: string, listed = true) => {
           const t0 = performance.now();
           const s = await track(submitBuild(user, text));
           let sha: string | undefined = s.body.build?.artifact?.sha256;
@@ -515,7 +548,7 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
             await sleep(1000);
           }
           const ms = Math.round(performance.now() - t0);
-          progress.builds.push({ status: s.status, ms });
+          if (listed) progress.builds.push({ status: s.status, ms });
           const outcome = L.g2BuildOutcome({
             http: s.status,
             error: s.body.error,
@@ -595,6 +628,7 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
               headers: auth(m),
             });
             expect(run.ok, `run answered ${run.status}`).toBe(true);
+            a1?.addRun(m.id, ...a1Label);
           }
           return r;
         };
@@ -1038,6 +1072,78 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         keep = false;
         await keeper;
 
+        // ---- A1 rounds, only after every drill: labelled workloads on otherwise empty seats
+        const measure = async (rec: NonNullable<typeof a1>) => {
+          const users = [...free.slice(0, G2_FREE_LIVE), ...preview];
+          const emptySeats = async () => {
+            for (const m of mine)
+              await call(`${HOST}/sessions/${m.id}`, { method: 'DELETE', headers: auth(m) });
+            const empty = await pollUntil(
+              health,
+              (h) => h.live === 0 && h.waiting === 0,
+              performance.now() + L.G2_DRAIN_CHECK_MS,
+              clock,
+            );
+            expect(empty.ok, 'A1: seats not empty').toBe(true);
+          };
+          await emptySeats();
+          const shas = new Map<string, string>();
+          const buildsFrom = performance.now();
+          for (const { runs } of M.G2_A1_ROUNDS)
+            for (const [i, type] of runs) {
+              if (shas.has(`${i} ${type}`)) continue;
+              const text = `${M.G2_A1_SKETCHES[type]}// g2-a1 ${RUN}\n`;
+              expect(performance.now() - buildsFrom, 'A1 build budget').toBeLessThan(
+                M.G2_A1_BUILD_START_MS,
+              );
+              const b = await buildFor(users[i]!, text, false);
+              expect(b.sha, `A1 build ${type} (status ${b.status})`).toBeTruthy();
+              shas.set(`${i} ${type}`, b.sha!);
+            }
+          for (const { round, runs } of M.G2_A1_ROUNDS) {
+            await emptySeats();
+            await sleep(queue.freeCooldownMs + 5000);
+            const started: Mine[] = [];
+            for (const [i, type] of runs) {
+              shaOf.set(users[i]!, shas.get(`${i} ${type}`)!);
+              a1Label = [type, round];
+              const r = await create(users[i]!);
+              expect(r.status, `A1 session: ${r.body.error}`).toBe(201);
+              started.push(mine.at(-1)!);
+            }
+            // status reads renew the lease; each session ends at its own lifetime
+            const until = performance.now() + LIFETIME_MS + FETCH_MS;
+            const open = new Set(started);
+            while (open.size && performance.now() < until) {
+              for (const m of open) {
+                const s = await statusOf(m);
+                const ended = isEnded(s.state);
+                rec.pace(m.id, {
+                  simPerWall: s.pace?.simPerWall ?? null,
+                  tickGapP99Ms: s.pace?.tickGapMs?.p99 ?? null,
+                  endReason: ended ? (s.reason ?? null) : null,
+                });
+                if (ended) open.delete(m);
+              }
+              await sleep(5000);
+            }
+            expect(open.size, 'A1 sessions still live after their lifetime').toBe(0);
+          }
+        };
+        if (a1) {
+          progress.phase = 'a1';
+          a1.state.failuresBefore = [...progress.failures!];
+          a1.state.status = 'incomplete';
+          try {
+            await measure(a1);
+            a1.state.status = 'complete';
+          } catch (e) {
+            checkAbort(); // an auto-stop still fails the run
+            // a measurement that could not finish is reported, and does not judge the drills
+            console.warn(`g2-deployed: A1 incomplete: ${(e as Error).message}`);
+          }
+        }
+
         // ---- 10. clean-up and G7 counts
         progress.phase = 'clean-up';
         await cleanup();
@@ -1055,7 +1161,7 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         process.removeListener('SIGHUP', onSignal);
       }
     },
-    L.g2TimeoutMs(decision.kind === 'run' ? SECONDS : 0),
+    L.g2TimeoutMs(decision.kind === 'run' ? SECONDS : 0) + (A1 ? M.G2_A1_BUDGET_S * 1000 : 0),
   );
 
   // After the drills above (same file, in order): passed only if they ran and passed this one.
