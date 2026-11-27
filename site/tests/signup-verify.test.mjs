@@ -6,12 +6,12 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildSite } from '../build.mjs';
-import { content } from '../content.mjs';
+import { buildSite, cliOptions } from '../build.mjs';
+import { content, SIGNUP_VERIFY_ENABLED } from '../content.mjs';
 
 /**
  * sha256 over (relative path, bytes) of every built file, recorded from a build of origin/co/main 6173968 (before this
@@ -80,8 +80,37 @@ describe('signupVerify off (the default): nothing changes', () => {
           if (part.length > 20 && !old.includes(part)) expect(t, part).not.toContain(part);
     }
   });
-  it('signupVerify alone builds no sign-up page and no script', () => {
-    expect(treeHash(build({ signupVerify: true }))).toBe(CO_MAIN_TREES.default);
+});
+
+describe('flip switch (SIGNUP_VERIFY_ENABLED)', () => {
+  it('ships off', () => {
+    expect(SIGNUP_VERIFY_ENABLED).toBe(false);
+  });
+  it('verify without the sign-up page is refused outside the preview, before the output is touched', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tbi-vf-refuse-'));
+    writeFileSync(join(dir, 'keep'), 'x');
+    expect(() => buildSite(dir, { signupVerify: true })).toThrow(/SIGNUP_PAGE_ENABLED/);
+    expect(readdirSync(dir)).toEqual(['keep']);
+  });
+  it('page enabled + verify builds the confirm view without the preview option', () => {
+    const out = build({ signupEnabled: true, signupVerify: true });
+    for (const l of ['he', 'en']) expect(page(out, l)).toContain('<div id="vf" hidden>');
+    expect(readFileSync(join(out, 'assets', 'signup.mjs'), 'utf8')).toContain('initVerify');
+  });
+  it('the command line overrides the constant only with --signup-verify; no environment variable', () => {
+    expect(cliOptions([], {})).toEqual({ signupPreview: false });
+    expect(cliOptions(['--signup-preview'], {})).toEqual({ signupPreview: true });
+    expect(cliOptions(['--signup-verify'], {})).toEqual({
+      signupPreview: true,
+      signupVerify: true,
+    });
+    expect(cliOptions([], { SITE_SIGNUP_VERIFY: '1', SITE_SIGNUP_VERIFY_ENABLED: '1' })).toEqual({
+      signupPreview: false,
+    });
+    expect(cliOptions([], { SITE_SIGNUP_ENABLED: '1' })).toEqual({
+      signupPreview: false,
+      signupEnabled: true,
+    });
   });
 });
 

@@ -42,3 +42,9 @@ calls `GET <base>/form-token` and `POST <base>/web`. The web server must proxy t
 `docs/plans/BETA-G1-WEB-INTAKE.md`) and its CSP must allow `script-src 'self'; connect-src 'self'` (as `serve.mjs`
 does). `signup.mjs` holds only logic; all text is rendered by the generator. Tests: `tests/signup.test.mjs`,
 `e2e/a11y-signup.spec.ts` (API stubbed with route interception).
+
+Email confirmation (G1-AUTO-VERIFY): `SIGNUP_VERIFY_ENABLED` (content.mjs, `false`) is the flip switch. `true` puts
+the confirm view and resend form into the sign-up pages of the published build and needs `SIGNUP_PAGE_ENABLED = true`
+(the build refuses otherwise). No environment variable changes it. `node site/build.mjs <dir> --signup-verify` builds
+the same views as a preview only, never for publishing. The privacy, consent, home and FAQ wording does not change
+with this switch.
