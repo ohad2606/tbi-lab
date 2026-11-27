@@ -595,6 +595,70 @@ for (const lang of ['he', 'en'] as const) {
     await expect(page.getByTestId('signups-live')).not.toContainText(x.unavailable);
   });
 
+  const checked =
+    lang === 'he' ? 'בדיקת סטטוס האישור האוטומטי הסתיימה.' : 'Auto-approve status check finished.';
+
+  // Under the count's 3 s wait both are one announcement; well past it, the second is said alone.
+  for (const delay of [1600, 5600]) {
+    test(`signups (${lang}): a slow status check (${delay} ms) that succeeds is announced as finished`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      await mock(page, 'list', {}, { status: 200, json: AUTO_ON });
+      await open(page, context, baseURL!, lang);
+      const live = page.getByTestId('signups-live');
+      const count = lang === 'he' ? '3 בקשות ממתינות לך' : '3 requests waiting for you';
+      await expect(live).toHaveText(count);
+      await page.route('**/admin-api/signups/auto-approve', async (r) => {
+        await new Promise((done) => setTimeout(done, delay));
+        await r.fulfill({ status: 200, json: AUTO_ON });
+      });
+      await page.getByTestId('signups-refresh').click();
+      await expect(page.getByTestId('auto-pending')).toBeVisible({ timeout: 2500 });
+      await expect(live).toHaveText(delay < 3000 ? `${count}. ${checked}` : checked, {
+        timeout: 6000,
+      });
+      await expect(page.getByTestId('auto-pending')).toHaveCount(0);
+      await expect(page.getByTestId('signups-refresh')).toBeFocused();
+    });
+  }
+
+  test(`signups (${lang}): a quick status check is not announced as finished`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list', {}, { status: 200, json: AUTO_ON });
+    await open(page, context, baseURL!, lang);
+    const live = page.getByTestId('signups-live');
+    const count = lang === 'he' ? '3 בקשות ממתינות לך' : '3 requests waiting for you';
+    await expect(live).toHaveText(count);
+    await page.getByTestId('signups-refresh').click();
+    await page.waitForTimeout(1600);
+    await expect(live).toHaveText(count);
+  });
+
+  test(`signups (${lang}): a status request that never answers ends as unavailable, and is said`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list', {}, { status: 200, json: AUTO_ON });
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('auto-today')).toBeVisible();
+    await holdStatus(page); // never released
+    await page.getByTestId('signups-refresh').click();
+    await expect(page.getByTestId('auto-pending')).toBeVisible({ timeout: 2500 });
+    await expect(page.getByTestId('auto-unavailable')).toHaveText(x.unavailable, {
+      timeout: 12_000,
+    });
+    await expect(page.getByTestId('signups-live')).toHaveText(x.unavailable);
+    await expect(page.getByTestId('auto-pending')).toHaveCount(0);
+    await expect(page.getByTestId('auto-today')).toHaveCount(0);
+    await expect(page.getByTestId('signups-refresh')).toBeFocused();
+  });
+
   test(`signups (${lang}): 320 px, the status block does not overflow`, async ({
     page,
     context,

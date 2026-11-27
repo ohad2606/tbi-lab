@@ -513,6 +513,102 @@ for (const lang of ['he', 'en'] as const) {
     await expect(seen).toHaveCount(0);
   });
 
+  // 404: the whole list is already its problem text; 500: the row is still listed with its outcome.
+  for (const status of [404, 500]) {
+    test(`announce (${lang}): a failed Refresh keeps "unconfirmed" in view (check ${status})`, async ({
+      page,
+      context,
+    }) => {
+      await signIn(context, lang);
+      const m = await mock(page);
+      await signups(page);
+      const approve = page.locator(`[data-signup-id="${id(1)}"]`).getByTestId('signup-approve');
+      await expect(approve).toBeVisible();
+      m.approve = () => ({ status: 404, json: { error: 'not_found' } });
+      m.open = () => ({ status, json: { error: status === 404 ? 'not_found' : 'x' } });
+      await approve.press('Enter');
+      const sentence = text.actionOff('\u2068Sample 1\u2069');
+      await expect(live(page)).toHaveText(sentence);
+      m.open = () => ({ status: 500, json: { error: 'x' } });
+      const seen = page.getByTestId('signups-unconfirmed');
+      // Twice: a second failure keeps it too.
+      for (let i = 0; i < 2; i++) {
+        const answered = page.waitForResponse((r) => r.url().endsWith('/signups/open'));
+        await page.getByTestId('signups-refresh').click();
+        await answered;
+        await expect(page.getByTestId('signups-problem')).toBeVisible();
+        await expect(seen).toHaveText(sentence);
+        await expect(seen).toBeVisible();
+      }
+      m.open = () => ({ json: { signups: [row(1)] } });
+      await page.getByTestId('signups-refresh').click();
+      await expect(page.getByTestId('signup-row')).toHaveCount(1);
+      await expect(seen).toHaveCount(0);
+    });
+  }
+
+  for (const action of ['approve', 'reject'] as const) {
+    test(`announce (${lang}): a definite ${action} outcome removes the "unconfirmed" line`, async ({
+      page,
+      context,
+    }) => {
+      await signIn(context, lang);
+      const m = await mock(page);
+      let post: Handler = () => ({ status: 404, json: { error: 'not_found' } });
+      await page.route('**/admin-api/signups/*/reject', async (route) =>
+        route.fulfill(await post()),
+      );
+      m.approve = () => post();
+      await signups(page);
+      const item = page.locator(`[data-signup-id="${id(1)}"]`);
+      const press = async () => {
+        await item.locator(`button[data-act="${action}"]`).click();
+        if (action === 'reject') await page.getByTestId('confirm-ok').click();
+      };
+      await expect(item).toBeVisible();
+      m.open = () => failure;
+      await press();
+      const sentence = text.actionOff('\u2068Sample 1\u2069');
+      await expect(live(page)).toHaveText(sentence);
+      const retry = gate();
+      post = async () => {
+        await retry.held;
+        return { json: { record: row(1, action === 'approve' ? 'email_sent' : 'rejected') } };
+      };
+      await press();
+      await page.getByTestId('signups-refresh').click();
+      const seen = page.getByTestId('signups-unconfirmed');
+      await expect(seen).toHaveText(sentence);
+      retry.release();
+      await expect(live(page)).toContainText('Sample 1');
+      await expect(live(page)).not.toHaveText(sentence);
+      await expect(seen).toHaveCount(0);
+    });
+  }
+
+  test(`announce (${lang}): a second "unconfirmed" keeps the first one in view`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    const m = await mock(page);
+    m.approve = () => ({ status: 404, json: { error: 'not_found' } });
+    await signups(page);
+    const approve = (n: number) =>
+      page.locator(`[data-signup-id="${id(n)}"]`).getByTestId('signup-approve');
+    await expect(approve(1)).toBeVisible();
+    m.open = () => failure;
+    await approve(1).click();
+    await expect(live(page)).toHaveText(text.actionOff('\u2068Sample 1\u2069'));
+    m.open = () => ({ status: 503, json: { error: 'x' } });
+    await approve(2).click();
+    await expect(page.getByTestId('signups-problem')).toBeVisible();
+    await expect(page.getByTestId('signups-unconfirmed')).toHaveText([
+      text.actionOff('\u2068Sample 1\u2069'),
+      text.actionOff('\u2068Sample 2\u2069'),
+    ]);
+  });
+
   for (const status of [500, 404]) {
     test(`announce (${lang}): deleted while approve's check is pending, then ${status}: the deletion stands`, async ({
       page,
