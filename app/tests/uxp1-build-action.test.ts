@@ -49,6 +49,13 @@ describe('UX-P1 Build action', () => {
     expect(n).toBe(1);
   });
 
+  it('Hebrew instructions name the Build buttons exactly as they are labelled', () => {
+    // The toolbar and the Code view buttons are both "Build" in English: one Hebrew name too.
+    expect(he['build.button']).toBe(he['toolbar.build']);
+    for (const k of ['onboarding.step2', 'mcu.runs.program', 'firmware.program'] as const)
+      expect(he[k], k).toContain(he['toolbar.build']);
+  });
+
   it('the toolbar texts exist in English and Hebrew ("Build" / "בנה קוד")', () => {
     expect(en['toolbar.build']).toBe('Build');
     expect(he['toolbar.build']).toBe('בנה קוד');

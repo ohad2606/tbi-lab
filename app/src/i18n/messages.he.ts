@@ -947,7 +947,7 @@ export const he: Record<MessageKey, string> = {
     'קושחת בדיקה מוכנה מראש: מפעילה פעם אחת בעלייה את GPIO4, 16, 25, 27, 32 ו-33, ואז מעתיקה את GPIO34 ל-GPIO4 ואת GPIO35 ל-GPIO33 ומדפיסה כל שינוי.',
   'sim.status.runningMcu': 'רץ · ESP32',
   'sim.status.stopping': 'עוצר…',
-  'firmware.program': 'הקוד שלו (בנייה ואז הרצה)',
+  'firmware.program': 'הקוד שלו ("בנה קוד" ואז "הרצה")',
   'sim.error.mcu_no_program': 'ללוח {components} אין קוד להרצה.',
   'sim.error.mcu_build_required': 'נדרשת בנייה: בנו את הקוד של {components} ואז לחצו על הרצה.',
   'sim.error.mcu_unsupported_features':
@@ -1120,7 +1120,7 @@ export const he: Record<MessageKey, string> = {
     'שעון I²C עד ⁦100 kHz⁩ (הדירוג של ה-PCF8574); שעון מהיר יותר עוצר את ההרצה, בציון שם.',
   'build.error.unknown_library':
     'לשירות הבנייה אין את גרסת הספרייה המדויקת הזו, ולכן הבנייה לא בוצעה (הוא לעולם אינו מחליף בגרסה אחרת).',
-  'build.button': 'בנייה',
+  'build.button': 'בנה קוד',
   'toolbar.build': 'בנה קוד',
   'toolbar.build.group': 'בניית הקוד',
   'toolbar.build.readOnly': 'הפרויקט לקריאה בלבד: אי אפשר לבנות אותו כאן.',
@@ -1362,7 +1362,7 @@ export const he: Record<MessageKey, string> = {
   'assist.findings.notAi': 'הם מגיעים מהסימולציה, לא מ-AI.',
   'build.feature.spi': 'אפיק SPI',
   'build.feature.library': 'ספרייה {name}',
-  'mcu.runs.program': 'מריץ את הקוד שלו. ערכו אותו בלשונית "קוד", בנו ואז הריצו.',
+  'mcu.runs.program': 'מריץ את הקוד שלו. ערכו אותו בלשונית "קוד", לחצו על "בנה קוד" ואז על "הרצה".',
   'mcu.runs.reference': 'מריץ את קושחת הייחוס „{name}”.',
   'mcu.runs.useProgram': 'להשתמש בקוד שלו במקום',
   'mcu.advanced.heading': 'מתקדם',
@@ -1710,7 +1710,7 @@ export const he: Record<MessageKey, string> = {
   'firstRun.step1': 'פתחו את הדוגמה: נורית LED עם נגד מגביל זרם, מוזנת מספק הכוח של המעבדה.',
   'firstRun.step2': 'לחצו על הרצה. הסימולטור פותר את המעגל והנורית נדלקת.',
   'firstRun.step3':
-    'קראו את הבדיקה (probe) על הלוח, למשל {probe}, ואת האזהרה בסרגל ההודעות, אם יש: המספרים באים מהסימולטור.',
+    'קראו את הערך ב[[probe]] שעל הלוח, למשל {probe}, ואת האזהרה בסרגל ההודעות, אם יש: המספרים באים מהסימולטור.',
   'firstRun.start': 'התחילו עם הדוגמה',
   'firstRun.skip': 'דלגו',
   'firstRun.never': 'אל תציגו שוב',
@@ -1967,7 +1967,7 @@ export const he: Record<MessageKey, string> = {
     'פתחו מעגל LED קטן, לחצו הרצה בסרגל העליון, בחרו את הנגד ⁦R1⁩ ושנו את ערכו. זרם ה־LED משתנה בהתאם.',
   'onboarding.quick.open': 'פתיחת דוגמת ה־LED',
   'onboarding.step1': 'פתחו אחת מדוגמאות ה־ESP32 שלמטה, למשל אזעקת המרחק.',
-  'onboarding.step2': 'בלשונית הקוד, לחצו בנייה. הבנייה הראשונה עשויה להימשך כדקה.',
+  'onboarding.step2': 'בלשונית הקוד, לחצו על "בנה קוד". הבנייה הראשונה עשויה להימשך כדקה.',
   'onboarding.step3':
     'לחצו הרצה. בזמן ההרצה, בחרו רכיב ושנו את מה שהוא חש (מרחק, טמפרטורה, אור, תנועה): הקושחה והמעגל מגיבים.',
   'onboarding.note':
@@ -1982,8 +1982,19 @@ export const he: Record<MessageKey, string> = {
   'report.category.legend': 'תחום',
   'report.blocking': 'הבעיה מונעת ממני להמשיך',
   'report.disclosure.heading': 'מה נשלח',
-  'report.disclosure.sent':
-    'התיאור שלכם, התחום והאם הבעיה חוסמת אתכם; גרסת האפליקציה ושפת הממשק; מצב הסימולציה הנוכחית, אם יש; שם הדפדפן, הגרסה שלו ומערכת ההפעלה. הדיווח מקושר לחשבון שאיתו נכנסתם.',
+  'report.disclosure.always': 'בכל דיווח נשלחים, כשהדבר רלוונטי:',
+  'report.disclosure.item.text':
+    'סוג הדיווח והטקסט שכתבתם. בדיווח על בעיה: התחום והאם הבעיה חוסמת אתכם. בבקשה ל[[component]] חדש: שם ה[[component]], אם כתבתם אותו.',
+  'report.disclosure.item.app':
+    'שפת הממשק, המסך שבו אתם נמצאים (פרויקטים או עורך), גרסת האפליקציה ומזהה הבנייה שלה.',
+  'report.disclosure.item.sim':
+    'מצב הסימולציה, וקוד השגיאה אם היא נכשלה. אם לסימולציה יש הרצת ⁦ESP32⁩: מזהה ההרצה.',
+  'report.disclosure.item.browser': 'שם הדפדפן, מספר הגרסה הראשי שלו ומערכת ההפעלה.',
+  'report.disclosure.server': 'השרת שלנו מוסיף:',
+  'report.disclosure.item.account':
+    'קוד שמזהה את החשבון שאיתו נכנסתם (לא את כתובת הדוא״ל), מזהה לדיווח, מועד הקבלה וגרסת השרת.',
+  'report.disclosure.item.run':
+    'אם ההרצה שלכם: מצבה, סיבת הסיום, התוצאה, כמה זמן עבר מאז שנוצרה, כמה זמן עבר מאז שהסתיימה והזמן המדומה שלה.',
   'report.disclosure.notSent':
     'הפרויקט, המעגל, הקוד וצילומי מסך אינם נשלחים. נא לא לכלול מידע אישי.',
   'report.disclosure.retention': 'הדיווחים נמחקים לאחר 90 יום לכל היותר.',
@@ -2223,9 +2234,9 @@ export const he: Record<MessageKey, string> = {
   'report.problem.messageRequired': 'כתבו את ההודעה שלכם.',
   'report.context.label': 'צירוף פרטים טכניים',
   'report.context.detail':
-    'גרסת סביבת הריצה, סוג המכשיר (מחשב או טאבלט) והמזהה של הפרויקט הפתוח. לעולם לא תוכן הפרויקט.',
+    'גרסת סביבת הריצה, סוג המכשיר (מחשב, טאבלט או אחר) והמזהה של הפרויקט הפתוח. לעולם לא תוכן הפרויקט.',
   'report.disclosure.context':
-    'אם תצרפו פרטים טכניים: גרסת סביבת הריצה, סוג המכשיר והמזהה של הפרויקט הפתוח (לא תוכנו).',
+    'אם „צירוף פרטים טכניים” מסומן (הוא מסומן כברירת מחדל): גרסת סביבת הריצה, סוג המכשיר (מחשב, טאבלט או אחר) ומזהה הפרויקט הפתוח (לא תוכנו).',
   'status.feedback': 'משוב',
   'status.admin': 'ניהול',
 
@@ -2376,9 +2387,9 @@ export const he: Record<MessageKey, string> = {
     'בחירה מחדש של קצה אחד בחוט הנבחר (בוחרים את הקצה ואז את הפין החדש)',
   'shortcut.wireRepick.when': 'חוט נבחר; לא בזמן הרצה ולא לקריאה בלבד',
   'shortcut.probePlace.action':
-    'הצבת [[probe]] על הרכיב הממוקד (זרם), על פין או על החוט הנבחר (מתח); במצב בדיקה W מגיע לפינים גם בזמן הרצה; מתגים ולחצנים נמדדים ולא מופעלים',
+    'הצבת [[probe]] על הרכיב הממוקד (זרם), על פין או על החוט הנבחר (מתח); במצב מדידה W מגיע לפינים גם בזמן הרצה; מתגים ולחצנים נמדדים ולא מופעלים',
   'shortcut.probePlace.when': 'כלי נקודת המדידה פעיל; לא לקריאה בלבד',
-  'shortcut.escStep.action': 'חזרה צעד אחד אחורה: מצב בדיקה, רכיב מוכן, מצב ציור, ואז ניקוי הבחירה',
+  'shortcut.escStep.action': 'חזרה צעד אחד אחורה: מצב מדידה, רכיב מוכן, מצב ציור, ואז ניקוי הבחירה',
   'shortcut.escStep.when': 'תצוגת המעגל',
   'shortcut.delete.action': 'מחיקת הרכיבים, החוטים או הצמתים הנבחרים',
   'shortcut.delete.when': 'יש בחירה; לא בדוגמה לקריאה בלבד',

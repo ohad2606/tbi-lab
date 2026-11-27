@@ -17,6 +17,8 @@ import type { MessageKey } from '../i18n/i18n.js';
 import { useAppState, useT } from './context.js';
 import { probeRuntime } from '../runtimeInfo.js';
 import {
+  DISCLOSURE_ALWAYS,
+  DISCLOSURE_SERVER,
   MAX_COMPONENT_NAME_CHARS,
   MAX_DESCRIPTION_CHARS,
   REPORT_CATEGORIES,
@@ -406,7 +408,18 @@ function ReportDialog({
             data-testid="report-disclosure"
           >
             <h3 id="report-disclosure-heading">{t('report.disclosure.heading')}</h3>
-            <p>{t('report.disclosure.sent')}</p>
+            <p id="report-disclosure-always">{t('report.disclosure.always')}</p>
+            <ul aria-labelledby="report-disclosure-always">
+              {DISCLOSURE_ALWAYS.map((k) => (
+                <li key={k}>{t(k)}</li>
+              ))}
+            </ul>
+            <p id="report-disclosure-server">{t('report.disclosure.server')}</p>
+            <ul aria-labelledby="report-disclosure-server">
+              {DISCLOSURE_SERVER.map((k) => (
+                <li key={k}>{t(k)}</li>
+              ))}
+            </ul>
             <p>{t('report.disclosure.context')}</p>
             <p>{t('report.disclosure.notSent')}</p>
             <p>{t('report.disclosure.retention')}</p>

@@ -84,7 +84,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
     await page.getByTestId('report-description').fill('Count detents and read the push switch.');
     await expect(page.getByTestId('report-context')).toBeChecked();
     await expect(page.getByTestId('report-disclosure')).toContainText(
-      'the open project’s id (not its contents)',
+      'the open project’s ID (not its contents)',
     );
     await shot(page, `s23-feedback-component-en-${size}`);
     await page.getByTestId('report-send').click();

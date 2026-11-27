@@ -78,7 +78,9 @@ test('keyboard: focus on open, Tab stays inside, Escape closes and returns focus
   await expect(field).toHaveAttribute('dir', 'auto');
   // The disclosure says what is and is not sent.
   const disclosure = page.getByTestId('report-disclosure');
-  await expect(disclosure).toContainText('browser name, version and operating system');
+  await expect(disclosure).toContainText(
+    'browser name, its major version and your operating system',
+  );
   await expect(disclosure).toContainText(
     'Your project, circuit, code and screenshots are not sent',
   );

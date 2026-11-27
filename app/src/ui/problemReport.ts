@@ -30,6 +30,22 @@ export {
 } from '../../../runtime/host/reportProtocol.js';
 export type { ReportCategory, ReportKind } from '../../../runtime/host/reportProtocol.js';
 
+/**
+ * The "What is sent" lists the dialog shows: what every report sends (when it applies) and what the
+ * host adds. The optional technical context has its own sentence. Every field must be named in one
+ * of these messages (tests/report-disclosure.test.ts).
+ */
+export const DISCLOSURE_ALWAYS = [
+  'report.disclosure.item.text',
+  'report.disclosure.item.app',
+  'report.disclosure.item.sim',
+  'report.disclosure.item.browser',
+] as const;
+export const DISCLOSURE_SERVER = [
+  'report.disclosure.item.account',
+  'report.disclosure.item.run',
+] as const;
+
 /** What the tester has written and chosen (kept while the dialog is closed, until it is sent). */
 export interface ReportDraft {
   /** Sprint 23B: the kind of feedback (default: a bug report, as RC4). */
