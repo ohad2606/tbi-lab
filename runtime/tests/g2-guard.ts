@@ -11,6 +11,7 @@
  *   refused  the opt-in is set but the run is not allowed or not configured: the test FAILS with `reason`.
  *   run      all conditions hold.
  */
+import type { G2A1Report } from './g2-metrics.js';
 import { allowedTargets, holdsPipelineLock, MUTATION_ENV } from './mutation-gate.js';
 
 /** The only instance this harness may target. Never the production instance and never DEV-Lab. */
@@ -77,6 +78,8 @@ export interface G2Progress {
   failures?: string[];
   /** the paid queue_full drill: `started` in a report means it did not pass; absent = not run */
   paidDrill?: 'started' | 'passed';
+  /** Capacity A1 measurements (TBI_G2_A1=1 only): numbers and fixed codes, no session ids */
+  a1?: G2A1Report;
 }
 
 /** The only measured values a report may carry: numbers under these names. */
@@ -159,6 +162,7 @@ export function g2Report(p: G2Progress, result: 'PASSED' | 'FAILED') {
     admitted: [...p.admitted],
     builds: p.builds.map(({ status, ms }) => ({ status, ms })),
     promotedPositions: [...p.promotedPositions],
+    ...(p.a1 ? { a1: p.a1 } : {}),
     maxFreeLive: max('freeLive'),
     maxHostLive: max('hostLive'),
   };
@@ -181,6 +185,9 @@ export function g2Decision(
   const drain = env.TBI_G2_SECONDS;
   if (drain !== undefined && !(/^\d+$/.test(drain) && Number(drain) > 0 && Number(drain) <= 3600))
     return { kind: 'refused', reason: 'TBI_G2_SECONDS must be 1..3600 or unset' };
+  // a typo must not silently run without the measurements
+  if (![undefined, '', '0', '1'].includes(env.TBI_G2_A1))
+    return { kind: 'refused', reason: 'TBI_G2_A1 must be 1, 0 or unset' };
   if (instance !== G2_STAGING)
     return {
       kind: 'refused',

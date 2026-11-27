@@ -103,6 +103,28 @@ counts the rest. The root relays exit when the harness's stdin pipe to them clos
 waiters vanish, but the pause file may remain and must be checked by the operator. Reports hold
 numbers and fixed codes only. Thresholds: `runtime/tests/g2-load.ts`.
 
+### Capacity A1 measurements (`TBI_G2_A1=1`)
+
+Add `TBI_G2_A1=1` to the load run command (any value other than `1`, `0` or empty is refused).
+Without it the run and its report are as before. With it:
+
+- Once a second, without sudo and read-only: `cpu.stat`, `memory.current`, `memory.stat` and
+  `memory.peak` of each of the run's `tbi-s8-qemu@` cgroups, of the Session Host and build units and
+  of the build-job slice, and `/proc/stat`. What cannot be read is `null` and counted in
+  `a1.unavailable`; it never stops or fails the run.
+- After the drills, three rounds of 120 s sessions: delay blink alone, busy loop alone, then three of
+  each together. They add test time (budget about 35 minutes; real duration not measured): take
+  the 2.5 hour lock window. Whole-run metrics such as `maxLoad1` then include these rounds.
+- Report field `a1`: `status` (`complete`, `incomplete`, `not_reached`), `config`, `byType` (per
+  round and type: steady cores from 25 s after `run`, start-up, memory peak, working set,
+  throttling, sim/wall since the handshake), `runs`, `phases` (Session Host, build and machine CPU
+  per phase; `builds-under-load` has 6 live `gpio_proof` runs), `failuresBefore`.
+- Check `a1.status` and `a1.unavailable` before using the numbers. Auto-stop and the run criteria
+  also apply during the rounds: a code in `failures` that is not in `a1.failuresBefore` arose after
+  they began (for example `load_above_2x_cpus` under busy loops).
+- Not measured: MicroPython, sensor and `delayMicroseconds` workloads, N = 3 live runs, builds while
+  busy loops run, quantum and CPU affinity (record those by hand).
+
 ## Unattended execution
 
 - CI (`.github/workflows/ci.yml`) runs on GitHub-hosted runners (`ubuntu-latest`): typecheck,
