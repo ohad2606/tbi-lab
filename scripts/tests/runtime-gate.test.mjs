@@ -2,12 +2,12 @@
  * The runtime release gate (scripts/release/runtime-gate.mjs) on made-up reports and a fake
  * runner: no emulator, no browser, no instance.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
-import { G2_ENV } from '../../runtime/tests/g2-guard.ts';
+import { G2_ENV, G2_STAGING } from '../../runtime/tests/g2-guard.ts';
 import {
   evaluate,
   expectedFiles,
@@ -374,10 +374,10 @@ describe('the gate run (fake git and runners)', () => {
     TBI_RUNTIME_PROXY: 'http://127.0.0.1:7410',
     TBI_BUILD_PROXY: 'http://127.0.0.1:7420',
     TBI_FEEDBACK_RUNTIME_PROXY: 'http://127.0.0.1:7411',
-    TBI_S8_INSTANCE: 'secret-instance',
-    TBI_C5_DEPLOYED: 'secret-instance',
+    TBI_S8_INSTANCE: 'tbi-s8',
+    TBI_C5_DEPLOYED: 'tbi-s8',
     TBI_C5_FAULTS: '1',
-    TBI_ALLOW_SERVICE_MUTATION: 'secret-instance',
+    TBI_ALLOW_SERVICE_MUTATION: 'tbi-s8',
   };
   function fake({ status = '', env = ENV, reports = true, after, lock = true, source = '' } = {}) {
     const root = tmp();
@@ -422,7 +422,7 @@ describe('the gate run (fake git and runners)', () => {
     expect(ran[2].args).toEqual(expect.arrayContaining(['--retries=0', '--forbid-only']));
     expect(ran[2].env.CI).toBe('1');
     // The opt-in is passed on as the operator set it, never added or widened.
-    for (const s of ran) expect(s.env.TBI_ALLOW_SERVICE_MUTATION).toBe('secret-instance');
+    for (const s of ran) expect(s.env.TBI_ALLOW_SERVICE_MUTATION).toBe('tbi-s8');
     const e = evidence(out);
     expect(e).toMatchObject({ sha: SHA, mode: 'run', verdict: 'PASS' });
     expect(Object.keys(e).sort()).toEqual([
@@ -438,7 +438,7 @@ describe('the gate run (fake git and runners)', () => {
       'verdict',
     ]);
     expect(e.notGated).toEqual([expect.stringMatching(/QEMU-unit crash drill: needs N>=2/)]);
-    expect(JSON.stringify(e)).not.toMatch(/secret-instance|127\.0\.0\.1|gate-test-/);
+    expect(JSON.stringify(e)).not.toMatch(/tbi-s8|127\.0\.0\.1|gate-test-/);
   });
   it.each([
     ['dirty_tree', { status: '?? new.txt\n' }],
@@ -491,7 +491,7 @@ describe('the gate run (fake git and runners)', () => {
     'TBI_S18_UNIT',
   ];
   it.each(PICKERS)('refuses %s naming the live instance, before anything runs', (name) => {
-    const value = name === 'TBI_ALLOW_SERVICE_MUTATION' ? 'secret-instance, tbi' : 'tbi';
+    const value = name === 'TBI_ALLOW_SERVICE_MUTATION' ? 'tbi-s8, tbi' : 'tbi';
     const { deps, ran } = fake({ env: { ...ENV, [name]: value } });
     const lines = [];
     deps.log = (line) => lines.push(line);
@@ -501,19 +501,165 @@ describe('the gate run (fake git and runners)', () => {
     expect(evidence(out).failures).toContainEqual({ code: 'live_instance', test: name });
     expect(lines.join('\n')).toContain(`${name} names the live DEV-Lab instance`);
   });
-  it('the staging instance is allowed: only the exact live name is refused', () => {
-    for (const instance of ['tbi-s8', 'tbi-lab', 'TBI']) {
-      const env = { ...ENV, ...Object.fromEntries(PICKERS.map((name) => [name, instance])) };
-      const { deps } = fake({ env });
-      expect(runGate(['--out', tmp()], deps), instance).toBe(0);
+  const refusal = (env) => {
+    const { deps, ran } = fake({ env });
+    const lines = [];
+    deps.log = (line) => lines.push(line);
+    const out = tmp();
+    expect(runGate(['--out', out], deps)).toBe(1);
+    expect(ran).toEqual([]);
+    return { failures: evidence(out).failures, log: lines.join('\n') };
+  };
+  const NOT_ALLOWED = [
+    // other names, other case
+    ...['TBI', 'Tbi', 'TBI-S8', 'Tbi-s8', 'tbi-s88', 'tbi-s8x', 'tbi-s9', 'tbi-s9-preview'],
+    ...['tbi-lab', 'tbi-prod', 'tbi-staging', 'alpha', 'secret-instance', 'xtbi-s8'],
+    // wildcards and pattern characters
+    ...['*', 'tbi*', 'tbi-*', 'tbi-s*', 'tbi-s8*', 'tbi-s?', 'tbi-s[8]', 'tbi-s8|tbi', '.*'],
+    // paths
+    ...['/etc/tbi', 'tbi/', '../tbi', 'tbi-s8/', 'tbi-s8/../tbi', '/etc/tbi-s8', 'tbi\\'],
+    // systemd unit forms
+    ...['tbi.service', 'tbi-session-host.service', 'tbi-qemu@', 'tbi-qemu@*.service', 'tbi@'],
+    ...['tbi-s8.service', 'tbi-s8-session-host.service', 'tbi-s8-qemu', 'tbi-s8@'],
+    // whitespace, separators, look-alikes, quoting
+    ...[' ', '   ', ' tbi', 'tbi ', ' tbi-s8', 'tbi-s8 ', 'tbi-s8\n', '\ttbi-s8', 'tbi-s8\r'],
+    ...['tbi-s8\ntbi', 'tbi-s8 tbi', 'tbi-s8;tbi', 'tbi-s8:tbi', 'tbi-s8\u00a0', 'tbi\u200b'],
+    ...['tbi\u2011s8', '"tbi-s8"', "'tbi'", '$TBI', '-', 'tbi-', 'tbi-s8-'],
+  ];
+  it.each(PICKERS)('refuses %s with any value but the test instance name', (name) => {
+    for (const value of NOT_ALLOWED) {
+      const { failures, log } = refusal({ ...ENV, [name]: value });
+      const mine = failures.filter(
+        (f) => f.test === name && ['instance_not_allowed', 'live_instance'].includes(f.code),
+      );
+      expect(mine, JSON.stringify(value)).toHaveLength(1);
+      expect(log).toContain(name);
+      expect(log).toContain('tbi-s8');
     }
   });
-  it('the refused name is the one install.sh gives the dev-lab target', () => {
+  it.each(PICKERS.slice(1))('refuses %s holding a list, even of allowed names', (name) => {
+    for (const value of ['tbi-s8,tbi-s8', 'tbi-s8,tbi', 'tbi-s8,', ',tbi-s8']) {
+      const codes_ = refusal({ ...ENV, [name]: value }).failures.map((f) => `${f.code} ${f.test}`);
+      expect(codes_.join(), value).toMatch(
+        new RegExp(`(instance_not_allowed|live_instance) ${name}`),
+      );
+    }
+  });
+  it('checks every entry of the mutation opt-in list, untrimmed', () => {
+    const name = 'TBI_ALLOW_SERVICE_MUTATION';
+    for (const value of [
+      'tbi-s8,tbi-*',
+      'tbi-s8, tbi-s8',
+      'tbi-s8 ,tbi-s8',
+      'tbi-s8,',
+      ',tbi-s8',
+      'tbi-s8,,tbi-s8',
+      'tbi-s8,TBI',
+      'tbi-s8,/etc/tbi',
+    ])
+      expect(refusal({ ...ENV, [name]: value }).failures, value).toContainEqual({
+        code: 'instance_not_allowed',
+        test: name,
+      });
+    for (const value of ['tbi,tbi-s8', 'tbi-s8, tbi', 'tbi-*, tbi '])
+      expect(refusal({ ...ENV, [name]: value }).failures, value).toContainEqual({
+        code: 'live_instance',
+        test: name,
+      });
+    const { deps } = fake({ env: { ...ENV, [name]: 'tbi-s8,tbi-s8' } });
+    expect(runGate(['--out', tmp()], deps)).toBe(0);
+  });
+  it('the refusal names the variable and the allowed form, never the value', () => {
+    const { failures, log } = refusal({ ...ENV, TBI_S8_INSTANCE: 'zz-private-value' });
+    expect(failures).toEqual([{ code: 'instance_not_allowed', test: 'TBI_S8_INSTANCE' }]);
+    expect(log).toMatch(/TBI_S8_INSTANCE .*exactly "tbi-s8"/);
+    expect(log).not.toContain('zz-private-value');
+  });
+  it('the test instance passes; an unset or empty picker is not refused', () => {
+    for (const value of ['tbi-s8', '', undefined]) {
+      const env = {
+        ...ENV,
+        TBI_S8_INSTANCE: value,
+        TBI_S13_SEC_DEPLOYED: value,
+        TBI_S18_UNIT: value,
+      };
+      const { deps } = fake({ env });
+      expect(runGate(['--out', tmp()], deps), String(value)).toBe(0);
+    }
+  });
+  it('the allowed name is the one install.sh gives the staging target', () => {
     const install = readFileSync(
       new URL('../../deploy/dev-lab/s8/install.sh', import.meta.url),
       'utf8',
     );
-    expect(/^ {2}dev-lab\)\n {4}N=(\S+)$/m.exec(install)?.[1]).toBe('tbi');
+    expect(/^ {2}staging\)\n {4}N=(\S+)$/m.exec(install)?.[1]).toBe('tbi-s8');
+    expect(G2_STAGING).toBe('tbi-s8');
+  });
+  it('every instance, unit or deployment variable the suites read is covered', () => {
+    const dirs_ = ['runtime/tests', 'app/e2e'];
+    const names = new Set(['TBI_ALLOW_SERVICE_MUTATION']);
+    for (const dir of dirs_) {
+      const base = new URL(`../../${dir}/`, import.meta.url);
+      for (const file of readdirSync(base).filter((f) => f.endsWith('.ts')))
+        for (const m of readFileSync(new URL(file, base), 'utf8').matchAll(
+          /env\.(TBI_\w*(?:INSTANCE|DEPLOYED|UNIT))\b/g,
+        ))
+          names.add(m[1]);
+    }
+    // G2_DEPLOYED is read through a constant, and refused whenever set.
+    expect([...names].sort()).toEqual([...PICKERS].sort());
+  });
+  it.each(['TBI_HOST_RUNTIME_UNIT', 'TBI_BUILD_JOB_UNIT'])(
+    'refuses the service unit setting %s whenever it has a value',
+    (name) => {
+      for (const value of ['tbi-qemu', 'tbi-s8-qemu', ' '])
+        expect(refusal({ ...ENV, [name]: value }).failures).toEqual([
+          { code: 'unit_setting', test: name },
+        ]);
+      const { deps } = fake({ env: { ...ENV, [name]: '' } });
+      expect(runGate(['--out', tmp()], deps)).toBe(0);
+    },
+  );
+  const PROXIES = [
+    'TBI_RUNTIME_PROXY',
+    'TBI_BUILD_PROXY',
+    'TBI_FEEDBACK_RUNTIME_PROXY',
+    'TBI_ADMIN_PROXY',
+  ];
+  it.each(PROXIES)('refuses %s pointing anywhere but this host by loopback', (name) => {
+    for (const url of [
+      'http://192.0.2.10:7410',
+      'https://lab.example.test:7410',
+      'http://127.0.0.1.example.test:7410',
+      'http://localhost.example.test:7410',
+      'http://127.0.0.1:7410@192.0.2.10:7410',
+      'http://192.0.2.10:7410/127.0.0.1:7410',
+      'http://192.0.2.10:7410#@127.0.0.1:7410',
+      'http://127.0.0.1:7410\\@192.0.2.10',
+      'http://user@127.0.0.1:7410',
+      'http://0.0.0.0:7410',
+      'http://2130706433:7410',
+      'http://localhost.:7410',
+      'http://LOCALHOST:7410',
+      ' http://127.0.0.1:7410',
+      'http://127.0.0.1:7410\n',
+      'http://127.0.0.1:7410/path',
+      'http://*:7410',
+    ])
+      expect(
+        refusal({ ...ENV, [name]: url }).failures.map((f) => f.test),
+        url,
+      ).toContain(name);
+  });
+  it('accepts the loopback spellings, and an unset or empty admin proxy', () => {
+    for (const url of ['http://127.0.0.1:7410', 'http://localhost:7410/', 'https://[::1]:7410']) {
+      const { deps } = fake({
+        env: { ...ENV, ...Object.fromEntries(PROXIES.map((n) => [n, url])) },
+      });
+      expect(runGate(['--out', tmp()], deps), url).toBe(0);
+    }
+    const { deps } = fake({ env: { ...ENV, TBI_ADMIN_PROXY: '' } });
+    expect(runGate(['--out', tmp()], deps)).toBe(0);
   });
   it('names the refused knob and says why', () => {
     const { deps } = fake({ env: { ...ENV, TBI_C5_BUILDS: '5' } });
@@ -542,20 +688,15 @@ describe('the gate run (fake git and runners)', () => {
       TBI_ALLOW_SERVICE_MUTATION: 'jx, kv',
       TBI_S18_UNIT: 'w',
     };
+    // A run refuses these values; --from-reports evaluates without the preconditions.
     const { deps, root } = fake({ env });
-    const run = deps.run;
-    deps.run = (step) => {
-      const code = run(step);
-      if (step.name === 'vitest') {
-        const r = vitestReport([vTest('one'), vTest('on qz jx kv w end', 'failed')]);
-        r.testResults[0].name = join(root, V);
-        writeFileSync(step.report, JSON.stringify(r));
-      }
-      return code;
-    };
+    const reports = tmp();
+    const v = vitestReport([vTest('one'), vTest('on qz jx kv w end', 'failed')]);
+    v.testResults[0].name = join(root, V);
+    writeFileSync(join(reports, 'vitest.json'), JSON.stringify(v));
     const out = tmp();
-    runGate(['--out', out], deps);
-    const failed = evidence(out).failures.find((f) => f.code === 'test_failed');
+    runGate(['--out', out, '--from-reports', reports], deps);
+    const failed = evidence(out, '.evaluation').failures.find((f) => f.code === 'test_failed');
     expect(failed.test).not.toMatch(/qz|jx|kv|\bw\b/);
     expect(failed.test).toMatch(/<redacted> <redacted> <redacted> <redacted>/);
   });

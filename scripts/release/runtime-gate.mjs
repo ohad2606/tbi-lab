@@ -66,8 +66,14 @@ const LEASE_KNOBS = ['TBI_C5_BUILDS'];
 /** The DEV-Lab instance, in use by people (deploy/dev-lab/s8/install.sh, target dev-lab). */
 const LIVE_INSTANCE = 'tbi';
 /**
- * Variables with which the gate's suites pick the deployed instance they use or change. The gate
- * refuses any of them naming the live instance. (TBI_G2_DEPLOYED is refused whenever set.)
+ * The only value an instance picker may hold: the staging instance (install.sh, target staging).
+ * An allow rule, matched against the untouched value: anchored, case-sensitive, nothing trimmed.
+ * A further test instance is added here deliberately, never by widening to a prefix.
+ */
+const TEST_INSTANCE = /^tbi-s8$/;
+/**
+ * Variables with which the gate's suites pick the deployed instance they use or change. Each must
+ * be unset, empty or the test instance. (TBI_G2_DEPLOYED is refused whenever set.)
  */
 const INSTANCE_PICKERS = [
   'TBI_ALLOW_SERVICE_MUTATION',
@@ -76,6 +82,23 @@ const INSTANCE_PICKERS = [
   'TBI_S18_UNIT',
   'TBI_S8_INSTANCE',
 ];
+/** The picker that holds a comma-separated list: every entry is checked. */
+const LIST_PICKER = 'TBI_ALLOW_SERVICE_MUTATION';
+/**
+ * systemd unit prefixes of the services themselves (runtime/host and runtime/builder main.ts). A
+ * process the suites start could inherit them and act on a deployed instance's units: refused
+ * whenever they have a value.
+ */
+const UNIT_SETTINGS = ['TBI_BUILD_JOB_UNIT', 'TBI_HOST_RUNTIME_UNIT'];
+/**
+ * A proxy address on this host, written plainly: no user info, path or other spelling of a host.
+ * It does not tell which instance listens on the port.
+ */
+const LOOPBACK_PROXY = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\]):[0-9]{1,5}\/?$/;
+/** Proxies of playwright.app.config.ts that have a fake-service default: must be set. */
+const REQUIRED_PROXIES = ['TBI_RUNTIME_PROXY', 'TBI_BUILD_PROXY', 'TBI_FEEDBACK_RUNTIME_PROXY'];
+/** Inherited by the preview servers (app/vite.config.ts); optional, loopback when set. */
+const OPTIONAL_PROXIES = ['TBI_ADMIN_PROXY'];
 /** What no verdict of this gate covers, whatever its result: written into every evidence file. */
 const NOT_GATED = [
   'c5-deployed QEMU-unit crash drill: needs N>=2, the gate runs the default N=1; not covered',
@@ -83,7 +106,10 @@ const NOT_GATED = [
 /** Preconditions whose "test" is a variable name of ours, not something to redact. */
 const NAMES_VARIABLE = [
   'live_instance',
+  'instance_not_allowed',
+  'unit_setting',
   'no_real_proxy',
+  'proxy_not_loopback',
   'weakening_env',
   'lease_knob',
   'fault_drills_off',
@@ -197,9 +223,16 @@ export function runGate(argv, deps) {
   if (!opts.from) {
     if (dirty()) pre.push({ code: 'dirty_tree' });
     if (!deps.holdsLock()) pre.push({ code: 'no_lock' });
-    // Each of these has a fake-service default in playwright.app.config.ts.
-    for (const name of ['TBI_RUNTIME_PROXY', 'TBI_BUILD_PROXY', 'TBI_FEEDBACK_RUNTIME_PROXY'])
+    for (const name of REQUIRED_PROXIES)
       if (!realProxy(env[name])) pre.push({ code: 'no_real_proxy', test: name });
+    for (const name of [...REQUIRED_PROXIES, ...OPTIONAL_PROXIES])
+      if (env[name] && !LOOPBACK_PROXY.test(env[name])) {
+        pre.push({ code: 'proxy_not_loopback', test: name });
+        log(
+          `${name} must be a loopback address of this host, written as ` +
+            'http(s)://127.0.0.1:<port>, localhost or [::1].',
+        );
+      }
     for (const name of WEAKENING)
       if (env[name] !== undefined) pre.push({ code: 'weakening_env', test: name });
     for (const name of LEASE_KNOBS)
@@ -210,13 +243,29 @@ export function runGate(argv, deps) {
             'the sessions before the run does. Run that measurement outside the gate.',
         );
       }
-    for (const name of INSTANCE_PICKERS)
+    for (const name of INSTANCE_PICKERS) {
+      if (!env[name]) continue; // unset or empty picks no instance
+      const values = name === LIST_PICKER ? env[name].split(',') : [env[name]];
+      // The live name keeps its own refusal; the allow rule below would refuse it anyway.
       if (list(env[name]).includes(LIVE_INSTANCE)) {
         pre.push({ code: 'live_instance', test: name });
         log(
           `${name} names the live DEV-Lab instance: the gate restarts, reconfigures and loads ` +
             'the instance under test. Use the staging instance (tbi-s8).',
         );
+      } else if (!values.every((v) => TEST_INSTANCE.test(v))) {
+        pre.push({ code: 'instance_not_allowed', test: name });
+        const form = name === LIST_PICKER ? 'a comma-separated list of exactly' : 'exactly';
+        log(
+          `${name} is refused: it must be unset, empty or ${form} "tbi-s8" (the staging ` +
+            'instance; no other name, case, spaces, wildcards, paths or unit names).',
+        );
+      }
+    }
+    for (const name of UNIT_SETTINGS)
+      if (env[name]) {
+        pre.push({ code: 'unit_setting', test: name });
+        log(`${name} must be unset: it names systemd units a process under test would act on.`);
       }
     // The C-5 fault drills run only on request and only against an instance in the mutation opt-in.
     if (env.TBI_C5_FAULTS !== '1') pre.push({ code: 'fault_drills_off', test: 'TBI_C5_FAULTS' });
