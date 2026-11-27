@@ -117,17 +117,9 @@ describe('flip switch (SIGNUP_VERIFY_ENABLED)', () => {
 });
 
 describe('signupVerify on', () => {
-  it('only the sign-up pages and the module differ from the same build without it', () => {
+  it('builds the same files as without the option (which pages change: signup-verify-copy.test.mjs)', () => {
     const files = walk(on).map((f) => relative(on, f));
     expect(files).toEqual(walk(off.preview).map((f) => relative(off.preview, f)));
-    const changed = files.filter(
-      (f) => !readFileSync(join(on, f)).equals(readFileSync(join(off.preview, f))),
-    );
-    expect(changed.sort()).toEqual([
-      'assets/signup.mjs',
-      'en/signup/index.html',
-      'he/signup/index.html',
-    ]);
   });
   it('HE and EN have the same keys, all non-empty', () => {
     const keys = (v, p = '') =>

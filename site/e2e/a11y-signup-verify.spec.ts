@@ -1,6 +1,6 @@
 /**
  * BETA-G1 G1-AUTO-VERIFY slice 3: confirm view and resend form (built with --signup-verify), HE and EN, mocked
- * network. The built files are served through page.route with the real site CSP, so the shared web server (a build
+ * network; and the public pages whose copy changes with that option. The built files are served through page.route with the real site CSP, so the shared web server (a build
  * without the option) is not changed.
  */
 import { execFileSync } from 'node:child_process';
@@ -518,6 +518,90 @@ for (const { lang, dir } of [
       await expect(page.locator('#vf-result-h')).toHaveText((await msg(page, 'resultFailH'))!);
       await expect(page.locator('#vf-result-p')).toHaveText('');
       expect(errors).toEqual([]);
+    });
+  });
+}
+
+const PAGE_HEADINGS = {
+  he: {
+    '': ['אלפא חינמית, מקומות מוגבלים'],
+    'alpha/': ['איך מקבלים גישה', 'איך נרשמים'],
+    'faq/': ['איך מקבלים גישה?', 'לא קיבלתי את מייל האישור. מה עושים?'],
+    'accessibility/': ['נגישות TBI Lab', 'מה נבדק באתר הזה', 'מה לא נבדק באתר הזה'],
+  },
+  en: {
+    '': ['Free Alpha, limited places'],
+    'alpha/': ['How you get access', 'How to sign up'],
+    'faq/': ['How do I get access?', 'I didn’t get the confirmation email. What can I do?'],
+    'accessibility/': [
+      'Accessibility of TBI Lab',
+      'What was checked on this website',
+      'What was not checked on this website',
+    ],
+  },
+} as const;
+const MANUAL_APPROVAL =
+  /reviewed manually|Applying does not give access|Approved applicants|Google Forms|ידנית|אינה מקנה גישה|מי שיאושר/i;
+
+for (const lang of ['he', 'en'] as const) {
+  test.describe(`${lang}: public pages with the option on`, () => {
+    for (const [path, headings] of Object.entries(PAGE_HEADINGS[lang])) {
+      test(`${path || 'home'}: new copy, axe, 320px, visible focus and target size`, async ({
+        page,
+      }) => {
+        await stub(page);
+        await page.goto(`/${lang}/${path}`);
+        await expect(page.locator('html')).toHaveAttribute('dir', lang === 'he' ? 'rtl' : 'ltr');
+        await expect(page.locator('h1')).toHaveCount(1);
+        for (const name of headings)
+          await expect(page.getByRole('heading', { level: 2, name, exact: true })).toBeVisible();
+        expect(await page.locator('main').innerText()).not.toMatch(MANUAL_APPROVAL);
+        expect(await axe(page)).toEqual([]);
+        for (const a of await page.locator('main a, header a').all()) {
+          await a.focus();
+          const s = await a.evaluate((e) => {
+            const c = getComputedStyle(e);
+            return {
+              width: parseFloat(c.outlineWidth),
+              style: c.outlineStyle,
+              height: e.getBoundingClientRect().height,
+            };
+          });
+          expect(s.style).not.toBe('none');
+          expect(s.width).toBeGreaterThanOrEqual(2);
+          expect(s.height).toBeGreaterThanOrEqual(24);
+        }
+        await page.setViewportSize({ width: 320, height: 640 });
+        expect(await noOverflow(page)).toBeLessThanOrEqual(0);
+      });
+    }
+
+    test('accessibility: two limitations as a list, e-mail link reachable by keyboard', async ({
+      page,
+    }) => {
+      await stub(page);
+      await page.goto(`/${lang}/accessibility/`);
+      const statement = page.locator('main section').first();
+      await expect(statement.getByRole('list')).toHaveCount(1);
+      await expect(statement.getByRole('listitem')).toHaveCount(2);
+      const mail = statement.getByRole('link', { name: 'support@tbi-tech.net' });
+      await expect(mail).toHaveAttribute('href', 'mailto:support@tbi-tech.net');
+      await expect(mail.locator('span')).toHaveAttribute('dir', 'ltr');
+      // Tab from the statement's heading lands on the address, its only link.
+      await page.locator('#statement').focus();
+      await page.keyboard.press('Tab');
+      await expect(mail).toBeFocused();
+    });
+
+    test('the alpha call to action and the navigation lead to the own sign-up page', async ({
+      page,
+    }) => {
+      await stub(page);
+      await page.goto(`/${lang}/alpha/`);
+      await expect(page.locator(`header nav a[href="/${lang}/signup/"]`)).toBeVisible();
+      await page.locator('#how-to-apply ~ p a.btn-primary').click();
+      await expect(page).toHaveURL(`${ORIGIN}/${lang}/signup/`);
+      await expect(page.locator('#signup-form')).toBeVisible();
     });
   });
 }
