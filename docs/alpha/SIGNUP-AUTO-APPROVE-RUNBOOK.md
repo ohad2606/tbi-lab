@@ -37,16 +37,25 @@ other private details are kept in the private ops repository, not here.
    run as the **same user**: the sign-up store is 0700 and both write 0600 files in it. File modes then do not
    separate them; the intake unit's sandbox must. Do not set a flag until all of this is done:
    - The user model (shared or separate) is recorded in the private ops repository.
-   - The intake unit has `ProtectSystem=strict` and only the sign-up store in `ReadWritePaths`.
+   - The intake unit has `ProtectSystem=strict`; its `ReadWritePaths` holds only the sign-up store and, if
+     funnel counters are on, the intake's own `TBI_FUNNEL_DIR`.
    - Its `InaccessiblePaths` covers `/var/lib/<N>-admin-auto` (control state, verification state, mail-gate
-     state), the verification state directory and key file wherever they are configured, the admin spool, results
-     and view directories, and the admin socket directory.
+     state), the verification state directory and key file wherever they are configured, the admin mail key file
+     (`TBI_SIGNUP_RESEND_KEY_FILE`), the admin spool, results and view directories, the admin socket directory,
+     and the admin configuration, log and funnel directories the intake does not need. These paths must exist
+     before the intake starts: an optional (`-` prefixed) path that is absent at start is not masked.
    - On the host, `systemctl show -p InaccessiblePaths,ReadWritePaths <intake unit>` shows exactly that. Record the
      output as evidence **before** setting the flags.
    - The skipped intake case in `signup-auto-deploy-unit.test.ts` is completed when the intake unit lands in the
      repo: it checks these paths, and its user assertion must match the recorded user model.
-   - Open risk with a shared user: processes of one user can reach each other (signals, `/proc/<pid>`), which path
-     masking alone does not stop. A separate PID namespace or separate users need their own decision and test.
+   - **Blocking:** path masking alone is not enough with a shared user, because a process can signal another
+     process of the same user and may reach its files through `/proc/<pid>/root`. Use either separate users
+     (needs a group-based store mode, not built yet), or a separate PID namespace for the intake
+     (`PrivatePIDs=yes`; confirm the host supports it and that it took effect) together with
+     `NoNewPrivileges=yes`, an empty `CapabilityBoundingSet` and `SystemCallFilter=~@debug`.
+   - **Blocking:** from inside the intake's sandbox, check and record that the admin process is not visible and
+     cannot be signalled, and that the control state cannot be read, neither by its path nor through `/proc`.
+     `systemctl show` proves configuration only, not enforcement.
 
 Check the directory (expected answer: `tbi-admin:tbi-adminio 700 directory`):
 
