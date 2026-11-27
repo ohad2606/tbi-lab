@@ -70,6 +70,46 @@ If the log says `auto-approve off (config: ...)`, the flag or cap value is wrong
 If it says `auto-approve not started (state dir unsafe: <reason>); manual only`, fix the directory, then
 **restart**. Fixing the directory alone does not start auto-approve after a refused start.
 
+## Mail caps and email verification (release notes, S4a)
+
+Changes an operator must know before this version is installed:
+
+- **Verified mode (`TBI_SIGNUP_AUTO_WEB=verified`) now requires the three mail caps**
+  `TBI_SIGNUP_MAIL_MAX_PER_HOUR`, `TBI_SIGNUP_MAIL_MAX_PER_DAY` and `TBI_SIGNUP_MAIL_MAX_PER_30D` (hour <= day <=
+  30 days; the day cap not below `TBI_SIGNUP_VERIFY_MAX_PER_DAY`, 50 when unset), plus
+  `TBI_SIGNUP_AUTO_STATE_DIR`. No value is chosen in this repo. Without the caps: auto-approve is off
+  (`auto-approve off (config: TBI_SIGNUP_AUTO_WEB=verified needs the mail caps)`), **no verification mail is
+  sent** (`verify mails held (mail_caps_missing)`), resend requests wait, and the unverified purge does not run.
+  Links this version already sent can still be confirmed, and approval mails still go only to the address the account was
+  added for (`approval mail refused (addr_changed)`). Approval mails you send by hand are then not capped.
+- **Confirmation links sent by an earlier version stop working** (`verify rejected (key_retired)`). The person
+  asks for a new link; the usual resend limits apply.
+- **The unverified purge** (`TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS`, off when unset) runs at most hourly and
+  counts one hour ahead, so a request can be removed **up to 1 hour before** the full number of days. It counts
+  from the time the request was created, so a request that never got a link (for example behind the daily verify
+  cap) is removed too (`purge unverified never mailed N`). `purge unverified kept (<reason>) N` or `failed
+  (<class>) N` means requests were left in place; check the state directory and the store. A failed one is tried
+  again at the next run.
+
+### `mail cap reached` with a state class
+
+`mail cap reached (hour)`, `(day)`, `(30d)` or `(provider)` clears by itself; waiting mails are sent later. The
+classes `missing`, `unreadable`, `invalid`, `clock_back`, `state_dir_unsafe` (or an error class) mean the gate
+cannot trust its state in `/var/lib/<N>-admin-auto` and sends nothing:
+
+1. Fix the cause first (owner and mode of the directory, disk, clock).
+2. Wait for a send: `state_dir_unsafe`, a passing disk error, and `clock_back` caused only by a clock that has
+   since been corrected forward clear by themselves. If the state is lost or damaged, or the class stays, remove
+   **both** files and **restart** the service (removing them without a restart does not recover):
+
+   ```
+   sudo rm -f /var/lib/<N>-admin-auto/mail-gate.json /var/lib/<N>-admin-auto/mail-gate.seen
+   sudo systemctl restart <N>-admin.service
+   ```
+
+   This forgets the mails already counted, so up to a full cap can be sent again. Check the provider's usage for
+   the last 30 days first, and lower the caps for that period if needed. The restart is a RED zone step, as above.
+
 ## Pause (kill switch) and resume
 
 Pausing needs no restart. Run it as root:

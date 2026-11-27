@@ -507,6 +507,7 @@ export class PendingStore {
         }
       };
       await this.removeSideFiles(id);
+      await gone(`${id}.web`);
       if (!existed)
         return (await this.auditHas(id, 'delete', 'ok')) ? 'already_deleted' : 'not_found';
       await gone(`${id}.json`);
@@ -517,9 +518,9 @@ export class PendingStore {
   }
 
   /**
-   * Every file of `id` but the record (the caller holds the per-id lock): `.notified`, `.notifyq`,
-   * `.web` (web sub-cap: before the record, so a crash part-way leaves the record and a retry
-   * finishes), `.rq`, every `.vq-*`, `<id>.*.tmp`, and the address marker this id holds.
+   * Every file of `id` but the record and `.web` (the caller holds the per-id lock): `.notified`,
+   * `.notifyq`, `.rq`, every `.vq-*`, `<id>.*.tmp`, and the address marker this id holds. The
+   * caller removes `.web` after this, just before the record (the unverified purge selects on it).
    */
   private async removeSideFiles(id: string): Promise<void> {
     const gone = async (name: string) => {
@@ -531,7 +532,6 @@ export class PendingStore {
     };
     await gone(`${id}.notified`);
     await gone(`${id}.notifyq`);
-    await gone(`${id}.web`);
     for (const f of await readdir(this.dir)) {
       if (
         f.startsWith(`${id}.`) &&
@@ -552,7 +552,8 @@ export class PendingStore {
   /**
    * S4a unverified purge: under the per-id lock, re-reads the record; only a web record (origin
    * `web` AND its `<id>.web` marker) for which `judge` still says yes is removed: side files,
-   * then `beforeRecord` (the admin verify state), then LAST the record. Returns whether removed.
+   * then `beforeRecord` (the admin verify state), then the `.web` marker, then LAST the record, so
+   * a failure part-way is finished by the next run. Returns whether removed.
    */
   purgeIf(
     id: string,
@@ -570,6 +571,7 @@ export class PendingStore {
       if (!web || !(await judge(cur))) return false;
       await this.removeSideFiles(id);
       await beforeRecord();
+      await unlink(join(this.dir, `${id}.web`));
       await unlink(this.path(id));
       return true;
     });

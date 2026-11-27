@@ -20,7 +20,8 @@
  * unsafe (autoStateDirCheck on every reservation), state missing after it existed
  * (`mail-gate.seen`), unreadable, invalid, an entry dated after now (clock stepped back). A
  * provider 429 blocks until the next hour (`http_429`) or the next Israel day (`http_429_quota`).
- * To recover from a fail-closed state the operator removes both files (documented in the runbook).
+ * To recover from a fail-closed state the operator removes both files AND restarts the service (a
+ * running process that has read the state stays closed); see the runbook.
  */
 import { constants } from 'node:fs';
 import { open, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
@@ -47,7 +48,8 @@ const DAY_MS = 86_400_000;
 const WINDOW_30D_MS = 30 * DAY_MS;
 export const GATE_FILE = 'mail-gate.json';
 export const GATE_SEEN_FILE = 'mail-gate.seen';
-const GATE_MAX_BYTES = 4 * 1024 * 1024;
+// 300000 entries (the largest _PER_30D) of 13 digits and a comma are about 4.2 MB.
+const GATE_MAX_BYTES = 8 * 1024 * 1024;
 
 /** Parses the S4a settings; throws Error(fixed text naming the variable) on any bad value. */
 export function safeguardsFromEnv(env: NodeJS.ProcessEnv): Safeguards {
@@ -239,7 +241,9 @@ export class MailGate {
     const hour = s.sent.filter((x) => t - x < HOUR_MS);
     if (hour.length >= perHour) block(hour[hour.length - perHour]! + HOUR_MS, 'hour');
     const day = israelDay(t);
-    if (s.sent.filter((x) => israelDay(x) === day).length >= perDay) block(nextIsraelDay(t), 'day');
+    // Only the last 2 days can be today (the date formatting is slow over a full 30 d list).
+    const today = s.sent.filter((x) => t - x < 2 * DAY_MS && israelDay(x) === day);
+    if (today.length >= perDay) block(nextIsraelDay(t), 'day');
     if (s.sent.length >= per30d) block(s.sent[s.sent.length - per30d]! + WINDOW_30D_MS, '30d');
     return retryAt > 0 ? { retryAt, reason } : null;
   }

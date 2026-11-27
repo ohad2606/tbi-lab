@@ -678,3 +678,199 @@ describe('req 11/12: unverified purge (createdAt + N days)', () => {
     expect(await r.store.list()).toHaveLength(1);
   });
 });
+
+describe('S4a QA A: a verify send refused over the cap is not counted against the person', () => {
+  it('3 x 429 an hour apart, then the provider recovers: sent, and never purged as never mailed', async () => {
+    const r = await verifyRig();
+    let limited = true;
+    const sent: string[] = [];
+    const v = new Verifier({
+      stateDir: r.stateDir,
+      storeDir: r.storeDir,
+      store: r.store,
+      email: r.gate.wrap({
+        sendApproval: async () => undefined,
+        sendVerify: async (to) => {
+          if (limited) throw new EmailError('http_429');
+          sent.push(to.id);
+        },
+      }),
+      siteUrl: SITE,
+      keys: () => loadVerifyKeys(r.keyFile),
+      since: T0 - DAY,
+      gate: r.gate,
+      now: () => r.clock.t,
+      claimed: async () => new Set<string>(),
+    });
+    const id = (await r.store.createIfNew(person(1), { origin: 'web' })).record.id;
+    const counters = () =>
+      JSON.parse(readFileSync(join(r.stateDir, VERIFY_DIR, 'mail-counters.json'), 'utf8'));
+    for (let i = 0; i < 3; i++) {
+      r.clock.t = T0 + i * H;
+      expect((await v.sweep()).sent).toBe(0);
+      expect(counters()).toMatchObject({ dayCount: 0, addrs: {} });
+    }
+    limited = false;
+    r.clock.t = T0 + 3 * H;
+    expect((await v.sweep()).sent).toBe(1);
+    expect(sent).toEqual([id]);
+    expect(counters().dayCount).toBe(1);
+    expect(Object.values(counters().addrs).flat()).toHaveLength(1);
+    r.clock.t = T0 + 7 * DAY;
+    expect(await v.purgeUnverified(7)).toEqual({ purged: 1, neverMailed: 0 });
+  });
+});
+
+describe('S4a QA C: upgrade of a verified deployment without mail caps', () => {
+  it('auto-approve off, no uncapped verify mail or purge, approval mail binding kept', async () => {
+    const { root, storeDir, stateDir } = dirs();
+    writeFileSync(join(root, 'verify.key'), KEY1, { mode: 0o600 });
+    const approvals: string[] = [];
+    const verifies: string[] = [];
+    const log = logger();
+    const clock = { t: T0 };
+    const w = (await signupWiringFromEnv(
+      {
+        TBI_SIGNUP_ADMIN: '1',
+        TBI_SIGNUP_DIR: storeDir,
+        TBI_SIGNUP_RESEND_KEY_FILE: join(root, 'key'),
+        TBI_SIGNUP_FROM: 'x',
+        TBI_SIGNUP_LAB_URL: 'https://l.example.invalid/',
+        TBI_SIGNUP_QUIET: 'off',
+        TBI_SIGNUP_AUTO_STATE_DIR: stateDir,
+        TBI_SIGNUP_VERIFY: '1',
+        TBI_SIGNUP_VERIFY_KEY_FILE: join(root, 'verify.key'),
+        TBI_SIGNUP_SITE_URL: SITE,
+        TBI_SIGNUP_VERIFY_SINCE: '2026-11-01T00:00:00Z',
+        TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS: '7',
+        TBI_SIGNUP_AUTO_APPROVE: '1',
+        TBI_SIGNUP_AUTO_DAILY_CAP: '5',
+        TBI_SIGNUP_AUTO_WEB: 'verified',
+      },
+      { submit: async () => 's', wait: async () => ({ ok: true }) } as unknown as AdminSpool,
+      {
+        fetch: (async () => ({ ok: true, status: 200 })) as FetchLike,
+        log,
+        now: () => clock.t,
+        email: {
+          sendApproval: async (to) => void approvals.push(to.email),
+          sendVerify: async (to) => void verifies.push(to.id),
+        },
+        autoActor: () => null,
+      },
+    ))!;
+    expect(w.auto).toBeNull();
+    const waiting = (await w.store.createIfNew(person(1), { origin: 'web' })).record.id;
+    writeFileSync(join(storeDir, `${waiting}.rq`), '');
+    clock.t = T0 + 8 * DAY;
+    const s = await w.verifier!.sweep();
+    expect(s.sent).toBe(0);
+    expect(verifies).toEqual([]);
+    expect(existsSync(join(storeDir, `${waiting}.rq`))).toBe(true);
+    expect((await w.store.list()).map((x) => x.id)).toEqual([waiting]); // not purged unmailed
+    expect(log.lines).toContain('signup: verify mails held (mail_caps_missing)');
+    // An account added for one address; the intake-writable record then changes it.
+    const id = (await w.store.createIfNew(person(2))).record.id;
+    await w.verifier!.bindApproval(id, person(2).email);
+    await w.store.update(id, {
+      status: 'approved',
+      accountAdded: true,
+      email: 'other@example.com',
+    });
+    const out = await w.signups.approver('p_ownerownerownerownerowner' as never).resend(id);
+    expect(out).toMatchObject({ ok: false, record: { lastError: 'mail_addr_changed' } });
+    expect(approvals).toEqual([]);
+  });
+});
+
+describe('S4a QA B: the unverified purge is resumable and reports what it skips', () => {
+  const purger = async (claimed: () => Promise<Set<string> | null>) => {
+    const r = await verifyRig();
+    const lines: string[] = [];
+    const v = new Verifier({
+      stateDir: r.stateDir,
+      storeDir: r.storeDir,
+      store: r.store,
+      email: r.email,
+      siteUrl: SITE,
+      keys: () => loadVerifyKeys(r.keyFile),
+      since: T0 - DAY,
+      now: () => r.clock.t,
+      log: logger(lines),
+      claimed,
+    });
+    const id = (await r.store.createIfNew(person(1), { origin: 'web' })).record.id;
+    r.clock.t = T0 + 8 * DAY;
+    return { ...r, v, id, lines };
+  };
+  it('a failure part-way keeps the .web marker; the next run finishes the job', async () => {
+    const r = await purger(async () => new Set<string>());
+    const remove = r.v.remove.bind(r.v);
+    r.v.remove = async () => {
+      throw Object.assign(new Error('x'), { code: 'EIO' });
+    };
+    expect((await r.v.purgeUnverified(7)).purged).toBe(0);
+    expect(existsSync(join(r.storeDir, `${r.id}.web`))).toBe(true);
+    expect(r.lines.some((l) => /^signup: purge unverified failed \(\w+\) 1$/.test(l))).toBe(true);
+    r.v.remove = remove;
+    expect((await r.v.purgeUnverified(7)).purged).toBe(1);
+    expect(readdirSync(r.storeDir).filter((f) => f.startsWith(r.id))).toEqual([]);
+  });
+  it('unreadable claims and unreadable state are logged as class only', async () => {
+    const a = await purger(async () => null);
+    await a.v.purgeUnverified(7);
+    expect(a.lines).toContain('signup: purge unverified kept (claims_unreadable) 1');
+    const b = await purger(async () => new Set<string>());
+    await b.v.checkDirs();
+    writeFileSync(vpath(b, b.id), '{bad');
+    await b.v.purgeUnverified(7);
+    expect(b.lines).toContain('signup: purge unverified kept (state_unreadable) 1');
+  });
+});
+
+describe('S4a QA E: gate file at the largest 30 d setting, and recovery', () => {
+  it('a full 300000-entry state is readable', async () => {
+    const g = gateRig({ per30d: 300_000 }, T0);
+    const sent = Array.from({ length: 299_999 }, (_, i) => T0 - 3 * DAY - i);
+    writeFileSync(join(g.stateDir, GATE_FILE), `${JSON.stringify({ v: 1, sent })}\n`);
+    expect(await g.gate.check()).toBeNull();
+    await g.gate.reserve();
+    expect((await g.mk().check())?.reason).toBe('30d');
+  }, 60_000);
+  it('removing both files recovers after a restart, not in the running process', async () => {
+    const g = gateRig();
+    await g.gate.reserve();
+    await g.gate.reserve();
+    unlinkSync(join(g.stateDir, GATE_FILE));
+    unlinkSync(join(g.stateDir, GATE_SEEN_FILE));
+    expect((await g.gate.check())?.reason).toBe('missing');
+    expect(await g.mk().check()).toBeNull();
+  });
+});
+
+describe('S4a QA: a cap-refused approval mail is not treated as already attempted', () => {
+  it('approve and resend answer email_queued; the drain sends it exactly once', async () => {
+    const g = gateRig({ perHour: 1 });
+    const store = new PendingStore(g.storeDir, { now: () => g.clock.t });
+    await store.init();
+    const sent: string[] = [];
+    const email = g.gate.wrap({ sendApproval: async (to) => void sent.push(to.id) });
+    await email.sendApproval({ email: 'o@example.com', name: '', lang: 'en', id: 'o' });
+    const approver = new SignupApprover({
+      store,
+      accounts: { add: async () => 'done' },
+      email,
+      now: () => g.clock.t,
+      ownerActions: true,
+    });
+    const id = (await store.createIfNew(person(1))).record.id;
+    expect(await approver.approve(id)).toMatchObject({ ok: false, code: 'mail_cap' });
+    for (const out of [await approver.approve(id), await approver.resend(id)])
+      expect(out).toMatchObject({ ok: true, note: 'email_queued' });
+    g.clock.t = T0 + H;
+    await approver.drainEmails();
+    await approver.drainEmails();
+    expect(sent).toEqual(['o', id]);
+    expect((await store.get(id)).status).toBe('email_sent');
+  });
+});

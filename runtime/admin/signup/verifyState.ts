@@ -260,7 +260,8 @@ export type MintOutcome =
   | 'limit_record'
   | 'limit_live'
   | 'limit_mail'
-  | 'limit_unreadable';
+  | 'limit_unreadable'
+  | 'caps_missing';
 
 export interface VerifySweepResult {
   sent: number;
@@ -285,6 +286,11 @@ export interface VerifierDeps {
   maxPerDay?: number;
   /** S4a: the mail gate (read-only check before a generation is minted); unset = no gate. */
   gate?: MailGate | null;
+  /**
+   * S4a: verified mode without the mail caps: no verify mail is minted or sent (resend markers
+   * wait) and nothing is purged as unverified; confirm markers are still consumed.
+   */
+  mailsHeld?: boolean;
   /** S4a: TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS; unset = no unverified purge. */
   unverifiedDays?: number;
   /** S4a: ids in the auto-approve claim set (null = unreadable: nothing is purged). */
@@ -453,6 +459,7 @@ export class Verifier {
    */
   mint(id: string, keys: VerifyKeys, resend = false): Promise<MintOutcome> {
     return serialById(id, async () => {
+      if (this.d.mailsHeld) return 'caps_missing';
       if (await this.paused()) return 'paused';
       const r = await this.d.store.get(id).catch(() => null);
       if (!r || r.status !== 'pending' || (resend && r.origin !== 'web')) return 'not_pending';
@@ -542,7 +549,10 @@ export class Verifier {
       } catch (e) {
         if (e instanceof MailCapError || e instanceof MailPausedError) {
           await revoke();
-          return e instanceof MailCapError ? 'limit_mail' : 'paused';
+          if (e instanceof MailPausedError) return 'paused';
+          // Nothing was sent: the day and per-address slots are given back.
+          await this.refund(addr, at);
+          return 'limit_mail';
         }
         this.log(`signup: verify send failed (${errorClass(e)})`);
         return 'send_failed';
@@ -551,6 +561,27 @@ export class Verifier {
         this.logHourly(`signup: verify mirror not written (${errorClass(e)})`);
       });
       return 'sent';
+    });
+  }
+
+  /**
+   * Gives back the counters one `mint` took at `at` for a mail the gate or the provider refused.
+   * A crash before this, or a failed write, leaves them counted (over-count, never under).
+   */
+  private refund(addr: string, at: string): Promise<void> {
+    return countersLock(async () => {
+      const c = await readJson<Counters>(join(this.vdir, COUNTERS));
+      if (!validCounters(c)) return;
+      const mine = c.addrs[addr] ?? [];
+      const i = mine.lastIndexOf(at);
+      if (i < 0) return;
+      const addrs = { ...c.addrs, [addr]: mine.filter((_, j) => j !== i) };
+      if (addrs[addr]!.length === 0) delete addrs[addr];
+      const sameDay = c.day === israelDay(Date.parse(at));
+      const dayCount = sameDay ? Math.max(0, c.dayCount - 1) : c.dayCount;
+      await writeJson(this.vdir, COUNTERS, { ...c, dayCount, addrs });
+    }).catch((e: unknown) => {
+      this.logHourly(`signup: verify slot not refunded (${errorClass(e)})`);
     });
   }
 
@@ -673,6 +704,13 @@ export class Verifier {
         t + horizonMs - c >= days * 86_400_000
       );
     };
+    // Why requests were kept or not removed: class codes and counts only.
+    const skipped = new Map<string, number>();
+    const bump = (k: string) => skipped.set(k, (skipped.get(k) ?? 0) + 1);
+    const keep = (why: string) => {
+      bump(`kept (${why})`);
+      return false;
+    };
     for (const cand of await this.d.store.list()) {
       if (!old(cand)) continue;
       let never = false;
@@ -685,17 +723,21 @@ export class Verifier {
             try {
               s = await this.readId(r.id);
             } catch {
-              return false; // unreadable verify state = keep
+              return keep('state_unreadable'); // unreadable verify state = keep
             }
             if (s?.verifiedAt || s?.usedAt) return false;
             const claims = this.d.claimed ? await this.d.claimed().catch(() => null) : new Set();
-            if (!claims || claims.has(r.id)) return false;
+            if (!claims) return keep('claims_unreadable');
+            if (claims.has(r.id)) return false;
             never = !s || s.sends === 0;
             return true;
           },
           () => this.remove(cand.id),
         )
-        .catch(() => false);
+        .catch((e: unknown) => {
+          bump(`failed (${errorClass(e)})`);
+          return false;
+        });
       if (gone) {
         out.purged++;
         if (never) out.neverMailed++;
@@ -711,7 +753,10 @@ export class Verifier {
       }
       if (Object.keys(addrs).length !== Object.keys(c.addrs).length)
         await writeJson(this.vdir, COUNTERS, { ...c, addrs });
-    }).catch(() => undefined);
+    }).catch((e: unknown) => {
+      this.logHourly(`signup: purge unverified counters not expired (${errorClass(e)})`);
+    });
+    for (const [k, n] of [...skipped].sort()) this.logHourly(`signup: purge unverified ${k} ${n}`);
     if (out.purged > 0) this.log(`signup: purge unverified removed ${out.purged}`);
     if (out.neverMailed > 0) this.log(`signup: purge unverified never mailed ${out.neverMailed}`);
     return out;
@@ -771,10 +816,12 @@ export class Verifier {
       );
       if (gone) await this.remove(m[1]!).catch(() => undefined);
     }
+    const held = this.d.mailsHeld === true;
+    if (held) this.logHourly('signup: verify mails held (mail_caps_missing)');
     const counts = new Map<string, number>();
     const bump = (k: string) => counts.set(k, (counts.get(k) ?? 0) + 1);
     for (const r of records) {
-      if (stop()) break;
+      if (stop() || held) break;
       if (r.status !== 'pending' || r.origin !== 'web' || !(Date.parse(r.createdAt) > since))
         continue;
       const o = await this.mint(r.id, keys).catch(() => 'state_unreadable' as const);
@@ -811,7 +858,7 @@ export class Verifier {
     // persisted, also when a limit blocks (so repeated requests never queue up mails).
     let rqSeen = 0;
     for (const e of await readdir(this.d.storeDir, { withFileTypes: true })) {
-      if (stop()) break;
+      if (stop() || held) break;
       const f = e.name;
       const m = RESEND_MARKER_RE.exec(f);
       if (!m || e.isDirectory()) continue;
@@ -833,6 +880,7 @@ export class Verifier {
     const t = this.now();
     if (
       days !== undefined &&
+      !held &&
       !stop() &&
       (this.lastPurge === undefined || t - this.lastPurge >= 3_600_000 || t < this.lastPurge)
     ) {

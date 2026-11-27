@@ -33,7 +33,8 @@
  *   TBI_SIGNUP_MAIL_MAX_PER_HOUR / _PER_DAY / _PER_30D, TBI_SIGNUP_VERIFY_MAX_PER_DAY,
  *   TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS   S4a safeguards (mailGate.ts), all unset = today's
  *                                behaviour. A bad value disables the sign-up admin routes (one log
- *                                line); TBI_SIGNUP_AUTO_WEB=verified needs the mail caps.
+ *                                line); TBI_SIGNUP_AUTO_WEB=verified needs the mail caps (without
+ *                                them: no auto-approve and no verify mail; the binding stays).
  */
 import {
   AUTO_APPROVE_INTERVAL_MS,
@@ -85,6 +86,11 @@ export interface AdminSignupConfig {
   };
   /** G1-AUTO-VERIFY: email verification; unset = off (no key read, nothing written). */
   verify?: VerifyConfig & { maxPerDay?: number; unverifiedDays?: number };
+  /**
+   * TBI_SIGNUP_AUTO_WEB=verified is set, whether or not auto-approve is on: the approval mail
+   * binding stays, and without `mailCaps` no verify mail is sent.
+   */
+  verifiedMode?: boolean;
   /** S4a: the mail gate around every applicant mail; unset = no gate (today's behaviour). */
   mailCaps?: MailLimits & { stateDir: string };
 }
@@ -275,6 +281,7 @@ export async function wireSignupAdmin(
       keys: () => loadVerifyKeys(v.keyFile),
       ...(v.since !== undefined ? { since: v.since } : {}),
       ...(v.maxPerDay !== undefined ? { maxPerDay: v.maxPerDay } : {}),
+      ...(c.verifiedMode && !c.mailCaps ? { mailsHeld: true } : {}),
       ...(v.unverifiedDays !== undefined
         ? {
             unverifiedDays: v.unverifiedDays,
@@ -288,8 +295,8 @@ export async function wireSignupAdmin(
   }
   // Verified mode (G1-AUTO-VERIFY): every approval mail, owner or auto, drained or not, goes only
   // to the address its account was added for (service.ts ApprovalMailBinding).
-  const mailBinding =
-    verifier && c.autoApprove?.webSignups === 'verified' ? { mailBinding: verifier } : {};
+  const verifiedMode = c.verifiedMode || c.autoApprove?.webSignups === 'verified';
+  const mailBinding = verifier && verifiedMode ? { mailBinding: verifier } : {};
   // The drain only sends mail for accounts that already exist; it never adds one.
   const drainer = new SignupApprover({
     store,
@@ -491,6 +498,8 @@ export async function signupWiringFromEnv(
         },
       }
     : { ...cfg.config };
+  // Keyed on the setting itself: it holds also when auto-approve is off (missing caps, bad cap).
+  if (env.TBI_SIGNUP_AUTO_WEB === 'verified') config.verifiedMode = true;
   // G1-AUTO-VERIFY: all flags unset = `verify` stays absent (no key read, nothing written).
   const ver = verifyConfigFromEnv(env, cfg.config.dir);
   if (ver.enabled) config.verify = ver.config;
