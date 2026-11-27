@@ -566,6 +566,35 @@ for (const lang of ['he', 'en'] as const) {
     await expect(message).toBeFocused();
   });
 
+  test(`signups (${lang}): an older status answer never overwrites a newer one`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(page, 'list', {}, { status: 200, json: AUTO_ON });
+    await open(page, context, baseURL!, lang);
+    const today = page.getByTestId('auto-today');
+    await expect(today).toHaveText(x.today('3', '20'));
+    // The first Refresh's status is held; the second one's answers at once with newer data.
+    const release = await holdStatus(page);
+    const first = page.waitForRequest('**/admin-api/signups/auto-approve');
+    await page.getByTestId('signups-refresh').click();
+    const old = await first;
+    await page.route('**/admin-api/signups/auto-approve', (r) =>
+      r.fulfill({ status: 200, json: { ...AUTO_ON, count: 7 } }),
+    );
+    await page.getByTestId('signups-refresh').click();
+    await expect(today).toHaveText(x.today('7', '20'));
+    const late = page.waitForResponse((r) => r.request() === old);
+    release();
+    await (await late).finished();
+    // Time for the page to handle the late answer.
+    await page.waitForTimeout(500);
+    await expect(today).toHaveText(x.today('7', '20'));
+    await expect(page.getByTestId('auto-status')).not.toContainText(x.unavailable);
+    await expect(page.getByTestId('signups-live')).not.toContainText(x.unavailable);
+  });
+
   test(`signups (${lang}): 320 px, the status block does not overflow`, async ({
     page,
     context,

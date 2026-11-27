@@ -197,7 +197,7 @@ export function Signups() {
   // `spoken` counts announcements and reloads (only the latest is put in the region). `topic`
   // changes when an announcement replaces what came before, not when a sentence is added to it,
   // so an addition never silences a reload's count. `reloads` changes with each reload: only a
-  // newer one leaves an older status result unspoken.
+  // newer one leaves an older status result unshown and unspoken.
   const spoken = useRef(0);
   const topic = useRef(0);
   const reloads = useRef(0);
@@ -283,11 +283,12 @@ export function Signups() {
     pendingTimer.current = setTimeout(() => setStatusPending(true), PENDING_AFTER_MS);
     const status = loadAutoApproveStatus(api).then((st) => {
       if (!alive.current) return st;
+      // A superseded reload's late answer never overwrites the newer one's.
       if (run === reloads.current) {
         clearTimeout(pendingTimer.current);
         setStatusPending(false);
+        setAutoStatus(st);
       }
-      setAutoStatus(st);
       return st;
     });
     const v = await loadOpenSignups(api);

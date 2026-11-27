@@ -115,9 +115,10 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
     - the earlier run only ever found the directory unsafe (nothing is written into an unsafe directory);
     - the marker write failed and the service restarted before a later write succeeded (and no request carries a
       mark).
-  - So before you delete or replace the state file: create the pause file and wait for the `auto-approve paused` line,
-    remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in, change the file, run `sudo systemctl daemon-reload`, restart,
-    wait for a **new** `auto-approve paused` line, and only then remove the pause file.
+  - So before you delete or replace the state file: create the pause file and wait for the `auto-approve paused` line
+    (if it was already paused, no new line appears before the restart: find the earlier one since the last service
+    start), remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in, change the file, run `sudo systemctl daemon-reload`,
+    restart, wait for a **new** `auto-approve paused` line, and only then remove the pause file.
 
 ## What to watch in the log (monitoring)
 
@@ -127,6 +128,16 @@ addresses or paths:
 ```
 sudo journalctl -u <N>-admin.service --since today | grep 'signup: auto-approve'
 ```
+
+The `auto-approve paused` and `auto-approve waiting` lines are not repeated every sweep, so they can be older than
+today. For them, search since the last service start:
+
+```
+sudo journalctl _SYSTEMD_INVOCATION_ID="$(systemctl show -p InvocationID --value <N>-admin.service)" | grep 'signup: auto-approve'
+```
+
+If auto-approve is already paused, creating the pause file again writes no new `auto-approve paused` line before a
+restart: look for the earlier line in that search. A restart while the pause file exists writes a new one.
 
 Alert on (owner action needed or capacity reached):
 
@@ -164,9 +175,9 @@ Any restart or other change on the host is RED zone, as above. Never edit the st
 
 | What you see | Meaning | What to do |
 |---|---|---|
-| Log `auto-approve cut-off reset (only requests created from now on)` | The cut-off moved to now (or to a later stored value or `TBI_SIGNUP_AUTO_SINCE`), never earlier. The daily count is kept, unless the state file was lost (below). | Check that you expected it (restart, re-enable, resume, owner wait, unsafe directory, lost state file). Approve older pending requests by hand. |
-| Status reason `reset_pending`; the backlog shows as unknown | This process, or the stored state, still needs the cut-off reset. Only a sweep that may approve does it: not paused, owner recorded, state directory safe. | Wait one sweep (60 s) and press Refresh requests. If it stays, look for `paused`, `waiting (owner principal not recorded; manual only)`, `cut-off reset failed` or `state dir unsafe` in the log and fix that cause. A pause keeps this reason until you resume. |
-| State file `auto-approve.state.json` was deleted | Today's count, the retry count and the list of unfinished approvals start empty, so up to a full cap can be approved again today. A running process that had set its cut-off resets it at the next approving sweep. With evidence of an earlier run the new cut-off is now, or a later `TBI_SIGNUP_AUTO_SINCE`; after a restart without evidence a past `TBI_SIGNUP_AUTO_SINCE` **is** applied (limits listed under Pause and resume). | Create the pause file at once and wait for `auto-approve paused`. Remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in, run `sudo systemctl daemon-reload`, restart, wait for a new `auto-approve paused` line, then remove the pause file. Leave `auto-approve.marker` in place. Check unfinished approvals and older pending requests by hand. |
+| Log `auto-approve cut-off reset (only requests created from now on)` | The cut-off moved to now (or to a later stored value or `TBI_SIGNUP_AUTO_SINCE`), never earlier. The daily count is kept, unless the state file was lost (below). | Check that you expected it (restart, re-enable, resume, owner wait, unsafe directory, lost state file). Review older pending requests and approve or reject them by hand. |
+| Status reason `reset_pending`; the backlog shows as unknown | This process, or the stored state, still needs the cut-off reset. Only a sweep that may approve does it: not paused, owner recorded, state directory safe. | Wait one sweep (60 s) and press Refresh requests. If it stays, look for `paused`, `waiting (owner principal not recorded; manual only)`, `cut-off reset failed` or `state dir unsafe` in the log and fix that cause. `paused` and `waiting` are not repeated every sweep: search since the last service start (below). A pause keeps this reason until you resume. |
+| State file `auto-approve.state.json` was deleted | Today's count, the retry count and the list of unfinished approvals start empty, so up to a full cap can be approved again today. A running process that had set its cut-off resets it at the next approving sweep. With evidence of an earlier run the new cut-off is now, or a later `TBI_SIGNUP_AUTO_SINCE`; after a restart without evidence a past `TBI_SIGNUP_AUTO_SINCE` **is** applied (limits listed under Pause and resume). | Create the pause file at once and wait for `auto-approve paused` (if it was already paused, no new line appears before the restart: find the earlier one since the last service start). Remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in, run `sudo systemctl daemon-reload`, restart, wait for a new `auto-approve paused` line, then remove the pause file. Leave `auto-approve.marker` in place. Check unfinished approvals and older pending requests by hand. |
 
 ## Roll back (turn auto-approve off)
 
