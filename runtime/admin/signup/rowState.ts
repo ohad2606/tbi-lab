@@ -12,7 +12,8 @@
  *             always replaced or removed. No hash, key id, generation, address, path or error.
  *   Reads     no write, no directory created, no key loaded. Per computation: one store.list(),
  *             one dir check, at most one mail gate read, one state read per web `pending` request
- *             (at most READS at a time). Concurrent requests share a computation.
+ *             (at most READS at a time), and one auto-approve status read when a row would be
+ *             "queued". Concurrent requests share a computation.
  *   Failure   anything unsafe or unreadable = `unknown` (never "not confirmed", never 0); the list
  *             and the owner's actions keep working. Logs carry class codes only, at most hourly.
  */
@@ -29,9 +30,9 @@ import { addressHash, peekMailCount, peekVerifyState, verifyDirsReadOnly } from 
 export const VERIFICATION_STATES = [
   'not_sent',
   'sent',
-  /** Confirmed, eligible, and today's automatic approval limit is used up. */
+  /** Confirmed, eligible, and no free slot of today's automatic approval limit reaches it. */
   'confirmed_waiting_limit',
-  /** Confirmed and eligible with a free slot: the next automatic sweep takes it. */
+  /** Confirmed, eligible and within today's free slots (oldest first, as the sweep claims). */
   'confirmed_queued',
   /** Confirmed; nothing says it will be approved without the owner. */
   'confirmed_review',
@@ -160,7 +161,31 @@ export function ownerView(d: OwnerViewDeps): {
         for (let r = todo[next++]; r; r = todo[next++]) out.set(r.id, await one(r));
       }),
     );
+    await limitQueued(records, todo, out, checked.autoBad);
     return out;
+  }
+
+  /**
+   * Only as many rows stay "queued" as today has free slots, in the list's order (oldest first).
+   * An unreadable count promises nothing: those rows then need review.
+   */
+  async function limitQueued(
+    records: SignupRecord[],
+    todo: SignupRecord[],
+    out: Map<string, RowVerification>,
+    dirBad: string | null | undefined,
+  ): Promise<void> {
+    const queued = todo.filter((r) => out.get(r.id)?.state === 'confirmed_queued');
+    if (queued.length === 0) return;
+    const s = await d
+      .auto!.status({
+        list: async () => records,
+        ...(dirBad !== undefined ? { dirBad } : {}),
+      })
+      .catch(() => null);
+    const free = s && typeof s.count === 'number' ? Math.max(0, s.dailyCap - s.count) : null;
+    for (const r of queued.slice(free ?? 0))
+      out.set(r.id, { state: free === null ? 'confirmed_review' : 'confirmed_waiting_limit' });
   }
 
   const rows = coalesce(async (): Promise<ViewRow[]> => {
