@@ -518,6 +518,72 @@ for (const { lang, dir } of [
       await expect(page.locator('#signup-form')).toBeHidden();
     });
 
+    /** Sends the sign-up form, then opens a confirm link while the answer is still pending. */
+    async function sendThenConfirmLink(page: Page) {
+      await stub(page);
+      let route: import('@playwright/test').Route | undefined;
+      await page.route(/\/signup\/web$/, (r) => {
+        route = r;
+      });
+      await page.goto(`/${lang}/signup/`);
+      await page.locator('#su-name').fill('Dana');
+      await page.locator('#su-email').fill('dana@example.com');
+      await page.locator('#su-role').selectOption({ index: 1 });
+      await page.locator('#su-age').check();
+      await page.locator('#su-consent').check();
+      await page.locator('#su-submit').click();
+      await expect.poll(() => !!route).toBe(true);
+      await page.evaluate((t) => (location.hash = `verify=${t}`), TOKEN);
+      await expect(page.locator('#vf')).toBeVisible();
+      return route!;
+    }
+
+    test('a success that arrives right after Back keeps focus on the success heading', async ({
+      page,
+    }) => {
+      const route = await sendThenConfirmLink(page);
+      // Hold the delayed focus (60 ms) so the answer certainly arrives between Back and it.
+      await page.evaluate(() => {
+        const real = window.setTimeout.bind(window);
+        const held: (() => void)[] = [];
+        Object.assign(window, {
+          held,
+          setTimeout: (f: () => void, ms?: number) => (ms === 60 ? held.push(f) : real(f, ms)),
+        });
+      });
+      await page.goBack();
+      await expect(page.locator('#signup-form')).toBeVisible();
+      await route.fulfill({ json: { ok: true } });
+      await expect(page.locator('#su-success-h')).toBeFocused();
+      await page.evaluate(() => (window as any).held.forEach((f: () => void) => f()));
+      await expect(page.locator('#su-success-h')).toBeFocused();
+    });
+
+    test('a sign-up that fails behind the confirm view: Back focuses the error summary', async ({
+      page,
+    }) => {
+      const route = await sendThenConfirmLink(page);
+      await route.fulfill({ status: 503, json: {} });
+      await expect(page.locator('#su-summary')).not.toHaveAttribute('hidden');
+      await page.goBack();
+      await expect(page.locator('#su-summary')).toBeFocused();
+      await expect(page.locator('#su-summary')).toBeInViewport();
+      await page.waitForTimeout(200);
+      await expect(page.locator('#su-summary')).toBeFocused();
+    });
+
+    test('a sign-up with no answer is not headed as "not sent"', async ({ page }) => {
+      const route = await sendThenConfirmLink(page);
+      await page.goBack();
+      await route.abort('connectionrefused');
+      await expect(page.locator('#su-summary')).toBeFocused();
+      const heading = page.locator('#su-summary-h');
+      const signupMsg = (key: string) => page.locator(`[data-msg="${key}"]`).textContent();
+      await expect(heading).toHaveText((await signupMsg('summaryNetworkH'))!);
+      await expect(heading).not.toHaveText((await signupMsg('summaryFailH'))!);
+      await expect(page.locator('#su-summary-msg')).toHaveText((await signupMsg('msgNetwork'))!);
+    });
+
     test('the skip link and Back from it keep the confirm view', async ({ page }) => {
       const log = await stub(page);
       await page.goto(url);

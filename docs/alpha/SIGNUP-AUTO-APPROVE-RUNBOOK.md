@@ -293,7 +293,7 @@ optional keep window (`TBI_SIGNUP_AUTO_CUTOFF_KEEP_S`, below), which covers shor
 | While `auto-approve.paused` exists | |
 |---|---|
 | Stops | confirmation mails (first mails and new links); automatic approval |
-| Continues | storing sign-ups; recording confirmations; deleting expired and unconfirmed requests; account creation already in progress; sending queued approval mails of requests **you** approved; your own approve, reject and resend |
+| Continues | storing sign-ups; recording confirmations; deleting expired and unconfirmed requests; account creation already in progress; sending queued approval mails of requests **you** approved, only if the request was never auto-claimed; your own approve, reject and resend |
 | Waits | approval mails of automatically approved requests, queued or about to be sent (also when the pause check itself fails); they are sent after the resume, at the next drain ([What the pause holds](#what-the-pause-holds)) |
 | Lost | requests for a new link made while paused are dropped; the person has to ask again |
 

@@ -30,11 +30,17 @@ export const G2_A1_SKETCHES = {
 };
 
 /** The measurement rounds: which identity (index into 4 Free + 2 preview) runs which type. */
-export const G2_A1_ROUNDS: { round: G2A1Round; runs: [number, 'delay' | 'busy'][] }[] = [
-  { round: 'solo', runs: [[0, 'delay']] },
-  { round: 'solo', runs: [[1, 'busy']] },
+export const G2_A1_ROUNDS: {
+  round: G2A1Round;
+  /** harness phase while its sessions are live: separates the CPU figures of the rounds */
+  phase: string;
+  runs: [number, 'delay' | 'busy'][];
+}[] = [
+  { round: 'solo', phase: 'a1-delay-solo', runs: [[0, 'delay']] },
+  { round: 'solo', phase: 'a1-busy-solo', runs: [[1, 'busy']] },
   {
     round: 'mix6',
+    phase: 'a1-mix6',
     runs: [
       [0, 'delay'],
       [1, 'busy'],
@@ -125,7 +131,7 @@ export function g2A1ProcStat(text: string): G2A1Machine | null {
   return { cpus, total, busy: total - v[3]! - v[4]! - v[7]!, steal: v[7]! };
 }
 
-/** The host unit's settings from `systemctl show -p Environment`; null = not set there. */
+/** The host unit's settings from `systemctl show -p Environment`; null = not set (or not a value). */
 export function g2A1HostConfig(environment: string) {
   const value = (name: string) => {
     const m = new RegExp(`(?:^Environment=| )"?${name}=([\\d.]+)(?=["\\s]|$)`, 'm').exec(
@@ -133,8 +139,9 @@ export function g2A1HostConfig(environment: string) {
     );
     return m ? Number(m[1]) : null;
   };
+  const paceOff = /(?:^Environment=| )"?TBI_HOST_PACE=off(?=["\s]|$)/m.test(environment);
   return {
-    pace: value('TBI_HOST_PACE'),
+    pace: paceOff ? ('off' as const) : value('TBI_HOST_PACE'),
     idleMs: value('TBI_HOST_IDLE_MS'),
     maxSessions: value('TBI_HOST_MAX_SESSIONS'),
   };
@@ -159,13 +166,18 @@ export function g2A1Spread(values: (number | null)[]) {
 }
 const round3 = (x: number) => Math.round(x * 1000) / 1000;
 
+const wentBackwards = (readings: G2A1Reading[], key: 'usageUsec' | 'nrThrottled') =>
+  readings
+    .filter((r) => r[key] !== null)
+    .some((r, i, known) => i > 0 && r[key]! < known[i - 1]![key]!);
+
 /** Growth of a counter between its first and last readable value; null if fewer than two. */
 function growth(readings: G2A1Reading[], key: 'usageUsec' | 'nrThrottled') {
   const known = readings.filter((r) => r[key] !== null);
   if (known.length < 2) return null;
+  // a counter that went backwards anywhere is not the same cgroup: no value
+  if (wentBackwards(known, key)) return null;
   const delta = known.at(-1)![key]! - known[0]![key]!;
-  // a counter that went backwards is not the same cgroup: no value
-  if (delta < 0) return null;
   return { delta, ms: known.at(-1)!.atMs - known[0]!.atMs };
 }
 const cores = (g: { delta: number; ms: number } | null, minMs = 1) =>
@@ -211,7 +223,8 @@ export function g2A1Run(
     steadyThrottled: steadyOk ? (throttledSteady?.delta ?? null) : null,
     startupCores: cores(growth(startup, 'usageUsec')),
     /** CPU time since the unit started, at the first sample of the steady window */
-    startupCpuSeconds: boundary ? round3(boundary.usageUsec! / 1e6) : null,
+    startupCpuSeconds:
+      boundary && !wentBackwards(startup, 'usageUsec') ? round3(boundary.usageUsec! / 1e6) : null,
     throttledTotal: maxOf(seen.map((r) => r.nrThrottled)),
     memoryPeakBytes: maxOf(seen.map((r) => r.peak)),
     memoryCurrentMaxBytes: maxOf(seen.map((r) => r.current)),
@@ -381,12 +394,19 @@ export function g2A1Recorder(fs: G2A1Fs, now: () => number, phase: () => string)
       const perRun = [...runs.values()].map((r) =>
         g2A1Run(r.type, r.round, r.runAtMs, r.readings, r.pace),
       );
+      // never listed, or nothing readable: all its values are null
+      const blind = perRun.filter((r) => r.samples === 0);
+      const measuredBlind = blind.some((r) => r.round !== 'drills');
       return {
         ...out,
+        status: out.status === 'complete' && measuredBlind ? 'incomplete' : out.status,
         steadyAfterSeconds: G2_A1_STEADY_AFTER_MS / 1000,
         samples: ticks.length,
         /** failed reads by source; the values concerned are null, not zero */
-        unavailable: { ...unavailable },
+        unavailable: {
+          ...unavailable,
+          ...(blind.length ? { 'qemu run without readings': blind.length } : {}),
+        },
         byType: g2A1ByType(perRun),
         runs: perRun,
         phases: g2A1Phases(ticks),

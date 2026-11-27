@@ -58,7 +58,8 @@
  *   3. TBI_G2_DEPLOYED=tbi-s8 TBI_ALLOW_SERVICE_MUTATION=tbi-s8 TBI_G2_PREVIEW_USERS=<id1>,<id2> \
  *      [TBI_G2_SECONDS=1500] npx vitest run --config vitest.runtime.config.ts \
  *      runtime/tests/g2-deployed.runtime.test.ts
- *      For the 3.12 capacity numbers add TBI_G2_A1=1 (docs/ops/TEST-SAFETY.md).
+ *      For the 3.12 capacity numbers run this gate pass first without TBI_G2_A1, then a second
+ *      pass with TBI_G2_A1=1, a 2.5 h lock and no testers on DEV-Lab (docs/ops/TEST-SAFETY.md).
  *      Optional: TBI_G2_EXTRA_PAYING_USERS=<id3>,...,<id7> (existing identities, also mapped to
  *      `preview` in the server's policy copy; never committed).
  *   4. Without TBI_G2_DEPLOYED the file does nothing. With it set, CI, a wrong instance, a missing
@@ -1086,7 +1087,9 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
             );
             expect(empty.ok, 'A1: seats not empty').toBe(true);
           };
+          progress.phase = 'a1-cooldown';
           await emptySeats();
+          progress.phase = 'a1-builds';
           const shas = new Map<string, string>();
           const buildsFrom = performance.now();
           for (const { runs } of M.G2_A1_ROUNDS)
@@ -1100,9 +1103,11 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
               expect(b.sha, `A1 build ${type} (status ${b.status})`).toBeTruthy();
               shas.set(`${i} ${type}`, b.sha!);
             }
-          for (const { round, runs } of M.G2_A1_ROUNDS) {
+          for (const { round, phase, runs } of M.G2_A1_ROUNDS) {
+            progress.phase = 'a1-cooldown';
             await emptySeats();
             await sleep(queue.freeCooldownMs + 5000);
+            progress.phase = phase;
             const started: Mine[] = [];
             for (const [i, type] of runs) {
               shaOf.set(users[i]!, shas.get(`${i} ${type}`)!);
@@ -1131,7 +1136,6 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           }
         };
         if (a1) {
-          progress.phase = 'a1';
           a1.state.failuresBefore = [...progress.failures!];
           a1.state.status = 'incomplete';
           try {
