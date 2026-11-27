@@ -556,6 +556,11 @@ export interface ApprovalMailBinding {
   bindApproval(id: string, email: string): Promise<void>;
   /** `ok`, else a class code; `needProof` (auto approvals) also requires the recorded confirmation. */
   checkApproval(id: string, email: string, needProof: boolean): Promise<string>;
+  /**
+   * Whether the admin state holds a binding for `id` at all (any address). Throws when the state
+   * cannot be read or its dirs are unsafe (the caller then refuses: `unbound_state`).
+   */
+  hasApproval(id: string): Promise<boolean>;
 }
 
 export type ApproveOutcome =
@@ -570,7 +575,8 @@ export type ApproveOutcome =
         | 'account_error'
         | 'email_failed'
         | 'email_failed_use_resend'
-        | 'mail_cap';
+        | 'mail_cap'
+        | 'unbound_state';
       record?: SignupRecord;
     };
 
@@ -598,6 +604,11 @@ export class SignupApprover {
        * the address the owner is looking at (the drain and auto-approve never do).
        */
       ownerActions?: boolean;
+      /**
+       * The drain only: whether `auto-approve.paused` is present (an error counts as paused).
+       * While paused, queued mails of auto-approved requests wait; the owner's queued mails go.
+       */
+      paused?: () => Promise<boolean>;
     },
   ) {}
 
@@ -657,14 +668,65 @@ export class SignupApprover {
 
   private async doResend(id: string): Promise<ApproveOutcome> {
     {
-      const r = await this.load(id);
+      let r = await this.load(id);
       if (!r) return { ok: false, code: 'not_found' };
       if (!r.accountAdded || r.status === 'rejected' || r.status === 'pending')
         return { ok: false, code: 'bad_state', record: r };
       if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
+      const unbound = await this.unboundProgress(r);
+      if (unbound) {
+        if (!unbound.ok) return unbound;
+        r = unbound.record;
+      }
       if (r.status === 'email_queued') return { ok: true, record: r, note: 'email_queued' };
       return this.send(r, false, true);
     }
+  }
+
+  /**
+   * Verified mode only (BETA-G1 fix 1). A record that SAYS its account was added (`accountAdded`,
+   * or status approved / email_failed / email_queued) is intake-owned text: only the admin's own
+   * binding (`approvedAddr`, written right after a successful account request) proves it. With no
+   * binding the account request runs again (an existing account answers `exists`, which counts as
+   * added) and the binding is written; if that cannot be done the action is refused
+   * (`unbound_state`) and nothing is sent. Returns null when nothing had to be done (bound, not
+   * verified mode, or a record that claims no progress), else the outcome or the refreshed record.
+   * This only stops intake LOGIC bugs (a wrong field write): while the intake and the admin share
+   * one unix user, no code here can protect against a compromised intake (see the runbook).
+   */
+  private async unboundProgress(
+    r: SignupRecord,
+  ): Promise<{ ok: true; record: SignupRecord } | (ApproveOutcome & { ok: false }) | null> {
+    const b = this.d.mailBinding;
+    if (!b) return null;
+    const claims =
+      r.accountAdded ||
+      r.status === 'approved' ||
+      r.status === 'email_failed' ||
+      r.status === 'email_queued';
+    // `approved` without `accountAdded` takes the normal account step in doApprove.
+    if (!claims || (r.status === 'approved' && !r.accountAdded)) return null;
+    const bound = await b.hasApproval(r.id).catch(() => null);
+    if (bound === true) return null;
+    const refuse = (why: string) => {
+      this.d.log?.(`signup: unbound record state refused (${why})`);
+      return { ok: false as const, code: 'unbound_state' as const, record: r };
+    };
+    if (bound === null) return refuse('state_unreadable');
+    const addEmail = r.email;
+    const out = await this.d.accounts.add(addEmail, r.name);
+    if (out === 'pending') return { ok: false, code: 'account_pending', record: r };
+    if (out !== 'done' && out !== 'exists') return refuse(`account_${out}`);
+    try {
+      await b.bindApproval(r.id, addEmail);
+    } catch (e) {
+      return refuse(`bind_${errorClass(e)}`);
+    }
+    if (r.accountAdded) return { ok: true, record: r };
+    const rec = await this.d.store.update(r.id, { accountAdded: true });
+    // Counted exactly once per request, as in doApprove: `accountAdded` was not set before.
+    count(this.d.counters, 'signup_approved');
+    return { ok: true, record: rec };
   }
 
   private async load(id: string): Promise<SignupRecord | null> {
@@ -681,6 +743,11 @@ export class SignupApprover {
     if (!r) return { ok: false, code: 'not_found' };
     if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
     if (r.status === 'rejected') return { ok: false, code: 'bad_state', record: r };
+    const unbound = await this.unboundProgress(r);
+    if (unbound) {
+      if (!unbound.ok) return unbound;
+      r = unbound.record;
+    }
     if (r.status === 'email_queued') return { ok: true, record: r, note: 'email_queued' };
     if (r.status === 'email_failed')
       return { ok: false, code: 'email_failed_use_resend', record: r };
@@ -806,11 +873,14 @@ export class SignupApprover {
     const nowMs = (this.d.now ?? Date.now)();
     if (isQuiet(nowMs, this.d.quiet ?? null)) return 0;
     let n = 0;
+    // The kill switch holds auto-approved mails (checked per record; an error = paused).
+    const paused = async () => (this.d.paused ? this.d.paused().catch(() => true) : false);
     for (const c of await this.d.store.list()) {
       if (c.status !== 'email_queued') continue;
       const sent = await this.serial(c.id, async () => {
         const r = await this.load(c.id);
         if (!r || r.status !== 'email_queued' || !r.accountAdded) return false;
+        if (r.autoApprovedAt && (await paused())) return false;
         if (r.emailSendAfter && Date.parse(r.emailSendAfter) > (this.d.now ?? Date.now)())
           return false;
         const out = await this.send(r, true);

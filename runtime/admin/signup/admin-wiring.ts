@@ -49,10 +49,12 @@ import { unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   AUTO_APPROVE_INTERVAL_MS,
+  AUTO_PAUSE_FILE,
   AUTO_HEARTBEAT_FILE,
   AutoApprover,
   type AutoApproveStatus,
   autoApproveConfigFromEnv,
+  autoPauseCheck,
   type AutoWebSignups,
   autoStateDirCheck,
 } from './autoApprove.js';
@@ -327,7 +329,12 @@ export async function wireSignupAdmin(
   // to the address its account was added for (service.ts ApprovalMailBinding).
   const verifiedMode = c.verifiedMode || c.autoApprove?.webSignups === 'verified';
   const mailBinding = verifier && verifiedMode ? { mailBinding: verifier } : {};
-  // The drain only sends mail for accounts that already exist; it never adds one.
+  // The kill switch's dir (as the summary and owner view use it); null = no pause file at all.
+  const pauseDir = c.autoApprove
+    ? (c.autoApprove.stateDir ?? c.dir)
+    : (c.mailCaps?.stateDir ?? c.verify?.stateDir ?? null);
+  // The drain only sends mail for accounts that already exist; it never adds one. While paused,
+  // auto-approved requests' mails wait (BETA-G1 fix 4); the owner's queued mails still go.
   const drainer = new SignupApprover({
     store,
     accounts: { add: async () => 'error' },
@@ -336,6 +343,11 @@ export async function wireSignupAdmin(
     now: io.now,
     log: io.log,
     ...mailBinding,
+    ...(pauseDir !== null
+      ? {
+          paused: async () => (await autoPauseCheck(join(pauseDir, AUTO_PAUSE_FILE))).paused,
+        }
+      : {}),
   });
   const runDrain = async () => {
     try {
@@ -614,6 +626,25 @@ export async function signupWiringFromEnv(
   if (env.TBI_SIGNUP_AUTO_WEB === 'verified') config.verifiedMode = true;
   // G1-AUTO-VERIFY: all flags unset = `verify` stays absent (no key read, nothing written).
   const ver = verifyConfigFromEnv(env, cfg.config.dir);
+  // BETA-G1 fix 3: contradictory verification settings refuse the sign-up admin wiring (nothing
+  // is read or written in the verify / state dirs). AUTO_WEB=verified without working
+  // verification would bind no approval mail; AUTO_WEB=included with TBI_SIGNUP_VERIFY set would
+  // turn verification off and still auto-approve web requests without proof.
+  const verifyFlag = env.TBI_SIGNUP_VERIFY ?? '';
+  if (env.TBI_SIGNUP_AUTO_WEB === 'verified' && !ver.enabled) {
+    await forgetHeartbeat();
+    io.log(
+      'signup: admin routes disabled (config: TBI_SIGNUP_AUTO_WEB=verified needs TBI_SIGNUP_VERIFY=1 with valid settings)',
+    );
+    return null;
+  }
+  if (env.TBI_SIGNUP_AUTO_WEB === 'included' && verifyFlag !== '') {
+    await forgetHeartbeat();
+    io.log(
+      'signup: admin routes disabled (config: TBI_SIGNUP_VERIFY needs TBI_SIGNUP_AUTO_WEB verified or excluded)',
+    );
+    return null;
+  }
   if (ver.enabled) config.verify = ver.config;
   else if (ver.error) io.log(`signup: email verification off (config: ${ver.reason})`);
   const summaryFlag = env.TBI_SIGNUP_SUMMARY ?? '';
@@ -637,10 +668,6 @@ export async function signupWiringFromEnv(
     if (sg.verifyPerDay !== undefined) config.verify.maxPerDay = sg.verifyPerDay;
     if (sg.unverifiedDays !== undefined) config.verify.unverifiedDays = sg.unverifiedDays;
   }
-  if (auto.enabled && auto.webSignups === 'verified' && !ver.enabled)
-    io.log(
-      'signup: warning auto-approve web=verified without email verification; nothing is auto-approved',
-    );
   try {
     return await wireSignupAdmin(config, spool, io);
   } catch (e) {

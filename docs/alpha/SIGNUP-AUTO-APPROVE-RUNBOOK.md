@@ -154,14 +154,14 @@ All of "Before enabling" above, and:
 | Setting (admin unit) | Placeholder | Proposed | Allowed | Unset |
 |---|---|---|---|---|
 | `TBI_SIGNUP_AUTO_DAILY_CAP` | `<AUTO_CAP>` | 40 | 1..1000 | auto-approve off |
-| `TBI_SIGNUP_VERIFY_MAX_PER_DAY` | `<VERIFY_PER_DAY>` | 50 | 1..1000 accepted; **keep <= 340** (below) | 50 |
+| `TBI_SIGNUP_VERIFY_MAX_PER_DAY` | `<VERIFY_PER_DAY>` | 50 | 1..1000 (see the counter file below) | 50 |
 | `TBI_SIGNUP_MAIL_MAX_PER_HOUR` | `<MAIL_PER_HOUR>` | 30 | 1..1000 | required in verified mode |
 | `TBI_SIGNUP_MAIL_MAX_PER_DAY` | `<MAIL_PER_DAY>` | 95 | 1..10000 | required in verified mode |
 | `TBI_SIGNUP_MAIL_MAX_PER_30D` | `<MAIL_PER_30D>` | 2700 | 1..300000 | required in verified mode |
 | `TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS` | `<UNVERIFIED_DAYS>` | 7 | 1..90 | no early deletion (90 days) |
 | `TBI_SIGNUP_AUTO_CUTOFF_KEEP_S` | `<CUTOFF_KEEP_S>` | not chosen | 0..3600 | every restart resets the cut-off |
 
-Rules checked at start. Breaking one of the first four **disables all sign-up admin routes** (manual approval too),
+Rules checked at start. Breaking one of the first six **disables all sign-up admin routes** (manual approval too),
 with the log line `admin routes disabled (config: ...)`:
 
 - The three mail caps are set together, with hour <= day <= 30 days.
@@ -171,19 +171,35 @@ with the log line `admin routes disabled (config: ...)`:
   verification is configured correctly. They also trigger this when `TBI_SIGNUP_VERIFY` is removed or another verify
   setting is bad.
 - With the mail caps set, the verify cap (50 when unset) must not exceed the mail day cap.
-- A bad `TBI_SIGNUP_VERIFY*` or `TBI_SIGNUP_SITE_URL` value: `email verification off (config: ...)`.
-  `TBI_SIGNUP_AUTO_WEB=included` together with `TBI_SIGNUP_VERIFY=1` turns verification off, while `included` stays
-  in force and approves web requests without proof.
+- `TBI_SIGNUP_AUTO_WEB=verified` needs `TBI_SIGNUP_VERIFY=1` with valid verify settings
+  (`TBI_SIGNUP_AUTO_WEB=verified needs TBI_SIGNUP_VERIFY=1 with valid settings`).
+- `TBI_SIGNUP_AUTO_WEB=included` together with any `TBI_SIGNUP_VERIFY` value is refused
+  (`TBI_SIGNUP_VERIFY needs TBI_SIGNUP_AUTO_WEB verified or excluded`): it would turn verification off and still
+  approve web requests without proof. Nothing is written in the state or verify directories on these two refusals.
+- A bad `TBI_SIGNUP_VERIFY*` or `TBI_SIGNUP_SITE_URL` value with `TBI_SIGNUP_AUTO_WEB` unset or `excluded`:
+  `email verification off (config: ...)`; manual approval keeps working.
 
-**Why the verify cap must stay low.** The admin keeps seven days of confirmation-mail records (one address hash and
-time each, about 96 bytes) in `verify/mail-counters.json`, and refuses to read a state file over 256 KB (about 2,730
-entries). A file that grows past it is never read again: no confirmation mail is sent
-(`verify not sent (limit_unreadable)`) until the file is removed. That is about 390 mails a day sustained. Seven
-rolling days can touch eight calendar days, so the safe cap is **340** or less. The code accepts higher values
-without a warning.
+**The counter file.** The admin keeps seven days of confirmation-mail records (one address hash and time each,
+about 96 bytes) in `verify/mail-counters.json`. Seven rolling days can touch eight calendar days, so at the largest
+allowed cap (1000 a day, every mail to a new address) the file holds at most 8,000 entries, about 750 KB. It has its
+own read limit of 2 MB (the other per-request state files keep 256 KB), so every allowed cap fits. Old entries are
+dropped at each confirmation mail and at the hourly unconfirmed purge. A file that is larger than 2 MB anyway (for
+example damaged) is never read and never reset: no confirmation mail is sent (`verify not sent (limit_unreadable)`)
+until the file is removed.
 
 Recovery: create the pause file, move `verify/mail-counters.json` out of the state directory (this forgets today's
-count and the per-address limits), lower the cap, restart, then resume.
+count and the per-address limits), restart, then resume.
+
+**Approve and resend trust only the admin's own records (verified mode).** A request whose row says the account was
+already added (status approved, email failed or email queued, or "account added") but has no approval binding in the
+admin verify state gets its account request again before any mail; an account that already exists answers "exists"
+and counts as added. Requests approved before verified mode was enabled have no binding: a resend of such a request
+sends one more account request (answered "exists") and then the mail; a request whose mail was already sent shows
+"already approved" as before. If the account request fails, or the verify state cannot be read, the owner sees a
+warning (`unbound_state`: "says it was already approved, but our own records do not confirm ..."), nothing is sent,
+and the log has `unbound record state refused (<class>)`. Check the person under Testers before you try again.
+This only stops intake logic bugs (a wrong field written to a record). The intake and the admin run as the same unix
+user, so a compromised intake can change the admin's state too; no code in the admin protects against that.
 
 ### The verify key
 
@@ -269,7 +285,8 @@ optional keep window (`TBI_SIGNUP_AUTO_CUTOFF_KEEP_S`, below), which covers shor
 | While `auto-approve.paused` exists | |
 |---|---|
 | Stops | confirmation mails (first mails and new links); automatic approval |
-| Continues | storing sign-ups; recording confirmations; deleting expired and unconfirmed requests; sending queued approval mails; your own approve, reject and resend |
+| Continues | storing sign-ups; recording confirmations; deleting expired and unconfirmed requests; sending queued approval mails of requests **you** approved; your own approve, reject and resend |
+| Waits | queued approval mails of automatically approved requests (also when the pause check itself fails); they are sent after the resume, at the next drain |
 | Lost | requests for a new link made while paused are dropped; the person has to ask again |
 
 A request that waited for its first mail during a pause is mailed after the resume, but it stays manual (above). A
@@ -281,7 +298,7 @@ restart it.
 
 | What | When |
 |---|---|
-| Unconfirmed web request (record, markers, address marker, verify state) | only with `TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS`: that many days after **creation**, checked hourly, so up to 1 hour early. Only requests created after the verify cut-off. Not while `mails held (mail_caps_missing)` |
+| Unconfirmed web request (record, markers, address marker, verify state) | only with `TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS`: that many days after **creation**, checked hourly, so up to 1 hour early. Only requests created after the verify cut-off. Not while `mails held (mail_caps_missing)`. A request left half-removed by a crash (its web marker already gone) is finished at the next run if it is still pending, unconfirmed and has no account |
 | Any request not approved (`pending`, including confirmed and waiting; `rejected`) | within 90 days of creation (`TBI_SIGNUP_RETENTION_PENDING_DAYS`); the purge runs at start and daily |
 | Every other request | within 365 days of creation (`TBI_SIGNUP_RETENTION_MAX_DAYS`) |
 | Verify state `verify/<id>.json` (token hashes, address hashes, times) | with its request, while verification is on |

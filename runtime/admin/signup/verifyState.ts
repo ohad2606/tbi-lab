@@ -80,6 +80,14 @@ export const VERIFY_LIVE_GENS = 3;
 export const VERIFY_MARKERS_PER_SWEEP = 200;
 export const VERIFY_MARKER_MAX_BYTES = 1024;
 const STATE_MAX_BYTES = 256 * 1024;
+/**
+ * `mail-counters.json` holds one timestamp per verify mail of the 7-day window, which can touch 8
+ * Israel calendar days. Worst case: TBI_SIGNUP_VERIFY_MAX_PER_DAY at its maximum (1000) on each
+ * of those 8 days, every mail to a distinct address: 8000 entries of about 96 bytes
+ * (`"<64 hex>":["<24-char ISO time>"],`), about 750 KiB. 2 MiB leaves room; larger = unreadable
+ * (fail closed: limit reached), never reset.
+ */
+export const VERIFY_COUNTERS_MAX_BYTES = 2 * 1024 * 1024;
 const COUNTERS = 'mail-counters.json';
 const SINCE = 'since.json';
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -106,7 +114,9 @@ const absNorm = (p: string) => p.startsWith('/') && !p.includes('\0') && !/\/\.{
  *   TBI_SIGNUP_AUTO_STATE_DIR    required: admin-only dir, not the store dir
  *   TBI_SIGNUP_VERIFY_SINCE      optional ISO time with zone: the verify cut-off
  * Refused (verification stays off, manual approval unchanged): any bad value, and
- * TBI_SIGNUP_AUTO_WEB=included (web requests would be approved without proof anyway).
+ * TBI_SIGNUP_AUTO_WEB=included (web requests would be approved without proof anyway). The admin
+ * wiring refuses the whole sign-up admin for that combination and for AUTO_WEB=verified without
+ * a working verification (admin-wiring.ts, BETA-G1 fix 3).
  */
 export function verifyConfigFromEnv(env: NodeJS.ProcessEnv, storeDir: string): VerifyConfigResult {
   const flag = env.TBI_SIGNUP_VERIFY;
@@ -202,7 +212,11 @@ class Unreadable extends Error {}
  * null = no such file. Throws Unreadable on anything but a small regular JSON file; with
  * `object`, also on a file that holds null or any other non-object.
  */
-async function readJson<T>(path: string, object = false): Promise<T | null> {
+async function readJson<T>(
+  path: string,
+  object = false,
+  maxBytes = STATE_MAX_BYTES,
+): Promise<T | null> {
   let fh;
   try {
     fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -212,7 +226,7 @@ async function readJson<T>(path: string, object = false): Promise<T | null> {
   }
   try {
     const st = await fh.stat();
-    if (!st.isFile() || st.size > STATE_MAX_BYTES) throw new Unreadable('state_unreadable');
+    if (!st.isFile() || st.size > maxBytes) throw new Unreadable('state_unreadable');
     const v = JSON.parse(await fh.readFile('utf8')) as unknown;
     if (object && (v === null || typeof v !== 'object' || Array.isArray(v)))
       throw new Unreadable('state_unreadable');
@@ -301,7 +315,7 @@ export async function peekVerifyState(stateDir: string, id: string): Promise<Ver
 /** S5: verify mails counted on Israel day `day`, read only; null = counters not trusted. */
 export async function peekMailCount(stateDir: string, day: string): Promise<number | null> {
   const path = join(stateDir, VERIFY_DIR, COUNTERS);
-  const c = await readJson<Counters>(path, true).catch(() => undefined);
+  const c = await readJson<Counters>(path, true, VERIFY_COUNTERS_MAX_BYTES).catch(() => undefined);
   if (c === null) return 0;
   if (c === undefined || !validCounters(c) || c.day > day) return null;
   return c.day === day ? c.dayCount : 0;
@@ -417,7 +431,7 @@ export class Verifier {
     if ((await this.checkDirs().catch(() => 'error')) !== null) return null;
     let c: Counters | null;
     try {
-      c = await readJson<Counters>(join(this.vdir, COUNTERS));
+      c = await readJson<Counters>(join(this.vdir, COUNTERS), false, VERIFY_COUNTERS_MAX_BYTES);
     } catch {
       return null;
     }
@@ -522,6 +536,17 @@ export class Verifier {
     return 'ok';
   }
 
+  /**
+   * Verified mode (BETA-G1 fix 1): whether `id` has an approval binding at all. Throws when the
+   * dirs are unsafe or the state cannot be read (the approver then refuses, never skips).
+   */
+  async hasApproval(id: string): Promise<boolean> {
+    if (!REQUEST_ID_RE.test(id)) throw new Error('bad_id');
+    const bad = await this.checkDirs();
+    if (bad) throw new Error('state_unsafe');
+    return !!(await this.readId(id))?.approvedAddr;
+  }
+
   /** The verify cut-off: config, else the persisted first-enable time (written now if absent). */
   private async cutoff(): Promise<number> {
     if (this.d.since !== undefined) return this.d.since;
@@ -572,7 +597,7 @@ export class Verifier {
       const counted = await countersLock(async (): Promise<MintOutcome | null> => {
         let c: Counters | null;
         try {
-          c = await readJson<Counters>(join(this.vdir, COUNTERS));
+          c = await readJson<Counters>(join(this.vdir, COUNTERS), false, VERIFY_COUNTERS_MAX_BYTES);
         } catch {
           return 'limit_unreadable';
         }
@@ -661,7 +686,11 @@ export class Verifier {
    */
   private refund(addr: string, at: string): Promise<void> {
     return countersLock(async () => {
-      const c = await readJson<Counters>(join(this.vdir, COUNTERS));
+      const c = await readJson<Counters>(
+        join(this.vdir, COUNTERS),
+        false,
+        VERIFY_COUNTERS_MAX_BYTES,
+      );
       if (!validCounters(c)) return;
       const mine = c.addrs[addr] ?? [];
       const i = mine.lastIndexOf(at);
@@ -835,15 +864,20 @@ export class Verifier {
       }
     }
     await countersLock(async () => {
-      const c = await readJson<Counters>(join(this.vdir, COUNTERS)).catch(() => null);
+      const c = await readJson<Counters>(
+        join(this.vdir, COUNTERS),
+        false,
+        VERIFY_COUNTERS_MAX_BYTES,
+      ).catch(() => null);
       if (!validCounters(c)) return;
       const addrs: Record<string, string[]> = {};
       for (const [h, l] of Object.entries(c.addrs)) {
         const keep = l.filter((x) => t - Date.parse(x) < VERIFY_ADDRESS_WINDOW_MS);
         if (keep.length > 0) addrs[h] = keep;
       }
-      if (Object.keys(addrs).length !== Object.keys(c.addrs).length)
-        await writeJson(this.vdir, COUNTERS, { ...c, addrs });
+      // Any expired entry (also one of an address that keeps newer ones) shrinks the file.
+      const n = (x: Record<string, string[]>) => Object.values(x).reduce((m, l) => m + l.length, 0);
+      if (n(addrs) !== n(c.addrs)) await writeJson(this.vdir, COUNTERS, { ...c, addrs });
     }).catch((e: unknown) => {
       this.logHourly(`signup: purge unverified counters not expired (${errorClass(e)})`);
     });

@@ -406,7 +406,7 @@ describe('flags off: behaviour and record bytes unchanged', () => {
     expect(on!.verifier).not.toBeNull();
     expect(on!.auto).not.toBeNull();
     const off = await signupWiringFromEnv(
-      { ...base, TBI_SIGNUP_SITE_URL: 'http://site.example.com' },
+      { ...base, TBI_SIGNUP_AUTO_WEB: 'excluded', TBI_SIGNUP_SITE_URL: 'http://site.example.com' },
       {} as AdminSpool,
       io,
     );
@@ -414,6 +414,14 @@ describe('flags off: behaviour and record bytes unchanged', () => {
     expect(logs.filter((l) => /verification off/.test(l))).toEqual([
       'signup: email verification off (config: TBI_SIGNUP_SITE_URL must be an https origin)',
     ]);
+    // G1 fix 3: with AUTO_WEB=verified the same bad setting refuses the sign-up admin wiring.
+    expect(
+      await signupWiringFromEnv(
+        { ...base, TBI_SIGNUP_SITE_URL: 'http://site.example.com' },
+        {} as AdminSpool,
+        io,
+      ),
+    ).toBeNull();
   });
   it('AUTO_WEB=verified without TBI_SIGNUP_VERIFY never approves anyone (any origin)', async () => {
     const r = await rig({ verify: false });
@@ -937,10 +945,12 @@ describe('review findings (slice 1 fix-up)', () => {
     });
     expect(r.logs).toContain('signup: approval mail refused (addr_changed)');
     expect(r.logs).toContain('signup: approval mail refused (unbound)');
-    // The owner looks at the request and resends: the current address is bound and mailed.
+    // The owner looks at the request and resends: with no admin binding the record's "added"
+    // is not trusted, so the account request runs first (G1 fix 1), then the address is bound
+    // and mailed.
     expect(await owner.resend(b)).toMatchObject({ ok: true });
     expect(r.approvalTo.at(-1)).toEqual({ email: 'tester6@example.com', name: '' });
-    expect(r.submitted).toEqual(['tester5@example.com']);
+    expect(r.submitted).toEqual(['tester5@example.com', 'tester6@example.com']);
   });
 
   it('2e: other modes unchanged: the forged queued record is drained, the name is kept', async () => {
@@ -1024,7 +1034,7 @@ describe('review findings (slice 1 fix-up)', () => {
     expect(await r.w.store.deleteNow(id)).toBe('deleted');
   });
 
-  it('6: AUTO_WEB=verified without TBI_SIGNUP_VERIFY: one warning line', async () => {
+  it('6: AUTO_WEB=verified without TBI_SIGNUP_VERIFY: refused (G1 fix 3), one class line', async () => {
     const root = newRoot();
     const sd = join(root, 's');
     mkdirSync(sd, { mode: 0o700 });
@@ -1056,9 +1066,9 @@ describe('review findings (slice 1 fix-up)', () => {
         autoActor: () => null,
       },
     );
-    expect(w!.verifier).toBeNull();
+    expect(w).toBeNull();
     expect(logs.filter((l) => /verified/.test(l))).toEqual([
-      'signup: warning auto-approve web=verified without email verification; nothing is auto-approved',
+      'signup: admin routes disabled (config: TBI_SIGNUP_AUTO_WEB=verified needs TBI_SIGNUP_VERIFY=1 with valid settings)',
     ]);
   });
 

@@ -566,6 +566,7 @@ export const SIGNUP_ERRORS = [
   'email_failed',
   'not_found',
   'mail_cap',
+  'unbound_state',
 ] as const;
 export type SignupError = (typeof SIGNUP_ERRORS)[number];
 
