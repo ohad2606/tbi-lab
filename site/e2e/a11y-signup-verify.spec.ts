@@ -437,6 +437,87 @@ for (const { lang, dir } of [
       expect(log.verify).toEqual([{ token: TOKEN }]);
     });
 
+    test('after Back, a resend still pending does not swallow the next one', async ({ page }) => {
+      await stub(page, {
+        verify: [
+          [410, {}],
+          [410, {}],
+        ],
+      });
+      let posts = 0;
+      await page.route(/\/signup\/resend$/, (r) => {
+        if (posts++ === 0) return; // the first one never answers
+        return r.fulfill({ json: { ok: true } });
+      });
+      await page.goto(`/${lang}/signup/`);
+      const askForLink = async () => {
+        await page.evaluate((t) => (location.hash = `verify=${t}`), TOKEN);
+        await page.locator('#vf-button').click();
+        await expect(page.locator('#vf-result')).toBeFocused();
+        await page.locator('#vf-email').fill('dana@example.com');
+        await page.locator('#vf-resend-button').focus();
+        await page.keyboard.press('Enter');
+      };
+      await askForLink();
+      await expect.poll(() => posts).toBe(1);
+      await page.goBack();
+      await expect(page.locator('#vf')).toBeHidden();
+      await askForLink();
+      await expect(page.locator('#vf-result-h')).toHaveText((await msg(page, 'resultSentH'))!);
+      await expect(page.locator('#vf-result')).toBeFocused();
+      expect(posts).toBe(2);
+    });
+
+    test('Back to the skip-link entry puts focus on the heading, in view', async ({ page }) => {
+      await stub(page);
+      await page.setViewportSize({ width: 1024, height: 400 });
+      await page.goto(`/${lang}/signup/`);
+      await page.locator('a.skip').focus();
+      await page.keyboard.press('Enter');
+      await expect(page).toHaveURL(`${ORIGIN}/${lang}/signup/#main`);
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.evaluate((t) => (location.hash = `verify=${t}`), TOKEN);
+      const h1 = page.getByRole('heading', { level: 1 });
+      await expect(h1).toBeFocused();
+      await page.goBack();
+      await expect(page).toHaveURL(`${ORIGIN}/${lang}/signup/#main`);
+      await expect(page.locator('#signup-form')).toBeVisible();
+      await page.waitForTimeout(300); // the browser's own fragment and scroll handling is over
+      await expect(h1).toBeFocused();
+      await expect(h1).toBeInViewport({ ratio: 1 });
+      expect(await h1.evaluate((e) => getComputedStyle(e).outlineStyle)).not.toBe('none');
+      await page.keyboard.press('Tab');
+      await expect(page.locator('#su-name')).toBeFocused();
+    });
+
+    test('a sign-up that succeeds behind the confirm view: Back shows success without the lead', async ({
+      page,
+    }) => {
+      await stub(page);
+      let answer: (() => Promise<void>) | undefined;
+      await page.route(/\/signup\/web$/, (r) => {
+        answer = () => r.fulfill({ json: { ok: true } });
+      });
+      await page.goto(`/${lang}/signup/`);
+      await page.locator('#su-name').fill('Dana');
+      await page.locator('#su-email').fill('dana@example.com');
+      await page.locator('#su-role').selectOption({ index: 1 });
+      await page.locator('#su-age').check();
+      await page.locator('#su-consent').check();
+      await page.locator('#su-submit').click();
+      await expect.poll(() => !!answer).toBe(true);
+      await page.evaluate((t) => (location.hash = `verify=${t}`), TOKEN);
+      await expect(page.locator('#vf')).toBeVisible();
+      await answer!();
+      await expect(page.locator('#su-success')).not.toHaveAttribute('hidden');
+      await expect(page.locator('#su-intro-extra')).toBeHidden();
+      await page.goBack();
+      await expect(page.locator('#su-success')).toBeVisible();
+      await expect(page.locator('#su-success-h')).toBeFocused();
+      await expect(page.locator('#su-intro-extra')).toBeHidden();
+      await expect(page.locator('#signup-form')).toBeHidden();
+    });
+
     test('the skip link and Back from it keep the confirm view', async ({ page }) => {
       const log = await stub(page);
       await page.goto(url);
@@ -477,9 +558,8 @@ for (const { lang, dir } of [
         await expect(send).toHaveAttribute('aria-disabled', 'true');
         await page.clock.fastForward(21_000);
         await page.clock.runFor(100);
-        await expect(page.locator('#vf-result-p')).toHaveText(
-          (await page.locator('[data-msg="msgNetwork"]').textContent())!,
-        );
+        await expect(page.locator('#vf-result-h')).toHaveText((await msg(page, 'resultNetworkH'))!);
+        await expect(page.locator('#vf-result-p')).toHaveText((await msg(page, 'resendNetwork'))!);
         await expect(page.locator('#vf-result')).toBeFocused();
         await expect(send).toHaveAttribute('aria-disabled', 'false');
         await send.focus();

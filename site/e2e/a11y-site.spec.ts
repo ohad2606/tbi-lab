@@ -70,6 +70,24 @@ for (const { lang, dir } of LANGS) {
     }
   });
 
+  test(`${lang}: footer sign-in link shows a space before the hint`, async ({ page }) => {
+    for (const width of [1024, 320]) {
+      await page.setViewportSize({ width, height: 640 });
+      await page.goto(`/${lang}/`);
+      // The gap between the label's text and the hint box, measured on screen (same line or wrapped).
+      const g = await page.locator('footer a.signin').evaluate((a, rtl) => {
+        const range = document.createRange();
+        range.selectNodeContents(a.firstChild!);
+        const label = range.getBoundingClientRect();
+        const hint = a.querySelector('.hint')!.getBoundingClientRect();
+        const sameLine = hint.top < label.bottom - 2;
+        return { sameLine, gap: rtl ? label.left - hint.right : hint.left - label.right };
+      }, lang === 'he');
+      if (g.sameLine) expect(g.gap, String(width)).toBeGreaterThanOrEqual(2);
+      else expect(width).toBe(320);
+    }
+  });
+
   test(`${lang}: reflow at 320px without horizontal scroll`, async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 640 });
     for (const p of PAGES) {

@@ -217,6 +217,23 @@ describe.each(['he', 'en'])('signupVerify copy: %s', (l) => {
   });
 });
 
+describe('signupVerify copy: success and no-answer texts', () => {
+  it('HE success: we activate the access, as on the alpha and FAQ pages', () => {
+    expect(content.he.signupVerify.successP[1]).toContain(
+      'אחרי האישור נפעיל לכם את הגישה ונשלח מייל כשאפשר להיכנס.',
+    );
+    expect(JSON.stringify(content.he)).not.toContain('נפתח לכם גישה');
+  });
+  it('a request with no answer does not claim the server was not reached', () => {
+    for (const l of ['he', 'en']) {
+      const { signup, signupVerify: v } = content[l];
+      for (const text of [signup.msgNetwork, v.resultNetworkH, v.resultNetworkP, v.resendNetwork])
+        expect(text).not.toMatch(/could not reach|לא הצלחנו להתחבר/i);
+      expect(v.resendNetwork).toBeTruthy();
+    }
+  });
+});
+
 describe('signupVerify copy: scope', () => {
   it('changes exactly the home, alpha, FAQ, accessibility and sign-up pages and the module', () => {
     const changed = walk(on)

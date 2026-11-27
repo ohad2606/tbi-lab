@@ -28,6 +28,7 @@ export function readVerifyToken(hash) {
 /** @returns {Promise<'received'|'expired'|'invalid'|'rate'|'network'|'unavailable'>} */
 export async function postVerify(fetchFn, base, token) {
   if (!VERIFY_TOKEN_SHAPE.test(token)) return 'invalid';
+  const signal = globalThis.AbortSignal?.timeout?.(VERIFY_TIMEOUT_MS);
   let res;
   try {
     res = await fetchFn(`${base}/verify`, {
@@ -36,7 +37,7 @@ export async function postVerify(fetchFn, base, token) {
       cache: 'no-store',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({ token }),
-      signal: globalThis.AbortSignal?.timeout?.(VERIFY_TIMEOUT_MS),
+      signal,
     });
   } catch {
     return 'network';
@@ -48,7 +49,8 @@ export async function postVerify(fetchFn, base, token) {
   try {
     return (await res.json())?.ok === true ? 'received' : 'unavailable';
   } catch {
-    return 'unavailable';
+    // The time limit also covers reading the body: that is "no answer", not an answer we cannot use.
+    return signal?.aborted ? 'network' : 'unavailable';
   }
 }
 
@@ -175,6 +177,7 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
     token = found;
     run++;
     busy = false;
+    resender = null; // a resend still pending from an earlier view must not swallow the next one
     setBusy(button, false);
     setBusy($('vf-resend-button'), false);
     progress('');
@@ -204,12 +207,22 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
     doc.title = before.title;
     $('su-h1').replaceChildren(...before.heading);
     for (const [id, hidden] of before.hidden) $(id).hidden = hidden;
-    focusHeading();
+    // The sign-up may have succeeded behind this view: the lead does not belong over the success text.
+    const done = !$('su-success').hidden;
+    if (done) $('su-intro-extra').hidden = true;
+    // After the browser's own handling of the history entry (a `#main` entry moves focus and scroll there).
+    const mine = run;
+    win.setTimeout(() => {
+      if (mine !== run) return;
+      const target = done ? $('su-success-h') : focusableHeading();
+      target.focus();
+      target.scrollIntoView({ block: 'nearest' });
+    }, 60);
   }
 
-  function focusHeading() {
+  function focusableHeading() {
     $('su-h1').setAttribute('tabindex', '-1');
-    $('su-h1').focus();
+    return $('su-h1');
   }
 
   button.addEventListener('click', async () => {
@@ -261,9 +274,17 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
       form.hidden = true;
       return outcome('Sent');
     }
-    // The sign-up texts for these two talk about the sign-up form, so the resend has its own.
-    const own = { [MSG.unavailable]: 'resendUnavailable', [MSG.invalid]: 'resendInvalid' }[r.msg];
-    result('resultFailH', own ? text(own) : (message(r.msg) ?? message(MSG.generic)));
+    // The sign-up texts for these talk about the sign-up form, so the resend has its own.
+    const own = {
+      [MSG.unavailable]: 'resendUnavailable',
+      [MSG.invalid]: 'resendInvalid',
+      [MSG.network]: 'resendNetwork',
+    }[r.msg];
+    // No answer: the request may have arrived, so the heading must not say it was not sent.
+    result(
+      r.msg === MSG.network ? 'resultNetworkH' : 'resultFailH',
+      own ? text(own) : (message(r.msg) ?? message(MSG.generic)),
+    );
   });
 
   input.addEventListener('input', () => {
@@ -274,7 +295,7 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
 
   // The link opened in a tab that already shows the page changes only the fragment: no reload, so listen.
   win.addEventListener('hashchange', () => {
-    if (open()) focusHeading();
+    if (open()) focusableHeading().focus();
   });
   // Back to a history entry older than the link's must not keep the confirm view. Later entries (the skip link)
   // and returns from them stay. A link that loaded the page has no older entry in this document.

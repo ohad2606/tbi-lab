@@ -129,6 +129,7 @@ function renderVerifyView(lang, f, v) {
     ['resendSending', esc(v.resendSending)],
     ['resendUnavailable', esc(v.resendUnavailable)],
     ['resendInvalid', esc(v.resendInvalid)],
+    ['resendNetwork', esc(v.resendNetwork)],
   ]
     .map(([k, html]) => `<span data-vf="${k}">${html}</span>`)
     .join('\n');
