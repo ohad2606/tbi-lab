@@ -227,6 +227,44 @@ export async function autoPauseCheck(
   }
 }
 
+/**
+ * Whether applicant approval mail must wait (the queued drain and automatic approval; never the
+ * owner's own approve / resend). Reads `<stateDir>/auto-approve.paused` only from an admin-only
+ * state dir: a dir that is relative, fails autoStateDirCheck, or is (inside) the store dir holds
+ * the mail, as does any lstat error other than ENOENT. Logs one class line per hour per class.
+ */
+export function approvalHold(d: {
+  stateDir: string;
+  storeDir: string;
+  now?: () => number;
+  log?: (line: string) => void;
+  /** Test hook: replaces lstat for the pause file. */
+  stat?: (p: string) => Promise<unknown>;
+}): () => Promise<boolean> {
+  const logged = new Map<string, number>();
+  const held = (why: 'state_dir_unsafe' | 'pause_check_failed'): true => {
+    const t = (d.now ?? Date.now)();
+    const last = logged.get(why);
+    if (last === undefined || t < last || t - last >= AUTO_UNREADABLE_LOG_MS) {
+      logged.set(why, t);
+      d.log?.(`signup: approval mail held (${why})`);
+    }
+    return true;
+  };
+  return async () => {
+    if (!isAbsolute(d.stateDir) || (await autoStateDirCheck(d.stateDir)))
+      return held('state_dir_unsafe');
+    try {
+      const [state, store] = await Promise.all([realpath(d.stateDir), realpath(d.storeDir)]);
+      if (state === store || state.startsWith(`${store}/`)) return held('state_dir_unsafe');
+    } catch {
+      return held('state_dir_unsafe');
+    }
+    const r = await autoPauseCheck(join(d.stateDir, AUTO_PAUSE_FILE), d.stat);
+    return r.error ? held('pause_check_failed') : r.paused;
+  };
+}
+
 interface DirStat {
   uid: number;
   mode: number;

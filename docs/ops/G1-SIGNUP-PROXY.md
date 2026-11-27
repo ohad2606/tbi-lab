@@ -12,11 +12,11 @@ Intake side: `docs/plans/BETA-G1-WEB-INTAKE.md`.
 
 | Area | Behaviour |
 | --- | --- |
-| Routing | Only the exact paths `/signup/form-token` and `/signup/web` (query allowed) go to the intake. Every method on them is proxied: the intake answers 405 to methods it does not accept, and `OPTIONS` must pass for the CORS preflight. The match uses the **raw** request URI (`expression {http.request.uri}.matches(...)`), because in Caddy 2.6 `path` ignores case and `path`/`path_regexp` match a cleaned, decoded path (`/SIGNUP/WEB`, `/signup%2Fweb`, `/signup/%77eb`, `/signup//web`, `/x/../signup/web` would all match). The signed `/signup` route is **not** routed. Everything else is `file_server` or 404. |
+| Routing | Only the exact paths `/signup/form-token`, `/signup/web`, `/signup/verify` and `/signup/resend` (query allowed) go to the intake (the intake answers 404 on the last two unless `TBI_SIGNUP_VERIFY=1`). Every method on them is proxied: the intake answers 405 to methods it does not accept, and `OPTIONS` must pass for the CORS preflight. The match uses the **raw** request URI (`expression {http.request.uri}.matches(...)`), because in Caddy 2.6 `path` ignores case and `path`/`path_regexp` match a cleaned, decoded path (`/SIGNUP/WEB`, `/signup%2Fweb`, `/signup/%77eb`, `/signup//web`, `/x/../signup/web` would all match). The signed `/signup` route is **not** routed. Everything else is `file_server` or 404. |
 | Host | The site block matches only `SITE_HOST`. If no site matches the Host, Caddy 2.6 sends an empty 200 and routes nothing (Caddy's default; we add no catch-all because the live config may hold other sites). |
 | Client address | All identity headers are removed first (`request_header -X-Tbi-*`, `-X-Forwarded-*`, `-Forwarded`, `-X-Real-Ip`, `-True-Client-Ip`, `-CF-Connecting-Ip`, `-Cookie`, `-SOURCE_HEADER`). Then `header_up SOURCE_HEADER {remote_host}` sets the TCP peer. Caddy's own `X-Forwarded-For/Proto/Host` are removed with `header_up -...`. The delete is not a wildcard inside `header_up`, because there deletes run after sets and would remove the address we set. The test checks the header arrives as `127.0.0.1`. `SOURCE_HEADER` must equal the intake's `TBI_SIGNUP_SOURCE_HEADER` (for example `X-Tbi-Client-Ip`). |
 | Passed unchanged | `Origin`, `Referer`, `Content-Type` (the intake checks them). |
-| Size and time | `request_body max_size 8KB` on the two proxied paths only (Caddy answers 413). The intake's 4 KiB cap is the one that counts: a chunked body streams up to 8 KB and is then aborted. Server limits: `read_header`/`read_body` 10 s, `write` 30 s, `idle` 60 s, `max_header_size` 16 KB. Proxy: `dial_timeout` 3 s, `response_header_timeout` 10 s, `lb_try_duration 0s` (no retries, including POST). |
+| Size and time | `request_body max_size 8KB` on the four proxied paths only (Caddy answers 413). The intake's 4 KiB cap is the one that counts: a chunked body streams up to 8 KB and is then aborted. Server limits: `read_header`/`read_body` 10 s, `write` 30 s, `idle` 60 s, `max_header_size` 16 KB. Proxy: `dial_timeout` 3 s, `response_header_timeout` 10 s, `lb_try_duration 0s` (no retries, including POST). |
 | Headers (responses from the site block, also its errors) | CSP = `SITE_CSP` (with `frame-ancestors 'none'`), `X-Content-Type-Options nosniff`, `Referrer-Policy strict-origin-when-cross-origin`, a minimal `Permissions-Policy`, `Server` removed. HSTS (`max-age=31536000`, no `preload`) only in the `tls` variant. Not covered: Caddy's own 400/431 sent before any handler runs, and the empty 200 for an unmatched Host. |
 | Errors | `handle_errors` answers `"<code> <standard text>"`, e.g. `502 Bad Gateway` when the intake is down. It never shows the upstream address. The static site keeps working. |
 | Logging | No `log` directive, so no access logs. If logging is ever added, do not log `Origin`, `Referer`, client addresses or bodies. |
@@ -34,9 +34,10 @@ Intake side: `docs/plans/BETA-G1-WEB-INTAKE.md`.
 
 ## Kill switch (two layers)
 
-1. **Proxy rollback config:** the same template rendered with `proxy: false` (static only). Both paths then get 404
-   from Caddy and the intake gets nothing. A test covers this.
-2. **Intake:** `TBI_SIGNUP_WEB=0` (or unset). Both paths get 404 from the intake.
+1. **Proxy rollback config:** the same template rendered with `proxy: false` (static only). `/signup/form-token`,
+   `/signup/web`, `/signup/verify` and `/signup/resend` then get 404 from Caddy and the intake gets nothing. A test
+   covers this.
+2. **Intake:** `TBI_SIGNUP_WEB=0` (or unset). All four paths get 404 from the intake.
 
 ## Tests
 
@@ -160,7 +161,7 @@ options block, which must come first.
 
 8. **RED:** smoke checks from outside: `curl -sI https://<SITE_HOST>/he/` gives 200 with the CSP, nosniff and HSTS
    headers. `curl -s https://<SITE_HOST>/signup/form-token -H 'Origin: https://<SITE_HOST>'` gives 200 JSON
-   (with `TBI_SIGNUP_WEB=1`) or 404 (off). `/signup`, `/signup/web/` and `/SIGNUP/WEB` give 404.
+   (with `TBI_SIGNUP_WEB=1`) or 404 (off). `/signup`, `/signup/web/` and `/SIGNUP/WEB` give 404. `/signup/verify` and `/signup/resend` are routed too; with `TBI_SIGNUP_VERIFY` unset the intake answers 404 for them.
 9. **RED (rollback):** as the owner of the config directory, copy the backup from step 5, or the rollback config,
    to the staged path. Copy with `cp -p`; never move the backup, so it is still there afterwards. The staged file must
    have the live file's owner and mode: check the two `stat` lines before you validate or move, and if they differ,
@@ -179,5 +180,5 @@ options block, which must come first.
    Or from the rollback config (single-site render, or the merged file): use the block of step 6 with
    `reviewed` set to it.
 
-   Then run 7a, 7b and 7c, each only after the previous one exited 0. Smoke checks: `/he/` gives 200, and both intake
+   Then run 7a, 7b and 7c, each only after the previous one exited 0. Smoke checks: `/he/` gives 200, and all four intake
    paths give 404.
