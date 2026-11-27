@@ -23,9 +23,10 @@ Do the steps in order. Steps 1–3 are in the admin app; steps 4–6 are manual.
    whether the row is marked **Account added**.
 
 If no request matches, it was already removed by retention (not approved: 90 days; every request:
-at most 365 days) or never reached the store. Continue with step 4 anyway. If the screen says
-sign-up requests are not available, the sign-up routes are off or unreachable: nothing was
-checked, so do not report the person as deleted.
+at most 365 days; with email verification and `TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS` set, an
+unconfirmed web request after that many days) or never reached the store. Continue with step 4
+anyway. If the screen says sign-up requests are not available, the sign-up routes are off or
+unreachable: nothing was checked, so do not report the person as deleted.
 
 ### Step 2 – delete the request now
 
@@ -36,7 +37,7 @@ and the screen says what happened, naming the request ID only.
 
 | Answer (what the screen says) | Meaning |
 |---|---|
-| 200 `{"deleted":true}` ("deleted") | Gone: the record, its notification markers, the address marker and any leftover temporary file. One audit line `<time> <id> delete ok` was written (no personal data). |
+| 200 `{"deleted":true}` ("deleted") | Gone: the record, its notification, web, confirm and resend markers, the address marker, any leftover temporary file and, while email verification is on, the admin's verify state for it (see section 2). One audit line `<time> <id> delete ok` was written (no personal data). |
 | 200 `{"deleted":true,"note":"already_deleted"}` ("already gone") | It was deleted before (the audit log says so). Nothing changed. |
 | 404 `not_found` ("already gone") | No such request (wrong id, or retention already removed it). |
 | 403 ("not deleted") | Not the owner, or the request was not same-origin JSON (reload the admin app and try again). |
@@ -80,7 +81,8 @@ directly and keeps no queue.
 ### Step 5 – the Telegram alert (manual)
 
 The owner alert for a new request carries the person's **name and role** (never the address). Delete
-that message in the owner's Telegram chat by hand.
+that message in the owner's Telegram chat by hand. With `TBI_SIGNUP_NOTIFY=summary` on the intake there
+are no per-request alerts (the summary and alerts hold counts only); older alerts may still be there.
 
 ### Step 6 – the Google Form and its spreadsheet (manual)
 
@@ -98,11 +100,14 @@ status for that row; delete that row too. Do not delete or sort response rows wh
 | Pending store (`TBI_SIGNUP_DIR`): `<id>.json` | name, address, role, language, consent, status | the screen's Delete (`DELETE /signups/<id>`, step 2), or retention (90 days not approved / 365 days at most) |
 | Pending store: `<sha256 of address>.mark` | a hash of the address (de-duplication) | step 2 (the marker pointing to that id), retention purge |
 | Pending store: `<id>.notified`, `<id>.notifyq`, `audit.log` | no personal data (id, action, outcome) | step 2 removes the markers; the audit log is kept |
+| Pending store: `<id>.web`, `<id>.vq-<hex>`, `<id>.rq` | empty markers (web origin, button pressed, new link asked) | step 2; the admin sweep; retention purge |
 | Account spool (`<TBI_ADMIN_DIR>/spool`, results) | the address while an `add` request waits for the helper | the helper deletes the request once processed; results hold a masked address only |
 | Tester registry and access view (root helper) | the account (address, display name, sign-in times), a keyed tag of the address | step 3 (disable); erasure is an operator action (owner) |
 | Mail queue and ledger (mailer, when deployed) | address and name of a queued approval email | sent entries are removed; a waiting one by the operator (step 4) |
-| Mail provider | the sent approval email (provider's own retention) | the provider's console, manual |
-| Telegram chat | name and role in the new-request alert | step 5, manual |
+| Admin state, email verification: `<STATE_DIR>/verify/<id>.json` | token hashes, address hashes, times | removed with the request (step 2 or retention) while verification is on. **With verification switched off it stays** until it is on again or an operator removes it |
+| Admin state, email verification: `<STATE_DIR>/verify/mail-counters.json` | address hash and time of each confirmation mail | **not removed by step 2.** Counted for 7 days, then removed at the next confirmation mail or hourly unconfirmed purge; if neither runs, it stays until an operator removes it |
+| Mail provider | the confirmation and approval emails that were sent (provider's own retention) | the provider's console, manual |
+| Telegram chat | name and role in the new-request alert (not in summary mode) | step 5, manual |
 | Google Form + response spreadsheet | every answer | step 6, manual |
 | Backups (host and helper backups) | copies of the above | **rotate out on their own schedule; never edited.** A deleted record disappears from backups when the last backup holding it expires. |
 
@@ -139,9 +144,11 @@ event at the cap, further ones that day are refused without writing.
   others can access is refused (the counters stay off, one log line, the service runs). Atomic
   writes; days older than 400 are pruned; an unreadable file is renamed aside
   (`funnel-counters.json.corrupt-<ms>`) and logged, never silently reset.
-- Settings, per service: `TBI_FUNNEL_COUNTERS=1` and `TBI_FUNNEL_DIR` (absolute). The intake and the
-  admin service run as different users, so each gets its own directory (one file each). Off by
-  default; a bad setting turns only the counters off, never the sign-up.
+- Settings, per service: `TBI_FUNNEL_COUNTERS=1` and `TBI_FUNNEL_DIR` (absolute). Give the intake and
+  the admin service each its own directory (one file each). The sign-up store needs both services to
+  run as the **same user** today, so directory modes do not separate them: the intake's sandbox must
+  (`SIGNUP-AUTO-APPROVE-RUNBOOK.md`, precondition 5). Off by default; a bad setting turns only the
+  counters off, never the sign-up.
 - There is no HTTP endpoint. `FunnelCounters.snapshot()` returns `{v:1, days:{<day>:{<event>:n}}}`
   for an operator or a later owner view.
 - Enabling the counters on Alpha is a production change: it needs the owner's approval.

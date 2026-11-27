@@ -1,8 +1,18 @@
 # Sign-up auto-approve (BETA-G1): owner runbook
 
 Design and behaviour: `docs/plans/BETA-G1-AUTO-APPROVE.md`. This page lists what the owner does. **Nothing here has
-been done on any host.** Every step changes a live service (manual DEV-Lab/Alpha change: RED zone), so each one runs only in an
+been done on any host.** The commands, unit drop-ins and expected log lines on this page were written from the code
+and its tests; none of them has been run on a host. Every step changes a live service (manual DEV-Lab/Alpha change: RED zone), so each one runs only in an
 interactive session with the owner's approval.
+
+There are two ways to use automatic approval:
+
+- **Email-verified mode** (`TBI_SIGNUP_AUTO_WEB=verified`): a person signs up on the site, confirms the address with a
+  link, and is then approved automatically. This is the mode for public web sign-ups. Read the general sections
+  (prerequisites, pause, roll back) and then [Email-verified mode](#email-verified-mode).
+- **Without verification** (`excluded`, the default, or `included`): `excluded` approves only requests that did not
+  come from the web page. `included` approves web requests **without any proof of the address**. Do not use
+  `included` on a public site.
 
 `<N>` is the instance name (`tbi` for the dev-lab instance of `deploy/dev-lab/s8/install.sh`), so the unit is
 `<N>-admin.service` and the control-state directory is `/var/lib/<N>-admin-auto`. Host names, addresses and
@@ -32,7 +42,8 @@ other private details are kept in the private ops repository, not here.
    principal not recorded; manual only)`.
 3. The owner has chosen the daily cap (open question Q2 in the design note): a whole number from 1 to 1000, at or
    below the mail provider's daily allowance and the account cap headroom. **No value is chosen in this repo.**
-4. Public copy (G5) and the legal note (G4) match automatic approval.
+4. Public copy (G5) and the legal note (G4) match automatic approval (and, in email-verified mode, the
+   confirmation mail and the deletion of unconfirmed requests).
 5. **Hard precondition for every flag on this page: isolate the intake.** Today the admin and intake services must
    run as the **same user**: the sign-up store is 0700 and both write 0600 files in it. File modes then do not
    separate them; the intake unit's sandbox must. Do not set a flag until all of this is done:
@@ -40,7 +51,8 @@ other private details are kept in the private ops repository, not here.
    - The intake unit has `ProtectSystem=strict`; its `ReadWritePaths` holds only the sign-up store and, if
      funnel counters are on, the intake's own `TBI_FUNNEL_DIR`.
    - Its `InaccessiblePaths` covers `/var/lib/<N>-admin-auto` (control state, verification state, mail-gate
-     state), the verification state directory and key file wherever they are configured, the admin mail key file
+     state), the verification state directory and key file wherever they are configured (for a key passed with
+     `LoadCredential`: the source file **and** the admin unit's credential directory), the admin mail key file
      (`TBI_SIGNUP_RESEND_KEY_FILE`), the admin spool, results and view directories, the admin socket directory,
      and the admin configuration, log and funnel directories the intake does not need. These paths must exist
      before the intake starts: an optional (`-` prefixed) path that is absent at start is not masked.
@@ -94,26 +106,236 @@ If the log says `auto-approve off (config: ...)`, the flag or cap value is wrong
 If it says `auto-approve not started (state dir unsafe: <reason>); manual only`, fix the directory, then
 **restart**. Fixing the directory alone does not start auto-approve after a refused start.
 
-## Mail caps and email verification (release notes, S4a)
+## Email-verified mode
 
-Changes an operator must know before this version is installed:
+**Status: off by default, not deployed, never run on a host.** Everything below is from the code on this branch and
+its tests (fake mail sender, temporary directories, loopback).
 
-- **Verified mode (`TBI_SIGNUP_AUTO_WEB=verified`) now requires the three mail caps**
-  `TBI_SIGNUP_MAIL_MAX_PER_HOUR`, `TBI_SIGNUP_MAIL_MAX_PER_DAY` and `TBI_SIGNUP_MAIL_MAX_PER_30D` (hour <= day <=
-  30 days; the day cap not below `TBI_SIGNUP_VERIFY_MAX_PER_DAY`, 50 when unset), plus
-  `TBI_SIGNUP_AUTO_STATE_DIR`. No value is chosen in this repo. Without the caps: auto-approve is off
-  (`auto-approve off (config: TBI_SIGNUP_AUTO_WEB=verified needs the mail caps)`), **no verification mail is
-  sent** (`verify mails held (mail_caps_missing)`), resend requests wait, and the unverified purge does not run.
-  Links this version already sent can still be confirmed, and approval mails still go only to the address the account was
-  added for (`approval mail refused (addr_changed)`). Approval mails you send by hand are then not capped.
-- **Confirmation links sent by an earlier version stop working** (`verify rejected (key_retired)`). The person
-  asks for a new link; the usual resend limits apply.
-- **The unverified purge** (`TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS`, off when unset) runs at most hourly and
-  counts one hour ahead, so a request can be removed **up to 1 hour before** the full number of days. It counts
-  from the time the request was created, so a request that never got a link (for example behind the daily verify
-  cap) is removed too (`purge unverified never mailed N`). `purge unverified kept (<reason>) N` or `failed
-  (<class>) N` means requests were left in place; check the state directory and the store. A failed one is tried
-  again at the next run.
+### How it works
+
+1. The intake stores the web request as `pending`, as before.
+2. The admin service (a sweep about every 60 s) sends a confirmation mail with a link to
+   `<site>/<lang>/signup/#verify=<token>`. The token is valid for 24 hours and works once.
+3. The person opens the link and presses the button on the page. The intake only writes an empty marker file.
+4. The next admin sweep checks the marker against its own state and records the confirmation.
+5. Auto-approve claims a slot of today's cap and approves the request: the account is added, then the approval mail is
+   sent to the confirmed address (generic greeting, no sign-up name). Over the cap the request waits for a later day.
+
+Requests that did not come from the web page are never sent a confirmation, so in this mode they are **never**
+approved automatically.
+
+Quiet hours: confirmation mails are sent at any hour. The **approval** mail is held during the admin unit's quiet
+hours (`TBI_SIGNUP_QUIET`, default 23:00-08:00 Israel time) and sent when they end. `TBI_SIGNUP_QUIET=off` on the
+admin unit sends it at once; it does not change the intake's own quiet hours.
+
+### More preconditions
+
+All of "Before enabling" above, and:
+
+1. **The admin service can send mail.** The unit template in this repository has no network
+   (`PrivateNetwork=yes`, `RestrictAddressFamilies=AF_UNIX`, `IPAddressDeny=any`), and its writable paths do not
+   include the sign-up store. Mail egress, store access, the mail key and the other sign-up settings are not in the
+   template; they must come from the deployment and be reviewed there. Check that an approval mail sent from the admin
+   app arrives. **A failed confirmation mail is not retried:** it still uses a slot, and the person has to ask for a
+   new link.
+2. **The published site has the confirmation view.** Today `node site/build.mjs <dir>` does not include it; only the
+   preview option `--signup-verify` does. Without it the link in the mail opens the ordinary sign-up page and nothing
+   can be confirmed. Enabling it in a published build needs a reviewed change.
+3. The proxy routes `/signup/verify` and `/signup/resend` to the intake (they are in
+   `site/deploy/Caddyfile.signup.template`).
+4. The mail caps are chosen, at or below what the mail provider allows. Each new tester costs at least two mails
+   (confirmation and approval), plus new links.
+
+### Values
+
+**None of these values is approved.** The numbers are proposals; the code has no default for them except where the
+"Unset" column says so.
+
+| Setting (admin unit) | Placeholder | Proposed | Allowed | Unset |
+|---|---|---|---|---|
+| `TBI_SIGNUP_AUTO_DAILY_CAP` | `<AUTO_CAP>` | 40 | 1..1000 | auto-approve off |
+| `TBI_SIGNUP_VERIFY_MAX_PER_DAY` | `<VERIFY_PER_DAY>` | 50 | 1..1000 accepted; **keep <= 340** (below) | 50 |
+| `TBI_SIGNUP_MAIL_MAX_PER_HOUR` | `<MAIL_PER_HOUR>` | 30 | 1..1000 | required in verified mode |
+| `TBI_SIGNUP_MAIL_MAX_PER_DAY` | `<MAIL_PER_DAY>` | 95 | 1..10000 | required in verified mode |
+| `TBI_SIGNUP_MAIL_MAX_PER_30D` | `<MAIL_PER_30D>` | 2700 | 1..300000 | required in verified mode |
+| `TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS` | `<UNVERIFIED_DAYS>` | 7 | 1..90 | no early deletion (90 days) |
+| `TBI_SIGNUP_AUTO_CUTOFF_KEEP_S` | `<CUTOFF_KEEP_S>` | not chosen | 0..3600 | every restart resets the cut-off |
+
+Rules checked at start. Breaking one of the first four **disables all sign-up admin routes** (manual approval too),
+with the log line `admin routes disabled (config: ...)`:
+
+- The three mail caps are set together, with hour <= day <= 30 days.
+- The mail caps and the keep window need `TBI_SIGNUP_AUTO_STATE_DIR`, not the store directory (the unit template sets
+  it).
+- `TBI_SIGNUP_VERIFY_MAX_PER_DAY` and `TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS` are allowed only while email
+  verification is configured correctly. They also trigger this when `TBI_SIGNUP_VERIFY` is removed or another verify
+  setting is bad.
+- With the mail caps set, the verify cap (50 when unset) must not exceed the mail day cap.
+- A bad `TBI_SIGNUP_VERIFY*` or `TBI_SIGNUP_SITE_URL` value: `email verification off (config: ...)`.
+  `TBI_SIGNUP_AUTO_WEB=included` together with `TBI_SIGNUP_VERIFY=1` turns verification off, while `included` stays
+  in force and approves web requests without proof.
+
+**Why the verify cap must stay low.** The admin keeps seven days of confirmation-mail records (one address hash and
+time each, about 96 bytes) in `verify/mail-counters.json`, and refuses to read a state file over 256 KB (about 2,730
+entries). A file that grows past it is never read again: no confirmation mail is sent
+(`verify not sent (limit_unreadable)`) until the file is removed. That is about 390 mails a day sustained. Seven
+rolling days can touch eight calendar days, so the safe cap is **340** or less. The code accepts higher values
+without a warning.
+
+Recovery: create the pause file, move `verify/mail-counters.json` out of the state directory (this forgets today's
+count and the per-address limits), lower the cap, restart, then resume.
+
+### The verify key
+
+A file with at least 32 random bytes, as hex or base64url, not readable by "other". Only the admin service gets it.
+It must not be the intake's secret or the mail key. Create it once, as root:
+
+```
+sudo test ! -e /etc/tbi-signup/verify.key && sudo sh -c 'umask 077; openssl rand -hex 32 > /etc/tbi-signup/verify.key'
+sudo chown root:root /etc/tbi-signup/verify.key
+sudo chmod 0400 /etc/tbi-signup/verify.key
+sudo stat -c '%U:%G %a %s' /etc/tbi-signup/verify.key     # expected: root:root 400 65
+```
+
+systemd hands the service a private copy (`LoadCredential` below), so the source file stays root-only. Never print
+the key, put it in an environment variable or copy it into a repository.
+
+**Rotation** (RED zone; the restart also resets the auto-approve cut-off, see Pause and resume):
+
+1. Copy the current key to `/etc/tbi-signup/verify.key.prev` (same owner and mode), then write a new `verify.key`.
+2. Add `LoadCredential=verify.key.prev:/etc/tbi-signup/verify.key.prev` to the drop-in, `daemon-reload`, restart.
+3. After at least 24 hours remove that line and the `.prev` file, `daemon-reload`, restart. The code has no time limit
+   of its own on `.prev`: it is accepted as long as the service can read it.
+
+Replacing the key without `.prev` (for example after a leak) revokes every unused link
+(`verify rejected (key_retired)`). People ask for a new one; the resend limits apply.
+
+### Enable, in this order
+
+Every step is RED zone. Do not leave the public form open between steps: see "Requests that stay manual" below.
+
+1. Pause first: `sudo touch /var/lib/<N>-admin-auto/auto-approve.paused`.
+2. Create the verify key (above).
+3. Create `/etc/systemd/system/<N>-admin.service.d/signup-verify.conf` (root-owned, 0644). Replace **every**
+   placeholder. Keep all these lines in this one file, and remove `auto-approve.conf` if it exists, so that roll back
+   is one step.
+
+   ```
+   [Service]
+   LoadCredential=verify.key:/etc/tbi-signup/verify.key
+   Environment=TBI_SIGNUP_VERIFY=1
+   Environment=TBI_SIGNUP_VERIFY_KEY_FILE=%d/verify.key
+   Environment=TBI_SIGNUP_SITE_URL=https://<SITE_HOST>
+   # Only requests created after this time are mailed (and may be deleted as unconfirmed).
+   Environment=TBI_SIGNUP_VERIFY_SINCE=<ISO_TIME_WITH_ZONE>
+   Environment=TBI_SIGNUP_MAIL_MAX_PER_HOUR=<MAIL_PER_HOUR>
+   Environment=TBI_SIGNUP_MAIL_MAX_PER_DAY=<MAIL_PER_DAY>
+   Environment=TBI_SIGNUP_MAIL_MAX_PER_30D=<MAIL_PER_30D>
+   Environment=TBI_SIGNUP_VERIFY_MAX_PER_DAY=<VERIFY_PER_DAY>
+   Environment=TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS=<UNVERIFIED_DAYS>
+   Environment=TBI_SIGNUP_AUTO_APPROVE=1
+   Environment=TBI_SIGNUP_AUTO_DAILY_CAP=<AUTO_CAP>
+   Environment=TBI_SIGNUP_AUTO_WEB=verified
+   Environment=TBI_SIGNUP_SUMMARY=1
+   ```
+
+4. `sudo systemctl daemon-reload && sudo systemctl restart <N>-admin.service`. Expect `email verification on`,
+   `auto-approve on (daily cap N)`, `summary file on` and `auto-approve paused`. There must be no `off (config`,
+   `routes disabled`, `verify key unusable`, `verify state dir unsafe` or `mail_caps_missing` line. Check that
+   `auto-summary.json` appears in the sign-up store.
+5. Proxy: route the two new paths. Intake unit (it never gets the verify key): add `Environment=TBI_SIGNUP_VERIFY=1`
+   (works only with `TBI_SIGNUP_WEB=1`; otherwise the new paths stay 404 without a message) and, if wanted,
+   `Environment=TBI_SIGNUP_NOTIFY=summary`. Restart the intake.
+6. Resume: `sudo rm /var/lib/<N>-admin-auto/auto-approve.paused`. Wait for `auto-approve cut-off recorded` or
+   `cut-off reset`.
+7. Publish the site with the sign-up page and the confirmation view (precondition 2).
+8. Test with an address you own, from sign-up to signing in, before announcing the page.
+
+### Requests that stay manual
+
+Automatic approval needs both the sign-up **and** the confirmation to be later than the auto-approve cut-off. A
+restart (so also any change of the drop-in), a resume after a pause, and the other resets listed under
+[Pause and resume](#pause-kill-switch-and-resume) move the cut-off to now. After it:
+
+- every request created earlier stays `pending` until you approve it, **also when the person confirms later** and
+  also when it was only waiting for the next day's cap;
+- the person's page and mail do not tell them this.
+
+So after each restart or pause, review the confirmed requests on the admin sign-up screen. The only exception is the
+optional keep window (`TBI_SIGNUP_AUTO_CUTOFF_KEEP_S`, below), which covers short restarts, not pauses.
+
+### What pause stops in this mode
+
+| While `auto-approve.paused` exists | |
+|---|---|
+| Stops | confirmation mails (first mails and new links); automatic approval |
+| Continues | storing sign-ups; recording confirmations; deleting expired and unconfirmed requests; sending queued approval mails; your own approve, reject and resend |
+| Lost | requests for a new link made while paused are dropped; the person has to ask again |
+
+A request that waited for its first mail during a pause is mailed after the resume, but it stays manual (above). A
+long pause can reach the unconfirmed deletion deadline before a mail was ever sent
+(`purge unverified never mailed N`). To stop new web sign-ups altogether, set `TBI_SIGNUP_WEB=0` on the intake and
+restart it.
+
+### What is deleted, and when
+
+| What | When |
+|---|---|
+| Unconfirmed web request (record, markers, address marker, verify state) | only with `TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS`: that many days after **creation**, checked hourly, so up to 1 hour early. Only requests created after the verify cut-off. Not while `mails held (mail_caps_missing)` |
+| Any request not approved (`pending`, including confirmed and waiting; `rejected`) | within 90 days of creation (`TBI_SIGNUP_RETENTION_PENDING_DAYS`); the purge runs at start and daily |
+| Every other request | within 365 days of creation (`TBI_SIGNUP_RETENTION_MAX_DAYS`) |
+| Verify state `verify/<id>.json` (token hashes, address hashes, times) | with its request, while verification is on |
+| Address hashes and times in `verify/mail-counters.json` | counted for 7 days; removed at the next confirmation mail or hourly unconfirmed purge after that. The admin Delete does not remove them |
+| Confirm marker | after the sweep has judged it (kept if the state cannot be read or written) |
+| Resend marker | after the sweep has handled it (kept while the mail cap is reached or the state is unreadable) |
+| Mail-gate times (`mail-gate.json`, no addresses) | entries older than 30 days dropped at the next send |
+| `auto-summary.json` (counts only) | overwritten about once a minute; stays after disabling |
+
+Deleting one person by hand: `docs/alpha/SIGNUP-DATA-DELETION.md`.
+
+### When something fails
+
+| Condition | What happens |
+|---|---|
+| `verified` mode without the mail caps | `auto-approve off (config: ... needs the mail caps)`; no confirmation mail (`verify mails held (mail_caps_missing)`); resend requests wait; no unconfirmed purge. Links already sent can still be confirmed. Approval mails go only to the address the account was added for (`approval mail refused (addr_changed)`); mails you send by hand are then **not** capped |
+| `verified` mode, verification not set up | one line `warning auto-approve web=verified without email verification; nothing is auto-approved`. Nothing is approved automatically, whatever its origin; no confirmation mail |
+| Key missing or bad | `verify key unusable (<class>); verification off`: nothing is sent or confirmed, and the unconfirmed purge does not run |
+| State directory unsafe | `verify state dir unsafe (<reason>); verification off` |
+| Cut-off file unreadable | `verify cut-off unreadable; nothing minted or verified` |
+| Confirmation mail fails | `verify send failed (<class>)`; not retried, the slot stays used |
+| Mail cap or provider limit | `mail cap reached (...)`; mails wait |
+| Approval mail fails | the request shows a failed mail; resend it from the admin app |
+
+Limits fixed in the code: 3 confirmation mails per address in 7 days, at least 10 minutes apart, 5 per request, at
+most 3 unexpired links. A request for a new link that meets one of these limits, or the daily verify cap, is dropped;
+the person has to ask again later. A first mail held by the daily or per-address limit is tried again by later sweeps.
+
+### Upgrading from an earlier version
+
+**Confirmation links sent by a version without key ids (before S4a) stop working**
+(`verify rejected (key_retired)`). The person asks for a new link; the usual resend limits apply.
+
+### Roll back email-verified mode
+
+1. Create the pause file.
+2. Take the sign-up page, or its confirmation view, off the published site, so no new person is told to expect a
+   mail.
+3. Intake: remove `TBI_SIGNUP_VERIFY` and `TBI_SIGNUP_NOTIFY` (and set `TBI_SIGNUP_WEB=0` to stop web sign-ups),
+   restart.
+4. `sudo rm /etc/systemd/system/<N>-admin.service.d/signup-verify.conf`, `daemon-reload`, restart the admin service.
+   Remove the **whole** file: removing only `TBI_SIGNUP_VERIFY` disables the sign-up admin routes.
+5. Review the `pending` requests and approve or reject them by hand.
+
+Consequences:
+
+- Links already sent no longer work.
+- Approval mails still queued are sent without the mail caps and without the address binding.
+- The `verify/` directory stays, and deleting a request no longer removes its `verify/<id>.json`. It holds hashes and
+  times only; remove the directory by hand if verification will not come back.
+- The verify cut-off is stored in `verify/since.json`. **Before enabling again**, set `TBI_SIGNUP_VERIFY_SINCE` to
+  the new start time. Otherwise every waiting request since the first enable is mailed, and old unconfirmed ones can
+  be deleted.
+- Rolling the software back to an older version was not tested with this state.
 
 ### `mail cap reached` with a state class
 
@@ -140,8 +362,9 @@ cannot trust its state in `/var/lib/<N>-admin-auto` and sends nothing:
 |---|---|---|---|
 | admin | `TBI_SIGNUP_SUMMARY` | `1`; unset = off. Another value: off, `summary file off (config: ...)` | About once a minute writes `auto-summary.json` into the sign-up store: counts, booleans and dates only. Never read back. |
 | intake | `TBI_SIGNUP_NOTIFY` | `summary`; unset or empty = one Telegram alert per request. Another value: the intake refuses to start | No alert per request. One summary a day when quiet hours (`TBI_SIGNUP_QUIET` of the intake) end, 08:00 when `off`; alerts (auto cap, verify cap, mail 80% of day or 30 days, verify key unreadable): once per type per day the condition was seen, at most 2 per type per day of sending; pause on / off: each at most once a day; no fresh summary for more than 30 minutes, or about 2 minutes while the morning summary is due (`no fresh sign-up summary (stale, missing, unreadable or invalid)`), once a day. Never in quiet hours. State: `auto-notify.state.json` in the store. |
-| admin | `TBI_SIGNUP_AUTO_CUTOFF_KEEP_S` | `0`..`3600` seconds; unset or `0` = off. Bad value, or no separate `TBI_SIGNUP_AUTO_STATE_DIR`: sign-up admin routes disabled | **Owner decision open (DEC-38).** A restart whose first approving sweep comes within this many seconds of the last one keeps the cut-off. Sweeps run every 60 s, so a value near or below 60 mostly resets. |
+| admin | `TBI_SIGNUP_AUTO_CUTOFF_KEEP_S` | `0`..`3600` seconds; unset or `0` = off. Bad value, or no separate `TBI_SIGNUP_AUTO_STATE_DIR`: sign-up admin routes disabled | **Value not approved (owner decision DEC-38 open).** A restart whose first approving sweep comes within this many seconds of the last one keeps the cut-off. Sweeps run every 60 s, so a value near or below 60 mostly resets. |
 
+- In email-verified mode, put the admin settings of this table in `signup-verify.conf`.
 - **Before using `summary`:** enable the admin setting first and check that `auto-summary.json` appears. The file is
   0600 and owned by the admin service user, so the intake can read it only when **both services run as the same
   user**. The store already needs that today (0700 directory, 0600 records written by both sides). With another user
@@ -188,7 +411,9 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
 
 - Log: `auto-approve paused`, and later `auto-approve resumed` (at the next sweep, within about a minute).
 - One request already in progress may still finish after the `touch`. The next check stops the sweep.
-- While paused, sign-ups are still stored and alerted, and you approve them by hand (manual mode).
+- While paused, sign-ups are still stored and you approve them by hand (manual mode). The owner alert follows the
+  intake's setting (per request, or the summary). Email-verified mode: see
+  [What pause stops in this mode](#what-pause-stops-in-this-mode).
 - A pause file in the sign-up store directory has **no** effect. Only the file in `/var/lib/<N>-admin-auto` counts.
 - Resuming resets the cut-off to the time of the first sweep after the `rm`: requests that arrived while it was
   paused are **not** approved automatically; you approve them by hand. The daily count stays as it is.
@@ -229,8 +454,10 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
 
 ## What to watch in the log (monitoring)
 
-All lines come from the admin service, with the prefix `tbi-admin: signup: `. They contain no ids, names,
-addresses or paths:
+The lines in this section come from the admin service, with the prefix `tbi-admin: signup: `. They contain no ids,
+names, addresses or paths. In email-verified mode also watch the lines in
+[When something fails](#when-something-fails) (search for `signup: ` without the `auto-approve` filter) and the
+intake's `verify refused (<code>)`, `resend refused (<code>)` and `marker failed (<class>)`:
 
 ```
 sudo journalctl -u <N>-admin.service --since today | grep 'signup: auto-approve'
@@ -287,6 +514,8 @@ Any restart or other change on the host is RED zone, as above. Never edit the st
 | State file `auto-approve.state.json` was deleted | Today's count, the retry count and the list of unfinished approvals start empty, so up to a full cap can be approved again today. A running process that had set its cut-off resets it at the next approving sweep. With evidence of an earlier run the new cut-off is now, or a later `TBI_SIGNUP_AUTO_SINCE`; after a restart without evidence a past `TBI_SIGNUP_AUTO_SINCE` **is** applied (limits listed under Pause and resume). | Create the pause file at once and wait for `auto-approve paused` (if it was already paused, no new line appears before the restart: find the earlier one since the last service start). Remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in, run `sudo systemctl daemon-reload`, restart, wait for a new `auto-approve paused` line, then remove the pause file. Leave `auto-approve.marker` in place. Check unfinished approvals and older pending requests by hand. |
 
 ## Roll back (turn auto-approve off)
+
+In email-verified mode use [Roll back email-verified mode](#roll-back-email-verified-mode) instead.
 
 1. `sudo rm /etc/systemd/system/<N>-admin.service.d/auto-approve.conf`
 2. `sudo systemctl daemon-reload && sudo systemctl restart <N>-admin.service`
