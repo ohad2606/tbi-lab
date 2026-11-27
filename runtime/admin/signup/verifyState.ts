@@ -148,6 +148,8 @@ interface Gen {
   exp: string;
   addr: string;
   sentAt: string;
+  /** S5: written only after the send succeeded; absent = never shown as sent. */
+  ok?: true;
   /** S4a: verifyKeyId of the key that minted it (absent on older state: never matches). */
   kid?: string;
 }
@@ -178,6 +180,7 @@ function validId(s: IdState | null, id: string): s is IdState {
   for (const g of s.gens)
     if (!g || !isCount(g.gen) || !HEX64.test(g.hash) || !HEX64.test(g.addr)) return false;
     else if (!isTime(g.exp) || !isTime(g.sentAt)) return false;
+    else if (g.ok !== undefined && g.ok !== true) return false;
     else if (g.kid !== undefined && !/^[0-9a-f]{16}$/.test(g.kid)) return false;
   if (s.usedAt !== undefined && !isTime(s.usedAt)) return false;
   if (s.verifiedAt !== undefined && !isTime(s.verifiedAt)) return false;
@@ -243,6 +246,58 @@ function countersLock<T>(fn: () => Promise<T>): Promise<T> {
   const run = countersChain.then(fn, fn);
   countersChain = run.catch(() => undefined);
   return run;
+}
+
+/** S5 (owner view): what the admin state of one request says. Never leaves the server as is. */
+export interface VerifyPeek {
+  /** Mint time of the newest generation whose send succeeded. */
+  sentAt?: string;
+  /** Set once the address was confirmed (with the hash it was confirmed for). */
+  confirmed?: { at: number; addr: string };
+}
+
+/**
+ * S5: both dirs pass the sweep's checks, WITHOUT creating anything (`checkDirs` creates
+ * `verify/`). `stateBad` is the already known answer of autoStateDirCheck(stateDir).
+ */
+export async function verifyDirsReadOnly(
+  stateDir: string,
+  storeDir: string,
+  stateBad: string | null,
+): Promise<string | null> {
+  if (stateBad) return stateBad;
+  try {
+    const [a, b] = await Promise.all([realpath(stateDir), realpath(storeDir)]);
+    if (a === b) return 'store_dir';
+  } catch (e) {
+    return errorClass(e);
+  }
+  return autoStateDirCheck(join(stateDir, VERIFY_DIR));
+}
+
+/**
+ * S5: one read of `verify/<id>.json` (O_NOFOLLOW, size bound), no lock, no write. No file = {}.
+ * Throws on an invalid id and on anything unreadable, invalid or contradictory.
+ */
+export async function peekVerifyState(stateDir: string, id: string): Promise<VerifyPeek> {
+  if (!REQUEST_ID_RE.test(id)) throw new Unreadable('state_unreadable');
+  const s = await readJson<IdState>(join(stateDir, VERIFY_DIR, `${id}.json`));
+  if (s === null) return {};
+  if (!validId(s, id)) throw new Unreadable('state_unreadable');
+  if (s.usedAt || s.verifiedAt || s.verifiedAddr) {
+    if (!s.verifiedAt || !s.verifiedAddr) throw new Unreadable('state_unreadable');
+    return { confirmed: { at: Date.parse(s.verifiedAt), addr: s.verifiedAddr } };
+  }
+  const sent = s.gens.filter((g) => g.ok === true).at(-1);
+  return sent ? { sentAt: sent.sentAt } : {};
+}
+
+/** S5: verify mails counted on Israel day `day`, read only; null = counters not trusted. */
+export async function peekMailCount(stateDir: string, day: string): Promise<number | null> {
+  const c = await readJson<Counters>(join(stateDir, VERIFY_DIR, COUNTERS)).catch(() => undefined);
+  if (c === null) return 0;
+  if (c === undefined || !validCounters(c) || c.day > day) return null;
+  return c.day === day ? c.dayCount : 0;
 }
 
 export type MintOutcome =
@@ -578,6 +633,14 @@ export class Verifier {
         this.log(`signup: verify send failed (${errorClass(e)})`);
         return 'send_failed';
       }
+      // S5: only now may the owner's view say "sent". A failed write leaves it unsaid.
+      await writeJson(this.vdir, `${id}.json`, {
+        ...st,
+        gens: [...st.gens, { ...g, ok: true as const }].slice(-VERIFY_PER_RECORD),
+        sends: st.sends + 1,
+      } satisfies IdState).catch((e: unknown) => {
+        this.logHourly(`signup: verify send not recorded (${errorClass(e)})`);
+      });
       await this.d.store.update(id, { verifySentAt: at }).catch((e: unknown) => {
         this.logHourly(`signup: verify mirror not written (${errorClass(e)})`);
       });

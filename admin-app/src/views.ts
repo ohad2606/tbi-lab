@@ -316,6 +316,41 @@ export const autoStateClass = (s: AutoApproveState): string =>
         ? 'badge-unknown'
         : 'badge-off';
 
+/**
+ * BETA-G1 S5: rows folded away in the "not confirmed yet" group: proven web requests, still
+ * pending, no account, no failure, whose confirmation mail is out or not sent. Unknown, changed
+ * address, confirmed, failed and non-web rows always stay in the main list.
+ */
+export const isUnconfirmedRow = (r: SignupRecord): boolean =>
+  r.origin === 'web' &&
+  r.status === 'pending' &&
+  !r.accountAdded &&
+  r.lastError === null &&
+  r.autoApprovedAt === null &&
+  (r.verification?.state === 'not_sent' || r.verification?.state === 'sent');
+
+/** The text of a row's confirmation state; null = nothing (feature off, or the badge says it). */
+export const verificationKey = (r: SignupRecord): string | null =>
+  !r.verification || r.verification.state === 'approved_auto'
+    ? null
+    : `console.signups.verify.${r.verification.state}`;
+
+/**
+ * Which warning Approve asks with: null = none (confirmed, or verification off). Only an
+ * undecided request is asked about; it is never said to be confirmed.
+ */
+export function approveWarningKey(r: SignupRecord): string | null {
+  if (signupRowKind(r) !== 'decide') return null;
+  const s = r.verification?.state;
+  return s === 'not_sent' || s === 'sent'
+    ? 'console.signups.confirmApprove.unconfirmed'
+    : s === 'address_changed'
+      ? 'console.signups.confirmApprove.changed'
+      : s === 'unknown'
+        ? 'console.signups.confirmApprove.unknown'
+        : null;
+}
+
 /** True when the record carries the automatic approver's mark (BETA-G1). */
 export const isAutoApproved = (r: SignupRecord): boolean => r.autoApprovedAt !== null;
 

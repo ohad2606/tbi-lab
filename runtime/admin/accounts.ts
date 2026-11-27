@@ -49,7 +49,7 @@ import {
 } from './common.js';
 import type { AutoApproveStatusAnswer } from './signup/admin-wiring.js';
 import type { SignupApprover } from './signup/service.js';
-import { OPEN_STATUSES } from './signup/store.js';
+import { OPEN_STATUSES, type SignupRecord } from './signup/store.js';
 import { auditLimit, usageAnswer, usageRange, type AdminViews } from './views.js';
 
 // ---------------------------------------------------------------- views and results
@@ -384,6 +384,8 @@ export interface AccountsDeps {
     approver: (actor: Principal) => SignupApprover;
     /** BETA-G1: `GET /signups/auto-approve` (read-only); absent: answers `{enabled:false}`. */
     autoStatus?: () => Promise<AutoApproveStatusAnswer>;
+    /** BETA-G1 S5: the list with per-row `verification` (read-only); absent: the plain list. */
+    rowStates?: () => Promise<SignupRecord[]>;
   } | null;
 }
 
@@ -537,7 +539,7 @@ async function routeAccounts(
  * `GET /signups/open` (pending + approved + email_queued + email_failed), `POST /signups/<id>/approve|reject|resend`,
  * `DELETE /signups/<id>` (K12: delete the request now; see PendingStore.deleteNow),
  * and `GET /signups/auto-approve` (BETA-G1: read-only auto-approve status; counts, cap, booleans
- * and reason codes only, no personal data; other methods 405).
+ * and reason codes only, no personal data; other methods 405; S5 adds `safeguards`).
  * Mutations already passed CSRF and the write rate limit. The records hold personal data: the
  * list is for the owner only and is never cached (`send` sets no-store).
  */
@@ -557,18 +559,20 @@ async function routeSignups(
     const status = deps.signups!.autoStatus;
     return send(res, 200, status ? await status() : { enabled: false });
   }
-  if (method === 'GET' && parts.length === 1)
-    return send(res, 200, { signups: await approver.list() });
+  // BETA-G1 S5: with email verification on, each row carries the admin-derived `verification`
+  // and the envelope says so (`rowStates`); off, the answers are unchanged.
+  const states = deps.signups!.rowStates;
+  const listed = async (keep: (r: SignupRecord) => boolean) => ({
+    signups: (await (states ? states() : approver.list())).filter(keep),
+    ...(states ? { rowStates: 1 } : {}),
+  });
+  if (method === 'GET' && parts.length === 1) return send(res, 200, await listed(() => true));
   if (method === 'GET' && parts.length === 2 && id === 'pending')
-    return send(res, 200, {
-      signups: (await approver.list()).filter((r) => r.status === 'pending'),
-    });
+    return send(res, 200, await listed((r) => r.status === 'pending'));
   // The admin UI list: everything that still needs the owner, so an approved request whose
   // email is queued or failed stays visible (with Resend) after a reload.
   if (method === 'GET' && parts.length === 2 && id === 'open')
-    return send(res, 200, {
-      signups: (await approver.list()).filter((r) => OPEN_STATUSES.includes(r.status)),
-    });
+    return send(res, 200, await listed((r) => OPEN_STATUSES.includes(r.status)));
   // K12: delete one request now (owner only, CSRF and write limit already applied). No body is
   // read. 200 deleted; 200 with `already_deleted` when the audit log shows an earlier delete
   // (no-op); 404 unknown. The account, if one was added, is not touched.

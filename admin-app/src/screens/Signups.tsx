@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
   loadAutoApproveStatus,
   loadOpenSignups,
@@ -7,15 +7,19 @@ import {
   type Loaded,
   type SignupAction,
   type SignupRecord,
+  type SignupSafeguards,
 } from '@tbi-lab/admin-client';
 import { Confirm, Loading, Problem } from '../common.js';
 import { api, useConsole, useT } from '../context.js';
 import type { MessageKey } from '../i18n.js';
 import {
   autoApproveView,
+  approveWarningKey,
   autoStateClass,
   focusAfterRemoval,
   isAutoApproved,
+  isUnconfirmedRow,
+  verificationKey,
   signupCountView,
   signupSource,
   signupOutcomeView,
@@ -42,10 +46,19 @@ const STATUS_KEY: Record<SignupRowKind, MessageKey> = {
   queued: 'console.signups.status.emailQueued',
 };
 
+/** The button that opens and closes the "not confirmed yet" group. */
+const groupToggle = () =>
+  document.querySelector<HTMLElement>('[data-testid="signups-unconfirmed-toggle"]');
+
+/** Focus never goes into the closed group: its toggle stands in for anything inside it. */
+const shown = (e: HTMLElement | null) => (e?.closest('[hidden]') ? groupToggle() : e);
+
 /** The element that takes focus in a row: its primary button, else (no action) the row itself. */
 const rowFocus = (id: string) =>
-  document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`) ??
-  document.querySelector<HTMLElement>(`[data-signup-id="${id}"][tabindex="-1"]`);
+  shown(
+    document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`) ??
+      document.querySelector<HTMLElement>(`[data-signup-id="${id}"][tabindex="-1"]`),
+  );
 
 /** How long the count announcement waits for the auto-approve status before it is spoken alone. */
 const STATUS_WAIT_MS = 3000;
@@ -171,6 +184,80 @@ function AutoApproveBlock({ status }: { status: Loaded<AutoApproveStatus> | null
   );
 }
 
+/** A translated sentence with its `{count}` / `{limit}` values isolated left-to-right. */
+function Numbers({
+  k,
+  count,
+  limit,
+}: {
+  k: MessageKey;
+  count: number | 'unknown';
+  limit?: number | 'unknown';
+}) {
+  const t = useT();
+  const val = (v: number | 'unknown' | undefined) =>
+    v === 'unknown' ? (
+      <bdi dir="auto">{t('console.signups.auto.value.unknown')}</bdi>
+    ) : (
+      <bdi dir="ltr">{v}</bdi>
+    );
+  return (
+    <p class="small">
+      {t(k, { count: N_SLOT, limit: C_SLOT })
+        .split(/(\uE000|\uE001)/)
+        .map((part) => (part === N_SLOT ? val(count) : part === C_SLOT ? val(limit) : part))}
+    </p>
+  );
+}
+
+/**
+ * BETA-G1 S5: confirmation mails, confirmed requests still waiting, the mail budget and the kill
+ * switch, read only. Shown only when the server sends it (also with auto-approve off). Not a live
+ * region (loaded on open and by Refresh, like the block above it).
+ */
+function SafeguardsBlock({ value }: { value: SignupSafeguards }) {
+  const t = useT();
+  const { verify, mail, paused } = value;
+  const state = paused === 'unknown' ? 'unknown' : paused ? 'yes' : 'no';
+  return (
+    <section aria-labelledby="signups-safeguards-h" class="item" data-testid="signups-safeguards">
+      <h2 id="signups-safeguards-h">{t('console.signups.safeguards.heading')}</h2>
+      <p class={paused === false ? 'small' : 'result warn'} data-testid="safeguards-paused">
+        {t(`console.signups.safeguards.paused.${state}` as MessageKey)}
+      </p>
+      {verify && (
+        <div data-testid="safeguards-verify">
+          <Numbers
+            k="console.signups.safeguards.verifyToday"
+            count={verify.today}
+            limit={verify.limit}
+          />
+          <Numbers k="console.signups.safeguards.verifyWaiting" count={verify.waiting} />
+        </div>
+      )}
+      {mail && (
+        <div data-testid="safeguards-mail">
+          <Numbers k="console.signups.safeguards.mailDay" count={mail.day} limit={mail.dayLimit} />
+          <Numbers k="console.signups.safeguards.mail30d" count={mail.d30} limit={mail.d30Limit} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * An action's answer carries no confirmation state: the row keeps the one it had (so a retry of
+ * Approve still asks), and its "approved automatically" mark still needs the added account.
+ */
+const keepState = (next: SignupRecord, old: SignupRecord): SignupRecord =>
+  old.verification
+    ? {
+        ...next,
+        verification: old.verification,
+        autoApprovedAt: next.accountAdded ? next.autoApprovedAt : null,
+      }
+    : next;
+
 /**
  * Open sign-up requests (TBI-022, owner-only): undecided ones, and approved ones whose account or
  * email has not finished, so a failed or queued email is still here after a reload. Approve adds
@@ -187,6 +274,9 @@ export function Signups() {
   const pendingTimer = useRef<ReturnType<typeof setTimeout>>();
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirmAct, setConfirmAct] = useState<'approve' | 'reject'>('reject');
+  // The "not confirmed yet" group (in memory only), closed until the owner opens it.
+  const [groupOpen, setGroupOpen] = useState(false);
   const [messages, setMessages] = useState<Record<string, RowMessage>>({});
   const [announce, setAnnounce] = useState('');
   const [openStale, setOpenStale] = useState(false);
@@ -205,6 +295,8 @@ export function Signups() {
   const listRef = useRef(list);
   listRef.current = list;
   const listTurn = useRef(0);
+  const groupOpenRef = useRef(groupOpen);
+  groupOpenRef.current = groupOpen;
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
   const autoRef = useRef(autoStatus);
@@ -306,6 +398,14 @@ export function Signups() {
     );
   };
 
+  /** The count line, followed by how many of the rows sit in the "not confirmed yet" group. */
+  const countText = (rows: SignupRecord[]) => {
+    const c = signupCountView(rows);
+    const line = t(c.key, { count: c.count });
+    const folded = rows.filter(isUnconfirmedRow).length;
+    return folded ? join(line, t('console.signups.unconfirmed.counted', { count: folded })) : line;
+  };
+
   const reload = async () => {
     // The status is independent of the list: its failure shows its own message and never blocks it.
     spoken.current++;
@@ -349,8 +449,7 @@ export function Signups() {
     /** What was spoken last when the count went out; unset: no count was spoken. */
     let counted: number | undefined;
     if (current && v.ok) {
-      const c = signupCountView(v.value);
-      const count = t(c.key, { count: c.count });
+      const count = countText(v.value);
       // One announcement for both: a failed status is added to the count (a hung one is not waited for).
       const st = await Promise.race([
         status,
@@ -390,6 +489,11 @@ export function Signups() {
     };
   }, []);
 
+  // A reload may move the focused row into the closed group: the group then opens.
+  useLayoutEffect(() => {
+    if (document.activeElement?.closest('#signups-unconfirmed-rows[hidden]')) setGroupOpen(true);
+  }, [list]);
+
   // After a row left the list, focus goes to the next row's first action, else the previous
   // row's, else the refresh button: never to the top of the page.
   useEffect(() => {
@@ -409,9 +513,11 @@ export function Signups() {
     keptId.current = null;
     requestAnimationFrame(() =>
       (
-        document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`) ??
-        document.querySelector<HTMLElement>(
-          `[data-signup-id="${id}"] [data-testid="signup-message"]`,
+        shown(
+          document.querySelector<HTMLElement>(`[data-signup-id="${id}"] button[data-primary]`) ??
+            document.querySelector<HTMLElement>(
+              `[data-signup-id="${id}"] [data-testid="signup-message"]`,
+            ),
         ) ??
         rowFocus(id) ??
         refreshBtn.current
@@ -425,11 +531,11 @@ export function Signups() {
     setConfirming(null);
     say(t('console.signups.status.working'));
     if (action === 'approve') approving.current.add(r.id);
-    if (action === 'reject') {
+    if (action === 'reject' || confirming === r.id) {
       // The confirm unmounts now; keep focus on the row while the request runs.
       requestAnimationFrame(() =>
         document
-          .querySelector<HTMLElement>(`[data-signup-id="${r.id}"] button[data-act="reject"]`)
+          .querySelector<HTMLElement>(`[data-signup-id="${r.id}"] button[data-act="${action}"]`)
           ?.focus(),
       );
     }
@@ -492,7 +598,19 @@ export function Signups() {
       // The list as it is now: a request deleted meanwhile must not come back.
       const rows = listRef.current?.ok ? listRef.current.value : [];
       const present = rows.some((x) => x.id === r.id);
-      const ids = (present ? rows : list.value).map((x) => x.id);
+      // In reading order: the main list, then the group while it is open. A row in the closed
+      // group is never a focus target; with none left, its toggle or Refresh takes focus.
+      const from = present ? rows : list.value;
+      const ids = [
+        ...from.filter((x) => x.id === r.id || !isUnconfirmedRow(x)),
+        ...from.filter((x) => x.id !== r.id && isUnconfirmedRow(x) && groupOpenRef.current),
+      ].map((x) => x.id);
+      if (isUnconfirmedRow(r) && groupOpenRef.current) {
+        // The removed row was in the group: its neighbours there come first.
+        ids.splice(0, ids.length, ...from.filter(isUnconfirmedRow).map((x) => x.id));
+        if (ids.length === 1)
+          ids.unshift(...from.filter((x) => !isUnconfirmedRow(x)).map((x) => x.id));
+      }
       // A row that stays without an action gets focus on its outcome sentence, which is read on
       // focus: no live announcement then (it would be read twice). Every other outcome is spoken
       // by the live region (the row is gone, or focus is on a button).
@@ -520,7 +638,9 @@ export function Signups() {
         if (v.record) {
           const rec = v.record;
           setList((old) =>
-            old?.ok ? { ok: true, value: old.value.map((x) => (x.id === r.id ? rec : x)) } : old,
+            old?.ok
+              ? { ok: true, value: old.value.map((x) => (x.id === r.id ? keepState(rec, x) : x)) }
+              : old,
           );
         }
         setMessages((m) => ({ ...m, [r.id]: { key: v.key as MessageKey, ok: v.ok } }));
@@ -534,8 +654,201 @@ export function Signups() {
     }
   };
 
-  // Only rows that need the owner are counted (a queued email needs nothing).
-  const countLine = list?.ok ? signupCountView(list.value) : null;
+  const main = list?.ok ? list.value.filter((r) => !isUnconfirmedRow(r)) : [];
+  const folded = list?.ok ? list.value.filter(isUnconfirmedRow) : [];
+  const row = (r: SignupRecord) => {
+    const working = busy === r.id;
+    const msg = messages[r.id];
+    const kind = signupRowKind(r);
+    const name = isolate(r.name);
+    const src = signupSource(r);
+    const langKey = `console.signups.lang.${r.lang}` as MessageKey;
+    return (
+      <li
+        key={r.id}
+        class="item"
+        data-testid="signup-row"
+        data-signup-id={r.id}
+        data-kind={kind}
+        tabIndex={kind === 'queued' ? -1 : undefined}
+      >
+        <div class="item-head">
+          <strong>
+            <bdi dir="auto">{r.name}</bdi>
+          </strong>
+          <span class="badge" data-testid="signup-status">
+            {t(working ? 'console.signups.status.working' : STATUS_KEY[kind])}
+          </span>
+          {src.web && (
+            <span class="badge" data-testid="signup-origin-web">
+              {t('console.signups.origin.web')}
+            </span>
+          )}
+          {isAutoApproved(r) && (
+            <span class="badge badge-auto" data-testid="signup-auto-approved">
+              {t('console.signups.autoApproved')}
+            </span>
+          )}
+        </div>
+        <div>
+          <bdi dir="ltr" class="code" data-testid="signup-email">
+            {r.email}
+          </bdi>
+        </div>
+        <div class="small">
+          {t('console.signups.role')}: <bdi dir="auto">{r.role}</bdi>
+          {' · '}
+          {t('console.signups.language')}:{' '}
+          {t(r.lang === 'he' || r.lang === 'en' ? langKey : 'console.signups.lang.other')}
+        </div>
+        {src.heardFrom && (
+          <div class="small" data-testid="signup-heard-from">
+            {t('console.signups.heardFrom')}: <bdi dir="auto">{src.heardFrom}</bdi>
+          </div>
+        )}
+        <div class="muted small">
+          {t('console.signups.requested', { time: date(r.createdAt) ?? '' })}
+        </div>
+        {kind === 'queued' && r.emailSendAfter && (
+          <div class="small" data-testid="signup-send-after">
+            {t('console.signups.sendAfter', { time: SLOT })
+              .split(SLOT)
+              .flatMap((part, i) =>
+                i === 0
+                  ? [part]
+                  : [
+                      <bdi key={i} dir="ltr">
+                        {date(r.emailSendAfter!) ?? ''}
+                      </bdi>,
+                      part,
+                    ],
+              )}
+          </div>
+        )}
+        {verificationKey(r) && (
+          <div class="small" data-testid="signup-verification">
+            {t(verificationKey(r) as MessageKey, { time: SLOT })
+              .split(SLOT)
+              .flatMap((part, i) =>
+                i === 0
+                  ? [part]
+                  : [
+                      <bdi key={i} dir="ltr">
+                        {date(r.verification!.sentAt!) ?? ''}
+                      </bdi>,
+                      part,
+                    ],
+              )}
+          </div>
+        )}
+        {msg && (
+          <p
+            class={`result ${msg.ok ? 'ok' : 'warn'}`}
+            data-testid="signup-message"
+            data-key={msg.key}
+            tabIndex={-1}
+          >
+            {t(msg.key, { name })}
+          </p>
+        )}
+        {confirming === r.id && confirmAct === 'approve' && approveWarningKey(r) ? (
+          <Confirm
+            title={t('console.signups.confirmApprove.title', { name })}
+            action={t('console.signups.confirmApprove.ok')}
+            danger={false}
+            busy={working}
+            onCancel={() => {
+              setConfirming(null);
+              requestAnimationFrame(() =>
+                document
+                  .querySelector<HTMLElement>(
+                    `[data-signup-id="${r.id}"] button[data-act="approve"]`,
+                  )
+                  ?.focus(),
+              );
+            }}
+            onConfirm={() => void act(r, 'approve')}
+          >
+            <p>{t(approveWarningKey(r) as MessageKey)}</p>
+          </Confirm>
+        ) : confirming === r.id && confirmAct === 'reject' ? (
+          <Confirm
+            title={t('console.signups.confirm.title', { name })}
+            action={t('console.signups.confirm.ok')}
+            danger
+            busy={working}
+            onCancel={() => {
+              setConfirming(null);
+              requestAnimationFrame(() =>
+                document
+                  .querySelector<HTMLElement>(
+                    `[data-signup-id="${r.id}"] button[data-act="reject"]`,
+                  )
+                  ?.focus(),
+              );
+            }}
+            onConfirm={() => void act(r, 'reject')}
+          >
+            <p>{t('console.signups.confirm.body')}</p>
+          </Confirm>
+        ) : kind === 'queued' ? null : (
+          <div class="actions">
+            {kind === 'resend' ? (
+              <button
+                type="button"
+                class="button button-primary"
+                data-primary
+                data-act="resend"
+                data-testid="signup-resend"
+                aria-label={t('console.signups.resendFor', { name })}
+                aria-disabled={busy ? 'true' : undefined}
+                onClick={() => void act(r, 'resend')}
+              >
+                {t('console.signups.resend')}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  class="button button-primary"
+                  data-primary
+                  data-act="approve"
+                  data-testid="signup-approve"
+                  aria-label={t('console.signups.approveFor', { name })}
+                  aria-disabled={busy ? 'true' : undefined}
+                  onClick={() => {
+                    if (!approveWarningKey(r)) return void act(r, 'approve');
+                    if (busy) return;
+                    setConfirmAct('approve');
+                    setConfirming(r.id);
+                  }}
+                >
+                  {t('console.signups.approve')}
+                </button>
+                {kind === 'decide' && (
+                  <button
+                    type="button"
+                    class="button button-danger"
+                    data-act="reject"
+                    data-testid="signup-reject"
+                    aria-label={t('console.signups.rejectFor', { name })}
+                    aria-disabled={busy ? 'true' : undefined}
+                    onClick={() => {
+                      if (busy) return;
+                      setConfirmAct('reject');
+                      setConfirming(r.id);
+                    }}
+                  >
+                    {t('console.signups.reject')}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </li>
+    );
+  };
   return (
     <section aria-labelledby="signups-h" class="stack">
       <h1 id="signups-h">{t('console.signups.heading')}</h1>
@@ -558,6 +871,9 @@ export function Signups() {
         {announce}
       </div>
       <AutoApproveBlock status={autoStatus} />
+      {autoStatus?.ok && autoStatus.value.safeguards && (
+        <SafeguardsBlock value={autoStatus.value.safeguards} />
+      )}
       {/* A slow Refresh of that status is shown and said here; the region is always in the page
           (empty, it takes no room). The first load already says "Loading". */}
       <div role="status" class="notice-slot" data-testid="auto-pending-status">
@@ -598,158 +914,33 @@ export function Signups() {
       ) : (
         <>
           <p class="muted small" data-testid="signups-count">
-            {t(countLine!.key, { count: countLine!.count })}
+            {countText(list.value)}
           </p>
-          <ul class="list" data-testid="signups-list">
-            {list.value.map((r) => {
-              const working = busy === r.id;
-              const msg = messages[r.id];
-              const kind = signupRowKind(r);
-              const name = isolate(r.name);
-              const src = signupSource(r);
-              const langKey = `console.signups.lang.${r.lang}` as MessageKey;
-              return (
-                <li
-                  key={r.id}
-                  class="item"
-                  data-testid="signup-row"
-                  data-signup-id={r.id}
-                  data-kind={kind}
-                  tabIndex={kind === 'queued' ? -1 : undefined}
+          {main.length > 0 && (
+            <ul class="list" data-testid="signups-list">
+              {main.map(row)}
+            </ul>
+          )}
+          {folded.length > 0 && (
+            <section data-testid="signups-unconfirmed-group">
+              <h2>
+                <button
+                  type="button"
+                  class="button"
+                  data-testid="signups-unconfirmed-toggle"
+                  aria-expanded={groupOpen}
+                  aria-controls="signups-unconfirmed-rows"
+                  onClick={() => setGroupOpen((o) => !o)}
                 >
-                  <div class="item-head">
-                    <strong>
-                      <bdi dir="auto">{r.name}</bdi>
-                    </strong>
-                    <span class="badge" data-testid="signup-status">
-                      {t(working ? 'console.signups.status.working' : STATUS_KEY[kind])}
-                    </span>
-                    {src.web && (
-                      <span class="badge" data-testid="signup-origin-web">
-                        {t('console.signups.origin.web')}
-                      </span>
-                    )}
-                    {isAutoApproved(r) && (
-                      <span class="badge badge-auto" data-testid="signup-auto-approved">
-                        {t('console.signups.autoApproved')}
-                      </span>
-                    )}
-                  </div>
-                  <div>
-                    <bdi dir="ltr" class="code" data-testid="signup-email">
-                      {r.email}
-                    </bdi>
-                  </div>
-                  <div class="small">
-                    {t('console.signups.role')}: <bdi dir="auto">{r.role}</bdi>
-                    {' · '}
-                    {t('console.signups.language')}:{' '}
-                    {t(r.lang === 'he' || r.lang === 'en' ? langKey : 'console.signups.lang.other')}
-                  </div>
-                  {src.heardFrom && (
-                    <div class="small" data-testid="signup-heard-from">
-                      {t('console.signups.heardFrom')}: <bdi dir="auto">{src.heardFrom}</bdi>
-                    </div>
-                  )}
-                  <div class="muted small">
-                    {t('console.signups.requested', { time: date(r.createdAt) ?? '' })}
-                  </div>
-                  {kind === 'queued' && r.emailSendAfter && (
-                    <div class="small" data-testid="signup-send-after">
-                      {t('console.signups.sendAfter', { time: SLOT })
-                        .split(SLOT)
-                        .flatMap((part, i) =>
-                          i === 0
-                            ? [part]
-                            : [
-                                <bdi key={i} dir="ltr">
-                                  {date(r.emailSendAfter!) ?? ''}
-                                </bdi>,
-                                part,
-                              ],
-                        )}
-                    </div>
-                  )}
-                  {msg && (
-                    <p
-                      class={`result ${msg.ok ? 'ok' : 'warn'}`}
-                      data-testid="signup-message"
-                      data-key={msg.key}
-                      tabIndex={-1}
-                    >
-                      {t(msg.key, { name })}
-                    </p>
-                  )}
-                  {confirming === r.id ? (
-                    <Confirm
-                      title={t('console.signups.confirm.title', { name })}
-                      action={t('console.signups.confirm.ok')}
-                      danger
-                      busy={working}
-                      onCancel={() => {
-                        setConfirming(null);
-                        requestAnimationFrame(() =>
-                          document
-                            .querySelector<HTMLElement>(
-                              `[data-signup-id="${r.id}"] button[data-act="reject"]`,
-                            )
-                            ?.focus(),
-                        );
-                      }}
-                      onConfirm={() => void act(r, 'reject')}
-                    >
-                      <p>{t('console.signups.confirm.body')}</p>
-                    </Confirm>
-                  ) : kind === 'queued' ? null : (
-                    <div class="actions">
-                      {kind === 'resend' ? (
-                        <button
-                          type="button"
-                          class="button button-primary"
-                          data-primary
-                          data-act="resend"
-                          data-testid="signup-resend"
-                          aria-label={t('console.signups.resendFor', { name })}
-                          aria-disabled={busy ? 'true' : undefined}
-                          onClick={() => void act(r, 'resend')}
-                        >
-                          {t('console.signups.resend')}
-                        </button>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            class="button button-primary"
-                            data-primary
-                            data-act="approve"
-                            data-testid="signup-approve"
-                            aria-label={t('console.signups.approveFor', { name })}
-                            aria-disabled={busy ? 'true' : undefined}
-                            onClick={() => void act(r, 'approve')}
-                          >
-                            {t('console.signups.approve')}
-                          </button>
-                          {kind === 'decide' && (
-                            <button
-                              type="button"
-                              class="button button-danger"
-                              data-act="reject"
-                              data-testid="signup-reject"
-                              aria-label={t('console.signups.rejectFor', { name })}
-                              aria-disabled={busy ? 'true' : undefined}
-                              onClick={() => !busy && setConfirming(r.id)}
-                            >
-                              {t('console.signups.reject')}
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                  <span aria-hidden="true">{groupOpen ? '\u25BE ' : '\u25B8 '}</span>
+                  {t('console.signups.unconfirmed.heading', { count: folded.length })}
+                </button>
+              </h2>
+              <ul class="list" id="signups-unconfirmed-rows" hidden={!groupOpen}>
+                {folded.map(row)}
+              </ul>
+            </section>
+          )}
         </>
       )}
       <StoredSignups

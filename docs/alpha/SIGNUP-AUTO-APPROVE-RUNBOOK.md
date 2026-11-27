@@ -164,6 +164,18 @@ cannot trust its state in `/var/lib/<N>-admin-auto` and sends nothing:
   below (`auto-approve cut-off reset`; a kept one logs `auto-approve cut-off kept`). **A pause file created and
   removed while the service was stopped, or between two sweeps, is not seen** and does not reset a kept cut-off.
 
+## Owner view of email confirmation (S5)
+
+Read only, nothing to enable. With `TBI_SIGNUP_VERIFY=1` each web request on the admin sign-up
+screen shows its confirmation state, and unconfirmed ones (mail sent or not sent) sit in a closed
+"Not confirmed yet" group. With verification or the mail caps configured, a block shows the
+confirmation mails today, confirmed requests still waiting, the mail budget and the pause state
+(no control). "unknown" means the admin state could not be read or trusted: check the log for
+`signup: owner view unknown (...)` and the state dir permissions. Before the first sweep creates
+`verify/`, every web request reads as unknown. A mail minted before this release has no success
+record and reads as "not recorded as sent". "Approved automatically" rests on the request record,
+as before.
+
 ## Pause (kill switch) and resume
 
 Pausing needs no restart. Run it as root:

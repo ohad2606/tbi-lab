@@ -467,6 +467,10 @@ fieldset {
   display: grid;
   gap: 0.6rem;
 }
+/* BETA-G1 S5: the closed "not confirmed yet" group (display: grid would override `hidden`). */
+.list[hidden] {
+  display: none;
+}
 .item {
   background: var(--panel);
   border: 1px solid var(--border);

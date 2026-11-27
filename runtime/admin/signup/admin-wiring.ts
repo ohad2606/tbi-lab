@@ -69,9 +69,11 @@ import {
   retentionFromEnv,
   StoreError,
   type Retention,
+  type SignupRecord,
 } from './store.js';
 import { loadVerifyKeys } from './verify.js';
 import { MailGate, safeguardsFromEnv, type MailLimits } from './mailGate.js';
+import { ownerView, type RowVerification, type SafeguardStatus } from './rowState.js';
 import { writeSummary, type SummaryDeps } from './summaryAdmin.js';
 import { VERIFY_MAX_PER_DAY } from './verifyState.js';
 import { Verifier, verifyConfigFromEnv, type VerifyConfig } from './verifyState.js';
@@ -193,14 +195,17 @@ export const PURGE_INTERVAL_MS = 24 * 3_600_000;
  * sweeper's read-only status plus `running` (the sweep timer of this process is active: false
  * before start, after stop, or when start refused an unsafe state dir; then a restart is needed).
  */
-export type AutoApproveStatusAnswer =
-  { enabled: false } | ({ enabled: true; running: boolean } & AutoApproveStatus);
+export type AutoApproveStatusAnswer = (
+  { enabled: false } | ({ enabled: true; running: boolean } & AutoApproveStatus)
+) & { safeguards?: SafeguardStatus };
 
 export interface SignupAdminWiring {
   /** The `signups` dependency of `createAdminServer`. */
   signups: {
     approver: (actor: Principal) => SignupApprover;
     autoStatus: () => Promise<AutoApproveStatusAnswer>;
+    /** S5: the list with each row's `verification`; absent while email verification is off. */
+    rowStates?: () => Promise<(SignupRecord & { verification?: RowVerification })[]>;
   };
   store: PendingStore;
   /**
@@ -425,6 +430,30 @@ export async function wireSignupAdmin(
   };
   let sweeping: Promise<void> | null = null;
   let running = false;
+  // S5: read-only owner view; null (nothing new, nothing read) without verification or mail caps.
+  const view =
+    verifier || gate
+      ? ownerView({
+          storeDir: c.dir,
+          store,
+          verify:
+            verifier && c.verify
+              ? {
+                  stateDir: c.verify.stateDir,
+                  maxPerDay: c.verify.maxPerDay ?? VERIFY_MAX_PER_DAY,
+                }
+              : null,
+          auto,
+          autoDir: auto ? (c.autoApprove!.stateDir ?? c.dir) : null,
+          running: () => running,
+          mail: gate && c.mailCaps ? { gate, limits: c.mailCaps } : null,
+          pauseDir: auto
+            ? (c.autoApprove!.stateDir ?? c.dir)
+            : (c.mailCaps?.stateDir ?? c.verify?.stateDir ?? null),
+          now: io.now,
+          log: io.log,
+        })
+      : null;
   return {
     store,
     auto,
@@ -485,8 +514,11 @@ export async function wireSignupAdmin(
       };
     },
     signups: {
-      autoStatus: async () =>
-        auto ? { enabled: true, running, ...(await auto.status()) } : { enabled: false },
+      autoStatus: async () => {
+        if (view) return view.status();
+        return auto ? { enabled: true, running, ...(await auto.status()) } : { enabled: false };
+      },
+      ...(view?.rows ? { rowStates: view.rows } : {}),
       approver: (actor) =>
         new SignupApprover({
           store,
