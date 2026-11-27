@@ -11,8 +11,10 @@ import { PREWARM_ATTEMPTS, startPrewarm } from '../prewarm.js';
 import { BuildService, DEFAULT_LIMITS } from '../service.js';
 import { ArtifactStore } from '../store.js';
 import { TEST_TICKET_KEY, principalFor } from '../../identity/test-gate.js';
-import { openPolicy } from '../../policy/testing.js';
+import { Policy } from '../../policy/policy.js';
+import { openPolicy, openPolicyConfig } from '../../policy/testing.js';
 import { RateLimiter } from '../../policy/rate.js';
+import type { ResourceProbe } from '../../policy/resources.js';
 import { FakeProvider, IMAGE_BYTES, fakeImage, sketch, tempDir } from './support.js';
 
 const dirs: string[] = [];
@@ -28,7 +30,19 @@ const curated = [1, 2, 3].map((n) => sketch(`void setup() {} void loop() {} // c
 const user = (n: number) => sketch(`void setup() {} void loop() {} // user ${n}\n`);
 const GRACE = 1000;
 
-function world(capImages: number, opts: { live?: () => number } = {}) {
+interface WorldOptions {
+  live?: () => number;
+  /** Host free disk and memory, checked against floors of 1 (default: no floors). */
+  probe?: ResourceProbe;
+}
+
+function floorPolicy() {
+  const c = openPolicyConfig();
+  c.global.resources = { minFreeDiskMb: 1, minAvailableMemoryMb: 1 };
+  return new Policy(c, 1);
+}
+
+function world(capImages: number, opts: WorldOptions = {}) {
   const storeDir = tempDir('tbi-a4-store-');
   const work = tempDir('tbi-a4-work-');
   const state = tempDir('tbi-a4-state-');
@@ -53,7 +67,8 @@ function world(capImages: number, opts: { live?: () => number } = {}) {
       grants,
       ticketKey: TEST_TICKET_KEY,
       systemKeys: new Set(curated.map(requestKey)),
-      policy: openPolicy(),
+      policy: opts.probe ? floorPolicy() : openPolicy(),
+      ...(opts.probe ? { probe: opts.probe } : {}),
       rates: new RateLimiter(':memory:'),
       ...(opts.live ? { liveSessions: opts.live } : {}),
     });
@@ -123,6 +138,36 @@ describe('pinned curated images', () => {
     expect(p.service.isPinned(mine)).toBe(false);
   });
 
+  it('an image of a profile that is no longer offered is not pinned', async () => {
+    const w = world(8);
+    const p = await w.start();
+    const sha = (await build(w, p, curated[0])).artifact!.sha256;
+    const without = new BuildService([], p.store, w.storeDir, DEFAULT_LIMITS, p.service.access);
+    expect([p.service.isPinned(sha), without.isPinned(sha)]).toEqual([true, false]);
+  });
+
+  it('a failing pin check keeps that image, evicts the others and does not fail the build', async () => {
+    const w = world(2);
+    const p = await w.start();
+    const unsure = (await build(w, p, user(1))).artifact!.sha256;
+    const other = (await build(w, p, user(2))).artifact!.sha256;
+    const real = p.service.isPinned.bind(p.service);
+    vi.spyOn(p.service, 'isPinned').mockImplementation((sha) => {
+      if (sha === unsure) throw new Error('database is locked');
+      return real(sha);
+    });
+    const result = await build(w, p, user(3));
+    expect(result.ok).toBe(true);
+    expect(p.service.lookup(requestKey(user(3)), A)).not.toBeNull();
+    expect([unsure, other].map((s) => p.store.exists(s))).toEqual([true, false]);
+    await build(w, p, user(4));
+    expect(p.store.exists(unsure)).toBe(true);
+    // Once per process; never reported as pins over the cap.
+    expect(w.warnings.map((l) => JSON.parse(l) as unknown)).toEqual([
+      { event: 'artifact_pin_check_failed' },
+    ]);
+  });
+
   it('pins over the cap behave as a full store: publish works, protected images stay, one warning', async () => {
     const w = world(2);
     const p = await w.start();
@@ -152,7 +197,7 @@ describe('pinned curated images', () => {
 
 describe('repeated prewarm', () => {
   const INTERVAL = 600_000;
-  async function scheduled(requests = curated, opts: { live?: () => number } = {}) {
+  async function scheduled(requests = curated, opts: WorldOptions = {}) {
     const w = world(64, opts);
     const p = await w.start();
     const realTimeout = setTimeout;
@@ -187,6 +232,9 @@ describe('repeated prewarm', () => {
     s.run();
     expect((await s.passes(1))[0]).toEqual({ event: 'prewarm', built: 0, missing: 2 });
     expect(s.w.provider.builds).toBe(0); // capacity_timeout: never started
+    // The pass ended at the first one: the second source took no queue slot.
+    const { records } = s.p.service as unknown as { records: Map<string, unknown> };
+    expect(records.size).toBe(1);
     live = 0;
     const real = s.w.provider.build.bind(s.w.provider);
     let broken = true;
@@ -199,15 +247,79 @@ describe('repeated prewarm', () => {
     expect((await s.passes(3))[2]).toEqual({ event: 'prewarm', built: 2, missing: 0 });
   });
 
-  it('a persistent failure stops at the limit', async () => {
+  it('a persistent failure backs off (twice as many passes each time) and stops at the limit', async () => {
     const bad = sketch('#error curated');
     const s = await scheduled([bad]);
     (s.p.service.access.systemKeys as Set<string>).add(requestKey(bad));
     s.run();
-    const all = await s.passes(PREWARM_ATTEMPTS + 3);
+    const builtAt: number[] = [];
+    for (let n = 1; n <= 2 ** PREWARM_ATTEMPTS; n++) {
+      const before = builtAt.length;
+      await s.passes(n);
+      if (s.w.provider.builds > before) builtAt.push(n);
+    }
+    expect(builtAt).toEqual([1, 2, 4, 8, 16, 32]);
     expect(s.w.provider.builds).toBe(PREWARM_ATTEMPTS);
-    expect(all.at(-1)).toEqual({ event: 'prewarm', built: 0, missing: 1 });
+    expect((await s.passes(2 ** PREWARM_ATTEMPTS)).at(-1)).toEqual({
+      event: 'prewarm',
+      built: 0,
+      missing: 1,
+    });
   });
+
+  it('builds that never started (capacity_timeout) are not attempts', async () => {
+    let live = 5000;
+    const s = await scheduled([curated[0]!], { live: () => live });
+    s.run();
+    await s.passes(PREWARM_ATTEMPTS + 2);
+    expect(s.w.provider.builds).toBe(0);
+    live = 0;
+    expect((await s.passes(PREWARM_ATTEMPTS + 3)).at(-1)).toEqual({
+      event: 'prewarm',
+      built: 1,
+      missing: 0,
+    });
+  });
+
+  it('a seed rebuild that never started does not spend the seed budget', async () => {
+    let live = 0;
+    const s = await scheduled([curated[0]!], { live: () => live });
+    s.run();
+    await s.passes(1);
+    live = 5000;
+    s.w.provider.seed = false;
+    await s.passes(PREWARM_ATTEMPTS + 3);
+    live = 0;
+    await s.passes(PREWARM_ATTEMPTS + 4);
+    expect(s.w.provider.builds).toBe(2);
+    expect(s.w.provider.seed).toBe(true);
+  });
+
+  it.each(['disk', 'memory'])(
+    'no build starts below the free %s floor; skipped passes are not attempts',
+    async (what) => {
+      let low = true;
+      const s = await scheduled([curated[0]!], {
+        probe: {
+          freeDiskMb: () => (low && what === 'disk' ? 0 : 10),
+          availableMemoryMb: () => (low && what === 'memory' ? 0 : 10),
+        },
+      });
+      s.run();
+      expect((await s.passes(PREWARM_ATTEMPTS + 2)).at(-1)).toEqual({
+        event: 'prewarm',
+        built: 0,
+        missing: 1,
+      });
+      expect(s.w.provider.builds).toBe(0);
+      low = false;
+      expect((await s.passes(PREWARM_ATTEMPTS + 3)).at(-1)).toEqual({
+        event: 'prewarm',
+        built: 1,
+        missing: 0,
+      });
+    },
+  );
 
   it('a seed that is never left costs a bounded number of rebuilds', async () => {
     const s = await scheduled([curated[0]!]);
