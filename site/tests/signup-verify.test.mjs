@@ -20,12 +20,13 @@ import { content, SIGNUP_VERIFY_ENABLED } from '../content.mjs';
  * `preview` and `enabled` were updated for the request timeouts and the deferred token fetch in signup.mjs. All three
  * were updated for the footer sign-in spacing (assets/site.css, the only `default` change since co/main); `preview` and
  * `enabled` also for the neutral no-answer text on the sign-up pages, and again for the neutral no-answer heading
- * of the sign-up form.
+ * of the sign-up form; both again for the unclear-answer texts (502, 504, unusable 200) and the error summary
+ * description.
  */
 const CO_MAIN_TREES = {
   default: '81d2008c0bf9198c744f75afdaaa10e52254e16a9b6f030e017e015a2185e567',
-  preview: 'c3de63e33f422d596293dac802e3a9f2d48493a17e6e7ecd87e070319a89fae1',
-  enabled: '6fb3b07ad3e801ec17ce0ba5fe46b451067a6c0de9b7772ee1235c623d415ce1',
+  preview: '459e7239e7ab0e5aae45d34b483be143420608e378225d75b6417760f90830aa',
+  enabled: '708bdc15435e57db7821863018f3d4d277f6a191c9e30bae15570d815bb0cec0',
 };
 const VARIANTS = {
   default: {},
@@ -255,6 +256,8 @@ describe('confirm client logic', () => {
     [404, {}, 'unavailable'],
     [500, { error: 'internal' }, 'unavailable'],
     [503, { error: 'unavailable' }, 'unavailable'],
+    [502, {}, 'unknown'],
+    [504, {}, 'unknown'],
   ])('%s %j -> %s', async (status, body, want) => {
     expect(
       await mod.postVerify(

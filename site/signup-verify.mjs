@@ -9,7 +9,8 @@
  * Rules (design sections 3, 4, 7, 11):
  * - the token comes from location.hash only, is removed from the address bar at once, lives in one closure variable and
  *   goes nowhere but the body of POST <base>/verify, on a button click (never on load);
- * - POST <base>/verify {token}: 202 received, 410 expired, 400 invalid, 429 rate limited, anything else "not now";
+ * - POST <base>/verify {token}: 202 received, 410 expired, 400 invalid, 429 rate limited, 502/504 unknown,
+ *   anything else "not now";
  * - POST <base>/resend {email, website, token = form token}: one neutral answer for every address;
  * - all text is rendered by the generator; this script only copies textContent and toggles.
  */
@@ -25,7 +26,7 @@ export function readVerifyToken(hash) {
   return hash.startsWith(VERIFY_HASH) ? hash.slice(VERIFY_HASH.length) : null;
 }
 
-/** @returns {Promise<'received'|'expired'|'invalid'|'rate'|'network'|'unavailable'>} */
+/** @returns {Promise<'received'|'expired'|'invalid'|'rate'|'network'|'unknown'|'unavailable'>} */
 export async function postVerify(fetchFn, base, token) {
   if (!VERIFY_TOKEN_SHAPE.test(token)) return 'invalid';
   const signal = globalThis.AbortSignal?.timeout?.(VERIFY_TIMEOUT_MS);
@@ -45,6 +46,8 @@ export async function postVerify(fetchFn, base, token) {
   if (res.status === 410) return 'expired';
   if (res.status === 400 || res.status === 413) return 'invalid';
   if (res.status === 429) return 'rate';
+  // A gateway error: the confirmation may have arrived.
+  if (res.status === 502 || res.status === 504) return 'unknown';
   if (res.status !== 202) return 'unavailable';
   try {
     return (await res.json())?.ok === true ? 'received' : 'unavailable';
@@ -283,12 +286,11 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
       [MSG.unavailable]: 'resendUnavailable',
       [MSG.invalid]: 'resendInvalid',
       [MSG.network]: 'resendNetwork',
+      [MSG.unknown]: 'resendUnknown',
     }[r.msg];
-    // No answer: the request may have arrived, so the heading must not say it was not sent.
-    result(
-      r.msg === MSG.network ? 'resultNetworkH' : 'resultFailH',
-      own ? text(own) : (message(r.msg) ?? message(MSG.generic)),
-    );
+    // No answer or an unclear one: the request may have arrived, so the heading must not say it was not sent.
+    const head = { [MSG.network]: 'resultNetworkH', [MSG.unknown]: 'resultUnknownH' }[r.msg];
+    result(head ?? 'resultFailH', own ? text(own) : (message(r.msg) ?? message(MSG.generic)));
   });
 
   input.addEventListener('input', () => {

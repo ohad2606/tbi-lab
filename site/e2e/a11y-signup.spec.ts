@@ -190,6 +190,44 @@ for (const { lang, dir } of LANGS) {
       await expect(page.locator('#su-success-h')).toBeFocused();
     });
 
+    test('502, 504 and an unusable 200: unknown outcome, described summary, retry works', async ({
+      page,
+    }) => {
+      const s = await stub(page, [[502], [504], [200, {}]]);
+      await page.goto(`/${lang}/signup/`);
+      const summary = page.locator('#su-summary');
+      await expect(summary).not.toHaveAttribute('aria-describedby');
+      await fillByKeyboard(page);
+      const copy = (key: string) => page.locator(`[data-msg="${key}"]`).textContent();
+      for (let n = 1; n <= 3; n++) {
+        await page.locator('#su-submit').focus();
+        await page.keyboard.press('Enter');
+        await expect.poll(() => s.posts.length).toBe(n);
+        await expect(summary).toBeFocused();
+        await expect(page.locator('#su-summary-h')).toHaveText((await copy('summaryUnknownH'))!);
+        await expect(summary).toHaveAttribute('aria-describedby', 'su-summary-msg');
+        await expect(summary).toHaveAccessibleDescription((await copy('msgUnknown'))!);
+        // the focused group is the only announcement
+        await expect(page.locator('#su-status')).not.toHaveText((await copy('msgUnknown'))!);
+        await expect(page.locator('#su-name')).toHaveValue('Dana Test');
+      }
+      await page.setViewportSize({ width: 320, height: 640 });
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        ),
+      ).toBeLessThanOrEqual(0);
+      expect(await axe(page)).toEqual([]);
+      // a field-error summary has no failure message, so no description
+      await page.locator('#su-name').fill('');
+      await page.locator('#su-submit').click();
+      await expect(summary).toBeFocused();
+      await expect(summary).not.toHaveAttribute('aria-describedby');
+      await page.locator('#su-name').fill('Dana Test');
+      await page.locator('#su-submit').click();
+      await expect(page.locator('#su-success-h')).toBeFocused();
+    });
+
     test('401 is retried silently with a fresh token', async ({ page }) => {
       const s = await stub(page, [[401, { error: 'expired' }]]);
       await page.goto(`/${lang}/signup/`);

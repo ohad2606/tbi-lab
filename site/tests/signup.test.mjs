@@ -279,6 +279,10 @@ describe('client script logic', () => {
     [400, { error: 'invalid' }, MSG.invalid],
     [413, {}, MSG.generic],
     [500, {}, MSG.generic],
+    // A gateway error or an unusable 200: the request may have arrived.
+    [502, {}, MSG.unknown],
+    [504, {}, MSG.unknown],
+    [200, {}, MSG.unknown],
   ])('POST %s %j maps to %s', async (status, b, msg) => {
     const { sub } = setup({ 'GET /form-token': tokOk(1), 'POST /web': res(status, b) });
     expect(await sub.submit(payload)).toEqual({ ok: false, msg });
@@ -292,6 +296,12 @@ describe('client script logic', () => {
     expect(await r.sub.submit(payload)).toEqual({ ok: false, msg: MSG.rate });
     r = setup({ 'GET /form-token': res(503) });
     expect(await r.sub.submit(payload)).toEqual({ ok: false, msg: MSG.unavailable });
+  });
+  it('502/504 on the token fetch: nothing was posted, so the generic "not sent" text', async () => {
+    for (const s of [502, 504]) {
+      const { sub } = setup({ 'GET /form-token': res(s) });
+      expect(await sub.submit(payload)).toEqual({ ok: false, msg: MSG.generic });
+    }
   });
   it('token survives 503, 429 and too_fast (retry with the same token), not an invalid answer', async () => {
     for (const [s, b, keep] of [
