@@ -508,7 +508,8 @@ export function Signups() {
     const at = document.activeElement;
     if (at?.closest('#signups-unconfirmed-rows[hidden]')) return setGroupOpen(true);
     // An action's own focus rules (below) win.
-    if (!was || (at && at !== document.body) || focusId.current !== undefined) return;
+    if (!was || (at && at !== document.body)) return;
+    if (focusId.current !== undefined || keptId.current !== null) return;
     const row = document.querySelector<HTMLElement>(`[data-signup-id="${CSS.escape(was.id)}"]`);
     if (!row) return refreshBtn.current?.focus();
     if (row.closest('[hidden]')) setGroupOpen(true);
