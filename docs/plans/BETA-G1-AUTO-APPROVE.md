@@ -287,11 +287,12 @@ day rollover without a write, pause as a file or a directory, `unknown` for a co
   - Owner runbook: `docs/alpha/SIGNUP-AUTO-APPROVE-RUNBOOK.md` (enable, pause/resume, log lines to alert on,
     rollback, and the cut-off caveat when re-enabling).
 - Still open for deploy:
-  - The intake unit `tbi-signup` is not in the repo yet. When it lands it must set
-    `InaccessiblePaths=-/var/lib/<N>-admin-auto`. Today the admin and intake services must share a user (0700
-    store, 0600 files written by both), so the 0700 mode does **not** deny the intake: the sandbox is required, not
-    defence in depth (full list and host check: runbook precondition 5). The test case for this is an explicit skip
-    until then and must be completed with the unit, matching the recorded user model.
+  - The intake unit exists as a DRAFT only: `deploy/signup/tbi-signup.service.in` (not rendered, not installed).
+    Shared-user model: it runs as the admin unit's user and group (0700 store, 0600 files written by both), so the
+    0700 mode does **not** deny the intake: the sandbox is required, not defence in depth. It sets
+    `InaccessiblePaths=/var/lib/<N>-admin-auto` without `-` (fail closed) plus the full list, its own PID namespace
+    and no `AF_UNIX` (runbook precondition 5, with the host checks and the in-sandbox negative check). Tests:
+    `signup-intake-unit.test.ts` and the intake case of `signup-auto-deploy-unit.test.ts` (no skip).
   - The draft mailer unit could add the same `InaccessiblePaths` line (separate mailer slice).
   - The signup env of the admin unit (`TBI_SIGNUP_ADMIN`, store, mail) is not in this template. It is a TBI-022
     deploy item.

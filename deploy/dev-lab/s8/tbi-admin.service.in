@@ -36,10 +36,13 @@ RuntimeDirectoryMode=0755
 # docs/alpha/SIGNUP-AUTO-APPROVE-RUNBOOK.md): the pause file and the state file (daily count,
 # claims, cut-off). systemd creates /var/lib/@N@-admin-auto owned by User=/Group= with mode 0700 and
 # puts a wrong owner back at start. It may NOT correct a loosened mode (verify with stat, see the
-# runbook; autoStateDirCheck refuses only group/world-WRITABLE), so the internet-facing intake user
-# is kept out by the 0700 mode as created plus that check. Its parents (/var/lib, /var, /) are the host's root-owned 0755 directories, as
-# autoStateDirCheck requires. A sibling of the helper's /var/lib/tbi-admin, never inside it (systemd
-# would chown that tree) and never inside the sign-up store (owned by the intake user). This is the
+# runbook; autoStateDirCheck refuses only group/world-WRITABLE). The 0700 mode does NOT keep the
+# internet-facing intake out: it runs as this same user (shared-user model, the sign-up store needs
+# it), so only the intake unit's sandbox does (draft deploy/signup/tbi-signup.service.in: fail-closed
+# InaccessiblePaths, own PID namespace; runbook precondition 5). Its parents (/var/lib, /var, /) are
+# the host's root-owned 0755 directories, as autoStateDirCheck requires. A sibling of the helper's
+# /var/lib/tbi-admin, never inside it (systemd would chown that tree) and never inside the sign-up
+# store (written by the intake). This is the
 # only writable path added; ProtectSystem=strict makes a StateDirectory writable by itself.
 StateDirectory=@N@-admin-auto
 StateDirectoryMode=0700

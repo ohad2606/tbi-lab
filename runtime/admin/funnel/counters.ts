@@ -12,8 +12,9 @@
  * when group/other have any access: the store does not start, it does not repair). Writes are
  * atomic (exclusive temp file 0600, fsync, rename) and serialised across processes sharing the
  * directory by an O_EXCL lock file; each write re-reads the file and adds this process's pending
- * deltas, so two writers do not lose each other's counts. Processes running as different users
- * (the intake and the admin service) each get their own directory (one file each).
+ * deltas, so two writers do not lose each other's counts. The intake and the admin service run as
+ * the same user (shared sign-up store) but each gets its own directory (one file each); the
+ * intake's sandbox, not the file mode, keeps it out of the admin's.
  *
  * Bounds: at most `FUNNEL_DAY_CAP` per day per event (above it: silently not counted). Once this
  * process has seen a total at the cap in the file, `increment` refuses and nothing is written for

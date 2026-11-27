@@ -16,8 +16,9 @@
  *                  symlink component), and every parent up to / must be owned by this uid or root
  *                  and not group/world-writable unless sticky (autoStateDirCheck); else
  *                  auto-approve does not start / stops (logged once; manual mode stays). For
- *                  Alpha it must be an admin-only 0700 directory the intake user cannot write
- *                  (deploy item).
+ *                  Alpha it must be an admin-only 0700 directory the intake cannot reach: the
+ *                  intake runs as the same user, so its unit masks this directory (deploy item,
+ *                  runbook precondition 5).
  *   Daily cap      at most `dailyCap` requests are CLAIMED for auto-approval per Israel calendar
  *                  day (Asia/Jerusalem, DST-correct via Intl). The count, the ids claimed by this
  *                  service and the cut-off live in `<state>/auto-approve.state.json` (0600, atomic

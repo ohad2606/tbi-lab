@@ -1,0 +1,144 @@
+# TBI-022 / BETA-G1 public sign-up intake: DRAFT unit, NOT rendered by any installer, NOT installed,
+# never run on a host. Runbook: docs/alpha/SIGNUP-AUTO-APPROVE-RUNBOOK.md, precondition 5 (isolate the
+# intake). Placeholders (@...@) are filled by a later, separately reviewed deploy slice:
+#   @N@                     instance name (admin unit <N>-admin.service)
+#   @NODE@ @BUNDLES@        Node runtime and the published bundles (@BUNDLES@/signup-intake.mjs)
+#   @STORE@                 artifact store
+#   @SOURCE_HEADER@         header the trusted proxy sets to the client address (docs/ops/G1-SIGNUP-PROXY.md)
+#   @TELEGRAM_CHAT_ID@      the owner's chat;  @ADMIN_LINK@  https link placed in the notification
+#   @TELEGRAM_EGRESS_ALLOW@ the messaging provider's published address list (kept by ops)
+#
+# User model: SHARED user. The sign-up store is 0700 and the admin service and the intake both write
+# 0600 files in it, so the intake runs as the admin unit's user and primary group. File modes do NOT
+# separate the two processes: only this sandbox does (masked paths, own PID namespace, no AF_UNIX,
+# no ptrace-like system calls). Any masked path that is missing makes the start FAIL (intended).
+# The admin's files in this store are read with O_NOFOLLOW|O_NONBLOCK and an fstat check (store.ts).
+#
+# Masks are applied ONCE, when this unit starts. A masked path that is later removed and recreated
+# (the admin's /run dirs on every admin restart, or an installer replacing a state/key directory)
+# is NOT masked in the running sandbox: the kernel detaches a mount whose mount point is deleted in
+# another namespace. Hence BindsTo= below, and the runbook rule: restart the intake after any change
+# that recreates a masked path.
+#
+# Directories that must exist before the first start (created by the deploy step, never by this unit):
+#   /var/lib/tbi-signup            0700 tbi-admin:tbi-adminio   the sign-up store (written by both)
+#   /var/lib/tbi-signup-funnel     0700 tbi-admin:tbi-adminio   optional, only with funnel counters
+#   every InaccessiblePaths entry without "-" below, e.g. /var/lib/tbi-mail (create it empty, root 0755,
+#   where the mailer is not installed), /run/@N@-admin and /run/credentials/@N@-admin.service (created
+#   by the running admin unit: BindsTo=, After=, AssertPathExists= below)
+[Unit]
+Description=TBI Lab public sign-up intake (@N@)
+After=network-online.target @N@-admin.service
+Wants=network-online.target
+# BindsTo= (with After=): stopped when the admin stops, is restarted, or stops unexpectedly (a crash,
+# also before its own Restart=on-failure, which goes through failed/inactive with the default
+# RestartMode=normal), so its recreated /run dirs are never seen unmasked. PartOf= adds nothing
+# (BindsTo= already propagates stop and restart). NOTHING restarts this unit after the admin
+# auto-restarts: it stays down (fail closed) until started again (runbook precondition 5).
+BindsTo=@N@-admin.service
+# The admin is Type=simple: "active" right after fork, before systemd has created its
+# RuntimeDirectory and credentials in the child, so After= alone does not order this start after
+# them. Its socket exists only after its exec (after both are set up); a missing socket fails the
+# start (no restart: Restart= does not apply to assert failures).
+AssertPathExists=/run/@N@-admin/api.sock
+StartLimitIntervalSec=600
+StartLimitBurst=5
+# PrivatePIDs= needs systemd >= 257; an older systemd IGNORES the unknown key (warning only).
+# AssertVersion= itself exists only from systemd 258 and is ignored the same way on older versions,
+# so it is NOT the fail-closed guard: the ExecStart check below (PID 1 of its own namespace) is.
+AssertVersion=systemd >= 257
+
+[Service]
+Type=exec
+# Shared-user model (see the header): exactly the admin unit's User= and Group=, no extra groups in
+# THIS unit. The user's groups in the host group database still apply (runbook host check: id).
+User=tbi-admin
+Group=tbi-adminio
+UMask=0077
+# Off unless a drop-in sets TBI_SIGNUP_INTAKE=1 (unset or 0: one log line, exit 0).
+Environment=TBI_SIGNUP_INTAKE=0
+Environment=TBI_SIGNUP_DIR=/var/lib/tbi-signup
+Environment=TBI_SIGNUP_LISTEN=127.0.0.1:7411
+Environment=TBI_SIGNUP_SOURCE_HEADER=@SOURCE_HEADER@
+Environment=TBI_SIGNUP_TELEGRAM_CHAT_ID=@TELEGRAM_CHAT_ID@
+Environment=TBI_SIGNUP_ADMIN_LINK=@ADMIN_LINK@
+# Its two secrets only: systemd (PID 1, outside this sandbox) copies the root-owned 0400 files into
+# this unit's own credential directory (%d); the source directory is masked below. Never the mail,
+# verify or identity key.
+LoadCredential=intake-hmac.key:/etc/tbi-signup/intake-hmac.key
+LoadCredential=intake-telegram.token:/etc/tbi-signup/intake-telegram.token
+Environment=TBI_SIGNUP_HMAC_FILE=%d/intake-hmac.key
+Environment=TBI_SIGNUP_TELEGRAM_TOKEN_FILE=%d/intake-telegram.token
+BindReadOnlyPaths=@NODE@:/opt/tbi-node
+BindReadOnlyPaths=@BUNDLES@:/opt/tbi-build
+# Fail closed: refuse to run (exit 78, no restart loop) unless this process is PID 1 of its own PID
+# namespace, i.e. PrivatePIDs= took effect (it is ignored on systemd < 257 or without PID namespaces).
+ExecStart=/bin/sh -c 'if [ "$$$$" != 1 ]; then echo "tbi-signup: refusing to start: pid_namespace_missing"; exit 78; fi; exec /opt/tbi-node/bin/node /opt/tbi-build/signup-intake.mjs'
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=78
+
+# Filesystem: read-only everywhere; writable only the store and (counters on) its own funnel dir.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/tbi-signup -/var/lib/tbi-signup-funnel
+# Fail closed (no "-": a missing path blocks the start): the admin's control, verification and
+# mail-gate state, its socket and credential directories, the mailer's queue, the key directories
+# (mail, verify and identity keys; also the source of this unit's own credentials, read by PID 1),
+# the helper's tree and the admin log. Never /run/credentials as a whole (this unit's %d is there).
+InaccessiblePaths=/var/lib/@N@-admin-auto /run/@N@-admin /run/credentials/@N@-admin.service
+InaccessiblePaths=/var/lib/tbi-mail /etc/tbi-signup /etc/@N@ /var/lib/tbi-admin /var/log/tbi-admin
+# Optional (absent on some hosts): artifacts, runtime and build state, DynamicUser state, the
+# runtime sockets, user runtime dirs, the mailer's credentials. /run/@N@-runtime and /run/user hold
+# unix sockets: optional is acceptable only because AF_UNIX is not allowed (RestrictAddressFamilies).
+# An admin TBI_FUNNEL_DIR outside the paths below must be added WITHOUT "-" (drop-in, runbook).
+InaccessiblePaths=-@STORE@ -/var/lib/@N@-runtime -/var/lib/@N@-build -/var/lib/private
+InaccessiblePaths=-/run/@N@-runtime -/run/user -/run/credentials/tbi-mailer.service
+# Same user as the admin: its processes must be neither visible nor signalable.
+PrivatePIDs=yes
+ProtectProc=invisible
+ProcSubset=pid
+PrivateDevices=yes
+DevicePolicy=closed
+PrivateIPC=yes
+KeyringMode=private
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+LimitCORE=0
+
+# Privileges and kernel surface.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+# MemoryDenyWriteExecute stays off: Node's JIT needs writable+executable pages.
+# RemoveIPC stays off: it removes ALL IPC objects of the user at stop, i.e. the admin service's too.
+# PrivateNetwork stays off: the proxy reaches the loopback listener and Telegram needs egress.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @debug @mount @obsolete process_vm_readv process_vm_writev pidfd_getfd kcmp
+SystemCallArchitectures=native
+SystemCallErrorNumber=EPERM
+MemoryMax=128M
+# Node: main thread, 4 libuv workers, V8 platform workers and helpers (about 11).
+TasksMax=32
+
+# Network: IPv4/IPv6 only (no AF_UNIX: no admin socket, no D-Bus, no user manager). Loopback (the
+# proxy and the reply), the local DNS stub and the provider only. IPAddressAllow cannot filter
+# ports: every loopback TCP listener on the host is reachable (runbook host check).
+RestrictAddressFamilies=AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32 ::1/128 127.0.0.53/32 @TELEGRAM_EGRESS_ALLOW@
+# It binds exactly its listen port (TBI_SIGNUP_LISTEN above); client sockets never bind().
+SocketBindAllow=ipv4:tcp:7411
+SocketBindDeny=any
+
+[Install]
+WantedBy=multi-user.target

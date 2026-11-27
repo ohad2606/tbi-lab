@@ -41,8 +41,10 @@ behind the gate, and the Session Host never writes a request the helper accepts.
   Approve calls the account path through the `AccountAdder` interface (`spoolAccountAdder` wraps the existing
   `AdminSpool.submit/wait`), so no second way to add an account exists.
 - The **public side** (the signed POST) must NOT live in the admin service (that one trusts the gate's identity and
-  has the spool). It is a separate small process, `tbi-signup` (own user, own unix socket, own unit), that can
-  only create pending files. It has no spool, no helper access, no Resend key.
+  has the spool). It is a separate small process, `tbi-signup` (own unit, loopback TCP listener behind the proxy),
+  that can only create pending files. User model (BETA-G1): it runs as the admin service's user (the shared store
+  needs it), so its sandbox, not file modes, separates it (draft `deploy/signup/tbi-signup.service.in`, runbook
+  `SIGNUP-AUTO-APPROVE-RUNBOOK.md` precondition 5). It has no spool, no helper access, no Resend key.
 
 Both sides share one pure library (`runtime/admin/signup/`): `hmac.ts`, `limits.ts`, `validate.ts`, `store.ts`,
 `notify.ts`, `email.ts`, `service.ts`, `http.ts`. Every I/O (clock, fetch, secret readers, spool) is injected;
@@ -52,7 +54,7 @@ tests use fakes only.
 
 | Secret / capability | Process | Why there |
 |---|---|---|
-| HMAC shared secret (file, root-owned, group-readable by `tbi-signup` only) | intake process | only the process that verifies needs it |
+| HMAC shared secret (file, root-owned 0400, passed to the intake unit only with `LoadCredential=`) | intake process | only the process that verifies needs it |
 | Telegram bot token (file) | intake process | it sends the notification |
 | Resend API key (file, sending-only key) | admin service (the approver) | the only component that sends the email; the intake cannot send mail |
 | Spool write | admin service | unchanged (D1) |
@@ -88,10 +90,12 @@ Operational rules added by the security review:
   reopens replay of any captured request still inside the 5-minute window, for at most that window (up to 10
   minutes of timestamp validity either side is not reachable: the timestamp check still rejects older requests).
   Accepted; the effect of a replay is a duplicate request, which the dedupe marker absorbs.
-- **Store directory shared between users:** the intake user owns the 0700 directory; the admin service user must
-  reach it through a shared group (dir 0770 is refused by the start check, which demands no group/other access), so
+- **Store directory shared between users:** (original analysis, superseded by the decision at the end of this
+  item) with a separate intake user owning the 0700 directory, the admin service user would have to reach it
+  through a shared group (dir 0770 is refused by the start check, which demands no group/other access), so
   deploy review must choose: run both processes as one user, or a second directory with the admin service pulling
-  by a root-owned helper. Until decided the start check stays strict (no repair).
+  by a root-owned helper. Until decided the start check stays strict (no repair). Decided for BETA-G1: one shared
+  user; the intake's sandbox separates the two (runbook precondition 5).
 - **Secret rotation:** replace the HMAC file and the form script property together, restart the intake; requests
   signed with the old secret get 401 until the script is updated (a short outage is acceptable). The nonce cache
   is emptied by the restart. Same for the Telegram token and the Resend key (read at use, no restart).
@@ -214,15 +218,16 @@ Settings: `TBI_SIGNUP_DIR`, `TBI_SIGNUP_HMAC_FILE`, `TBI_SIGNUP_TELEGRAM_TOKEN_F
 
 Nothing below has been done. All of it is an Alpha change and needs the owner in an interactive session.
 
-1. Proxy: route `POST <ALPHA_HOST>/signup` to the intake socket only (no gate login for this path, since the form
+1. Proxy: route `POST <ALPHA_HOST>/signup` to the intake's loopback listener only (`127.0.0.1:7411` in the draft
+   unit) (no gate login for this path, since the form
    script cannot sign in); set the client-address header from the real peer address (overwrite, not append from the
    client); apply a request-size limit and a rate limit at the proxy as well; do not log request bodies.
-2. New systemd unit `tbi-signup` (own user and group, own socket directory, `ProtectSystem=strict`,
+2. New systemd unit `tbi-signup` (now a draft, `deploy/signup/tbi-signup.service.in`: the admin service's user and
+   group, loopback TCP listener; originally planned with its own user and socket directory; `ProtectSystem=strict`,
    `NoNewPrivileges`, `PrivateTmp`, no network except outbound to the messaging provider, writable only the pending
    store, no access to the spool, results, view or artifact paths).
-3. Pending store directory (0700, owned by the intake user) and read/update access for the admin service user
-   (a shared group or a second directory; to be decided at deploy review).
-4. Secret files: HMAC secret (intake group-readable), Telegram bot token (intake), Resend sending-only key (admin
+3. Pending store directory (0700, owned by the shared service user; BETA-G1 chose one user for both services).
+4. Secret files: HMAC secret and Telegram bot token (intake, `LoadCredential=` only), Resend sending-only key (admin
    service). Created by the owner; never through an agent.
 5. Admin service unit: add the store path, the Resend key path, the sender/reply address and lab URL configuration
    (outbound HTTPS to the mail provider only), enable `signups`. Add a daily purge timer or in-process schedule.

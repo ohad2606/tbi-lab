@@ -6,17 +6,9 @@
  * itself lives in the helper's registry once approved.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import {
-  appendFile,
-  mkdir,
-  open,
-  readdir,
-  readFile,
-  rename,
-  stat,
-  unlink,
-  writeFile,
-} from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { mkdir, open, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { newRequestId, REQUEST_ID_RE } from '../common.js';
 import { serialById } from './locks.js';
@@ -141,6 +133,68 @@ export function retentionFromEnv(env: NodeJS.ProcessEnv): Retention {
 
 /** K12: the result of `PendingStore.deleteNow`. */
 export type DeleteOutcome = 'deleted' | 'already_deleted' | 'not_found';
+
+/**
+ * BETA-G1 precondition 5 (shared user): the intake runs as the admin's user and can write any file
+ * in this directory, so every store file is opened without following a symlink and without
+ * blocking on a FIFO (O_NOFOLLOW | O_NONBLOCK), and the OPENED descriptor must be a regular file
+ * owned by this process's uid and at most this size. Records and markers are a few hundred bytes
+ * (fields capped in validate.ts); the audit log has its own, larger read cap (an oversize log only
+ * means the `already_deleted` lookup answers `not_found`).
+ */
+export const STORE_FILE_MAX_BYTES = 256 * 1024;
+export const AUDIT_LOG_MAX_BYTES = 64 * 1024 * 1024;
+
+/** Thrown for a store file that is a link, special file, foreign-owned or oversize (class code). */
+export class StoreFileRefused extends Error {
+  constructor(readonly code: 'not_regular' | 'foreign_owner' | 'too_large') {
+    super(`store_file_refused_${code}`);
+  }
+}
+
+async function checkOpened(fh: FileHandle, maxBytes: number): Promise<void> {
+  const st = await fh.stat();
+  if (!st.isFile()) throw new StoreFileRefused('not_regular');
+  const uid = process.getuid?.();
+  if (uid !== undefined && st.uid !== uid) throw new StoreFileRefused('foreign_owner');
+  if (st.size > maxBytes) throw new StoreFileRefused('too_large');
+}
+
+/** Reads a store file: see STORE_FILE_MAX_BYTES. A symlink fails with ELOOP, a FIFO is refused. */
+export async function readStoreFile(
+  file: string,
+  maxBytes = STORE_FILE_MAX_BYTES,
+): Promise<string> {
+  const fh = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    await checkOpened(fh, maxBytes);
+    const text = await fh.readFile('utf8');
+    // Grown between fstat and read: refused as well.
+    if (Buffer.byteLength(text) > maxBytes) throw new StoreFileRefused('too_large');
+    return text;
+  } finally {
+    await fh.close();
+  }
+}
+
+/** Appends to a store file (created 0600): no link, no FIFO, regular and own (no size cap). */
+async function appendStoreFile(file: string, data: string): Promise<void> {
+  const fh = await open(
+    file,
+    constants.O_WRONLY |
+      constants.O_APPEND |
+      constants.O_CREAT |
+      constants.O_NOFOLLOW |
+      constants.O_NONBLOCK,
+    0o600,
+  );
+  try {
+    await checkOpened(fh, Number.POSITIVE_INFINITY);
+    await fh.writeFile(data, 'utf8');
+  } finally {
+    await fh.close();
+  }
+}
 
 export class StoreError extends Error {
   constructor(readonly code: 'unsafe_dir' | 'not_found' | 'corrupt' | 'full') {
@@ -293,7 +347,7 @@ export class PendingStore {
 
   /** Resend by address: the address marker's holder (sha256 key), then as `writeResendMarker`. */
   async writeResendMarkerFor(email: string): Promise<MarkerOutcome> {
-    const holder = (await readFile(this.markPath(email), 'utf8').catch(() => '')).trim();
+    const holder = (await readStoreFile(this.markPath(email)).catch(() => '')).trim();
     return REQUEST_ID_RE.test(holder) ? this.writeResendMarker(holder) : 'skip';
   }
 
@@ -339,7 +393,7 @@ export class PendingStore {
         }
       };
       // Dedupe first: at the cap a repeat of a live request is still answered (not 'full').
-      const existing = (await readFile(mark, 'utf8').catch(() => '')).trim();
+      const existing = (await readStoreFile(mark).catch(() => '')).trim();
       if (REQUEST_ID_RE.test(existing)) {
         const cur = await this.get(existing).catch(() => null);
         if (cur && cur.status !== 'rejected') return { created: false, record: cur };
@@ -348,7 +402,7 @@ export class PendingStore {
       const rec = this.build(input);
       if (web) rec.origin = 'web';
       if (!(await claim(rec.id))) {
-        const holder = (await readFile(mark, 'utf8').catch(() => '')).trim();
+        const holder = (await readStoreFile(mark).catch(() => '')).trim();
         const cur = REQUEST_ID_RE.test(holder) ? await this.get(holder).catch(() => null) : null;
         if (cur && cur.status !== 'rejected') return { created: false, record: cur };
         await unlink(mark).catch(() => undefined); // stale: take over
@@ -393,7 +447,7 @@ export class PendingStore {
   async audit(id: string, action: string, outcome: string, actor?: 'auto'): Promise<void> {
     const tag = actor ? ` actor=${actor}` : '';
     const line = `${new Date(this.now()).toISOString()} ${this.idOnly(id)} ${action} ${outcome}${tag}\n`;
-    await appendFile(join(this.dir, 'audit.log'), line, { mode: 0o600 });
+    await appendStoreFile(join(this.dir, 'audit.log'), line);
   }
 
   private build(input: SignupInput): SignupRecord {
@@ -426,7 +480,7 @@ export class PendingStore {
   async get(id: string): Promise<SignupRecord> {
     let text: string;
     try {
-      text = await readFile(this.path(id), 'utf8');
+      text = await readStoreFile(this.path(id));
     } catch (e) {
       if (e instanceof StoreError) throw e;
       throw new StoreError('not_found');
@@ -543,7 +597,7 @@ export class PendingStore {
           if (code !== 'EISDIR' && code !== 'EPERM') throw e;
         });
       else if (/^[0-9a-f]{64}\.mark$/.test(f)) {
-        const holder = (await readFile(join(this.dir, f), 'utf8').catch(() => '')).trim();
+        const holder = (await readStoreFile(join(this.dir, f)).catch(() => '')).trim();
         if (holder === id) await gone(f);
       }
     }
@@ -595,7 +649,9 @@ export class PendingStore {
 
   /** Whether the audit log has a line `<time> <id> <action> <outcome>[ actor=...]`. */
   private async auditHas(id: string, action: string, outcome: string): Promise<boolean> {
-    const text = await readFile(join(this.dir, 'audit.log'), 'utf8').catch(() => '');
+    const text = await readStoreFile(join(this.dir, 'audit.log'), AUDIT_LOG_MAX_BYTES).catch(
+      () => '',
+    );
     const needle = ` ${id} ${action} ${outcome}`;
     return text.split('\n').some((l) => {
       const i = l.indexOf(needle);
@@ -671,7 +727,7 @@ export class PendingStore {
     // Address markers whose record is gone, and orphaned temp files from a crash.
     for (const f of await readdir(this.dir)) {
       if (f.endsWith('.mark')) {
-        const id = (await readFile(join(this.dir, f), 'utf8').catch(() => '')).trim();
+        const id = (await readStoreFile(join(this.dir, f)).catch(() => '')).trim();
         const s = await stat(join(this.dir, f)).catch(() => null);
         const live =
           REQUEST_ID_RE.test(id) &&
