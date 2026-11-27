@@ -347,6 +347,27 @@ export class Verifier {
     this.log(line);
   }
 
+  /**
+   * S4b (summary file, read-only): verify mails counted on each Israel day of `days`, from the
+   * shared counters (refunded slots are not counted). null = dirs unsafe or counters unreadable.
+   */
+  async mailCounts(days: string[]): Promise<number[] | null> {
+    if ((await this.checkDirs().catch(() => 'error')) !== null) return null;
+    let c: Counters | null;
+    try {
+      c = await readJson<Counters>(join(this.vdir, COUNTERS));
+    } catch {
+      return null;
+    }
+    if (c === null) return days.map(() => 0);
+    if (!validCounters(c)) return null;
+    const sent = Object.values(c.addrs)
+      .flat()
+      .map((x) => israelDay(Date.parse(x)));
+    // The day counter is what the cap is judged on, so it is the answer for its own day.
+    return days.map((d) => (d === c.day ? c.dayCount : sent.filter((x) => x === d).length));
+  }
+
   /** Both dirs safe (creating `verify/` 0700 once): null, else a fixed reason. */
   async checkDirs(): Promise<string | null> {
     const bad = await autoStateDirCheck(this.d.stateDir);

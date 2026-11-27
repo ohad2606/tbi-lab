@@ -9,6 +9,8 @@
  *   TBI_SIGNUP_VERIFY_MAX_PER_DAY  verify mails per Israel day    1..1000    (example: 50; unset = 50)
  *   TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS  unverified web requests are purged this many days after
  *                                  `createdAt`, 1..90 (example: 7; unset = no such purge)
+ *   TBI_SIGNUP_AUTO_CUTOFF_KEEP_S  S4b, owner decision open (DEC-38): 0..3600 seconds; unset or 0
+ *                                  = every restart resets the auto-approve cut-off (autoApprove.ts)
  * The example values are proposals only (DEC-38 is open). The three mail caps are set together
  * (hour <= day <= 30d) and need TBI_SIGNUP_AUTO_STATE_DIR (admin-only, never the store dir). A bad
  * value refuses the sign-up admin wiring (one log line naming the variable, never the value).
@@ -41,8 +43,11 @@ export interface Safeguards {
   mail?: MailLimits;
   verifyPerDay?: number;
   unverifiedDays?: number;
+  /** S4b: TBI_SIGNUP_AUTO_CUTOFF_KEEP_S in ms; absent when unset or 0. */
+  cutoffKeepMs?: number;
 }
 
+export const CUTOFF_KEEP_MAX_S = 3600;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 const WINDOW_30D_MS = 30 * DAY_MS;
@@ -76,6 +81,14 @@ export function safeguardsFromEnv(env: NodeJS.ProcessEnv): Safeguards {
   if (verifyPerDay !== undefined) out.verifyPerDay = verifyPerDay;
   const unverifiedDays = num('TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS', 90);
   if (unverifiedDays !== undefined) out.unverifiedDays = unverifiedDays;
+  const keep = env.TBI_SIGNUP_AUTO_CUTOFF_KEEP_S;
+  if (keep !== undefined && keep !== '') {
+    if (!/^\d{1,4}$/.test(keep) || Number(keep) > CUTOFF_KEEP_MAX_S)
+      throw new Error(
+        `TBI_SIGNUP_AUTO_CUTOFF_KEEP_S must be a whole number from 0 to ${CUTOFF_KEEP_MAX_S}`,
+      );
+    if (Number(keep) > 0) out.cutoffKeepMs = Number(keep) * 1000;
+  }
   return out;
 }
 
@@ -121,6 +134,13 @@ export function nextIsraelDay(t: number): number {
   let x = Math.floor(t / HOUR_MS) * HOUR_MS + HOUR_MS;
   while (israelDay(x) === day) x += HOUR_MS;
   return x;
+}
+
+/** Reservations of the Israel day of `t`. */
+function sentToday(sent: number[], t: number): number {
+  const day = israelDay(t);
+  // Only the last 2 days can be today (the date formatting is slow over a full 30 d list).
+  return sent.filter((x) => t - x < 2 * DAY_MS && israelDay(x) === day).length;
 }
 
 export interface MailGateDeps {
@@ -240,10 +260,7 @@ export class MailGate {
     if (s.blockedUntil !== undefined && s.blockedUntil > t) block(s.blockedUntil, 'provider');
     const hour = s.sent.filter((x) => t - x < HOUR_MS);
     if (hour.length >= perHour) block(hour[hour.length - perHour]! + HOUR_MS, 'hour');
-    const day = israelDay(t);
-    // Only the last 2 days can be today (the date formatting is slow over a full 30 d list).
-    const today = s.sent.filter((x) => t - x < 2 * DAY_MS && israelDay(x) === day);
-    if (today.length >= perDay) block(nextIsraelDay(t), 'day');
+    if (sentToday(s.sent, t) >= perDay) block(nextIsraelDay(t), 'day');
     if (s.sent.length >= per30d) block(s.sent[s.sent.length - per30d]! + WINDOW_30D_MS, '30d');
     return retryAt > 0 ? { retryAt, reason } : null;
   }
@@ -257,6 +274,19 @@ export class MailGate {
         return j ? new MailCapError(j.retryAt, j.reason) : null;
       } catch (e) {
         return this.closed(e, t);
+      }
+    });
+  }
+
+  /** Read-only (summary file): mails counted today and in 30 days; null = state not trusted. */
+  usage(): Promise<{ day: number; d30: number } | null> {
+    return this.serial(async () => {
+      const t = this.now();
+      try {
+        const s = await this.read(t);
+        return { day: sentToday(s.sent, t), d30: s.sent.length };
+      } catch {
+        return null;
       }
     });
   }

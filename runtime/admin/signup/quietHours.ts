@@ -60,10 +60,15 @@ function offsetAt(ms: number): number {
   return Date.UTC(w.y, w.mo - 1, w.d, w.h, w.mi, w.s) - Math.floor(ms / 1000) * 1000;
 }
 
+/** Minutes after local midnight in the quiet-hours zone. */
+export function localMinutes(ms: number): number {
+  const w = wall(ms);
+  return w.h * 60 + w.mi;
+}
+
 export function isQuiet(now: number, q: QuietWindow | null): boolean {
   if (!q) return false;
-  const w = wall(now);
-  const m = w.h * 60 + w.mi;
+  const m = localMinutes(now);
   return q.startMin < q.endMin ? m >= q.startMin && m < q.endMin : m >= q.startMin || m < q.endMin;
 }
 

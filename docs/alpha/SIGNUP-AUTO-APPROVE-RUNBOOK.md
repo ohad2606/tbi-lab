@@ -13,8 +13,9 @@ other private details are kept in the private ops repository, not here.
 - `tbi-admin.service.in` creates the control-state directory through systemd (`StateDirectory=<N>-admin-auto`,
   `StateDirectoryMode=0700`). systemd creates it owned by the admin service user (`tbi-admin`,
   group `tbi-adminio`) with mode 0700 and puts back the owner if it was changed at start. It may not correct a
-  loosened mode: check `stat` shows 0700 after every restart (the code refuses only group/world-writable). The intake user cannot write it or
-  list it. The admin service can write only there and in the spool (ProtectSystem=strict; no network:
+  loosened mode: check `stat` shows 0700 after every restart (the code refuses only group/world-writable). Whether the intake can reach it depends on the user model
+  (precondition 5): a **different** user is denied by the 0700 mode; the **same** user, as the store needs today, is
+  not. The admin service can write only there and in the spool (ProtectSystem=strict; no network:
   PrivateNetwork=yes).
 - It sets `TBI_SIGNUP_AUTO_STATE_DIR=/var/lib/<N>-admin-auto`. This setting does nothing until the flag is on.
 - It does **not** set `TBI_SIGNUP_AUTO_APPROVE` or `TBI_SIGNUP_AUTO_DAILY_CAP`, so **auto-approve stays off**.
@@ -32,6 +33,29 @@ other private details are kept in the private ops repository, not here.
 3. The owner has chosen the daily cap (open question Q2 in the design note): a whole number from 1 to 1000, at or
    below the mail provider's daily allowance and the account cap headroom. **No value is chosen in this repo.**
 4. Public copy (G5) and the legal note (G4) match automatic approval.
+5. **Hard precondition for every flag on this page: isolate the intake.** Today the admin and intake services must
+   run as the **same user**: the sign-up store is 0700 and both write 0600 files in it. File modes then do not
+   separate them; the intake unit's sandbox must. Do not set a flag until all of this is done:
+   - The user model (shared or separate) is recorded in the private ops repository.
+   - The intake unit has `ProtectSystem=strict`; its `ReadWritePaths` holds only the sign-up store and, if
+     funnel counters are on, the intake's own `TBI_FUNNEL_DIR`.
+   - Its `InaccessiblePaths` covers `/var/lib/<N>-admin-auto` (control state, verification state, mail-gate
+     state), the verification state directory and key file wherever they are configured, the admin mail key file
+     (`TBI_SIGNUP_RESEND_KEY_FILE`), the admin spool, results and view directories, the admin socket directory,
+     and the admin configuration, log and funnel directories the intake does not need. These paths must exist
+     before the intake starts: an optional (`-` prefixed) path that is absent at start is not masked.
+   - On the host, `systemctl show -p InaccessiblePaths,ReadWritePaths <intake unit>` shows exactly that. Record the
+     output as evidence **before** setting the flags.
+   - The skipped intake case in `signup-auto-deploy-unit.test.ts` is completed when the intake unit lands in the
+     repo: it checks these paths, and its user assertion must match the recorded user model.
+   - **Blocking:** path masking alone is not enough with a shared user, because a process can signal another
+     process of the same user and may reach its files through `/proc/<pid>/root`. Use either separate users
+     (needs a group-based store mode, not built yet), or a separate PID namespace for the intake
+     (`PrivatePIDs=yes`; confirm the host supports it and that it took effect) together with
+     `NoNewPrivileges=yes`, an empty `CapabilityBoundingSet` and `SystemCallFilter=~@debug`.
+   - **Blocking:** from inside the intake's sandbox, check and record that the admin process is not visible and
+     cannot be signalled, and that the control state cannot be read, neither by its path nor through `/proc`.
+     `systemctl show` proves configuration only, not enforcement.
 
 Check the directory (expected answer: `tbi-admin:tbi-adminio 700 directory`):
 
@@ -110,6 +134,36 @@ cannot trust its state in `/var/lib/<N>-admin-auto` and sends nothing:
    This forgets the mails already counted, so up to a full cap can be sent again. Check the provider's usage for
    the last 30 days first, and lower the caps for that period if needed. The restart is a RED zone step, as above.
 
+## Morning summary and cut-off window (S4b settings, all off when unset)
+
+| Unit | Setting | Values | Effect |
+|---|---|---|---|
+| admin | `TBI_SIGNUP_SUMMARY` | `1`; unset = off. Another value: off, `summary file off (config: ...)` | About once a minute writes `auto-summary.json` into the sign-up store: counts, booleans and dates only. Never read back. |
+| intake | `TBI_SIGNUP_NOTIFY` | `summary`; unset or empty = one Telegram alert per request. Another value: the intake refuses to start | No alert per request. One summary a day when quiet hours (`TBI_SIGNUP_QUIET` of the intake) end, 08:00 when `off`; alerts (auto cap, verify cap, mail 80% of day or 30 days, verify key unreadable): once per type per day the condition was seen, at most 2 per type per day of sending; pause on / off: each at most once a day; no fresh summary for more than 30 minutes, or about 2 minutes while the morning summary is due (`no fresh sign-up summary (stale, missing, unreadable or invalid)`), once a day. Never in quiet hours. State: `auto-notify.state.json` in the store. |
+| admin | `TBI_SIGNUP_AUTO_CUTOFF_KEEP_S` | `0`..`3600` seconds; unset or `0` = off. Bad value, or no separate `TBI_SIGNUP_AUTO_STATE_DIR`: sign-up admin routes disabled | **Owner decision open (DEC-38).** A restart whose first approving sweep comes within this many seconds of the last one keeps the cut-off. Sweeps run every 60 s, so a value near or below 60 mostly resets. |
+
+- **Before using `summary`:** enable the admin setting first and check that `auto-summary.json` appears. The file is
+  0600 and owned by the admin service user, so the intake can read it only when **both services run as the same
+  user**. The store already needs that today (0700 directory, 0600 records written by both sides). With another user
+  the intake logs `summary ignored (unreadable)`, no summary arrives and, with per-request alerts off, the owner gets
+  only the daily `no fresh sign-up summary (unreadable)` alert. The same happens while the admin service is stopped
+  (`stale`). A stopped intake sends nothing at all: a missing morning message means "check the services". A shared
+  user requires the isolation of precondition 5.
+- A pause switched on and off within one day, or during quiet hours, may not be reported in order; the morning
+  summary shows the current state.
+- Counts come from the requests the store holds at that moment (deleted or purged ones are not counted).
+  `n/a` means unknown or the feature is off.
+- A forged file can cause a wrong message only. It approves nothing and changes nothing in the admin service.
+- Log classes (intake): `summary ignored (missing|unreadable|not_file|too_large|invalid|stale|future)`,
+  `summary send failed (<class>)` (retried after 5, 10, 20, 40, then every 60 minutes), `summary state invalid`
+  or `unreadable`. Admin: `summary file not written (<class>)`, `auto-approve heartbeat not written / removed`.
+- With the cut-off window on, a pause, missing owner, unsafe directory or unreadable state removes the heartbeat,
+  and so does a start without auto-approve or without the setting, **as long as `TBI_SIGNUP_AUTO_STATE_DIR` is still
+  set** (otherwise the directory is unknown: after disabling by removing settings, wait longer than
+  `TBI_SIGNUP_AUTO_CUTOFF_KEEP_S` or delete `auto-approve.heartbeat.json` before enabling again): the next start resets the cut-off as described
+  below (`auto-approve cut-off reset`; a kept one logs `auto-approve cut-off kept`). **A pause file created and
+  removed while the service was stopped, or between two sweeps, is not seen** and does not reset a kept cut-off.
+
 ## Pause (kill switch) and resume
 
 Pausing needs no restart. Run it as root:
@@ -128,7 +182,7 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
 - The pause is checked once per sweep (every 60 s). A pause file created and removed between two sweeps is **not**
   seen: nothing is paused and no reset happens. Keep the file for at least one sweep interval (see the
   `auto-approve paused` line in the log) before you rely on it, or restart the service.
-- The same reset happens on **every restart** of the admin service and every re-enable: each new process first
+- Unless the cut-off window above is on, the same reset happens on **every restart** of the admin service and every re-enable: each new process first
   moves the cut-off to now (never earlier), so requests that arrived before it are yours to handle. The cost: a
   restart or resume (also one for an unrelated reason) leaves **all** requests still pending from before it for
   manual approval, including older ones that were waiting for the next day's cap.
