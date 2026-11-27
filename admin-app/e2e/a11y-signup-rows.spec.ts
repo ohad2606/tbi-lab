@@ -59,13 +59,13 @@ const T = {
   en: {
     unbound: 'Account not confirmed',
     capStatus: 'Account added. The email is waiting because of the email limit',
-    capHelp: 'You do not need to do anything',
+    capHelp: 'If it stays waiting, check the server log',
     quiet: 'quiet hours',
   },
   he: {
     unbound: 'אין אישור שהחשבון נוסף',
     capStatus: 'החשבון נוסף. המייל ממתין בגלל מגבלת המיילים',
-    capHelp: 'אין צורך בפעולה',
+    capHelp: 'אם הוא נשאר ממתין',
     quiet: 'שעות השקט',
   },
 } as const;
