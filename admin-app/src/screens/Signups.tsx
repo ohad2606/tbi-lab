@@ -298,8 +298,11 @@ export function Signups() {
     const open = rows.filter(
       (x) => messagesRef.current[x.id]?.key === 'console.signups.err.not_found.unconfirmed',
     );
+    // One line per request: a newer entry takes the place of an older one.
     setLost((old) =>
-      [...old, ...open.map(({ id, name }) => ({ id, name }))].filter((x) => x.id !== gone),
+      [...new Map([...old, ...open].map(({ id, name }) => [id, { id, name }])).values()].filter(
+        (x) => x.id !== gone,
+      ),
     );
   };
 
@@ -465,8 +468,10 @@ export function Signups() {
           // The whole list is replaced by its problem text; focus goes to Refresh.
           listTurn.current++;
           if (follow) focusId.current = null;
+          // What other rows said stays in view too.
+          keepUnconfirmed(false);
+          setLost((old) => [...old.filter((x) => x.id !== r.id), { id: r.id, name: r.name }]);
           setList(check);
-          setLost([{ id: r.id, name: r.name }]);
         } else {
           setMessages((m) => ({
             ...m,
@@ -479,6 +484,9 @@ export function Signups() {
         }
         return;
       }
+      // The service answered about this request: it is no longer unconfirmed. A refused call
+      // (no readable answer, signed out, ...) settles nothing.
+      if (o.kind !== 'refused') setLost((l) => l.filter((x) => x.id !== r.id));
       const v = signupOutcomeView(o, action);
       const text = t(v.key as MessageKey, { name: isolate(r.name) });
       // The list as it is now: a request deleted meanwhile must not come back.
