@@ -691,6 +691,215 @@ for (const lang of ['he', 'en'] as const) {
   });
 }
 
+// ------------------------------------------------ email confirmation states (BETA-G1 S5)
+
+const V = {
+  en: {
+    group: 'Not confirmed yet: 2',
+    count: '4 requests waiting for you. Listed under "Not confirmed yet": 2',
+    sent: 'Waiting for email confirmation (sent ',
+    notSent: 'No confirmation email is recorded as sent',
+    limit: "Email confirmed, waiting for today's limit",
+    unknown: 'Email confirmation state is unknown',
+    warn: 'The email address has not been confirmed.',
+    guard: 'Email confirmation and mail limits',
+    today: 'Confirmation emails today: 7 of 50',
+    waiting: 'Confirmed requests still waiting: unknown',
+    paused: 'Paused: the kill switch',
+  },
+  he: {
+    group: 'כתובת המייל טרם אומתה: 2',
+    count: '4 בקשות',
+    sent: 'ממתינה לאימות כתובת המייל (מייל האימות נשלח: ',
+    notSent: 'לא רשומה שליחה של מייל אימות',
+    limit: 'כתובת המייל אומתה, ממתינה למכסה היומית',
+    unknown: 'מצב אימות כתובת המייל לא ידוע',
+    warn: 'כתובת המייל טרם אומתה.',
+    guard: 'אימות כתובות מייל ומגבלות דיוור',
+    today: 'מיילי אימות היום: 7 מתוך 50',
+    waiting: 'בקשות עם כתובת מייל מאומתת שעדיין ממתינות: לא ידוע',
+    paused: 'מושהה: מתג העצירה',
+  },
+} as const;
+
+async function mockVerified(page: Page) {
+  const web = (id: string, name: string, state: string, day: number) => ({
+    ...row(id, name, `${id}@example.com`, `2026-11-0${day}T10:00:00Z`),
+    origin: 'web',
+    verification: {
+      state,
+      ...(state === 'sent' ? { sentAt: '2026-11-23T10:00:00.000Z' } : {}),
+    },
+  });
+  let rows = [
+    web('v1', 'Dana Levi', 'sent', 1),
+    web('v2', 'Omer Cohen', 'confirmed_waiting_limit', 2),
+    web('v3', 'Noa Bar', 'not_sent', 3),
+    web('v4', 'Gil Tal', 'unknown', 4),
+  ];
+  const calls: string[] = [];
+  await page.route('**/admin-api/signups/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/auto-approve'))
+      return route.fulfill({
+        json: {
+          enabled: false,
+          safeguards: {
+            paused: true,
+            verify: { today: 7, limit: 50, waiting: 'unknown' },
+            mail: { day: 9, dayLimit: 95, d30: 120, d30Limit: 2700 },
+          },
+        },
+      });
+    if (path.endsWith('/open')) return route.fulfill({ json: { signups: rows, rowStates: 1 } });
+    const [, , , id, action] = path.split('/');
+    calls.push(`${id}/${action}`);
+    rows = rows.filter((r) => r.id !== id);
+    return route.fulfill({ json: { record: null } });
+  });
+  return calls;
+}
+
+for (const lang of ['he', 'en'] as const) {
+  test(`signups (${lang}): confirmation states, collapsed group, keyboard and count`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mockVerified(page);
+    await open(page, context, baseURL!, lang);
+    const t = V[lang];
+    const toggle = page.getByTestId('signups-unconfirmed-toggle');
+    await expect(toggle).toHaveText(new RegExp(t.group));
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toContainText(lang === 'he' ? '\u25C2' : '\u25B8');
+    await expect(page.getByRole('heading', { level: 2, name: t.group })).toBeVisible();
+    // Unknown and confirmed rows stay in the main list; the count includes the folded ones.
+    await expect(page.getByTestId('signup-row').filter({ visible: true })).toHaveCount(2);
+    await expect(page.getByTestId('signups-count')).toContainText(t.count);
+    await expect(page.getByTestId('signups-count')).toContainText(t.group.split(':')[0]!);
+    await expect(page.getByTestId('signups-live')).toContainText(t.group.split(':')[0]!);
+    const main = page.getByTestId('signups-list');
+    await expect(main).toContainText(t.limit);
+    await expect(main).toContainText(t.unknown);
+    // Keyboard: open with Enter, close with Space; the focus stays on the toggle.
+    await tabTo(page, 'signups-unconfirmed-toggle');
+    await page.keyboard.press('Enter');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggle).toBeFocused();
+    await expect(page.getByTestId('signup-row').filter({ visible: true })).toHaveCount(4);
+    const sent = page.locator('[data-signup-id="v1"]').getByTestId('signup-verification');
+    await expect(sent).toContainText(t.sent);
+    // The localized date keeps its own direction (a forced LTR scrambles a Hebrew date).
+    await expect(sent.locator('bdi[dir="auto"]')).not.toBeEmpty();
+    await expect(sent.locator('bdi[dir="ltr"]')).toHaveCount(0);
+    expect(await sent.locator('bdi').evaluate((e) => getComputedStyle(e).direction)).toBe(
+      lang === 'he' ? 'rtl' : 'ltr',
+    );
+    await expect(
+      page.getByRole('heading', {
+        level: 2,
+        name: lang === 'he' ? 'בקשות לטיפול' : 'Requests to handle',
+      }),
+    ).toHaveCount(1);
+    await expect(page.locator('[data-signup-id="v3"]')).toContainText(t.notSent);
+    await page.keyboard.press('Space');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => !!document.activeElement?.closest('[hidden]'))).toBe(false);
+    await expect(page.locator('[data-signup-id="v1"]')).toBeHidden();
+  });
+
+  test(`signups (${lang}): approving an unconfirmed request asks first and keeps focus`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const calls = await mockVerified(page);
+    await open(page, context, baseURL!, lang);
+    await page.getByTestId('signups-unconfirmed-toggle').click();
+    const approve = page.locator('[data-signup-id="v1"]').getByTestId('signup-approve');
+    await approve.focus();
+    await page.keyboard.press('Enter');
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toContainText(V[lang].warn);
+    await expect(
+      dialog.locator('bdi[dir="ltr"]').filter({ hasText: 'v1@example.com' }),
+    ).toHaveCount(1);
+    await expect(page.getByTestId('confirm-cancel')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(approve).toBeFocused();
+    expect(calls).toEqual([]);
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('confirm-cancel')).toBeFocused();
+    await page.getByTestId('confirm-ok').click();
+    // The next row of the group takes focus; after the group's last row, the main list.
+    await expect(page.locator('[data-signup-id="v3"]').getByTestId('signup-approve')).toBeFocused();
+    expect(calls).toEqual(['v1/approve']);
+    // A confirmed row is approved without the question.
+    await page.locator('[data-signup-id="v2"]').getByTestId('signup-approve').click();
+    await expect.poll(() => calls).toEqual(['v1/approve', 'v2/approve']);
+    // With the group closed, focus never moves into it.
+    await page.getByTestId('signups-unconfirmed-toggle').click();
+    await page.locator('[data-signup-id="v4"]').getByTestId('signup-approve').click();
+    await page.getByTestId('confirm-ok').click();
+    await expect.poll(() => calls.length).toBe(3);
+    await expect(page.getByTestId('signups-refresh')).toBeFocused();
+    await expect(page.getByTestId('signups-unconfirmed-toggle')).toBeVisible();
+  });
+
+  test(`signups (${lang}): a failed approve keeps the row, its state and asks again`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mockVerified(page);
+    await page.route('**/admin-api/signups/v3/approve', (route) =>
+      route.fulfill({ status: 502, json: { error: 'account_error' } }),
+    );
+    await open(page, context, baseURL!, lang);
+    await page.getByTestId('signups-unconfirmed-toggle').click();
+    const v3 = page.locator('[data-signup-id="v3"]');
+    const approve = v3.getByTestId('signup-approve');
+    await approve.click();
+    await page.getByTestId('confirm-ok').click();
+    await expect(v3.getByTestId('signup-message')).toBeVisible();
+    await expect(approve).toBeFocused();
+    await expect(v3).toContainText(V[lang].notSent);
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('alertdialog')).toContainText(V[lang].warn);
+  });
+
+  test(`signups (${lang}): mail limits block, pause shown without a control, 320 px`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mockVerified(page);
+    await page.setViewportSize({ width: 320, height: 700 });
+    await open(page, context, baseURL!, lang);
+    const t = V[lang];
+    const block = page.getByRole('region', { name: t.guard });
+    await expect(block).toContainText(t.today);
+    await expect(block).toContainText(t.waiting);
+    await expect(block).toContainText(t.paused);
+    await expect(block.locator('button, input, select, a')).toHaveCount(0);
+    await expect(block.locator('[aria-live], [role="status"]')).toHaveCount(0);
+    const toggle = page.getByTestId('signups-unconfirmed-toggle');
+    expect((await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(24);
+    await toggle.click();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      ),
+    ).toBeLessThanOrEqual(0);
+    await page.emulateMedia({ forcedColors: 'active' });
+    await toggle.focus();
+    await expect(toggle).toBeVisible();
+    expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('example.com');
+  });
+}
+
 test('signups: keyboard only, Approve then the outcome, focus goes to the next row', async ({
   page,
   context,

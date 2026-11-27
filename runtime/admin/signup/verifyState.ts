@@ -148,6 +148,8 @@ interface Gen {
   exp: string;
   addr: string;
   sentAt: string;
+  /** S5: written only after the send succeeded; absent = never shown as sent. */
+  ok?: true;
   /** S4a: verifyKeyId of the key that minted it (absent on older state: never matches). */
   kid?: string;
 }
@@ -178,6 +180,7 @@ function validId(s: IdState | null, id: string): s is IdState {
   for (const g of s.gens)
     if (!g || !isCount(g.gen) || !HEX64.test(g.hash) || !HEX64.test(g.addr)) return false;
     else if (!isTime(g.exp) || !isTime(g.sentAt)) return false;
+    else if (g.ok !== undefined && g.ok !== true) return false;
     else if (g.kid !== undefined && !/^[0-9a-f]{16}$/.test(g.kid)) return false;
   if (s.usedAt !== undefined && !isTime(s.usedAt)) return false;
   if (s.verifiedAt !== undefined && !isTime(s.verifiedAt)) return false;
@@ -195,8 +198,11 @@ function validCounters(c: Counters | null): c is Counters {
 
 class Unreadable extends Error {}
 
-/** null = no such file. Throws Unreadable on anything but a small regular JSON file. */
-async function readJson<T>(path: string): Promise<T | null> {
+/**
+ * null = no such file. Throws Unreadable on anything but a small regular JSON file; with
+ * `object`, also on a file that holds null or any other non-object.
+ */
+async function readJson<T>(path: string, object = false): Promise<T | null> {
   let fh;
   try {
     fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -207,7 +213,10 @@ async function readJson<T>(path: string): Promise<T | null> {
   try {
     const st = await fh.stat();
     if (!st.isFile() || st.size > STATE_MAX_BYTES) throw new Unreadable('state_unreadable');
-    return JSON.parse(await fh.readFile('utf8')) as T;
+    const v = JSON.parse(await fh.readFile('utf8')) as unknown;
+    if (object && (v === null || typeof v !== 'object' || Array.isArray(v)))
+      throw new Unreadable('state_unreadable');
+    return v as T;
   } catch {
     throw new Unreadable('state_unreadable');
   } finally {
@@ -243,6 +252,59 @@ function countersLock<T>(fn: () => Promise<T>): Promise<T> {
   const run = countersChain.then(fn, fn);
   countersChain = run.catch(() => undefined);
   return run;
+}
+
+/** S5 (owner view): what the admin state of one request says. Never leaves the server as is. */
+export interface VerifyPeek {
+  /** The newest generation whose send succeeded: mint time and the address hash it went to. */
+  sent?: { at: string; addr: string };
+  /** Set once the address was confirmed (with the hash it was confirmed for). */
+  confirmed?: { at: number; addr: string };
+}
+
+/**
+ * S5: both dirs pass the sweep's checks, WITHOUT creating anything (`checkDirs` creates
+ * `verify/`). `stateBad` is the already known answer of autoStateDirCheck(stateDir).
+ */
+export async function verifyDirsReadOnly(
+  stateDir: string,
+  storeDir: string,
+  stateBad: string | null,
+): Promise<string | null> {
+  if (stateBad) return stateBad;
+  try {
+    const [a, b] = await Promise.all([realpath(stateDir), realpath(storeDir)]);
+    if (a === b) return 'store_dir';
+  } catch (e) {
+    return errorClass(e);
+  }
+  return autoStateDirCheck(join(stateDir, VERIFY_DIR));
+}
+
+/**
+ * S5: one read of `verify/<id>.json` (O_NOFOLLOW, size bound), no lock, no write. No file = {}.
+ * Throws on an invalid id and on anything unreadable, invalid or contradictory.
+ */
+export async function peekVerifyState(stateDir: string, id: string): Promise<VerifyPeek> {
+  if (!REQUEST_ID_RE.test(id)) throw new Unreadable('state_unreadable');
+  const s = await readJson<IdState>(join(stateDir, VERIFY_DIR, `${id}.json`), true);
+  if (s === null) return {};
+  if (!validId(s, id)) throw new Unreadable('state_unreadable');
+  if (s.usedAt || s.verifiedAt || s.verifiedAddr) {
+    if (!s.verifiedAt || !s.verifiedAddr) throw new Unreadable('state_unreadable');
+    return { confirmed: { at: Date.parse(s.verifiedAt), addr: s.verifiedAddr } };
+  }
+  const sent = s.gens.filter((g) => g.ok === true).at(-1);
+  return sent ? { sent: { at: sent.sentAt, addr: sent.addr } } : {};
+}
+
+/** S5: verify mails counted on Israel day `day`, read only; null = counters not trusted. */
+export async function peekMailCount(stateDir: string, day: string): Promise<number | null> {
+  const path = join(stateDir, VERIFY_DIR, COUNTERS);
+  const c = await readJson<Counters>(path, true).catch(() => undefined);
+  if (c === null) return 0;
+  if (c === undefined || !validCounters(c) || c.day > day) return null;
+  return c.day === day ? c.dayCount : 0;
 }
 
 export type MintOutcome =
@@ -578,6 +640,14 @@ export class Verifier {
         this.log(`signup: verify send failed (${errorClass(e)})`);
         return 'send_failed';
       }
+      // S5: only now may the owner's view say "sent". A failed write leaves it unsaid.
+      await writeJson(this.vdir, `${id}.json`, {
+        ...st,
+        gens: [...st.gens, { ...g, ok: true as const }].slice(-VERIFY_PER_RECORD),
+        sends: st.sends + 1,
+      } satisfies IdState).catch((e: unknown) => {
+        this.logHourly(`signup: verify send not recorded (${errorClass(e)})`);
+      });
       await this.d.store.update(id, { verifySentAt: at }).catch((e: unknown) => {
         this.logHourly(`signup: verify mirror not written (${errorClass(e)})`);
       });

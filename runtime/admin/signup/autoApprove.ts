@@ -614,15 +614,46 @@ export class AutoApprover {
   }
 
   /**
+   * S5 (owner view, read only): what decides whether a confirmed request is still taken
+   * automatically. null = not in verified mode, unsafe dir, paused, unreadable state or a cut-off
+   * not confirmed by this process: then nothing is said to be waiting for the limit.
+   * `dirBad` = an already known autoStateDirCheck answer for this dir.
+   */
+  async queueFacts(dirBad?: string | null): Promise<{
+    capReached: boolean;
+    since: number;
+    eligible(r: SignupRecord): boolean;
+  } | null> {
+    if (this.d.webSignups !== 'verified') return null;
+    if (dirBad === undefined ? await autoStateDirCheck(this.d.dir) : dirBad) return null;
+    if ((await autoPauseCheck(join(this.d.dir, AUTO_PAUSE_FILE), this.d.stat)).paused) return null;
+    let s: AutoState;
+    try {
+      s = await this.readState(this.today(), false);
+    } catch {
+      return null;
+    }
+    if (this.unconfirmed || s.active !== true || !s.since) return null;
+    const since = Math.max(this.d.since ?? -Infinity, Date.parse(s.since));
+    return {
+      capReached: s.count >= this.d.dailyCap,
+      since,
+      eligible: (r) => eligible(r, s, since, 'verified'),
+    };
+  }
+
+  /**
    * Read-only status for the owner's UI: no write, no lock, no log line, no change to the
    * transition/once-only log memory of the sweep. Reads the state file without the claim mutex
    * (it is replaced by an atomic rename, so a read sees one whole version). In an unsafe state
    * dir the state file is not read at all (the pause entry is only lstat'ed, never followed).
    */
-  async status(): Promise<AutoApproveStatus> {
+  async status(
+    shared: { list?: () => Promise<SignupRecord[]>; dirBad?: string | null } = {},
+  ): Promise<AutoApproveStatus> {
     const day = this.today();
     const unknown: NonNullable<AutoApproveStatus['unknownReasons']> = {};
-    const bad = await autoStateDirCheck(this.d.dir);
+    const bad = shared.dirBad === undefined ? await autoStateDirCheck(this.d.dir) : shared.dirBad;
     const pause = await autoPauseCheck(join(this.d.dir, AUTO_PAUSE_FILE), this.d.stat);
     let state: AutoState | null = null;
     if (bad) unknown.count = 'state_dir_unsafe';
@@ -658,7 +689,7 @@ export class AutoApprover {
     if (cutoff === null) unknown.waitingBacklog = unknown.cutoff!;
     else
       try {
-        const records = await this.d.store.list();
+        const records = await (shared.list?.() ?? this.d.store.list());
         backlog = records.filter(
           (r) => r.status === 'pending' && !(Date.parse(r.createdAt) > cutoff),
         ).length;

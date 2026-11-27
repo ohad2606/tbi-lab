@@ -520,6 +520,39 @@ export interface SignupRecord {
   /** BETA-G1: 'web' when the request came from the public web form; null otherwise. */
   origin: 'web' | null;
   createdAt: string;
+  /** BETA-G1 S5: email verification as the admin service sees it; absent = feature off. */
+  verification?: SignupVerification;
+}
+
+/** The closed set of runtime/admin/signup/rowState.ts; anything else reads as `unknown`. */
+export const VERIFICATION_STATES = [
+  'not_sent',
+  'sent',
+  'confirmed_waiting_limit',
+  'confirmed_queued',
+  'confirmed_review',
+  'address_changed',
+  'approved_auto',
+  'unknown',
+] as const;
+export type VerificationState = (typeof VERIFICATION_STATES)[number];
+export interface SignupVerification {
+  state: VerificationState;
+  /** Only for `sent`. */
+  sentAt: string | null;
+}
+
+const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+
+function verification(v: unknown): SignupVerification {
+  const unknown: SignupVerification = { state: 'unknown', sentAt: null };
+  if (!isObj(v) || !(VERIFICATION_STATES as readonly unknown[]).includes(v.state)) return unknown;
+  const state = v.state as VerificationState;
+  if (state !== 'sent') return { state, sentAt: null };
+  const at = v.sentAt;
+  return typeof at === 'string' && ISO_UTC.test(at) && Number.isFinite(Date.parse(at))
+    ? { state, sentAt: at }
+    : unknown;
 }
 
 export const SIGNUP_ACTIONS = ['approve', 'reject', 'resend'] as const;
@@ -549,10 +582,15 @@ export type SignupOutcome =
 
 const SIGNUP_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
-function signupRecord(v: unknown): SignupRecord | null {
+/** `rowStates`: the list answer says its rows carry admin-derived verification states. */
+function signupRecord(v: unknown, rowStates = false): SignupRecord | null {
   if (!isObj(v) || typeof v.id !== 'string' || !SIGNUP_ID.test(v.id)) return null;
   const str = (x: unknown) => (typeof x === 'string' ? x : '');
+  // Without the envelope's mark a row's `verification` key is ignored (it could be stored data).
+  const checked =
+    rowStates && v.verification !== undefined ? verification(v.verification) : undefined;
   return {
+    ...(checked ? { verification: checked } : {}),
     id: v.id,
     name: str(v.name),
     email: str(v.email),
@@ -563,8 +601,13 @@ function signupRecord(v: unknown): SignupRecord | null {
     emailAttempts: typeof v.emailAttempts === 'number' ? v.emailAttempts : 0,
     lastError: typeof v.lastError === 'string' ? v.lastError : null,
     emailSendAfter: typeof v.emailSendAfter === 'string' ? v.emailSendAfter : null,
+    // With verification on, "approved automatically" also needs an added account and a decided row.
     autoApprovedAt:
-      typeof v.autoApprovedAt === 'string' && v.autoApprovedAt !== '' ? v.autoApprovedAt : null,
+      typeof v.autoApprovedAt === 'string' &&
+      v.autoApprovedAt !== '' &&
+      (!rowStates || (v.accountAdded === true && v.status !== 'pending'))
+        ? v.autoApprovedAt
+        : null,
     heardFrom:
       typeof v.heardFrom === 'string' &&
       v.heardFrom.trim() !== '' &&
@@ -593,8 +636,9 @@ async function loadSignups(fetchFn: Fetch, path: string): Promise<Loaded<SignupR
   if (r.status === 404) return { ok: false, error: 'unavailable' };
   if (r.status !== 200) return { ok: false, error: loadError(r.status) };
   if (!isObj(r.body) || !Array.isArray(r.body.signups)) return { ok: false, error: 'network' };
+  const rowStates = r.body.rowStates === 1;
   const rows = (r.body.signups as unknown[])
-    .map(signupRecord)
+    .map((x) => signupRecord(x, rowStates))
     .filter((x): x is SignupRecord => x !== null)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   return { ok: true, value: rows };
@@ -615,6 +659,40 @@ export interface AutoApproveStatus {
   stateDir: 'ok' | 'unsafe' | 'unknown';
   /** A fixed code such as `ancestor_mode`; null when absent or not shaped like a code. */
   stateDirReason: string | null;
+  /** BETA-G1 S5: confirmation mails and mail limits; absent = not configured. */
+  safeguards?: SignupSafeguards;
+}
+
+export interface SignupSafeguards {
+  paused: Known<boolean>;
+  verify?: { today: Known<number>; limit: Known<number>; waiting: Known<number> };
+  mail?: {
+    day: Known<number>;
+    dayLimit: Known<number>;
+    d30: Known<number>;
+    d30Limit: Known<number>;
+  };
+}
+
+const safeCount = (v: unknown): Known<number> =>
+  Number.isSafeInteger(v) && (v as number) >= 0 ? (v as number) : 'unknown';
+
+function safeguards(v: unknown): SignupSafeguards {
+  if (!isObj(v)) return { paused: 'unknown' };
+  const part = <K extends string>(x: unknown, keys: readonly K[]) =>
+    Object.fromEntries(keys.map((k) => [k, safeCount(isObj(x) ? x[k] : undefined)])) as Record<
+      K,
+      Known<number>
+    >;
+  return {
+    paused: bool(v.paused),
+    ...(v.verify !== undefined
+      ? { verify: part(v.verify, ['today', 'limit', 'waiting'] as const) }
+      : {}),
+    ...(v.mail !== undefined
+      ? { mail: part(v.mail, ['day', 'dayLimit', 'd30', 'd30Limit'] as const) }
+      : {}),
+  };
 }
 
 const bool = (v: unknown): Known<boolean> => (typeof v === 'boolean' ? v : 'unknown');
@@ -626,6 +704,7 @@ export function parseAutoApproveStatus(body: unknown): AutoApproveStatus | null 
   if (!isObj(body)) return null;
   const reason = body.stateDirReason;
   return {
+    ...(body.safeguards !== undefined ? { safeguards: safeguards(body.safeguards) } : {}),
     enabled: bool(body.enabled),
     running: bool(body.running),
     paused: bool(body.paused),
