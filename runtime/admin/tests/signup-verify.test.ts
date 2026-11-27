@@ -1136,6 +1136,25 @@ describe('slice 2: resend markers and empty confirm markers (admin side)', () =>
     expect(markers(r)).toEqual([]);
   });
 
+  it('a resend marker obeys the verify cut-off: older request no mail, newer one mailed', async () => {
+    const r = await rig({ verifySince: T0 + 60_000 });
+    const old = await webRecord(r, 1);
+    rq(r, old);
+    await r.w.verifier!.sweep();
+    expect(r.sent).toHaveLength(0);
+    expect(rqs(r)).toEqual([]);
+    expect(r.logs).toContain('signup: verify resend not sent (before_cutoff) 1');
+    expect(r.logs.join('\n')).not.toContain(old);
+    r.clock.t += 120_000;
+    const fresh = await webRecord(r, 2);
+    await r.w.verifier!.sweep(); // first mail
+    r.clock.t += 11 * 60_000;
+    rq(r, fresh);
+    await r.w.verifier!.sweep();
+    expect(r.sent.map((m) => m.id)).toEqual([fresh, fresh]);
+    expect(rqs(r)).toEqual([]);
+  });
+
   it('delete and purge remove the .rq marker', async () => {
     const r = await rig();
     const id = await webRecord(r);

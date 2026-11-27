@@ -246,6 +246,7 @@ export type MintOutcome =
   | 'paused'
   | 'skip'
   | 'not_pending'
+  | 'before_cutoff'
   | 'bad_address'
   | 'state_unreadable'
   | 'limit_day'
@@ -427,12 +428,16 @@ export class Verifier {
   /**
    * Mints a generation for `id` and sends its mail, within every limit. `resend` = a further
    * generation (slice 2); without it only a request with no generation yet gets one.
+   * Neither form mails a request created at or before the verify cut-off.
    */
   mint(id: string, keys: VerifyKeys, resend = false): Promise<MintOutcome> {
     return serialById(id, async () => {
       if (await this.paused()) return 'paused';
       const r = await this.d.store.get(id).catch(() => null);
       if (!r || r.status !== 'pending' || (resend && r.origin !== 'web')) return 'not_pending';
+      const since = await this.cutoff().catch(() => null);
+      if (since === null) return 'state_unreadable';
+      if (!(Date.parse(r.createdAt) > since)) return 'before_cutoff';
       const addr = addressHash(r.email);
       if (!addr) return 'bad_address';
       let s: IdState | null;
