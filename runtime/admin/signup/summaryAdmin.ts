@@ -64,7 +64,7 @@ export async function collectSummary(d: SummaryDeps): Promise<Summary> {
   const before = previousIsraelDay(t);
   const records = await d.store.list();
   const mails = d.verify ? await d.verify.verifier.mailCounts([day, before]) : null;
-  const cap = d.auto ? await d.auto.capStatus() : null;
+  const cap = d.auto ? await d.auto.capStatus(records) : null;
   const used = d.mail ? await d.mail.gate.usage() : null;
   const mail =
     d.mail && used

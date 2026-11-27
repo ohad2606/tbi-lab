@@ -539,7 +539,12 @@ export async function signupWiringFromEnv(
   // off -> on (or a refused start in between) never keeps a cut-off. Absent file: nothing happens.
   const forgetHeartbeat = async () => {
     const d = env.TBI_SIGNUP_AUTO_STATE_DIR ?? '';
-    if (d.startsWith('/')) await unlink(join(d, AUTO_HEARTBEAT_FILE)).catch(() => undefined);
+    // Without the setting the dir is unknown: see the runbook (wait, or delete the file).
+    if (!d.startsWith('/')) return;
+    await unlink(join(d, AUTO_HEARTBEAT_FILE)).catch((e: NodeJS.ErrnoException) => {
+      if (e.code !== 'ENOENT')
+        io.log(`signup: auto-approve heartbeat not removed (${e.code ?? errorClass(e)})`);
+    });
   };
   if (!cfg.enabled) {
     await forgetHeartbeat();

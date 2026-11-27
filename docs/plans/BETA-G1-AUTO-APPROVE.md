@@ -57,6 +57,11 @@ The pause file and the state file (count, retries, claim set, cut-off) decide wh
 be writable by the internet-facing intake. In the TBI-022 layout `<STORE_DIR>` is owned by the intake user, so a
 compromised intake could delete the pause file or rewrite the counter.
 
+**Today's user model (read this first):** the admin and intake services must share a user, because the store is 0700
+and both write 0600 files in it. Under that model every statement here that the intake user cannot write or list an
+admin path, or that file modes or `ancestor_owner` keep it out, does **not** hold: only the intake unit's sandbox
+does. The required isolation and host check are precondition 5 of the runbook.
+
 - **Alpha requirement (deploy item, not done in this slice):** `TBI_SIGNUP_AUTO_STATE_DIR` must be an
   admin-only 0700 directory on Alpha (owned by the admin service user, mode 0700), **not** writable by the
   intake user, under parents that are root- or admin-owned. The operator pauses with
@@ -269,7 +274,7 @@ day rollover without a write, pause as a file or a directory, `unknown` for a co
     `autoStateDirCheck` ancestor rules. No symlink, and no DynamicUser (which would place the directory under
     `/var/lib/private` behind a symlink). It is a sibling of the helper's `/var/lib/tbi-admin` and is never inside
     that tree (a StateDirectory there would make systemd chown the helper's tree). It is not under the sign-up
-    store either (that is owned by the intake user and would fail `ancestor_owner`).
+    store either (in a separate-user layout that is owned by the intake user and would fail `ancestor_owner`).
   - No other writable path was added. All hardening stays (ProtectSystem=strict, PrivateNetwork=yes,
     AF_UNIX only, IPAddressDeny=any, no capabilities).
   - Test `runtime/admin/tests/signup-auto-deploy-unit.test.ts` renders the unit with install.sh's real
@@ -282,8 +287,10 @@ day rollover without a write, pause as a file or a directory, `unknown` for a co
     rollback, and the cut-off caveat when re-enabling).
 - Still open for deploy:
   - The intake unit `tbi-signup` is not in the repo yet. When it lands it must set
-    `InaccessiblePaths=-/var/lib/<N>-admin-auto` (defence in depth; the 0700 mode already denies it). The test
-    case for this is an explicit skip until then.
+    `InaccessiblePaths=-/var/lib/<N>-admin-auto`. Today the admin and intake services must share a user (0700
+    store, 0600 files written by both), so the 0700 mode does **not** deny the intake: the sandbox is required, not
+    defence in depth (full list and host check: runbook precondition 5). The test case for this is an explicit skip
+    until then and must be completed with the unit, matching the recorded user model.
   - The draft mailer unit could add the same `InaccessiblePaths` line (separate mailer slice).
   - The signup env of the admin unit (`TBI_SIGNUP_ADMIN`, store, mail) is not in this template. It is a TBI-022
     deploy item.
@@ -323,7 +330,7 @@ day rollover without a write, pause as a file or a directory, `unknown` for a co
 ### Runbook note (QA day2213)
 - The state dir chain must have no group/world-writable non-sticky ancestors and no symlinks: use the real path
   (slice 7: `/var/lib/<N>-admin-auto`, a systemd StateDirectory, 0700, owned by the admin uid), not `/var/run/...`.
-  Not under the sign-up store (`/var/lib/tbi-signup` is owned by the intake user: `ancestor_owner`). A trailing
+  Not under the sign-up store (in a separate-user layout `/var/lib/tbi-signup` is owned by the intake user: `ancestor_owner`). A trailing
   slash is tolerated.
 - Ancestors such as 0775 directories are refused (`ancestor_mode`) — by design.
 

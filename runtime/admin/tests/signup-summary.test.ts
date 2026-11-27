@@ -363,11 +363,32 @@ describe('alerts', () => {
     expect(alertsOf(r.texts())).toEqual([
       expect.stringContaining('(2026-11-23): the daily auto-approval cap'),
     ]);
-    // The new day's cap in daytime: one per type per day, so it follows the next morning.
+    // The limit is per condition day: today's cap is not delayed by last night's report.
     await r.step(NOON + DAY, { alerts: { ...noAlerts(), autoCap: true } });
-    expect(alertsOf(r.texts())).toHaveLength(1);
-    await r.step(at('2026-11-25T06:00:00Z'));
     expect(alertsOf(r.texts())[1]).toContain('(2026-11-24)');
+    await r.step(NOON + DAY + H, { alerts: { ...noAlerts(), autoCap: true } });
+    expect(alertsOf(r.texts())).toHaveLength(2);
+  });
+
+  it('an unsent older day is kept beside a newer one; two sends per type per day at most', async () => {
+    const cap = { alerts: { ...noAlerts(), autoCap: true } };
+    const night = at('2026-11-23T21:30:00Z'); // 23:30 local
+    const r = notifier(night);
+    await r.step(night, cap);
+    await r.step(night + H, cap); // 00:30 on the 24th, still quiet
+    const eight = at('2026-11-24T06:00:00Z');
+    for (let m = 0; m < 5; m++) await r.step(eight + m * MIN, cap);
+    expect(alertsOf(r.texts()).map((x) => x.slice(15, 25))).toEqual(['2026-11-23', '2026-11-24']);
+    // A third condition day on the same send day (clock stepped back and forth) is not sent.
+    for (let m = 5; m < 8; m++) {
+      const t = eight + m * MIN;
+      const state = JSON.parse(readFileSync(join(r.storeDir, NOTIFY_STATE_FILE), 'utf8'));
+      state.pending.autoCap = ['2026-11-22'];
+      writeFileSync(join(r.storeDir, NOTIFY_STATE_FILE), JSON.stringify(state));
+      r.restart();
+      await r.step(t, cap);
+    }
+    expect(alertsOf(r.texts())).toHaveLength(2);
   });
 
   it('pause on and off, once each per day; flapping ends in the true state the next day', async () => {
@@ -400,6 +421,33 @@ describe('alerts', () => {
     expect(SEND_RETRY_MS).toBe(5 * MIN);
   });
 
+  it.each(['hard link', 'symlink', 'oversize'])(
+    "a %s in the state's place is not trusted: reset, the other file untouched",
+    async (kind) => {
+      const r = notifier(NOON);
+      const victim = join(r.root, 'victim');
+      const path = join(r.storeDir, NOTIFY_STATE_FILE);
+      const valid = JSON.stringify({
+        v: 1,
+        sent: {},
+        done: {},
+        pending: {},
+        paused: false,
+        failures: 0,
+        retryAt: 0,
+      });
+      writeFileSync(victim, valid, { mode: 0o600 });
+      if (kind === 'hard link') linkSync(victim, path);
+      else if (kind === 'symlink') symlinkSync(victim, path);
+      else writeFileSync(path, valid.padEnd(4097, ' '));
+      await r.step(NOON, { alerts: all });
+      expect(r.sent).toEqual([]);
+      expect(r.log.lines).toContain('signup: summary state invalid; reset, nothing more today');
+      expect(readFileSync(victim, 'utf8')).toBe(valid);
+      expect(statSync(path).nlink).toBe(1);
+    },
+  );
+
   it('an invalid state is reset to "all sent today"; an unwritable one sends nothing', async () => {
     const r = notifier(NOON);
     writeFileSync(join(r.storeDir, NOTIFY_STATE_FILE), '{"v":1,"sent":{"x":"y"}}');
@@ -414,6 +462,99 @@ describe('alerts', () => {
     mkdirSync(join(o.storeDir, NOTIFY_STATE_FILE, 'x'), { recursive: true });
     await o.step(NOON, { alerts: all });
     expect(o.sent).toEqual([]);
+  });
+});
+
+describe('no fresh summary', () => {
+  const stale = (texts: string[]) => texts.filter((x) => x.includes('no fresh sign-up summary'));
+  const text = (day: string, code: string) =>
+    `TBI Lab alert (${day}): no fresh sign-up summary (${code}); check the services.`;
+
+  /** Today's summary is already sent, then the file disappears. */
+  const afterSummary = async () => {
+    const r = notifier(NOON - MIN);
+    await r.step(NOON - MIN);
+    unlinkSync(join(r.storeDir, SUMMARY_FILE));
+    return r;
+  };
+
+  it('alerts after more than 30 minutes, once per Israel day, restart or not', async () => {
+    const r = await afterSummary();
+    for (let m = 0; m <= 30; m++) await r.step(NOON + m * MIN, null);
+    expect(stale(r.texts())).toEqual([]);
+    await r.step(NOON + 31 * MIN, null);
+    expect(stale(r.texts())).toEqual([text('2026-11-23', 'missing')]);
+    for (let m = 32; m < 200; m += 7) {
+      r.restart();
+      await r.step(NOON + m * MIN, null);
+    }
+    expect(stale(r.texts())).toHaveLength(1);
+    await r.step(NOON + DAY, null);
+    expect(stale(r.texts())[1]).toBe(text('2026-11-24', 'missing'));
+  });
+
+  it('restarts do not postpone it; a fresh file starts the 30 minutes again', async () => {
+    const r = await afterSummary();
+    for (let m = 0; m <= 28; m += 4) {
+      r.restart();
+      await r.step(NOON + m * MIN, null);
+    }
+    await r.step(NOON + 29 * MIN); // fresh
+    await r.step(NOON + 40 * MIN, null); // stale file from here
+    for (let m = 41; m <= 70; m += 1) await r.step(NOON + m * MIN, null);
+    expect(stale(r.texts())).toEqual([]);
+    r.restart();
+    await r.step(NOON + 71 * MIN, null);
+    expect(stale(r.texts())).toEqual([text('2026-11-23', 'stale')]);
+  });
+
+  it.each([
+    ['invalid', '{"v":1,"secret":"x"}'],
+    ['invalid', 'x'.repeat(3000)],
+    ['invalid', JSON.stringify(summaryAt(NOON + DAY))], // from the future
+  ])('reports the class %s only', async (code, body) => {
+    const r = notifier(NOON);
+    writeFileSync(join(r.storeDir, SUMMARY_FILE), body);
+    await r.step(NOON, null);
+    await r.step(NOON + 31 * MIN, null);
+    expect(r.texts()).toEqual([text('2026-11-23', code)]);
+  });
+
+  it('reports unreadable', async () => {
+    if (process.getuid?.() === 0) return;
+    const r = notifier(NOON);
+    writeFileSync(join(r.storeDir, SUMMARY_FILE), '{}', { mode: 0o000 });
+    await r.step(NOON, null);
+    await r.step(NOON + 31 * MIN, null);
+    expect(r.texts()).toEqual([text('2026-11-23', 'unreadable')]);
+  });
+
+  it('never in quiet hours: a night-long outage is reported at 08:00', async () => {
+    const night = at('2026-11-23T21:30:00Z');
+    const r = notifier(night);
+    const eight = at('2026-11-24T06:00:00Z');
+    for (let t = night; t < eight; t += 30 * MIN) await r.step(t, null);
+    expect(r.sent).toEqual([]);
+    await r.step(eight, null);
+    expect(r.texts()).toEqual([text('2026-11-24', 'missing')]);
+  });
+
+  it('is sent when the morning summary is due and none is fresh', async () => {
+    const eight = at('2026-11-23T06:00:00Z');
+    const r = notifier(eight - 5 * MIN, 'off');
+    for (let m = -5; m < 0; m++) await r.step(eight + m * MIN, null);
+    expect(r.sent).toEqual([]);
+    await r.step(eight, null);
+    expect(r.texts()).toEqual([text('2026-11-23', 'missing')]);
+  });
+
+  it('a start at the due time gives the admin a moment to write', async () => {
+    const eight = at('2026-11-23T06:00:00Z');
+    const r = notifier(eight);
+    await r.step(eight, null);
+    expect(r.sent).toEqual([]);
+    await r.step(eight + MIN);
+    expect(r.texts()).toEqual([expect.stringContaining('summary 2026-11-23')]);
   });
 });
 
@@ -582,7 +723,10 @@ describe('admin summary', () => {
       now,
     };
     expect(previousIsraelDay(NOON)).toBe('2026-11-22');
+    const list = vi.spyOn(store, 'list');
     const s = await collectSummary(deps);
+    expect(list).toHaveBeenCalledTimes(1);
+    list.mockRestore();
     expect(s).toMatchObject({
       day: '2026-11-23',
       yesterday: { signups: 2, verifyMails: 2, verified: 0, autoApproved: 0 },
@@ -702,6 +846,13 @@ describe('admin summary', () => {
       await wire(env(d.root, extra));
       expect(existsSync(hb), JSON.stringify(extra)).toBe(stays);
     }
+  });
+
+  it('a heartbeat that cannot be removed is logged by class', async () => {
+    const d = dirs();
+    mkdirSync(join(d.stateDir, AUTO_HEARTBEAT_FILE));
+    const { log } = await wire(env(d.root, {}));
+    expect(log.lines).toContain('signup: auto-approve heartbeat not removed (EISDIR)');
   });
 });
 

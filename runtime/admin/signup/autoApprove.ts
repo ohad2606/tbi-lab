@@ -585,7 +585,9 @@ export class AutoApprover {
    * it holds back (0 while not used up; null while the cut-off is not confirmed). null = unsafe
    * state dir or unreadable state.
    */
-  async capStatus(): Promise<{ reached: boolean; waiting: number | null } | null> {
+  async capStatus(
+    listed?: SignupRecord[],
+  ): Promise<{ reached: boolean; waiting: number | null } | null> {
     if (await autoStateDirCheck(this.d.dir)) return null;
     let s: AutoState;
     try {
@@ -597,7 +599,7 @@ export class AutoApprover {
     if (this.unconfirmed || s.active !== true || !s.since) return { reached: true, waiting: null };
     const since = Math.max(this.d.since ?? -Infinity, Date.parse(s.since));
     let waiting = 0;
-    for (const r of await this.d.store.list()) {
+    for (const r of listed ?? (await this.d.store.list())) {
       if (!eligible(r, s, since, this.d.webSignups)) continue;
       // The record mirror first: the admin proof check costs several file system calls.
       if (this.d.webSignups === 'verified' && !r.verifiedAt) continue;

@@ -123,12 +123,14 @@ export function parseSummary(
   return { summary: s };
 }
 
-/** The strict reader (intake). Never throws, never follows a symlink, never blocks on a FIFO. */
-export async function readSummary(
-  storeDir: string,
-  now: number,
-): Promise<{ summary: Summary } | { refused: SummaryRefusal }> {
-  const path = join(storeDir, SUMMARY_FILE);
+/**
+ * At most `max` bytes of a regular file with one link. Never throws, never follows a symlink,
+ * never blocks on a FIFO.
+ */
+export async function readBounded(
+  path: string,
+  max: number,
+): Promise<{ text: string } | { refused: 'missing' | 'unreadable' | 'not_file' | 'too_large' }> {
   let fh;
   try {
     if (!(await lstat(path)).isFile()) return { refused: 'not_file' };
@@ -141,18 +143,27 @@ export async function readSummary(
   try {
     const st = await fh.stat();
     if (!st.isFile() || st.nlink > 1) return { refused: 'not_file' };
-    if (st.size > SUMMARY_MAX_BYTES) return { refused: 'too_large' };
-    const buf = Buffer.alloc(SUMMARY_MAX_BYTES + 1);
+    if (st.size > max) return { refused: 'too_large' };
+    const buf = Buffer.alloc(max + 1);
     let n = 0;
     for (let r = 1; r > 0 && n < buf.length; n += r)
       r = (await fh.read(buf, n, buf.length - n, n)).bytesRead;
-    if (n > SUMMARY_MAX_BYTES) return { refused: 'too_large' };
-    return parseSummary(buf.subarray(0, n).toString('utf8'), now);
+    if (n > max) return { refused: 'too_large' };
+    return { text: buf.subarray(0, n).toString('utf8') };
   } catch {
     return { refused: 'unreadable' };
   } finally {
     await fh.close();
   }
+}
+
+/** The strict reader (intake). */
+export async function readSummary(
+  storeDir: string,
+  now: number,
+): Promise<{ summary: Summary } | { refused: SummaryRefusal }> {
+  const r = await readBounded(join(storeDir, SUMMARY_FILE), SUMMARY_MAX_BYTES);
+  return 'text' in r ? parseSummary(r.text, now) : r;
 }
 
 /**
