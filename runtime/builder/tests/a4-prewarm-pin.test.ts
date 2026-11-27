@@ -232,6 +232,9 @@ describe('repeated prewarm', () => {
     s.run();
     expect((await s.passes(1))[0]).toEqual({ event: 'prewarm', built: 0, missing: 2 });
     expect(s.w.provider.builds).toBe(0); // capacity_timeout: never started
+    // The pass ended at the first one: the second source took no queue slot.
+    const { records } = s.p.service as unknown as { records: Map<string, unknown> };
+    expect(records.size).toBe(1);
     live = 0;
     const real = s.w.provider.build.bind(s.w.provider);
     let broken = true;

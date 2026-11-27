@@ -446,8 +446,9 @@ export class BuildService {
         check();
       });
       if (record.finishedAt === undefined) break;
-      // Waited too long for capacity: it never started, so it says nothing about the source.
-      if (record.result?.failure === 'capacity_timeout') continue;
+      // Waited too long for capacity: it never started, so it says nothing about the source. The
+      // pass ends here, so the other sources do not take queue slots ahead of users.
+      if (record.result?.failure === 'capacity_timeout') break;
       if (seedRebuild) this.seedRebuilds++;
       if (record.result?.ok) {
         built++;
