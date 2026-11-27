@@ -74,7 +74,7 @@ export const en = {
   'canvas.zoomOut': 'Zoom out',
   'canvas.zoomFit': 'Fit to view',
   'canvas.hint.wire':
-    'Drag a straight part of the wire to move it. Its ends stay connected. Delete removes it.',
+    'Drag a straight part of the wire to move it, or use Move a segment in Properties. Its ends stay connected. Delete removes it.',
   'canvas.overlayLimit':
     'This drawing is too large to mark every crossing and branch point: some line hops and junction dots are not drawn. The connections are exactly as drawn.',
   'canvas.routeConflict':
@@ -777,6 +777,19 @@ export const en = {
   'junctions.list.wire': 'W{n}',
   'junctions.list.selected': 'Junction {id} selected',
   'junctions.removed': 'Junction {id} and its wires removed',
+  'segment.title': 'Move a segment (one grid step)',
+  'segment.choose': 'Segment',
+  'segment.option.horizontal': '{n} of {m}, horizontal',
+  'segment.option.vertical': '{n} of {m}, vertical',
+  'segment.move.left': 'Move segment left',
+  'segment.move.right': 'Move segment right',
+  'segment.move.up': 'Move segment up',
+  'segment.move.down': 'Move segment down',
+  'segment.done.left': 'Segment moved left. Now segment {n} of {m}.',
+  'segment.done.right': 'Segment moved right. Now segment {n} of {m}.',
+  'segment.done.up': 'Segment moved up. Now segment {n} of {m}.',
+  'segment.done.down': 'Segment moved down. Now segment {n} of {m}.',
+  'segment.refused': 'The segment was not moved',
   'inspector.shortcuts':
     'Keyboard: arrows move, R rotates, Delete removes, Esc cancels. Without dragging: select a part, or a junction in the Junctions list, and use the Move buttons.',
 

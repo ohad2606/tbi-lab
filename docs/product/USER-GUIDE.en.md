@@ -28,7 +28,8 @@ With the mouse:
 2. Drag a part to move it, or select it and use the **Move** buttons in **Properties** (one grid step per click, no dragging needed). Use the inspector to change its values. `R` rotates a selected part; `Delete` removes it.
 3. To wire, click a terminal. Click another terminal, a junction or a wire to finish. Click empty space to add a bend. `Esc` cancels.
 4. To select a junction without clicking it on the canvas, use the **Junctions** list under **Wires** (shown when the project has junctions). Then move it with the **Move** buttons or the arrow keys, or delete it (its wires are removed with it).
-5. Wiring and editing are not possible while the simulation runs. Stop it first.
+5. To reshape a wire, drag one of its straight segments, or select the wire and use **Move a segment** in **Properties**: choose the segment (it is outlined on the canvas) and press an arrow button (one grid step). The wire's route becomes manual, as after a drag; its connections do not change.
+6. Wiring and editing are not possible while the simulation runs. Stop it first.
 
 With the keyboard (wiring with the keyboard):
 

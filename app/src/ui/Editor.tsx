@@ -11,6 +11,7 @@ import { McuTerminal } from './McuTerminal.js';
 import { requiresMcuRuntime } from '../runtime/snapshot.js';
 import { WiresList } from './WiresList.js';
 import { JunctionsList } from './JunctionsList.js';
+import type { SegmentPick } from './segments.js';
 import { Palette } from './Palette.js';
 import { NextStepCard } from './NextStepCard.js';
 import { shouldShowNextStep } from './nextStep.js';
@@ -124,6 +125,8 @@ export function Editor() {
   const [probes, setProbes] = useState<Probe[]>([]);
   const nextProbe = useRef(1);
   const canvasApi = useRef<CanvasApi | null>(null);
+  // The wire segment chosen in Properties, highlighted on the canvas.
+  const [segmentPick, setSegmentPick] = useState<SegmentPick | null>(null);
 
   // A different project starts without probes, unless it was just opened from an example
   // that suggests some (presentation state only, never stored in the project).
@@ -223,6 +226,7 @@ export function Editor() {
             }}
             probes={live}
             onProbe={addProbe}
+            segmentPick={segmentPick}
           />
         </div>
       </div>
@@ -232,6 +236,8 @@ export function Editor() {
           probes={live}
           onRemoveProbe={(id) => setProbes(live.filter((p) => p.id !== id))}
           onClearProbes={() => setProbes([])}
+          segmentPick={segmentPick}
+          onSegmentPick={setSegmentPick}
         />
         <ConnectionsPanel />
         <WiresList />

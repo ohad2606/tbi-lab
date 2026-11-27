@@ -76,7 +76,7 @@ export const he: Record<MessageKey, string> = {
   'canvas.zoomOut': 'הקטנה',
   'canvas.zoomFit': 'התאמה לתצוגה',
   'canvas.hint.wire':
-    'גררו קטע ישר של החוט כדי להזיז אותו. הקצוות נשארים מחוברים. Delete מוחק אותו.',
+    'גררו קטע ישר של החוט כדי להזיז אותו, או השתמשו בהזזת מקטע בחלונית המאפיינים. הקצוות נשארים מחוברים. Delete מוחק אותו.',
   'canvas.overlayLimit':
     'השרטוט גדול מדי כדי לסמן כל הצטלבות ונקודת הסתעפות: חלק מגשרי הקווים ומנקודות הצומת אינם משורטטים. החיבורים הם בדיוק כפי שהם משורטטים.',
   'canvas.routeConflict':
@@ -768,6 +768,19 @@ export const he: Record<MessageKey, string> = {
   'junctions.list.wire': '{n}',
   'junctions.list.selected': 'צומת {id} נבחר',
   'junctions.removed': 'צומת {id} והחוטים שלו הוסרו',
+  'segment.title': 'הזזת מקטע (צעד רשת אחד)',
+  'segment.choose': 'מקטע',
+  'segment.option.horizontal': '{n} מתוך {m}, אופקי',
+  'segment.option.vertical': '{n} מתוך {m}, אנכי',
+  'segment.move.left': 'הזזת המקטע שמאלה',
+  'segment.move.right': 'הזזת המקטע ימינה',
+  'segment.move.up': 'הזזת המקטע למעלה',
+  'segment.move.down': 'הזזת המקטע למטה',
+  'segment.done.left': 'המקטע הוזז שמאלה. כעת מקטע {n} מתוך {m}.',
+  'segment.done.right': 'המקטע הוזז ימינה. כעת מקטע {n} מתוך {m}.',
+  'segment.done.up': 'המקטע הוזז למעלה. כעת מקטע {n} מתוך {m}.',
+  'segment.done.down': 'המקטע הוזז למטה. כעת מקטע {n} מתוך {m}.',
+  'segment.refused': 'המקטע לא הוזז',
   'inspector.shortcuts':
     'מקלדת: החיצים מזיזים, R מסובב, Delete מוחק, Esc מבטל. בלי גרירה: בוחרים רכיב, או צומת ברשימת הצמתים, ומשתמשים בכפתורי ההזזה.',
 

@@ -9,16 +9,19 @@ import {
   addComponent,
   addWire,
   createProject,
+  terminalPosition,
   wireRoute,
   type ProjectDocument,
 } from '@tbi-lab/domain';
-import { component, openImported, waitForStoredProject } from './helpers.js';
+import { component, openImported, toScreen, waitForStoredProject } from './helpers.js';
 
 const TEXT = {
   en: {
     moveName: /^Move .?R1.? right$/,
     moved: /R1.? moved right/,
     refused: /R1.? was not moved/,
+    segmentName: 'Move segment',
+    segmentMoved: /^Segment moved (up|down|left|right)\. Now segment \d+ of \d+\./,
     junctionItem: /^.?J1.?: wires .?W2.?, .?W3.?, .?W4.?$/,
     junctionSelected: /Junction .?J1.? selected/,
     junctionMoved: /J1.? moved up/,
@@ -28,6 +31,8 @@ const TEXT = {
     moveName: /^הזזת .?R1.? ימינה$/,
     moved: /R1.? הוזז ימינה/,
     refused: /R1.? לא הוזז/,
+    segmentName: 'הזזת המקטע',
+    segmentMoved: /^המקטע הוזז .+\. כעת מקטע \d+ מתוך \d+\./,
     junctionItem: /צומת .?J1.?: חוטים .?2.?, .?3.?, .?4.?$/,
     junctionSelected: /צומת .?J1.? נבחר/,
     junctionMoved: /J1.? הוזז למעלה/,
@@ -94,6 +99,18 @@ const drawing = (page: Page): Promise<Record<string, string>> =>
         ]),
       ),
     );
+
+/** Choose a segment: with the mouse, or with the arrow keys on the focused list. */
+async function choose(page: Page, mode: Mode, index: number): Promise<void> {
+  const select = page.getByTestId('segment-select');
+  if (mode === 'clicks') await select.selectOption(String(index));
+  else {
+    await select.focus();
+    for (let k = Number(await select.inputValue()); k !== index; k += Math.sign(index - k))
+      await page.keyboard.press(index > k ? 'ArrowDown' : 'ArrowUp');
+  }
+  await expect(select).toHaveValue(String(index));
+}
 
 /** A single click, or Enter on the focused control: never a drag. */
 async function activate(page: Page, mode: Mode, target: Locator): Promise<void> {
@@ -220,6 +237,104 @@ for (const lang of ['en', 'he'] as const) {
       );
       expect(restored.connections).toEqual(before.connections);
       await expect.poll(() => drawing(page)).toEqual(drawn);
+    });
+  }
+}
+
+/** PSU1+ to R1.a as a manual wire with three segments (right, up, right). */
+function wireDoc(name: string): ProjectDocument {
+  const base = partsDoc(name);
+  const pin = (c: string, t: string) => ({ kind: 'terminal', component: c, terminal: t }) as const;
+  const from = terminalPosition(base, 'PSU1', 'positive')!;
+  const to = terminalPosition(base, 'R1', 'a')!;
+  return must(
+    addWire(base, pin('PSU1', 'positive'), pin('R1', 'a'), [
+      { x: -60, y: from.y },
+      { x: -60, y: to.y },
+    ]),
+  ).doc;
+}
+
+for (const lang of ['en', 'he'] as const) {
+  for (const mode of ['clicks', 'keyboard'] as const) {
+    test(`wire segment (${lang}, ${mode}): moved as by a drag, nets unchanged, one undo`, async ({
+      page,
+    }) => {
+      const before = await open(page, lang, wireDoc(`nodrag-wire-${lang}-${mode}`));
+      await expect(page.locator('[data-hit="wire"]')).toHaveCount(1);
+      const drawn = await drawing(page);
+      const route = wireRoute(before, before.layout.wires[0]!)!;
+      const m = route.length - 1;
+      expect(m).toBeGreaterThanOrEqual(3);
+      // The first vertical segment.
+      const i = route.findIndex((p, k) => k < m && p.x === route[k + 1]!.x);
+      const mid = { x: route[i]!.x, y: (route[i]!.y + route[i + 1]!.y) / 2 };
+      const select = async () => {
+        await activate(page, mode, page.locator('.wires-list-item'));
+        await choose(page, mode, i);
+      };
+
+      // The reference result: the same segment dragged one grid step left with the mouse.
+      await page.locator('.wires-list-item').click();
+      const start = await toScreen(page, mid);
+      const end = await toScreen(page, { x: mid.x - 20, y: mid.y });
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      await page.mouse.move(end.x, end.y, { steps: 8 });
+      await page.mouse.up();
+      const dragged = await waitForStoredProject(
+        page,
+        (d) => d.layout.wires[0]!.vertices.some((v) => v.x === mid.x - 20),
+        'dragged',
+      );
+      await page.getByTestId('undo').click();
+      await expect.poll(() => drawing(page)).toEqual(drawn);
+      await page.keyboard.press('Escape');
+
+      await select();
+      await expect(page.getByTestId('segment-highlight')).toHaveAttribute('data-segment', `${i}`);
+      await expect(page.getByTestId('segment-highlight')).toHaveCSS('pointer-events', 'none');
+      await expect(page.getByTestId('segment-move-up')).toHaveCount(0);
+      const left = page.getByTestId('segment-move-left');
+      await expect(left).toHaveAccessibleName(new RegExp(`^${TEXT[lang].segmentName}`));
+      const box = (await left.boundingBox())!;
+      expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(24);
+      expect(box.x).toBeLessThan((await page.getByTestId('segment-move-right').boundingBox())!.x);
+      await activate(page, mode, left);
+      const moved = await waitForStoredProject(
+        page,
+        (d) => d.layout.wires[0]!.vertices.some((v) => v.x === mid.x - 20),
+        'moved by the button',
+      );
+      expect(moved.layout.wires[0]!.vertices).toEqual(dragged.layout.wires[0]!.vertices);
+      expect(moved.layout.wires[0]!.auto).toBeUndefined();
+      expect(moved.connections).toEqual(before.connections);
+      await expect(left).toBeFocused();
+      await expect(page.getByTestId('inspector-status')).toContainText(TEXT[lang].segmentMoved);
+      await undo(page, mode);
+      await expect.poll(() => drawing(page)).toEqual(drawn);
+
+      // The first segment gains a jog at its fixed end: the choice follows the moved segment.
+      await choose(page, mode, 0);
+      const up = page.getByTestId('segment-move-up');
+      await activate(page, mode, up);
+      await expect(page.getByTestId('segment-select')).toHaveValue('1');
+      await expect(page.getByTestId('segment-highlight')).toHaveAttribute('data-segment', '1');
+      await expect(up).toBeFocused();
+
+      await page.screenshot({ path: `/var/tmp/g3nodrag/wide-${lang}-${mode}.png` });
+      // At 320 CSS px wide the controls stay inside the page.
+      await page.setViewportSize({ width: 320, height: 640 });
+      await up.scrollIntoViewIfNeeded();
+      // The app shell itself scrolls sideways this narrow (see a11y-028c): the group must fit it.
+      const panel = (await page.getByTestId('segment-group').boundingBox())!;
+      expect(panel.width).toBeLessThanOrEqual(320);
+      await page.screenshot({ path: `/var/tmp/g3nodrag/narrow-${lang}-${mode}.png` });
+      for (const id of ['segment-select', 'segment-move-up', 'segment-move-down']) {
+        const b = (await page.getByTestId(id).boundingBox())!;
+        const group = (await page.getByTestId('segment-group').boundingBox())!;
+        expect(b.x + b.width).toBeLessThanOrEqual(group.x + group.width + 1);
+      }
     });
   }
 }

@@ -35,7 +35,8 @@ import { useAppState, useStore, useT } from './context.js';
 import { checkIssueText, checksFor } from './checks.js';
 import { NEUTRAL_HEX, resolveWireColors } from '../views/wireColors.js';
 import { rotateRouted } from './routing.js';
-import { MoveControls } from './MoveControls.js';
+import { MoveControls, SegmentMoveControls } from './MoveControls.js';
+import type { SegmentPick } from './segments.js';
 import { useAnnounce } from './useAnnounce.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
 import { McuPanel } from './McuPanel.js';
@@ -46,6 +47,8 @@ interface InspectorProps {
   probes: Probe[];
   onRemoveProbe(id: string): void;
   onClearProbes(): void;
+  segmentPick: SegmentPick | null;
+  onSegmentPick(pick: SegmentPick): void;
 }
 
 /**
@@ -126,7 +129,13 @@ function WireRouteField({ wire, readOnly }: { wire: Wire; readOnly: boolean }) {
   );
 }
 
-export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorProps) {
+export function Inspector({
+  probes,
+  onRemoveProbe,
+  onClearProbes,
+  segmentPick,
+  onSegmentPick,
+}: InspectorProps) {
   const { doc, selection, readOnly, sim, locale } = useAppState();
   const simActive = sim.status === 'running' || sim.status === 'starting';
   const outcome = sim.status === 'running' && sim.outcome.ok ? sim.outcome : null;
@@ -250,6 +259,15 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
       )}
       {!readOnly && (single || junction) && (
         <MoveControls id={single?.id ?? junction!} announce={announce} />
+      )}
+      {!readOnly && wire && (
+        <SegmentMoveControls
+          key={wire.id}
+          wire={wire}
+          pick={segmentPick}
+          onPick={onSegmentPick}
+          announce={announce}
+        />
       )}
       {actions}
       <div

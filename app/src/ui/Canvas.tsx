@@ -108,6 +108,7 @@ import {
   type ProbeInput,
   sameTarget,
 } from './probes.js';
+import { clampSegment, type SegmentPick } from './segments.js';
 
 export interface CanvasApi {
   placeAtCenter(type: ComponentTypeId): void;
@@ -124,6 +125,7 @@ interface Props {
   onProbeModeChange(on: boolean): void;
   probes: Probe[];
   onProbe(input: ProbeInput): void;
+  segmentPick: SegmentPick | null;
 }
 
 interface Camera {
@@ -277,6 +279,7 @@ export function Canvas({
   onProbeModeChange,
   probes,
   onProbe,
+  segmentPick,
 }: Props) {
   const state = useAppState();
   const store = useStore();
@@ -1327,6 +1330,27 @@ export function Canvas({
           })()
         : doc;
 
+  // The segment Properties would move (one wire selected, editable): outlined on the canvas.
+  const chosenSegment = (() => {
+    if (readOnly || selection.wires.length !== 1) return null;
+    if (selection.components.length || selection.junctions.length) return null;
+    const w = view.layout.wires.find((x) => x.id === selection.wires[0]);
+    const route = w && wireRoute(view, w);
+    if (!w || !route || route.length < 2) return null;
+    const i = clampSegment(
+      segmentPick?.wire === w.id ? segmentPick.index : undefined,
+      route.length - 1,
+    );
+    const [a, b] = [route[i]!, route[i + 1]!];
+    return {
+      index: i,
+      x: Math.min(a.x, b.x) - 7,
+      y: Math.min(a.y, b.y) - 7,
+      width: Math.abs(b.x - a.x) + 14,
+      height: Math.abs(b.y - a.y) + 14,
+    };
+  })();
+
   // Unconnected crossings of the drawing being shown (including a live drag preview).
   // Bounded work (s20r6): past OVERLAY_WORK the overlays are cut short and the view says so.
   const crossingsReport = useMemo(() => wireCrossingsReport(view), [view]);
@@ -1726,6 +1750,20 @@ export function Canvas({
             </g>
           )}
         </g>
+
+        {chosenSegment && (
+          <rect
+            class="segment-chosen"
+            data-testid="segment-highlight"
+            data-segment={chosenSegment.index}
+            x={chosenSegment.x}
+            y={chosenSegment.y}
+            width={chosenSegment.width}
+            height={chosenSegment.height}
+            rx={4}
+            aria-hidden="true"
+          />
+        )}
 
         <g class="check-markers">
           {markers.map((m) => {
