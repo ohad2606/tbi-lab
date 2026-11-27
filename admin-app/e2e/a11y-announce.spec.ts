@@ -708,6 +708,39 @@ for (const lang of ['he', 'en'] as const) {
     await expect(page.getByTestId('signup-row')).toHaveCount(1);
     stored.release();
     await expect(page.getByTestId('stored-row')).toHaveCount(2);
+    // A removed row's focus goes to Refresh; the stored list's reload leaves it there.
+    await expect(page.getByTestId('signups-refresh')).toBeFocused();
+    await expect(page.getByTestId('stored-filter')).not.toBeFocused();
+  });
+
+  test(`announce (${lang}): the stored list's reload rescues outside focus to the heading, not its filter`, async ({
+    page,
+    context,
+  }) => {
+    await signIn(context, lang);
+    const m = await mock(page);
+    const unconfirmed = {
+      ...row(1),
+      origin: 'web',
+      autoApprovedAt: null,
+      verification: { state: 'sent', sentAt: '2026-11-23T10:00:00.000Z' },
+    };
+    m.open = () => ({ json: { signups: [unconfirmed, row(2)], rowStates: 1 } });
+    await signups(page);
+    await openStored(page);
+    const stored = gate();
+    m.all = async () => {
+      await stored.held;
+      return { json: { signups: [row(2), row(3)] } };
+    };
+    m.open = () => ({ json: { signups: [row(2)], rowStates: 1 } });
+    // The group's button is in no row: when the group goes, only the page's rescue is left.
+    const toggle = page.getByTestId('signups-unconfirmed-toggle');
+    await toggle.focus();
+    await page.getByTestId('signups-refresh').evaluate((b: HTMLButtonElement) => b.click());
+    await expect(toggle).toHaveCount(0);
+    stored.release();
+    await expect(page.getByTestId('stored-row')).toHaveCount(2);
     await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
   });
 
