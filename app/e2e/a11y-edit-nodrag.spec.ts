@@ -403,6 +403,26 @@ for (const lang of ['en', 'he'] as const) {
     await expect(page.getByText(TEXT[lang].junctionRemoved).first()).toBeAttached();
   });
 
+  test(`Delete key while running removes nothing and announces no removal (${lang})`, async ({
+    page,
+  }) => {
+    await open(page, lang, junctionDoc(`nodrag-running-${lang}`));
+    await page.locator('.junctions-list-item').click();
+    await page.getByTestId('sim-run').click();
+    await expect(page.getByTestId('sim-status')).toHaveAttribute('data-status', 'running');
+    await page.getByTestId('canvas').focus();
+    await page.keyboard.press('Delete');
+    await expect(
+      page
+        .getByText(
+          lang === 'en' ? /Stop the simulation to change/ : /יש לעצור את הסימולציה כדי לשנות/,
+        )
+        .first(),
+    ).toBeVisible();
+    await expect(page.locator('.junction')).toHaveCount(1);
+    await expect(page.getByText(TEXT[lang].junctionRemoved)).toHaveCount(0);
+  });
+
   test(`undo removes the selection under a Move button (${lang})`, async ({ page }) => {
     const before = await open(page, lang, partsDoc(`nodrag-undo-${lang}`));
     await page.getByTestId('palette-component.resistor').click();

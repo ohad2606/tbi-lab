@@ -1273,10 +1273,12 @@ export function Canvas({
           ? selection.junctions[0]
           : undefined;
       const del = deleteSelection(doc, selection);
-      store.apply(del, emptySelection());
-      if (junction && del.ok) kbAnnounce(t('junctions.removed', { id: isolateLtr(junction) }));
-      if (removed && !del.ok) kbAnnounce(t('kbwire.wireDeleteRefused'));
-      if (removed && del.ok)
+      // Refused while the simulation runs (the store shows "stop to edit"): never announce success.
+      const applied = store.apply(del, emptySelection());
+      if (junction && del.ok && applied)
+        kbAnnounce(t('junctions.removed', { id: isolateLtr(junction) }));
+      if (removed && !(del.ok && applied)) kbAnnounce(t('kbwire.wireDeleteRefused'));
+      if (removed && del.ok && applied)
         kbAnnounce(
           t('kbwire.wireRemoved', {
             from: wireEndName(removed.from),
