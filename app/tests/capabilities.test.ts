@@ -54,6 +54,27 @@ describe('capability panel texts', () => {
   });
 });
 
+describe('GPIO interrupt texts (BETA-G5)', () => {
+  const body = 'capabilities.facility.interrupt.body';
+
+  it('the panel says edges are delivered, what is not simulated, and the runtime dependency', () => {
+    for (const text of [en[body], he[body]]) {
+      for (const token of ['RISING', 'FALLING', 'CHANGE', 'NMI', 'Runtime'])
+        expect(text).toContain(token);
+    }
+    expect(en[body]).toMatch(/level-triggered, NMI and wake-up interrupts are not simulated/i);
+    expect(en[body]).not.toMatch(/^Not simulated/);
+    expect(he[body]).toContain('פסיקות רמה');
+    expect(he[body]).not.toMatch(/^אינן מדומות/);
+  });
+
+  it('the generic runtime refusal does not claim that all GPIO interrupts are unsupported', () => {
+    const key = 'sim.error.runtime.unsupported_feature';
+    expect(en[key]).not.toMatch(/interrupt/i);
+    expect(he[key]).not.toContain('פסיקות');
+  });
+});
+
 describe('model limitations (H2)', () => {
   it('every part except the ground symbol documents its limitations, in English and Hebrew', () => {
     for (const type of CATALOG_ORDER) {

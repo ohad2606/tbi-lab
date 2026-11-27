@@ -39,7 +39,9 @@ export const FIRMWARE_FACILITIES: readonly FirmwareFacility[] = [
   // R4: LEDC PWM on Runtime v3 (capability `pwm`); limited: duty 0 driving a load, loads that do not
   // settle instantly and LEDC modes the runtime cannot represent are refused at Run time.
   { id: 'pwm', status: 'limited', refusedByBuild: false, requiresRuntime: 'pwm' },
-  { id: 'interrupt', status: 'unsupported', refusedByBuild: true },
+  // Sprint 25: edge interrupts on Runtime v5 (capability `gpio-irq`); limited: level, NMI and
+  // wake-up interrupts are refused at Run time. Without `gpio-irq` every interrupt is refused.
+  { id: 'interrupt', status: 'limited', refusedByBuild: false, requiresRuntime: 'gpio-irq' },
   { id: 'internal_pull', status: 'unsupported', refusedByBuild: true },
   { id: 'adc', status: 'unsupported', refusedByBuild: true },
   { id: 'dac', status: 'unsupported', refusedByBuild: true },

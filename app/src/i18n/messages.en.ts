@@ -68,6 +68,8 @@ export const en = {
   'canvas.label': 'Schematic canvas',
   'canvas.controls': 'Circuit view controls',
   'view.messages': 'View messages',
+  'view.messages.scrollUp': 'Scroll message up',
+  'view.messages.scrollDown': 'Scroll message down',
   'canvas.zoomIn': 'Zoom in',
   'canvas.zoomOut': 'Zoom out',
   'canvas.zoomFit': 'Fit to view',
@@ -930,10 +932,11 @@ export const en = {
   'brand.logoAlt': 'TBI Lab: Think, Bring ideas to life, Invent',
   'home.subtitle':
     'Circuits are simulated and saved right here in your browser. Start from an example, or create your own project.',
-  // Screen support (2026-10-29): computers and tablets; tablets best in landscape; no phones.
+  // Screen support, public beta: Chrome or Edge on a computer. The messages only inform; nothing
+  // is blocked (ui/screenSupport.ts decides when each is shown).
   'app.screen.phone':
-    'TBI Lab does not support phones or screens this small. Use a computer or a tablet (landscape recommended).',
-  'app.screen.rotate': 'For the best experience, rotate your tablet to landscape.',
+    'TBI Lab does not support phones, tablets or screens this small. Use a computer with Chrome or Edge.',
+  'app.screen.rotate': 'TBI Lab does not support tablets. Use a computer with Chrome or Edge.',
   'app.screen.narrow': 'For the best experience, use a window at least 1024 pixels wide.',
   'rating.heading': 'Component rating exceeded',
   'rating.atRisk': '{component} may be damaged',
@@ -1452,7 +1455,7 @@ export const en = {
   'sim.error.unmodelled':
     'The program started using {feature}, which the simulator does not model. The simulation stopped at that moment instead of showing a dead or crashed result.',
   'sim.error.runtime.unsupported_feature':
-    'The firmware uses a feature the simulator does not support in this version (internal pull-up/pull-down or GPIO interrupts).',
+    'The firmware uses a feature that this simulator Runtime does not support. The run was refused or stopped.',
   'sim.error.runtime.inverted_output':
     'The firmware inverts a connected pin through the GPIO matrix. The simulator does not model inverted outputs.',
   'sim.error.runtime.invalid_attachment': 'A connected ESP32 pin cannot be used in the simulator.',
@@ -1578,7 +1581,7 @@ export const en = {
   'mcu.caveat.power': 'Supply pin',
   'mcu.caveat.enable': 'Chip enable: reset is not simulated',
   'mcu.note.unsupported':
-    'Not simulated in this version: internal pull-up/pull-down, GPIO interrupts, chip reset, analog, Wi-Fi.',
+    'Not simulated in this version: internal pull-up/pull-down, level-triggered GPIO interrupts, chip reset, analog, Wi-Fi.',
   'mcu.level.high': 'HIGH',
   'mcu.level.low': 'LOW',
   'mcu.mode.output': 'output',
@@ -1807,7 +1810,8 @@ export const en = {
   'capabilities.facility.pwm_advanced.body':
     'Not simulated. A sketch that uses them is refused at Build. Fade by calling ledcWrite in steps.',
   'capabilities.facility.interrupt.name': 'GPIO interrupts (attachInterrupt)',
-  'capabilities.facility.interrupt.body': 'Not simulated. Poll the pin with digitalRead instead.',
+  'capabilities.facility.interrupt.body':
+    'Edge interrupts are delivered: RISING, FALLING and CHANGE (MicroPython: IRQ_RISING, IRQ_FALLING). A handler can run late by up to one emulator slice, because the two cores run in turn. Level-triggered, NMI and wake-up interrupts are not simulated: the run stops and says so. An interrupt on an input with no defined level also stops the run. Edge interrupts need a simulator Runtime that delivers them; an older Runtime refuses programs that use interrupts.',
   'capabilities.facility.internal_pull.name':
     'Internal pull-up / pull-down (INPUT_PULLUP, INPUT_PULLDOWN)',
   'capabilities.facility.internal_pull.body':
@@ -2033,7 +2037,7 @@ export const en = {
   'onboarding.step3':
     'Press Run. While it runs, select a part and change what it senses (distance, temperature, light, motion): the firmware and the circuit respond.',
   'onboarding.note':
-    'Projects are saved in this browser only: use Export to keep a copy. The ESP32 simulator is shared by the alpha testers; if it is busy, try again in a moment.',
+    'Projects are saved in this browser only: use Export to keep a copy. The ESP32 simulator is shared between users; if it is busy, try again in a moment.',
   'onboarding.dismiss': 'Got it',
   'onboarding.show': 'Show getting started',
   // TBI-014: first-run welcome.

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CATALOG,
   CATALOG_ORDER,
+  ESP32_DEVKITC_WROOM32,
   FIRMWARE_FACILITIES,
   SESSION_LIMITS,
   TIMING_CONTRACT,
@@ -28,6 +29,24 @@ describe('capabilities registry', () => {
     expect(facilityForFeature('pwm')).toMatchObject({ status: 'limited', requiresRuntime: 'pwm' });
     expect(facilityForFeature('pwm_advanced')?.status).toBe('unsupported');
     expect(facilityForFeature('nonsense')).toBeUndefined();
+  });
+
+  it('GPIO interrupts: limited and runtime-gated (`gpio-irq`), not refused by every build', () => {
+    // Runtime v5 delivers edge interrupts; level, NMI and wake-up are refused, and a runtime
+    // without `gpio-irq` refuses every interrupt (runtime/builder/tests/s25-features.test.ts).
+    expect(facilityForFeature('interrupt')).toEqual({
+      id: 'interrupt',
+      status: 'limited',
+      refusedByBuild: false,
+      requiresRuntime: 'gpio-irq',
+    });
+  });
+
+  it('board limitations: only level, NMI and wake-up interrupts are listed as not modelled', () => {
+    const lines = ESP32_DEVKITC_WROOM32.simulatorLimitations.filter((l) => /interrupt/i.test(l));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/level-triggered, NMI and wake-up/i);
+    expect(lines[0]).toMatch(/gpio-irq/);
   });
 
   it('parts: every catalog part except the board, status from the catalog flags', () => {

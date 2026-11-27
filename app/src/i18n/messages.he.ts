@@ -70,6 +70,8 @@ export const he: Record<MessageKey, string> = {
   'canvas.label': 'משטח השרטוט',
   'canvas.controls': 'פקדי תצוגת המעגל',
   'view.messages': 'הודעות התצוגה',
+  'view.messages.scrollUp': 'גלילת ההודעה למעלה',
+  'view.messages.scrollDown': 'גלילת ההודעה למטה',
   'canvas.zoomIn': 'הגדלה',
   'canvas.zoomOut': 'הקטנה',
   'canvas.zoomFit': 'התאמה לתצוגה',
@@ -909,8 +911,8 @@ export const he: Record<MessageKey, string> = {
   'brand.logoAlt': 'TBI Lab: חושבים, מפיחים חיים ברעיונות, ממציאים',
   'home.subtitle': 'המעגלים מדומים ונשמרים כאן, בדפדפן שלכם. התחילו מדוגמה, או צרו פרויקט משלכם.',
   'app.screen.phone':
-    'TBI Lab אינו תומך בטלפונים או במסכים קטנים כאלה. השתמשו במחשב או בטאבלט (מומלץ במצב לרוחב).',
-  'app.screen.rotate': 'לחוויה הטובה ביותר, סובבו את הטאבלט למצב לרוחב.',
+    'TBI Lab אינו תומך בטלפונים, בטאבלטים או במסכים קטנים כאלה. השתמשו במחשב עם Chrome או Edge.',
+  'app.screen.rotate': 'TBI Lab אינו תומך בטאבלטים. השתמשו במחשב עם Chrome או Edge.',
   'app.screen.narrow': 'לחוויה הטובה ביותר, השתמשו בחלון ברוחב של 1024 פיקסלים לפחות.',
   'rating.heading': 'חריגה מדירוגי הרכיב',
   'rating.atRisk': '{component} עלול להינזק',
@@ -1392,7 +1394,7 @@ export const he: Record<MessageKey, string> = {
   'sim.error.unmodelled':
     'התוכנית התחילה להשתמש ב{feature}, שהסימולטור אינו ממדל. הסימולציה נעצרה ברגע זה, במקום להציג תוצאה מתה או קריסה.',
   'sim.error.runtime.unsupported_feature':
-    'הקושחה משתמשת ביכולת שהסימולטור אינו תומך בה בגרסה זו (Pull-up/Pull-down פנימי או פסיקות GPIO).',
+    'הקושחה משתמשת ביכולת שה־Runtime הזה של הסימולטור אינו תומך בה. ההרצה נדחתה או נעצרה.',
   'sim.error.runtime.inverted_output':
     'הקושחה הופכת את האות ביציאה של פין מחובר דרך מטריצת ה־GPIO. הסימולטור אינו מדמה יציאות הפוכות.',
   'sim.error.runtime.invalid_attachment': 'פין ESP32 מחובר אינו זמין לשימוש בסימולטור.',
@@ -1510,7 +1512,7 @@ export const he: Record<MessageKey, string> = {
   'mcu.caveat.power': 'פין הזנה',
   'mcu.caveat.enable': 'הפעלת השבב: איפוס אינו מדומה',
   'mcu.note.unsupported':
-    'לא מדומה בגרסה זו: Pull-up/Pull-down פנימי, פסיקות GPIO, איפוס שבב, אנלוגי, Wi-Fi.',
+    'לא מדומה בגרסה זו: Pull-up/Pull-down פנימי, פסיקות GPIO לפי רמה, איפוס שבב, אנלוגי, Wi-Fi.',
   'mcu.level.high': 'HIGH',
   'mcu.level.low': 'LOW',
   'mcu.mode.output': 'יציאה',
@@ -1760,7 +1762,8 @@ export const he: Record<MessageKey, string> = {
   'capabilities.facility.pwm_advanced.body':
     'אינם מדומים. סקיצ׳ שמשתמש בהם נדחה בבנייה. לעמעום, קראו ל־ledcWrite בצעדים.',
   'capabilities.facility.interrupt.name': 'פסיקות GPIO ‏(attachInterrupt)',
-  'capabilities.facility.interrupt.body': 'אינן מדומות. במקומן, קראו את הפין ב־digitalRead.',
+  'capabilities.facility.interrupt.body':
+    'פסיקות קצה נמסרות: RISING,‏ FALLING ו־CHANGE (ב־MicroPython:‏ IRQ_RISING,‏ IRQ_FALLING). מטפל הפסיקה עשוי לרוץ באיחור של עד פרוסת אמולטור אחת, כי שתי הליבות רצות בתורות. פסיקות רמה, NMI והתעוררות משינה אינן מדומות: ההרצה נעצרת עם הודעה על כך. גם פסיקה על כניסה ללא רמה מוגדרת עוצרת את ההרצה. פסיקות קצה דורשות Runtime של הסימולטור שמוסר אותן; Runtime ישן יותר דוחה תוכניות שמשתמשות בפסיקות.',
   'capabilities.facility.internal_pull.name':
     'Pull-up / Pull-down פנימיים (INPUT_PULLUP,‏ INPUT_PULLDOWN)',
   'capabilities.facility.internal_pull.body': 'אינם מדומים. הוסיפו נגד חיצוני למעגל.',
@@ -1965,7 +1968,7 @@ export const he: Record<MessageKey, string> = {
   'onboarding.step3':
     'לחצו הרצה. בזמן ההרצה, בחרו רכיב ושנו את מה שהוא חש (מרחק, טמפרטורה, אור, תנועה): הקושחה והמעגל מגיבים.',
   'onboarding.note':
-    'הפרויקטים נשמרים בדפדפן הזה בלבד: השתמשו בייצוא כדי לשמור עותק. סימולטור ה־ESP32 משותף לבודקי האלפא; אם הוא תפוס, נסו שוב בעוד רגע.',
+    'הפרויקטים נשמרים בדפדפן הזה בלבד: השתמשו בייצוא כדי לשמור עותק. סימולטור ה־ESP32 משותף למשתמשים; אם הוא תפוס, נסו שוב בעוד רגע.',
   'onboarding.dismiss': 'הבנתי',
   'onboarding.show': 'הצגת צעדים ראשונים',
   // Sprint 13 H7 (shown only when a deployment configures the form).

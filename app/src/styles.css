@@ -3121,6 +3121,54 @@ select {
   z-index: 1;
 }
 
+/* The scroll buttons of a clipped message sit in room reserved at its inline end, and stay at the
+   top while the text scrolls: they cover neither the text nor more of the drawing. */
+.canvas-wrap > .canvas-hint.has-scroll-buttons,
+.view3d-wrap > .view-note.has-scroll-buttons {
+  padding-inline-end: 3.75rem;
+}
+
+.view-note-scroll {
+  position: sticky;
+  inset-block-start: 0;
+  float: inline-end;
+  display: flex;
+  gap: 0.125rem;
+  margin-inline-end: -3.5rem;
+}
+
+.view-note-scroll button {
+  display: grid;
+  place-items: center;
+  inline-size: 1.625rem;
+  block-size: 1.625rem;
+  padding: 0;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.view-note-scroll button[aria-disabled='true'] {
+  border-style: dashed;
+  color: var(--muted);
+  cursor: default;
+}
+
+/* Inside the button: the scrolling box would clip a ring drawn outside it. */
+.view-note-scroll button:focus-visible {
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 5px var(--focus-halo);
+}
+
+.view-note-scroll svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
 .sch-wire {
   fill: none;
   stroke: var(--wire);

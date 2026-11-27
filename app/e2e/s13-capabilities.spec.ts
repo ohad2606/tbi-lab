@@ -42,6 +42,10 @@ test('from the menu: firmware facilities, parts, timing and limits; Escape close
     'data-status',
     'unsupported',
   );
+  // Runtime v5 (`gpio-irq`): edge interrupts are delivered; level, NMI and wake-up are not.
+  const irq = dialog.getByTestId('capability-facility-interrupt');
+  await expect(irq).toHaveAttribute('data-status', 'limited');
+  await expect(irq).toContainText('Edge interrupts');
   await expect(dialog.getByTestId('capability-facility-dual_core')).toHaveAttribute(
     'data-status',
     'limited',
@@ -84,6 +88,7 @@ test('Hebrew: right-to-left, translated, same entries', async ({ page }) => {
   await expect(dialog.getByTestId('capability-facility-pwm')).toContainText('נתמך עם מגבלות');
   await expect(dialog.getByTestId('capability-facility-pwm_advanced')).toContainText('לא נתמך');
   await expect(dialog.getByTestId('capability-board-power')).toContainText('3.3 V');
+  await expect(dialog.getByTestId('capability-facility-interrupt')).toContainText('פסיקות קצה');
   // 20 since Sprint 15 (R4 adds pwm_advanced), 21 since Sprint 18 (cpu_frequency, F-17C-1).
   await expect(dialog.locator('[data-testid^="capability-facility-"]')).toHaveCount(21);
   // No English prose left in the Hebrew panel: only technical tokens (acronyms and part numbers,

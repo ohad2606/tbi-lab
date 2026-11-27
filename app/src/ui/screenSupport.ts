@@ -1,6 +1,8 @@
 /**
  * Screen support policy (owner decision 2026-10-29, after the first real tablet check):
  * computers and tablets are supported, tablets preferably in landscape; phones are not.
+ * Public beta (2026-11-27): the supported setup is Chrome or Edge on a computer, and the messages
+ * say so. The detection below is unchanged (a tablet in landscape still gets no message).
  *
  * Thresholds come from the real layout:
  * - 1024 CSS px is the narrowest width the editor is built and tested for (`.app` min-width, the

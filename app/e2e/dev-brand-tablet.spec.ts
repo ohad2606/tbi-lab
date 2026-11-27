@@ -5,7 +5,8 @@
  *    in the top bar, DEV manifest names and icons. The routine build (:4173) is production branding;
  *    the same source built with VITE_TBI_ENV=dev is served on :4175 (playwright.app.config.ts);
  * 3. screen support: computers and tablets; tablets best in landscape (a gentle hint in portrait);
- *    phones not supported (ui/screenSupport.ts).
+ *    phones not supported (ui/screenSupport.ts). Public beta: the messages now say that phones
+ *    and tablets are not supported; when each is shown is unchanged.
  * Device emulation is Chromium's (isMobile, hasTouch, device scale factor); the iPad descriptors
  * run in Chromium too (this suite has one browser project). With TBI_EVIDENCE_DIR set, every case
  * also saves a screenshot there.
@@ -101,12 +102,12 @@ const expectNoteLayout = (page: Page) => expectBand(page, '[data-testid="screen-
 
 const MESSAGES = {
   phone: {
-    en: 'TBI Lab does not support phones or screens this small. Use a computer or a tablet (landscape recommended).',
-    he: 'TBI Lab אינו תומך בטלפונים או במסכים קטנים כאלה. השתמשו במחשב או בטאבלט (מומלץ במצב לרוחב).',
+    en: 'TBI Lab does not support phones, tablets or screens this small. Use a computer with Chrome or Edge.',
+    he: 'TBI Lab אינו תומך בטלפונים, בטאבלטים או במסכים קטנים כאלה. השתמשו במחשב עם Chrome או Edge.',
   },
   rotate: {
-    en: 'For the best experience, rotate your tablet to landscape.',
-    he: 'לחוויה הטובה ביותר, סובבו את הטאבלט למצב לרוחב.',
+    en: 'TBI Lab does not support tablets. Use a computer with Chrome or Edge.',
+    he: 'TBI Lab אינו תומך בטאבלטים. השתמשו במחשב עם Chrome או Edge.',
   },
   narrow: {
     en: 'For the best experience, use a window at least 1024 pixels wide.',
