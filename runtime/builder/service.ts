@@ -108,8 +108,11 @@ export class BuildService {
   /** Builds compiling now (at most the policy's `maxActiveBuilds`). */
   private readonly active = new Set<BuildRecord>();
   private readonly idle = new Set<() => void>();
-  /** Capacity A4: consecutive failed prewarm builds per curated source key (this process). */
-  private readonly prewarmFailures = new Map<string, number>();
+  /**
+   * Capacity A4: consecutive failed prewarm builds per curated source key (this process), and the
+   * passes still to skip before the next attempt.
+   */
+  private readonly prewarmFailures = new Map<string, { count: number; skip: number }>();
   /** Capacity A4: rebuilds spent on a missing core seed since a seed was last seen. */
   private seedRebuilds = 0;
 
@@ -354,9 +357,11 @@ export class BuildService {
    * deploy, a toolchain or analyser change), one at a time and only while nobody else is
    * building or queued, so the first user to open an example gets a cache hit. The first one
    * also leaves the core seed. Shared builds follow the usual start rules (live sessions defer
-   * them); a user's build of the same source joins the pending one. A source that failed
-   * PREWARM_ATTEMPTS times in a row is left alone, as is a seed that many rebuilds did not
-   * leave. Returns what it built.
+   * them); a user's build of the same source joins the pending one. No build starts below the
+   * host's resource floors (the pass ends there). A source whose build failed is tried again
+   * after 1, 2, 4, 8, ... calls; after PREWARM_ATTEMPTS failures in a row it is left alone, as is
+   * a seed that many rebuilds did not leave. A build that never started (`capacity_timeout`) is
+   * not an attempt. Returns what it built.
    */
   async prewarm(
     sources: readonly BuildRequest[],
@@ -371,7 +376,14 @@ export class BuildService {
       if (!provider) continue;
       const key = requestKey(request);
       if (!this.access.systemKeys.has(key)) continue;
-      if ((this.prewarmFailures.get(key) ?? 0) >= PREWARM_ATTEMPTS) continue;
+      const failed = this.prewarmFailures.get(key);
+      if (failed) {
+        if (failed.count >= PREWARM_ATTEMPTS) continue;
+        if (failed.skip > 0) {
+          failed.skip--;
+          continue;
+        }
+      }
       // Built again although shared and current when the provider has no seed (lost, or a new
       // seed format): a curated build is the only thing that leaves one.
       let seedless = false;
@@ -392,11 +404,24 @@ export class BuildService {
         await new Promise((r) => setTimeout(r, opts.pollMs ?? 1000));
       }
       if (!seedless && this.cachedResult(GLOBAL, key)) continue;
+      let seedRebuild = false;
       if (seedless) {
         seedTried = true;
-        if (this.cachedResult(GLOBAL, key)) this.seedRebuilds++;
+        seedRebuild = this.cachedResult(GLOBAL, key) !== null;
       }
       if (opts.stopped?.()) break;
+      // The floors a user's build is admitted under; nothing more is started this pass.
+      try {
+        checkResources(
+          this.access.policy.config.global.resources,
+          this.workRoot,
+          this.access.probe,
+        );
+      } catch (e) {
+        if (!(e instanceof Refusal)) throw e;
+        admissionEvent('build', 'prewarm', e.code, PREWARM);
+        break;
+      }
       this.prune();
       const record: BuildRecord = {
         id: `b_${randomBytes(12).toString('hex')}`,
@@ -421,10 +446,16 @@ export class BuildService {
         check();
       });
       if (record.finishedAt === undefined) break;
+      // Waited too long for capacity: it never started, so it says nothing about the source.
+      if (record.result?.failure === 'capacity_timeout') continue;
+      if (seedRebuild) this.seedRebuilds++;
       if (record.result?.ok) {
         built++;
         this.prewarmFailures.delete(key);
-      } else this.prewarmFailures.set(key, (this.prewarmFailures.get(key) ?? 0) + 1);
+      } else {
+        const count = (failed?.count ?? 0) + 1;
+        this.prewarmFailures.set(key, { count, skip: 2 ** (count - 1) - 1 });
+      }
     }
     return built;
   }
@@ -443,12 +474,16 @@ export class BuildService {
 
   /**
    * Capacity A4: whether the store must keep this image: a CURRENT shared build of a curated
-   * source. Only `global` build grants count (never a user's build or upload).
+   * source, of a profile this process offers. Only `global` build grants count (never a user's
+   * build or upload).
    */
   isPinned(sha: string): boolean {
     return this.access.grants
       .buildsOf(GLOBAL, sha)
-      .some((b) => this.access.systemKeys.has(b.key) && this.isCurrent(b));
+      .some(
+        (b) =>
+          this.providers.has(b.profile) && this.access.systemKeys.has(b.key) && this.isCurrent(b),
+      );
   }
 
   /** Resolves when no build is active or queued (tests, shutdown). */
