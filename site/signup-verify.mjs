@@ -76,6 +76,7 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
   const form = $('vf-resend');
   const input = $('vf-email');
   const error = $('vf-err-email');
+  const box = $('vf-result');
   const heading = $('vf-result-h');
   const body = $('vf-result-p');
   let token = '';
@@ -86,27 +87,37 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
   let shown = 0;
   let progressSeq = 0;
 
-  function progress(key) {
+  /** The polite region: cleared first and filled a moment later, so the same text is announced again. */
+  function say(message) {
     const seq = ++progressSeq;
-    const line = $('vf-sending');
     const live = $('vf-progress');
     live.textContent = '';
-    line.hidden = !key;
-    line.textContent = key ? text(key).textContent : '';
-    if (key) win.setTimeout(() => seq === progressSeq && (live.textContent = line.textContent), 60);
+    if (message) win.setTimeout(() => seq === progressSeq && (live.textContent = message), 60);
+  }
+
+  /** The visible "sending" line next to the button that was used, and its announcement. */
+  function progress(key) {
+    for (const [name, id] of [
+      ['confirmSending', 'vf-sending'],
+      ['resendSending', 'vf-resend-sending'],
+    ]) {
+      $(id).hidden = name !== key;
+      $(id).textContent = name === key ? text(name).textContent : '';
+    }
+    say(key ? text(key).textContent : '');
   }
 
   function clearResult() {
     shown++;
-    heading.hidden = true;
-    body.hidden = true;
+    box.hidden = true;
     heading.textContent = '';
     body.replaceChildren();
   }
 
   /**
-   * Cleared first and filled a moment later, so the same result twice in a row is announced again. Focus moves to the
-   * result heading. `source` is a generator-rendered element; its nodes are cloned (the support link, LTR spans).
+   * Hidden first, then filled and focused a moment later, so the same result twice in a row is read again. The focused
+   * group (named by the heading, described by the text) is the only announcement; it is not a live region.
+   * `source` is a generator-rendered element; its nodes are cloned (the support link, LTR spans).
    */
   function result(headingKey, source) {
     clearResult();
@@ -115,9 +126,8 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
       if (seq !== shown) return;
       heading.textContent = text(headingKey).textContent;
       body.replaceChildren(...[...source.childNodes].map((n) => n.cloneNode(true)));
-      heading.hidden = false;
-      body.hidden = false;
-      heading.focus();
+      box.hidden = false;
+      box.focus();
     }, 60);
   }
   const outcome = (name) => result(`result${name}H`, text(`result${name}P`));
@@ -197,7 +207,12 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
     if (resender.sub.busy) return;
     const bad = normalizeEmail(input.value) === null;
     setEmailError(bad);
-    if (bad) return input.focus(); // the focused field reads its label, hint and error
+    if (bad) {
+      // Moving focus reads the label, hint and error. A field that already has focus (Enter) says nothing, so the
+      // polite region says the error.
+      if (doc.activeElement !== input) return input.focus();
+      return say(error.textContent);
+    }
     const mine = run;
     const send = $('vf-resend-button');
     setBusy(send, true);
@@ -214,11 +229,18 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
       form.hidden = true;
       return outcome('Sent');
     }
-    result('resultFailH', doc.querySelector(`[data-msg="${r.msg ?? MSG.generic}"]`));
+    // The sign-up texts for these two talk about the sign-up form, so the resend has its own.
+    const own = { [MSG.unavailable]: 'resendUnavailable', [MSG.invalid]: 'resendInvalid' }[r.msg];
+    result(
+      'resultFailH',
+      own ? text(own) : doc.querySelector(`[data-msg="${r.msg ?? MSG.generic}"]`),
+    );
   });
 
   input.addEventListener('input', () => {
-    if (!error.hidden && normalizeEmail(input.value) !== null) setEmailError(false);
+    if (error.hidden || normalizeEmail(input.value) === null) return;
+    setEmailError(false);
+    say(''); // no stale error left in the live region
   });
 
   // The link opened in a tab that already shows the page changes only the fragment: no reload, so listen.

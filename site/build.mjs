@@ -113,6 +113,8 @@ function renderVerifyView(lang, f, v) {
     ['resultFailH', esc(v.resultFailH)],
     ['confirmSending', esc(v.confirmSending)],
     ['resendSending', esc(v.resendSending)],
+    ['resendUnavailable', esc(v.resendUnavailable)],
+    ['resendInvalid', esc(v.resendInvalid)],
   ]
     .map(([k, html]) => `<span data-vf="${k}">${html}</span>`)
     .join('\n');
@@ -123,9 +125,9 @@ ${texts}
 <p id="vf-intro">${esc(v.confirmP)}</p>
 <p id="vf-sending" class="hint-text" aria-hidden="true" hidden></p>
 <div id="vf-progress" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
-<div id="vf-result" role="status" aria-live="polite" aria-atomic="true">
-<h2 id="vf-result-h" tabindex="-1" hidden></h2>
-<p id="vf-result-p" hidden></p>
+<div id="vf-result" role="group" aria-labelledby="vf-result-h" aria-describedby="vf-result-p" tabindex="-1" hidden>
+<h2 id="vf-result-h"></h2>
+<p id="vf-result-p"></p>
 </div>
 <p id="vf-confirm"><button type="button" class="btn btn-primary" id="vf-button" aria-disabled="false">${esc(v.confirmButton)}</button></p>
 <form id="vf-resend" method="post" novalidate hidden aria-labelledby="vf-resend-h">
@@ -141,6 +143,7 @@ ${texts}
 <input type="text" id="vf-website" name="website" value="" tabindex="-1" autocomplete="off" aria-hidden="true" data-lpignore="true" data-1p-ignore="true">
 </div>
 <p><button type="submit" class="btn btn-primary" id="vf-resend-button" aria-disabled="false">${esc(v.resendButton)}</button></p>
+<p id="vf-resend-sending" class="hint-text" aria-hidden="true" hidden></p>
 </form>
 </div>`;
 }
@@ -200,7 +203,7 @@ ${errP(key)}
   return `<div class="wrap prose signup">
 <h1 id="su-h1">${rich(pg.h1, lang)}</h1>
 <p class="lead" id="su-intro-extra">${rich(pg.lead, lang)}</p>
-<p class="notice" id="su-nojs">${rich2(f.nojs, lang)}</p>
+<p class="notice" id="su-nojs">${rich2(f.nojs, lang)}${v ? ` ${rich2(v.nojsConfirm, lang)}` : ''}</p>
 <div hidden>
 ${msgs}
 </div>

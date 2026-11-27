@@ -120,7 +120,7 @@ for (const { lang, dir } of [
       expect(log.verify).toHaveLength(0);
       expect(await axe(page)).toEqual([]);
       await page.locator('#vf-button').click();
-      await expect(page.locator('#vf-result-h')).toBeFocused();
+      await expect(page.locator('#vf-result')).toBeFocused();
       expect(log.verify).toEqual([{ token: TOKEN }]);
       const leak = await page.evaluate(() =>
         [
@@ -144,14 +144,21 @@ for (const { lang, dir } of [
       await page.locator('#vf-button').focus();
       await page.keyboard.press('Enter');
       const h = page.locator('#vf-result-h');
-      await expect(h).toBeFocused();
+      const box = page.locator('#vf-result');
+      await expect(box).toBeFocused();
       await expect(h).toHaveText((await msg(page, 'resultReceivedH'))!);
-      await expect(page.getByRole('status').filter({ has: h })).toContainText(
-        (await msg(page, 'resultReceivedP'))!,
+      await expect(box).toHaveRole('group');
+      await expect(box).toHaveAccessibleName((await msg(page, 'resultReceivedH'))!);
+      await expect(box).toHaveAccessibleDescription(
+        new RegExp((await msg(page, 'resultReceivedP'))!.slice(0, 20)),
       );
+      // not also a live region (it would be read twice)
+      expect(
+        await box.evaluate((e) => e.matches('[role=status], [aria-live], [aria-atomic]')),
+      ).toBe(false);
       await expect(page.locator('#vf-button')).toBeHidden();
       await expect(page.locator('#vf-resend')).toBeHidden();
-      const outline = await h.evaluate((e) => getComputedStyle(e).outlineStyle);
+      const outline = await box.evaluate((e) => getComputedStyle(e).outlineStyle);
       expect(outline).not.toBe('none');
       expect(await axe(page)).toEqual([]);
       expect(log.verify).toHaveLength(1);
@@ -168,7 +175,8 @@ for (const { lang, dir } of [
         await page.goto(url);
         await page.locator('#vf-button').click();
         const h = page.locator('#vf-result-h');
-        await expect(h).toBeFocused();
+        const box = page.locator('#vf-result');
+        await expect(box).toBeFocused();
         await expect(h).toHaveText((await msg(page, `result${name}H`))!);
         await expect(page.locator('#vf-button')).toBeHidden();
         const email = page.locator('#vf-email');
@@ -177,7 +185,7 @@ for (const { lang, dir } of [
         await expect(email).toHaveAccessibleName(/Google/);
         await expect(email).toHaveAttribute('aria-describedby', 'vf-hint-email');
         expect(await axe(page)).toEqual([]);
-        await page.keyboard.press('Tab'); // heading -> email (the honeypot is skipped later)
+        await page.keyboard.press('Tab'); // result -> email (the honeypot is skipped later)
         await expect(email).toBeFocused();
         await page.keyboard.type('not-an-address');
         await page.keyboard.press('Enter');
@@ -185,6 +193,22 @@ for (const { lang, dir } of [
         await expect(email).toHaveAttribute('aria-invalid', 'true');
         await expect(email).toHaveAttribute('aria-describedby', 'vf-hint-email vf-err-email');
         await expect(page.locator('#vf-err-email')).toBeVisible();
+        // Focus did not move, so the error is announced by the live region, and again on a repeat.
+        const live = page.locator('#vf-progress');
+        const errText = (await page.locator('#vf-err-email').textContent())!;
+        await expect(live).toHaveText(errText);
+        await live.evaluate((el) => {
+          const seen: string[] = [];
+          (window as any).seen = seen;
+          new MutationObserver(() => seen.push(el.textContent ?? '')).observe(el, {
+            childList: true,
+          });
+        });
+        await page.keyboard.press('Enter');
+        await expect
+          .poll(() => page.evaluate(() => (window as any).seen as string[]))
+          .toEqual(['', errText]);
+        await expect(email).toBeFocused();
         expect(log.resend).toHaveLength(0);
         expect(await axe(page)).toEqual([]);
         await email.fill('dana@example.com');
@@ -193,7 +217,7 @@ for (const { lang, dir } of [
         await expect(page.locator('#vf-resend-button')).toBeFocused();
         await page.keyboard.press('Enter');
         await expect(h).toHaveText((await msg(page, 'resultSentH'))!);
-        await expect(h).toBeFocused();
+        await expect(box).toBeFocused();
         await expect(page.locator('#vf-resend')).toBeHidden();
         expect(log.resend).toEqual([{ email: 'dana@example.com', website: '', token: 'w1.test2' }]);
         expect(await axe(page)).toEqual([]);
@@ -209,10 +233,11 @@ for (const { lang, dir } of [
       await page.goto(url);
       const button = page.locator('#vf-button');
       const h = page.locator('#vf-result-h');
+      const box = page.locator('#vf-result');
       for (const name of ['Rate', 'Network', 'Network', 'Unavailable', 'Received']) {
         await button.focus();
         await page.keyboard.press('Enter');
-        await expect(h).toBeFocused();
+        await expect(box).toBeFocused();
         await expect(h).toHaveText((await msg(page, `result${name}H`))!);
         if (name !== 'Received') {
           await expect(button).toBeVisible();
@@ -248,9 +273,60 @@ for (const { lang, dir } of [
       await expect(page.locator('#vf-progress')).toHaveText((await msg(page, 'confirmSending'))!);
       await expect(page.locator('#vf-sending')).toBeVisible();
       release();
-      await expect(page.locator('#vf-result-h')).toBeFocused();
+      await expect(page.locator('#vf-result')).toBeFocused();
       await expect(page.locator('#vf-progress')).toHaveText('');
       expect(posts).toBe(1);
+    });
+
+    test('resend sending line sits next to its button; unavailable and invalid have resend texts', async ({
+      page,
+    }) => {
+      await stub(page, { verify: [[410, {}]] });
+      let release: () => void = () => {};
+      const answers = [503, 400];
+      await page.route(/\/signup\/resend$/, async (r) => {
+        const status = answers.shift()!;
+        if (status === 503) await new Promise<void>((done) => (release = done));
+        await r.fulfill({ status, json: {} });
+      });
+      await page.goto(url);
+      await page.locator('#vf-button').click();
+      await expect(page.locator('#vf-result')).toBeFocused();
+      await page.locator('#vf-email').fill('dana@example.com');
+      await page.locator('#vf-resend-button').click();
+      const line = page.locator('#vf-resend-sending');
+      await expect(line).toBeVisible();
+      await expect(line).toHaveText((await msg(page, 'resendSending'))!);
+      await expect(page.locator('#vf-progress')).toHaveText((await msg(page, 'resendSending'))!);
+      await expect(page.locator('#vf-sending')).toBeHidden();
+      const gap = await page.evaluate(
+        () =>
+          document.getElementById('vf-resend-sending')!.getBoundingClientRect().top -
+          document.getElementById('vf-resend-button')!.getBoundingClientRect().bottom,
+      );
+      expect(gap).toBeGreaterThanOrEqual(0);
+      expect(gap).toBeLessThan(48);
+      release();
+      for (const key of ['resendUnavailable', 'resendInvalid']) {
+        if (key === 'resendInvalid') await page.locator('#vf-resend-button').click();
+        await expect(page.locator('#vf-result-p')).toHaveText((await msg(page, key))!);
+        await expect(page.locator('#vf-result')).toBeFocused();
+        await expect(line).toBeHidden();
+      }
+    });
+
+    test('without JavaScript the page says how to confirm', async ({ browser }) => {
+      const context = await browser.newContext({ javaScriptEnabled: false, baseURL: ORIGIN });
+      const page = await context.newPage();
+      await stub(page);
+      await page.goto(url);
+      await expect(page.locator('#su-nojs')).toBeVisible();
+      await expect(page.locator('#su-nojs')).toContainText(
+        lang === 'he'
+          ? 'כדי לאשר את המייל, הפעילו JavaScript וטענו את הדף מחדש'
+          : 'To confirm your email, turn on JavaScript and reload the page',
+      );
+      await context.close();
     });
 
     test('resend failure keeps the form and the address', async ({ page }) => {
@@ -260,11 +336,11 @@ for (const { lang, dir } of [
       });
       await page.goto(url);
       await page.locator('#vf-button').click();
-      await expect(page.locator('#vf-result-h')).toBeFocused();
+      await expect(page.locator('#vf-result')).toBeFocused();
       await page.locator('#vf-email').fill('dana@example.com');
       await page.locator('#vf-resend-button').click();
       await expect(page.locator('#vf-result-h')).toHaveText((await msg(page, 'resultFailH'))!);
-      await expect(page.locator('#vf-result-h')).toBeFocused();
+      await expect(page.locator('#vf-result')).toBeFocused();
       await expect(page.locator('#vf-result-p')).toHaveText(
         (await page.locator('[data-msg="msgRate"]').textContent())!,
       );
@@ -308,7 +384,7 @@ for (const { lang, dir } of [
       await check('#vf-button');
       expect(await noOverflow(page)).toBeLessThanOrEqual(0);
       await page.keyboard.press('Enter');
-      await expect(page.locator('#vf-result-h')).toBeFocused();
+      await expect(page.locator('#vf-result')).toBeFocused();
       await check('#vf-email');
       await check('#vf-resend-button');
       await page.evaluate(() => (document.documentElement.style.fontSize = '200%'));

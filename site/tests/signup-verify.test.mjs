@@ -113,9 +113,7 @@ describe('signupVerify on', () => {
     expect(h).toContain(
       l === 'he' ? 'כתובת המייל של חשבון' : 'The email address of your Google account',
     );
-    expect(h).toContain(
-      l === 'he' ? 'נרשמים, מאשרים את המייל ונכנסים' : 'Sign up, confirm your email',
-    );
+    expect(h).toContain(l === 'he' ? 'בדקו את המייל כדי לאשר' : 'Check your email to confirm');
     expect(h).not.toContain(content[l].signup.emailHint);
     expect(h).not.toContain(content[l].signup.successP[0]);
     expect(h).not.toContain(l === 'he' ? 'בהדרגה' : 'gradually');
@@ -141,8 +139,18 @@ describe('signupVerify on', () => {
     const h = page(on, l);
     expect(h).toContain('<div id="vf" hidden>');
     expect(h).toMatch(/<button type="button" class="btn btn-primary" id="vf-button"/);
-    expect(h).toMatch(/id="vf-result" role="status" aria-live="polite"/);
-    expect(h).toContain('<h2 id="vf-result-h" tabindex="-1" hidden></h2>');
+    // The focused container is the announcement: a named, described group, not a live region.
+    expect(h).toContain(
+      '<div id="vf-result" role="group" aria-labelledby="vf-result-h" aria-describedby="vf-result-p" tabindex="-1" hidden>',
+    );
+    expect(h).toContain('<h2 id="vf-result-h"></h2>');
+    expect(h).toMatch(
+      /id="vf-resend-button"[^\n]*\n<p id="vf-resend-sending"[^>]*aria-hidden="true"/,
+    );
+    expect(h).toMatch(/id="su-nojs">[^\n]*JavaScript[^\n]*<\/p>/);
+    expect(h).toContain(
+      l === 'he' ? 'וטענו את הדף מחדש' : 'turn on JavaScript and reload the page',
+    );
     const form = h.match(/<form id="vf-resend"[\s\S]*?<\/form>/)[0];
     expect(form).not.toMatch(/\saction=|data-api=/); // the publish gate allows only /signup/web
     expect(form).toContain('<label for="vf-email">');
