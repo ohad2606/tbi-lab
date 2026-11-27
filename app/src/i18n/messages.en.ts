@@ -791,7 +791,10 @@ export const en = {
   'segment.done.down': 'Segment moved down. Now segment {n} of {m}.',
   'segment.refused': 'The segment was not moved',
   'inspector.shortcuts':
-    'Keyboard: arrows move, R rotates, Delete removes, Esc cancels. Without dragging: select a part, or a junction in the Junctions list, and use the Move buttons.',
+    'Keyboard, while the circuit view has focus: arrows move, R rotates, Delete removes, Esc cancels. Without dragging: select one part, or one junction in the Junctions list, and use the Move buttons.',
+  'inspector.partRemoved': '{id} removed',
+  'inspector.wireRemoved': 'Wire {n} removed',
+  'inspector.selectionRemoved': 'The selected items were removed',
 
   'error.parse.empty': 'Enter a value.',
   'error.parse.invalid': 'Not a valid number. Enter a number such as 4.7 and choose the unit.',

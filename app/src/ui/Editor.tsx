@@ -238,6 +238,7 @@ export function Editor() {
           onClearProbes={() => setProbes([])}
           segmentPick={segmentPick}
           onSegmentPick={setSegmentPick}
+          onReveal={(at) => canvasApi.current?.reveal(at)}
         />
         <ConnectionsPanel />
         <WiresList />

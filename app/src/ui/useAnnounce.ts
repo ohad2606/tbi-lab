@@ -4,7 +4,7 @@ import { useRef, useState } from 'preact/hooks';
  * Text for a polite live region (WCAG 4.1.3): clear, then set on the next frame with an
  * alternating trailing nbsp, so the same message twice in a row is still announced.
  */
-export function useAnnounce(): [string, (text: string) => void] {
+export function useAnnounce(): [string, (text: string) => void, () => void] {
   const [message, setMessage] = useState('');
   const raf = useRef(0);
   const flip = useRef(false);
@@ -14,5 +14,9 @@ export function useAnnounce(): [string, (text: string) => void] {
     flip.current = !flip.current;
     raf.current = requestAnimationFrame(() => setMessage(text + (flip.current ? ' ' : '')));
   };
-  return [message, announce];
+  const clear = () => {
+    cancelAnimationFrame(raf.current);
+    setMessage('');
+  };
+  return [message, announce, clear];
 }

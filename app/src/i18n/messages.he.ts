@@ -782,7 +782,10 @@ export const he: Record<MessageKey, string> = {
   'segment.done.down': 'המקטע הוזז למטה. כעת מקטע {n} מתוך {m}.',
   'segment.refused': 'המקטע לא הוזז',
   'inspector.shortcuts':
-    'מקלדת: החיצים מזיזים, R מסובב, Delete מוחק, Esc מבטל. בלי גרירה: בוחרים רכיב, או צומת ברשימת הצמתים, ומשתמשים בכפתורי ההזזה.',
+    'מקלדת, כשתצוגת המעגל במיקוד: החצים מזיזים, R מסובב, Delete מוחק, Esc מבטל. בלי גרירה: בוחרים רכיב אחד, או צומת אחד ברשימת הצמתים, ומשתמשים בכפתורי ההזזה.',
+  'inspector.partRemoved': '{id} הוסר',
+  'inspector.wireRemoved': 'חוט {n} הוסר',
+  'inspector.selectionRemoved': 'הפריטים שנבחרו הוסרו',
 
   'error.parse.empty': 'יש להזין ערך.',
   'error.parse.invalid': 'מספר לא תקין. יש להזין מספר כגון 4.7 ולבחור את היחידה.',

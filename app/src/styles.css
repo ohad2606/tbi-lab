@@ -2474,7 +2474,10 @@ select {
 .side-column {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  /* BETA-G3: the lists below never squeeze Properties (and its Move buttons) away: it keeps a
+     floor and the column scrolls instead (WCAG 1.4.4, 1.4.10, 2.4.11). */
+  grid-template-rows: minmax(10rem, 1fr) auto auto;
+  overflow: hidden auto;
   min-width: 0;
   min-height: 0;
   border-inline-start: 1px solid var(--border);
@@ -2484,6 +2487,20 @@ select {
 .side-column > .inspector {
   border-inline-start: 0;
   min-height: 0;
+}
+
+/* A short window (200% zoom): one scrolling column with every part at its own height. */
+@media (max-height: 40rem) {
+  .side-column {
+    display: block;
+  }
+
+  .side-column > .inspector,
+  .side-column > .wires-list,
+  .side-column > .junctions-list {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 .mcu-terminal {
@@ -5334,7 +5351,7 @@ select {
 .junctions-list ul {
   list-style: none;
   margin: 0;
-  padding: 4px;
+  padding: 5px;
 }
 .junctions-list-item {
   display: block;

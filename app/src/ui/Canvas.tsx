@@ -1268,8 +1268,13 @@ export function Canvas({
         selection.wires.length === 1 && !selection.components.length && !selection.junctions.length
           ? doc.layout.wires.find((x) => x.id === selection.wires[0])
           : undefined;
+      const junction =
+        selection.junctions.length === 1 && !selection.components.length && !selection.wires.length
+          ? selection.junctions[0]
+          : undefined;
       const del = deleteSelection(doc, selection);
       store.apply(del, emptySelection());
+      if (junction && del.ok) kbAnnounce(t('junctions.removed', { id: isolateLtr(junction) }));
       if (removed && !del.ok) kbAnnounce(t('kbwire.wireDeleteRefused'));
       if (removed && del.ok)
         kbAnnounce(

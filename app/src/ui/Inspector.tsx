@@ -1,4 +1,5 @@
 import { Fragment } from 'preact';
+import { useLayoutEffect, useRef } from 'preact/hooks';
 import {
   CATALOG,
   MODEL_LIMITATIONS,
@@ -14,6 +15,7 @@ import {
   type CheckIssue,
   type ComponentInstance,
   type ParamDef,
+  type Point,
   type UnitId,
 } from '@tbi-lab/domain';
 import {
@@ -49,6 +51,8 @@ interface InspectorProps {
   onClearProbes(): void;
   segmentPick: SegmentPick | null;
   onSegmentPick(pick: SegmentPick): void;
+  /** Pans the Circuit view to show a point of the drawing. */
+  onReveal(at: Point): void;
 }
 
 /**
@@ -135,13 +139,24 @@ export function Inspector({
   onClearProbes,
   segmentPick,
   onSegmentPick,
+  onReveal,
 }: InspectorProps) {
   const { doc, selection, readOnly, sim, locale } = useAppState();
   const simActive = sim.status === 'running' || sim.status === 'starting';
   const outcome = sim.status === 'running' && sim.outcome.ok ? sim.outcome : null;
   const store = useStore();
   const t = useT();
-  const [status, announce] = useAnnounce();
+  const [status, say, clearStatus] = useAnnounce();
+  // An announcement belongs to the selection it was made for; a new selection clears it.
+  const selected = JSON.stringify(selection);
+  const saidFor = useRef(selected);
+  const announce = (text: string) => {
+    saidFor.current = JSON.stringify(store.state.selection);
+    say(text);
+  };
+  useLayoutEffect(() => {
+    if (saidFor.current !== selected) clearStatus();
+  }, [selected]);
   if (!doc) return null;
   const count = selection.components.length + selection.wires.length + selection.junctions.length;
   const single =
@@ -172,16 +187,28 @@ export function Inspector({
         data-testid="inspector-delete"
         disabled={simActive}
         onClick={() => {
-          const deleted = store.apply(deleteSelection(doc, selection), emptySelection());
-          if (!deleted || !junction) return;
-          announce(t('junctions.removed', { id: isolateLtr(junction) }));
-          // This button goes with the selection: focus moves to the list, or to the heading.
-          requestAnimationFrame(() =>
-            (
-              document.querySelector<HTMLElement>('.junctions-list-item') ??
-              document.getElementById('inspector-heading')
-            )?.focus(),
+          const at = doc.layout.junctions.findIndex((j) => j.id === junction);
+          const wireNumber = doc.layout.wires.findIndex((w) => w.id === wire?.id) + 1;
+          if (!store.apply(deleteSelection(doc, selection), emptySelection())) return;
+          announce(
+            junction
+              ? t('junctions.removed', { id: isolateLtr(junction) })
+              : single
+                ? t('inspector.partRemoved', { id: isolateLtr(single.id) })
+                : wire
+                  ? t('inspector.wireRemoved', { n: wireNumber })
+                  : t('inspector.selectionRemoved'),
           );
+          // This button goes with the selection: focus moves to the junction now at the deleted
+          // one's place in the list, or to the heading.
+          requestAnimationFrame(() => {
+            const items = junction
+              ? document.querySelectorAll<HTMLElement>('.junctions-list-item')
+              : [];
+            (
+              items[Math.min(at, items.length - 1)] ?? document.getElementById('inspector-heading')
+            )?.focus();
+          });
         }}
       >
         {t('inspector.delete')}
@@ -258,7 +285,7 @@ export function Inspector({
         </dl>
       )}
       {!readOnly && (single || junction) && (
-        <MoveControls id={single?.id ?? junction!} announce={announce} />
+        <MoveControls id={single?.id ?? junction!} announce={announce} onReveal={onReveal} />
       )}
       {!readOnly && wire && (
         <SegmentMoveControls
@@ -267,6 +294,7 @@ export function Inspector({
           pick={segmentPick}
           onPick={onSegmentPick}
           announce={announce}
+          onReveal={onReveal}
         />
       )}
       {actions}

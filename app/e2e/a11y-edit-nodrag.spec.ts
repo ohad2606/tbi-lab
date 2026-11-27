@@ -343,3 +343,80 @@ for (const lang of ['en', 'he'] as const) {
     });
   }
 }
+
+for (const [width, height] of [
+  [640, 360],
+  [1280, 400],
+  [1400, 860],
+] as const) {
+  test(`Properties is not squeezed by the lists at ${width}x${height}`, async ({ page }) => {
+    await open(page, 'en', junctionDoc(`nodrag-short-${width}`));
+    await page.setViewportSize({ width, height });
+    await page.locator('.connections > summary').click();
+    await page.locator('.junctions-list-item').click();
+    // A floor of about 10rem: the lists scroll the column instead of covering Properties.
+    expect((await page.getByTestId('inspector').boundingBox())!.height).toBeGreaterThanOrEqual(149);
+    for (const id of ['move-up', 'move-down', 'inspector-delete']) {
+      const button = page.getByTestId(id);
+      await button.focus();
+      await expect(button).toBeInViewport({ ratio: 1 });
+      expect(
+        await button.evaluate((el) => {
+          const b = el.getBoundingClientRect();
+          return el.contains(document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2));
+        }),
+        `${id} is not covered`,
+      ).toBe(true);
+    }
+  });
+}
+
+for (const lang of ['en', 'he'] as const) {
+  test(`focus and announcements after delete and undo (${lang})`, async ({ page }) => {
+    await open(page, lang, junctionDoc(`nodrag-focus-${lang}`));
+    const status = page.getByTestId('inspector-status');
+    const heading = page.locator('#inspector-heading');
+
+    // Undo takes the selected part away while a Move button has focus.
+    await component(page, 'R2').locator('.component-hit').click();
+    await page.getByTestId('move-down').click();
+    await expect(status).toContainText(/R2/);
+    // A new selection clears the old message.
+    await component(page, 'R1').locator('.component-hit').click();
+    await expect(status).toHaveText('');
+
+    // Deleting a part with the Properties button: announced, focus on the heading.
+    await page.getByTestId('inspector-delete').click();
+    await expect(status).toContainText(lang === 'en' ? /R1.? removed/ : /R1.? הוסר/);
+    await expect(heading).toBeFocused();
+    await page.keyboard.press('Control+z');
+
+    await page.locator('.wires-list-item').first().click();
+    await page.getByTestId('inspector-delete').click();
+    await expect(status).toContainText(lang === 'en' ? /Wire 1 removed/ : /חוט 1 הוסר/);
+    await expect(heading).toBeFocused();
+
+    // Delete key on a junction in the drawing.
+    await page.locator('.junctions-list-item').click();
+    await page.getByTestId('canvas').focus();
+    await page.keyboard.press('Delete');
+    await expect(page.getByText(TEXT[lang].junctionRemoved).first()).toBeAttached();
+  });
+
+  test(`undo removes the selection under a Move button (${lang})`, async ({ page }) => {
+    const before = await open(page, lang, partsDoc(`nodrag-undo-${lang}`));
+    await page.getByTestId('palette-component.resistor').click();
+    const at = await toScreen(page, { x: 60, y: -60 });
+    await page.mouse.click(at.x, at.y);
+    await waitForStoredProject(
+      page,
+      (d) => d.components.length === before.components.length + 1,
+      'placed',
+    );
+    await page.getByTestId('move-down').focus();
+    await page.keyboard.press('Control+z');
+    // The first undo may be this one: the placed part is gone, and so are its buttons.
+    await expect(page.getByTestId('move-group')).toHaveCount(0);
+    await expect(page.locator('#inspector-heading')).toBeFocused();
+  });
+}
