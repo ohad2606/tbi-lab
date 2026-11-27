@@ -1,4 +1,5 @@
 /** Offline unit tests of the Capacity A1 measurements (runtime/tests/g2-metrics.ts). Fake files and clock. */
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { g2Decision, g2Report } from '../../runtime/tests/g2-guard.ts';
 import * as M from '../../runtime/tests/g2-metrics.ts';
@@ -225,6 +226,88 @@ describe('recorder', () => {
       expect(Object.keys(report.unavailable).length).toBeGreaterThan(0);
       expect(report.status).toBe('not_reached');
     }
+  });
+});
+
+describe('A1 follow-ups', () => {
+  const tickTimes = async (rec, n, set) => {
+    for (let i = 1; i <= n; i++) {
+      set(i);
+      await rec.tick();
+    }
+  };
+  it('each round has its own phase label, and the harness sets one per step', () => {
+    expect(M.G2_A1_ROUNDS.map((r) => r.phase)).toEqual([
+      'a1-delay-solo',
+      'a1-busy-solo',
+      'a1-mix6',
+    ]);
+    const src = readFileSync('runtime/tests/g2-deployed.runtime.test.ts', 'utf8');
+    for (const set of ["'a1-builds'", "'a1-cooldown'", 'phase'])
+      expect(src).toContain(`progress.phase = ${set};`);
+    expect(src).not.toContain("progress.phase = 'a1';");
+  });
+  it.each([
+    ['never listed', {}],
+    [
+      'listed, every file unreadable',
+      { [M.G2_A1_QEMU_SLICE]: [`tbi-s8-qemu@${'a'.repeat(32)}.service`] },
+    ],
+  ])('a run without any reading (%s) is counted and the report is not complete', async (_, d) => {
+    let at = 0;
+    const rec = M.g2A1Recorder(
+      fsOf({}, d),
+      () => at,
+      () => 'a1-mix6',
+    );
+    rec.addRun('a'.repeat(32), 'delay', 'mix6');
+    await tickTimes(rec, 2, (i) => (at = i * 1000));
+    rec.state.status = 'complete';
+    const report = rec.report();
+    expect(report.unavailable['qemu run without readings']).toBe(1);
+    expect(report.status).toBe('incomplete');
+    expect(rec.report().unavailable['qemu run without readings']).toBe(1);
+  });
+  it('a blind drill run is counted but does not spoil measured rounds', async () => {
+    const id = 'b'.repeat(32);
+    const unit = `tbi-s8-qemu@${id}.service`;
+    const rec = M.g2A1Recorder(
+      fsOf(files(`${M.G2_A1_QEMU_SLICE}/${unit}`), { [M.G2_A1_QEMU_SLICE]: [unit] }),
+      () => 0,
+      () => 'a1-mix6',
+    );
+    rec.addRun(id, 'delay', 'mix6');
+    rec.addRun('c'.repeat(32), 'gpio_proof', 'drills');
+    await rec.tick();
+    rec.state.status = 'complete';
+    const report = rec.report();
+    expect(report.unavailable['qemu run without readings']).toBe(1);
+    expect(report.status).toBe('complete');
+  });
+  it('TBI_HOST_PACE=off is not the same as unset', () => {
+    expect(M.g2A1HostConfig('Environment=TBI_HOST_PACE=off A=1\n').pace).toBe('off');
+    expect(M.g2A1HostConfig('Environment=A=1 "TBI_HOST_PACE=off"\n').pace).toBe('off');
+    expect(M.g2A1HostConfig('Environment=A=1\n').pace).toBeNull();
+    expect(M.g2A1HostConfig('Environment=TBI_HOST_IDLE_MS=off\n').idleMs).toBeNull();
+  });
+  it('a counter reset in the middle of a series gives no figure, even if it ends higher', () => {
+    // reset at second 40, then fast enough to end above the first value of the window
+    const readings = series(100, () => 1).map((r) =>
+      r.atMs < 40_000
+        ? r
+        : { ...r, usageUsec: r.usageUsec - 39e6, nrThrottled: r.nrThrottled - 39 },
+    );
+    const run = M.g2A1Run('busy', 'solo', 0, readings);
+    expect(run.steadyCores).toBeNull();
+    expect(run.steadySeconds).toBeNull();
+    expect(run.steadyThrottled).toBeNull();
+    const early = series(100, () => 1).map((r) =>
+      r.atMs < 10_000 ? r : { ...r, usageUsec: r.usageUsec - 9e6 },
+    );
+    const second = M.g2A1Run('busy', 'solo', 0, early);
+    expect(second.startupCores).toBeNull();
+    expect(second.startupCpuSeconds).toBeNull();
+    expect(second.steadyCores).toBe(1);
   });
 });
 

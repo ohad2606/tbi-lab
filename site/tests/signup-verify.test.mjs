@@ -19,12 +19,13 @@ import { content, SIGNUP_VERIFY_ENABLED } from '../content.mjs';
  * while the option is off, update these values in the same commit.
  * `preview` and `enabled` were updated for the request timeouts and the deferred token fetch in signup.mjs. All three
  * were updated for the footer sign-in spacing (assets/site.css, the only `default` change since co/main); `preview` and
- * `enabled` also for the neutral no-answer text on the sign-up pages.
+ * `enabled` also for the neutral no-answer text on the sign-up pages, and again for the neutral no-answer heading
+ * of the sign-up form.
  */
 const CO_MAIN_TREES = {
   default: '81d2008c0bf9198c744f75afdaaa10e52254e16a9b6f030e017e015a2185e567',
-  preview: '6fd2171f74fc5552c7cc1dd771e3a387617e4f5527ef386d2b2198318352f7bf',
-  enabled: '9f290bed92356208bc353f4b230c9c7449d46e7032645644d3476c32ed987975',
+  preview: 'c3de63e33f422d596293dac802e3a9f2d48493a17e6e7ecd87e070319a89fae1',
+  enabled: '6fb3b07ad3e801ec17ce0ba5fe46b451067a6c0de9b7772ee1235c623d415ce1',
 };
 const VARIANTS = {
   default: {},

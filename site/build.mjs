@@ -208,6 +208,7 @@ ${errP(key)}
     'msgSession',
     'summaryFieldsH',
     'summaryFailH',
+    'summaryNetworkH',
     'statusErrors',
     'statusSending',
   ];

@@ -232,6 +232,10 @@ describe('signupVerify copy: success and no-answer texts', () => {
       expect(v.resendNetwork).toBeTruthy();
     }
   });
+  it('the sign-up form heading for no answer does not say the request was not sent', () => {
+    expect(content.en.signup.summaryNetworkH).toBe('No answer from the server');
+    expect(content.he.signup.summaryNetworkH).toBe('אין תשובה מהשרת');
+  });
 });
 
 describe('signupVerify copy: scope', () => {

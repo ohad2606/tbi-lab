@@ -208,13 +208,17 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
     $('su-h1').replaceChildren(...before.heading);
     for (const [id, hidden] of before.hidden) $(id).hidden = hidden;
     // The sign-up may have succeeded behind this view: the lead does not belong over the success text.
-    const done = !$('su-success').hidden;
-    if (done) $('su-intro-extra').hidden = true;
+    if (!$('su-success').hidden) $('su-intro-extra').hidden = true;
     // After the browser's own handling of the history entry (a `#main` entry moves focus and scroll there).
     const mine = run;
     win.setTimeout(() => {
       if (mine !== run) return;
-      const target = done ? $('su-success-h') : focusableHeading();
+      // Decided now: the pending sign-up may have been answered since Back. A failure shows its summary.
+      const target = !$('su-success').hidden
+        ? $('su-success-h')
+        : !$('su-summary').hidden
+          ? $('su-summary')
+          : focusableHeading();
       target.focus();
       target.scrollIntoView({ block: 'nearest' });
     }, 60);

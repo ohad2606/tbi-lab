@@ -318,14 +318,12 @@ export function initSignup(doc = document, fetchFn = (...a) => fetch(...a)) {
     if (!el.getAttribute('aria-describedby')) el.removeAttribute('aria-describedby');
   }
 
-  function showSummary({ fieldKeys = [], failMsg = '' }) {
+  function showSummary({ fieldKeys = [], failMsg = '', failHead = 'summaryFailH' }) {
     summaryList.replaceChildren();
     summaryMsg.textContent = failMsg;
     summaryMsg.hidden = !failMsg;
     summaryList.hidden = fieldKeys.length === 0;
-    summaryH.textContent = failMsg
-      ? text('[data-msg="summaryFailH"]')
-      : text('[data-msg="summaryFieldsH"]');
+    summaryH.textContent = msg(failMsg ? failHead : 'summaryFieldsH');
     for (const k of fieldKeys) {
       const li = doc.createElement('li');
       li.dataset.key = k;
@@ -393,7 +391,9 @@ export function initSignup(doc = document, fetchFn = (...a) => fetch(...a)) {
     setBusy(false);
     if (r.ignored) return;
     if (r.ok) return success();
-    showSummary({ failMsg: msg(r.msg) });
+    // No answer: the request may have arrived, so the heading must not say it was not sent.
+    const failHead = r.msg === MSG.network ? 'summaryNetworkH' : 'summaryFailH';
+    showSummary({ failMsg: msg(r.msg), failHead });
   });
 
   // Clear a field's error as soon as its value becomes valid (no timing, no re-submit needed).
