@@ -53,6 +53,20 @@ const STATUS_WAIT_MS = 3000;
 /** A status request still open after this long on Refresh is shown, and said, as pending. */
 const PENDING_AFTER_MS = 1000;
 
+/** A status request still unanswered after this long is given up: it ends as unavailable. */
+const STATUS_TIMEOUT_MS = 10_000;
+
+/**
+ * The shared client's fetch with a time limit, for the read-only status only: an abort (also while
+ * the body is read) is a failed load to the client.
+ */
+const statusApi = async (input: string, init?: RequestInit) => {
+  const abort = new AbortController();
+  // Not cleared on the answer's headers: the body must arrive in time too.
+  setTimeout(() => abort.abort(), STATUS_TIMEOUT_MS);
+  return api(input, { ...init, signal: abort.signal });
+};
+
 /** How long an announcement may still be unspoken, so an added sentence is posted with it. */
 const FRESH_MS = 2000;
 
@@ -176,8 +190,8 @@ export function Signups() {
   const [messages, setMessages] = useState<Record<string, RowMessage>>({});
   const [announce, setAnnounce] = useState('');
   const [openStale, setOpenStale] = useState(false);
-  // The request whose outcome is unconfirmed while a problem text stands in place of the list.
-  const [lost, setLost] = useState<{ id: string; name: string } | null>(null);
+  // Requests whose outcome is unconfirmed while a problem text stands in place of the list.
+  const [lost, setLost] = useState<{ id: string; name: string }[]>([]);
   const focusId = useRef<string | null | undefined>(undefined);
   const refreshBtn = useRef<HTMLButtonElement>(null);
   const alive = useRef(true);
@@ -191,6 +205,10 @@ export function Signups() {
   const listRef = useRef(list);
   listRef.current = list;
   const listTurn = useRef(0);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const autoRef = useRef(autoStatus);
+  autoRef.current = autoStatus;
 
   // A live region only speaks when its text changes: clear it, then set it on the next frame, so
   // the same sentence twice in a row is announced twice.
@@ -253,7 +271,7 @@ export function Signups() {
         old?.ok ? { ok: true, value: old.value.filter((x) => x.id !== gone) } : old,
       );
       setConfirming((c) => (c === gone ? null : c));
-      setLost((l) => (l?.id === gone ? null : l));
+      setLost((l) => l.filter((x) => x.id !== gone));
     }
     const mine = ++listTurn.current;
     const v = await loadOpenSignups(api);
@@ -264,10 +282,25 @@ export function Signups() {
       return setOpenStale(true);
     }
     setOpenStale(false);
+    keepUnconfirmed(v.ok, gone);
     setList(v);
-    setLost((l) => (v.ok || l?.id === gone ? null : l));
     setMessages({});
     setConfirming((c) => (v.ok && v.value.some((x) => x.id === c) ? c : null));
+  };
+
+  /**
+   * A list that loads settles what is unconfirmed. One that fails does not: what the rows about to
+   * be replaced said stays in view above the problem text.
+   */
+  const keepUnconfirmed = (loaded: boolean, gone: string | null = null) => {
+    if (loaded) return setLost([]);
+    const rows = listRef.current?.ok ? listRef.current.value : [];
+    const open = rows.filter(
+      (x) => messagesRef.current[x.id]?.key === 'console.signups.err.not_found.unconfirmed',
+    );
+    setLost((old) =>
+      [...old, ...open.map(({ id, name }) => ({ id, name }))].filter((x) => x.id !== gone),
+    );
   };
 
   const reload = async () => {
@@ -280,8 +313,13 @@ export function Signups() {
     const mine = ++listTurn.current;
     clearTimeout(pendingTimer.current);
     setStatusPending(false);
-    pendingTimer.current = setTimeout(() => setStatusPending(true), PENDING_AFTER_MS);
-    const status = loadAutoApproveStatus(api).then((st) => {
+    // Whether "checking" was shown and said: then a success is said too.
+    let slow = false;
+    pendingTimer.current = setTimeout(() => {
+      slow = autoRef.current !== null;
+      setStatusPending(true);
+    }, PENDING_AFTER_MS);
+    const status = loadAutoApproveStatus(statusApi).then((st) => {
       if (!alive.current) return st;
       // A superseded reload's late answer never overwrites the newer one's.
       if (run === reloads.current) {
@@ -298,12 +336,13 @@ export function Signups() {
     const current = mine === listTurn.current;
     if (current) {
       setOpenStale(false);
+      keepUnconfirmed(v.ok);
       setList(v);
-      setLost(null);
       setMessages({});
       setConfirming(null);
     }
     const unavailable = t('console.signups.auto.unavailable');
+    const finished = t('console.signups.auto.checked');
     /** What was spoken last when the count went out; unset: no count was spoken. */
     let counted: number | undefined;
     if (current && v.ok) {
@@ -316,7 +355,8 @@ export function Signups() {
       ]);
       if (!alive.current || run !== reloads.current) return;
       if (turn === topic.current) {
-        const line = st && !st.ok ? join(count, unavailable) : count;
+        const end = !st ? null : !st.ok ? unavailable : slow ? finished : null;
+        const line = end ? join(count, end) : count;
         // A sentence added while this reload was pending (a stale list), not heard yet, stays,
         // after the count.
         const added = unheard();
@@ -325,12 +365,16 @@ export function Signups() {
         if (st) return;
       }
     }
-    // The status was not part of the count's announcement: its failure is shown, so it is also
-    // spoken, unless a newer reload came first (also after a deliberate silence: that silences
+    // The status was not part of the count's announcement: a slow success ends the "checking" that
+    // was said. Its failure is shown, so it is also spoken, unless a newer reload came first (also after a deliberate silence: that silences
     // the count and a sentence read by focus, not this one). It replaces only the count;
     // anything newer is kept and this is added to it.
     const late = await status;
-    if (!alive.current || late.ok || run !== reloads.current) return;
+    if (!alive.current || run !== reloads.current) return;
+    if (late.ok) {
+      if (slow) alsoSay(finished);
+      return;
+    }
     if (counted === spoken.current) say(unavailable);
     else alsoSay(unavailable);
   };
@@ -422,7 +466,7 @@ export function Signups() {
           listTurn.current++;
           if (follow) focusId.current = null;
           setList(check);
-          setLost({ id: r.id, name: r.name });
+          setLost([{ id: r.id, name: r.name }]);
         } else {
           setMessages((m) => ({
             ...m,
@@ -523,12 +567,14 @@ export function Signups() {
           </p>
         )}
       </div>
-      {lost && list && !list.ok && (
-        // Not a live region: the same sentence is already spoken above.
-        <p class="result warn" data-testid="signups-unconfirmed">
-          {t('console.signups.err.not_found.unconfirmed', { name: isolate(lost.name) })}
-        </p>
-      )}
+      {list &&
+        !list.ok &&
+        lost.map((l) => (
+          // Not a live region: the same sentence is already spoken above.
+          <p key={l.id} class="result warn" data-testid="signups-unconfirmed">
+            {t('console.signups.err.not_found.unconfirmed', { name: isolate(l.name) })}
+          </p>
+        ))}
       {!list ? (
         <Loading />
       ) : !list.ok ? (

@@ -143,6 +143,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.auto.off': 'האישור האוטומטי כבוי.',
   'console.signups.auto.unknown': 'מצב האישור האוטומטי אינו ידוע.',
   'console.signups.auto.checking': 'בודקים את סטטוס האישור האוטומטי…',
+  'console.signups.auto.checked': 'בדיקת סטטוס האישור האוטומטי הסתיימה.',
   'console.signups.auto.unavailable': 'סטטוס האישור האוטומטי אינו זמין כרגע.',
   'console.signups.auto.today': 'אישורים אוטומטיים היום: {count} מתוך {cap}',
   'console.signups.auto.capReached': 'הגעתם לתקרה היומית. בקשות חדשות ימתינו למחר.',

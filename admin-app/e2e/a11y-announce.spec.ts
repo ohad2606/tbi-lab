@@ -513,6 +513,40 @@ for (const lang of ['he', 'en'] as const) {
     await expect(seen).toHaveCount(0);
   });
 
+  // 404: the whole list is already its problem text; 500: the row is still listed with its outcome.
+  for (const status of [404, 500]) {
+    test(`announce (${lang}): a failed Refresh keeps "unconfirmed" in view (check ${status})`, async ({
+      page,
+      context,
+    }) => {
+      await signIn(context, lang);
+      const m = await mock(page);
+      await signups(page);
+      const approve = page.locator(`[data-signup-id="${id(1)}"]`).getByTestId('signup-approve');
+      await expect(approve).toBeVisible();
+      m.approve = () => ({ status: 404, json: { error: 'not_found' } });
+      m.open = () => ({ status, json: { error: status === 404 ? 'not_found' : 'x' } });
+      await approve.press('Enter');
+      const sentence = text.actionOff('\u2068Sample 1\u2069');
+      await expect(live(page)).toHaveText(sentence);
+      m.open = () => ({ status: 500, json: { error: 'x' } });
+      const seen = page.getByTestId('signups-unconfirmed');
+      // Twice: a second failure keeps it too.
+      for (let i = 0; i < 2; i++) {
+        const answered = page.waitForResponse((r) => r.url().endsWith('/signups/open'));
+        await page.getByTestId('signups-refresh').click();
+        await answered;
+        await expect(page.getByTestId('signups-problem')).toBeVisible();
+        await expect(seen).toHaveText(sentence);
+        await expect(seen).toBeVisible();
+      }
+      m.open = () => ({ json: { signups: [row(1)] } });
+      await page.getByTestId('signups-refresh').click();
+      await expect(page.getByTestId('signup-row')).toHaveCount(1);
+      await expect(seen).toHaveCount(0);
+    });
+  }
+
   for (const status of [500, 404]) {
     test(`announce (${lang}): deleted while approve's check is pending, then ${status}: the deletion stands`, async ({
       page,
