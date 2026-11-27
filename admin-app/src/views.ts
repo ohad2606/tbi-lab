@@ -396,7 +396,11 @@ export function signupOutcomeView(
         removed: o.error === 'not_found',
         ok: false,
         record:
-          o.error === 'email_failed' || o.error === 'email_failed_use_resend' ? o.record : null,
+          o.error === 'email_failed' ||
+          o.error === 'email_failed_use_resend' ||
+          o.error === 'mail_cap'
+            ? o.record
+            : null,
       };
     case 'refused':
       return {

@@ -388,6 +388,10 @@ describe('flags off: behaviour and record bytes unchanged', () => {
       TBI_SIGNUP_VERIFY: '1',
       TBI_SIGNUP_VERIFY_KEY_FILE: join(root, 'verify.key'),
       TBI_SIGNUP_SITE_URL: SITE,
+      // S4a: verified auto mode needs the mail caps.
+      TBI_SIGNUP_MAIL_MAX_PER_HOUR: '30',
+      TBI_SIGNUP_MAIL_MAX_PER_DAY: '95',
+      TBI_SIGNUP_MAIL_MAX_PER_30D: '2700',
     };
     const io = {
       fetch: (async () => ({ ok: true, status: 200 })) as FetchLike,
@@ -1037,6 +1041,9 @@ describe('review findings (slice 1 fix-up)', () => {
         TBI_SIGNUP_AUTO_DAILY_CAP: '5',
         TBI_SIGNUP_AUTO_STATE_DIR: sd,
         TBI_SIGNUP_AUTO_WEB: 'verified',
+        TBI_SIGNUP_MAIL_MAX_PER_HOUR: '30',
+        TBI_SIGNUP_MAIL_MAX_PER_DAY: '95',
+        TBI_SIGNUP_MAIL_MAX_PER_30D: '2700',
       },
       {} as AdminSpool,
       {

@@ -191,6 +191,8 @@ export const consoleEn = {
   'console.signups.err.email_failed':
     'The account for {name} was added, but the email could not be sent. Use Resend email.',
   'console.signups.err.not_found': 'The request of {name} no longer exists.',
+  'console.signups.err.mail_cap':
+    'The account for {name} was added. The email limit for now is reached, so the email waits and is sent automatically later.',
   'console.signups.err.not_found.unconfirmed':
     'Request of {name}: we could not confirm what happened. Sign-up administration may be off or unavailable on the server, so the request may still be stored. Use Refresh requests.',
   'console.signups.openStale':

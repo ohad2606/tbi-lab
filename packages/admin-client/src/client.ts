@@ -532,6 +532,7 @@ export const SIGNUP_ERRORS = [
   'account_error',
   'email_failed',
   'not_found',
+  'mail_cap',
 ] as const;
 export type SignupError = (typeof SIGNUP_ERRORS)[number];
 

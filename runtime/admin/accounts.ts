@@ -601,7 +601,9 @@ async function routeSignups(
       ? 404
       : out.code === 'account_pending'
         ? 202
-        : out.code === 'bad_state' || out.code === 'email_failed_use_resend'
+        : out.code === 'bad_state' ||
+            out.code === 'email_failed_use_resend' ||
+            out.code === 'mail_cap'
           ? 409
           : 502;
   return send(res, status, { error: out.code, ...(out.record ? { record: out.record } : {}) });
