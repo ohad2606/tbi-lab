@@ -207,8 +207,12 @@ describe('token (verify.ts)', () => {
   });
   it('forged, other key, other purpose, wrong gen or bad syntax never check; .prev checks', () => {
     const m = mintVerifyToken(key, { id: ID, gen: 1, now: T0, purpose: 'verify' });
-    const last = m.token.at(-1) === 'A' ? 'B' : 'A';
-    expect(checkVerifyToken([key], m.token.slice(0, -1) + last, 'verify')).toBeNull();
+    // Tamper the first MAC character: the last one carries padding bits, so changing it can
+    // decode to the same bytes (about 1 run in 16).
+    const at = m.token.lastIndexOf('.') + 1;
+    const other = m.token[at] === 'A' ? 'B' : 'A';
+    const forged = m.token.slice(0, at) + other + m.token.slice(at + 1);
+    expect(checkVerifyToken([key], forged, 'verify')).toBeNull();
     expect(checkVerifyToken([key2], m.token, 'verify')).toBeNull();
     expect(checkVerifyToken([key2, key], m.token, 'verify')).not.toBeNull();
     expect(checkVerifyToken([key], m.token, 'reset')).toBeNull();
