@@ -59,10 +59,17 @@ describe('GPIO interrupt texts (BETA-G5)', () => {
 
   it('the panel says edges are delivered, what is not simulated, and the runtime dependency', () => {
     for (const text of [en[body], he[body]]) {
-      for (const token of ['RISING', 'FALLING', 'CHANGE', 'NMI', 'Runtime'])
+      for (const token of ['RISING', 'FALLING', 'CHANGE', 'NMI', 'SDIO', 'Runtime', 'MicroPython'])
         expect(text).toContain(token);
     }
-    expect(en[body]).toMatch(/level-triggered, NMI and wake-up interrupts are not simulated/i);
+    expect(en[body]).toMatch(
+      /level-triggered, NMI, SDIO and wake-up interrupts are not simulated/i,
+    );
+    // Older Runtime: Arduino is refused before Run, MicroPython stops at the enable.
+    expect(en[body]).toContain('an Arduino program that uses interrupts is refused before Run');
+    expect(en[body]).toContain('a MicroPython program stops when it turns the interrupt on');
+    for (const key of ['mpy.contract.irq_level.note'] as const)
+      for (const text of [en[key], he[key]]) expect(text).toContain('SDIO');
     expect(en[body]).not.toMatch(/^Not simulated/);
     expect(he[body]).toContain('פסיקות רמה');
     expect(he[body]).not.toMatch(/^אינן מדומות/);

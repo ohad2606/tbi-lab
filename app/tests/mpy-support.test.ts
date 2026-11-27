@@ -23,7 +23,7 @@ const REVIEWED: Record<string, string> = {
   signal_drive: '6e612c0781ee',
   pwm: '5143dcc828b6',
   irq_edge: '75a7ff028372',
-  irq_level: 'fbe9c6a15748',
+  irq_level: '2512ea797f57',
   timing: '7a151e42826a',
   pulse_timing: 'b0068ffab48b',
   dht22: 'aa52ffd85551',

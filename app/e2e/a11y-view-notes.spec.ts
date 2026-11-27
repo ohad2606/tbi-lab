@@ -41,13 +41,13 @@ const revision = async (page: Page) =>
 const scrollTop = (box: Locator) => box.evaluate((el) => el.scrollTop);
 
 /** A long warning, added the way a real one appears: more content in the box. */
-const grow = (box: Locator) =>
-  box.evaluate((el) => {
+const grow = (box: Locator, times = 200) =>
+  box.evaluate((el, n) => {
     const extra = document.createElement('div');
     extra.className = 'view-note-warning test-long';
-    extra.textContent = 'W1, W2, W3 route warning text. '.repeat(200);
+    extra.textContent = 'W1, W2, W3 route warning text. '.repeat(n);
     el.append(extra);
-  });
+  }, times);
 const shrink = (box: Locator) =>
   box.evaluate((el) => el.querySelectorAll('.test-long').forEach((x) => x.remove()));
 
@@ -62,6 +62,40 @@ async function wheelOver(page: Page, box: Locator, dy: number) {
   const r = await rect(box);
   await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2);
   await page.mouse.wheel(0, dy);
+}
+
+/** Both buttons completely inside their box, the view and the window; nothing lies over them. */
+async function expectWhole(page: Page, box: Locator, lang: 'en' | 'he', label: string) {
+  const window = page.viewportSize()!;
+  for (const name of [SCROLL[lang].up, SCROLL[lang].down]) {
+    const b = box.getByRole('button', { name, exact: true });
+    await b.scrollIntoViewIfNeeded();
+    const whole = await b.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const inside = (o: DOMRect) =>
+        r.left >= o.left - 0.5 &&
+        r.right <= o.right + 0.5 &&
+        r.top >= o.top - 0.5 &&
+        r.bottom <= o.bottom + 0.5;
+      const note = el.closest('.view-note-scroll')!.parentElement!;
+      return {
+        box: inside(note.getBoundingClientRect()),
+        view: inside(note.parentElement!.getBoundingClientRect()),
+        onTop: [
+          [r.left + 3, r.top + 3],
+          [r.right - 3, r.top + 3],
+          [r.left + 3, r.bottom - 3],
+          [r.right - 3, r.bottom - 3],
+        ].every(([x, y]) => el.contains(document.elementFromPoint(x!, y!))),
+        rect: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
+      };
+    });
+    expect(whole, `${label}: ${name}`).toMatchObject({ box: true, view: true, onTop: true });
+    expect(whole.rect.left, label).toBeGreaterThanOrEqual(0);
+    expect(whole.rect.top, label).toBeGreaterThanOrEqual(0);
+    expect(whole.rect.right, label).toBeLessThanOrEqual(window.width);
+    expect(whole.rect.bottom, label).toBeLessThanOrEqual(window.height);
+  }
 }
 
 /** The scroll buttons of one message box, used with a mouse only (no wheel, no keyboard). */
@@ -160,6 +194,180 @@ for (const lang of ['en', 'he'] as const) {
       await expect(box.getByRole('button')).toHaveCount(0);
     });
 
+    test('320x256: the scroll buttons are whole, on screen and operable', async ({ page }) => {
+      await openCircuit(page, lang);
+      await page.setViewportSize({ width: 320, height: 256 });
+      await page.getByTestId('canvas').scrollIntoViewIfNeeded();
+      await page.getByTestId('canvas-fit').click();
+      const box = page.getByTestId('canvas-hint');
+      await grow(box, 20);
+      await box.scrollIntoViewIfNeeded();
+      await expectWhole(page, box, lang, 'circuit');
+      await scrollByButtons(page, box, lang, 'circuit 320x256');
+      // The message stays below the view controls: it covers none of them.
+      const [h, c] = [await rect(box), await rect(page.locator('.canvas-wrap .canvas-controls'))];
+      expect(h.y).toBeGreaterThanOrEqual(c.y + c.height - 0.5);
+    });
+
+    test('640 wide, low window: whole scroll buttons in the Circuit view', async ({ page }) => {
+      await openCircuit(page, lang);
+      const box = page.getByTestId('canvas-hint');
+      for (const height of [330, 360]) {
+        await page.setViewportSize({ width: 640, height });
+        await page.getByTestId('canvas').scrollIntoViewIfNeeded();
+        await page.getByTestId('canvas-fit').click();
+        await shrink(box);
+        await grow(box, 20);
+        await box.scrollIntoViewIfNeeded();
+        await expectWhole(page, box, lang, `circuit 640x${height}`);
+      }
+    });
+
+    test('320x256: the enlarged views do not paint over the status bar', async ({ page }) => {
+      test.setTimeout(180_000);
+      await openCircuit(page, lang);
+      const check = async (view: string) => {
+        await page.setViewportSize({ width: 320, height: 256 });
+        await page.waitForTimeout(300);
+        const controls = page.locator('.statusbar').locator('button:visible, a[href]:visible');
+        const n = await controls.count();
+        expect(n, view).toBeGreaterThan(0);
+        for (let i = 0; i < n; i++) {
+          const c = controls.nth(i);
+          await c.scrollIntoViewIfNeeded();
+          const onTop = await c.evaluate((el) => {
+            const r = el.getClientRects()[0]!;
+            return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+          });
+          expect(onTop, `${view}: status bar control ${i}`).toBe(true);
+        }
+        const [slot, bar] = [
+          await rect(page.locator(view)),
+          await rect(page.locator('.statusbar')),
+        ];
+        expect(slot.y + slot.height, view).toBeLessThanOrEqual(bar.y + 0.5);
+      };
+      await check('.canvas-wrap');
+      await page.setViewportSize({ width: 1366, height: 768 });
+      await page.getByTestId('view-3d').click();
+      await expect(page.getByTestId('view3d')).toHaveAttribute('data-status', 'ready', {
+        timeout: 120_000,
+      });
+      await check('.view3d-wrap');
+    });
+
+    test('Tab after the message became short never drops the focus', async ({ page }) => {
+      await openCircuit(page, lang);
+      await page.setViewportSize({ width: 683, height: 384 });
+      await page.getByTestId('canvas-fit').click();
+      const box = page.getByTestId('canvas-hint');
+      const up = box.getByRole('button', { name: SCROLL[lang].up, exact: true });
+      const down = box.getByRole('button', { name: SCROLL[lang].down, exact: true });
+      const onBody = () => page.evaluate(() => document.activeElement === document.body);
+      const arm = async (b: Locator) => {
+        await grow(box);
+        await b.focus();
+        await shrink(box);
+        await page.waitForTimeout(100);
+        // Only a message that now fits shows the problem.
+        expect(await box.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThan(2);
+        await expect(b).toBeFocused();
+      };
+      // Between the two buttons.
+      await arm(up);
+      await page.keyboard.press('Tab');
+      await page.waitForTimeout(100);
+      await expect(down).toBeFocused();
+      // Out of the box: to a real element, and the buttons go.
+      await page.keyboard.press('Tab');
+      await page.waitForTimeout(100);
+      expect(await onBody()).toBe(false);
+      await expect(box.getByRole('button')).toHaveCount(0);
+      // Back from the first button: the named scroll region.
+      await arm(up);
+      await page.keyboard.press('Shift+Tab');
+      await page.waitForTimeout(100);
+      await expect(box).toBeFocused();
+      await expect(box).toHaveAccessibleName(NAME[lang]);
+      await page.keyboard.press('Tab');
+      await page.waitForTimeout(100);
+      expect(await onBody()).toBe(false);
+    });
+
+    test('window blur keeps the focused scroll button and the focused box', async ({ page }) => {
+      await openCircuit(page, lang);
+      await page.setViewportSize({ width: 683, height: 384 });
+      await page.getByTestId('canvas-fit').click();
+      const box = page.getByTestId('canvas-hint');
+      const down = box.getByRole('button', { name: SCROLL[lang].down, exact: true });
+      // When the window loses focus the browser fires blur on the element that stays active.
+      const windowBlur = (l: Locator) =>
+        l.evaluate((el) => {
+          el.dispatchEvent(new FocusEvent('blur'));
+          el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+        });
+      for (const target of [down, box]) {
+        await grow(box);
+        await target.focus();
+        await shrink(box);
+        await page.waitForTimeout(100);
+        await windowBlur(target);
+        await page.waitForTimeout(100);
+        await expect(target).toBeFocused();
+        await expect(down).toHaveCount(target === down ? 1 : 0);
+        await expect(box).toHaveAttribute('tabindex', '0');
+        await page.getByTestId('canvas-fit').focus();
+        await expect(box).not.toHaveAttribute('tabindex');
+      }
+    });
+
+    test('forced colours: a disabled scroll button differs; focus stays visible', async ({
+      page,
+    }) => {
+      await page.emulateMedia({ forcedColors: 'active' });
+      await openCircuit(page, lang);
+      await page.setViewportSize({ width: 683, height: 384 });
+      await page.getByTestId('canvas-fit').click();
+      const box = page.getByTestId('canvas-hint');
+      await grow(box);
+      const up = box.getByRole('button', { name: SCROLL[lang].up, exact: true });
+      const down = box.getByRole('button', { name: SCROLL[lang].down, exact: true });
+      await expect(up).toHaveAttribute('aria-disabled', 'true');
+      const system = (name: string) =>
+        page.evaluate((c) => {
+          const x = document.body.appendChild(document.createElement('span'));
+          x.style.color = c;
+          const out = getComputedStyle(x).color;
+          x.remove();
+          return out;
+        }, name);
+      const paint = (b: Locator) =>
+        b.evaluate((el) => {
+          const s = getComputedStyle(el);
+          const icon = getComputedStyle(el.querySelector('svg')!).stroke;
+          return { color: s.color, border: s.borderTopColor, icon };
+        });
+      const gray = await system('GrayText');
+      const text = await system('ButtonText');
+      expect(gray).not.toBe(text);
+      expect(await paint(up)).toEqual({ color: gray, border: gray, icon: gray });
+      expect(await paint(down)).toEqual({ color: text, border: text, icon: text });
+      // Keyboard focus on the disabled button and on the enabled one: a highlight ring.
+      await down.focus();
+      for (const [key, b] of [
+        ['Shift+Tab', up],
+        ['Tab', down],
+      ] as const) {
+        await page.keyboard.press(key);
+        await expect(b).toBeFocused();
+        const ring = await b.evaluate((el) => {
+          const s = getComputedStyle(el);
+          return [s.outlineStyle, s.outlineColor, s.outlineWidth];
+        });
+        expect(ring).toEqual(['solid', await system('Highlight'), '3px']);
+      }
+    });
+
     test('circuit: a clipped message scrolls by wheel; clicks reach the drawing', async ({
       page,
     }) => {
@@ -248,6 +456,7 @@ for (const lang of ['en', 'he'] as const) {
         [1366, 768],
         [683, 384],
         [320, 480],
+        [320, 256],
       ] as const) {
         await page.setViewportSize({ width, height });
         await page.getByTestId('canvas').scrollIntoViewIfNeeded();
@@ -333,6 +542,29 @@ for (const lang of ['en', 'he'] as const) {
         await shrink(box);
         await page.getByTestId('view-3d').focus();
         await expect(box.getByRole('button')).toHaveCount(0);
+      }
+      await page.setViewportSize({ width: 320, height: 256 });
+      await page.waitForTimeout(300);
+      await grow(box, 20);
+      await box.scrollIntoViewIfNeeded();
+      await expectWhole(page, box, lang, '3D');
+      await scrollByButtons(page, box, lang, '3D 320x256');
+      // Just above the low-window breakpoint, and common 200% zoom sizes.
+      for (const [width, height] of [
+        [320, 321],
+        [320, 330],
+        [481, 321],
+        [683, 321],
+        [320, 353],
+        [640, 330],
+        [640, 360],
+      ] as const) {
+        await page.setViewportSize({ width, height });
+        await page.waitForTimeout(300);
+        await shrink(box);
+        await grow(box, 20);
+        await box.scrollIntoViewIfNeeded();
+        await expectWhole(page, box, lang, `3D ${width}x${height}`);
       }
     });
   });

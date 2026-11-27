@@ -116,7 +116,7 @@ export const MICROPYTHON_CONTRACT: readonly ContractEntry[] = [
     at: 'run',
     refusal: 'unmodelled:interrupt',
     requires: ['gpio-irq'],
-    note: 'level, NMI and wake-up interrupts are not modelled; refused at the register write, before the handler is armed (MicroPython 1.29 has no IRQ_*_LEVEL constants; a numeric level type reaches it)',
+    note: 'level, NMI, SDIO and wake-up interrupts are not modelled; refused at the register write, before the handler is armed (MicroPython 1.29 has no IRQ_*_LEVEL constants; a numeric level type reaches it)',
     evidence: 'runtime/tests/s29-mpy-contract.runtime.test.ts "Pin.irq with a level trigger"',
     probe: `${pin}Pin(34, Pin.IN).irq(handler=lambda p: None, trigger=4)\n`,
   },

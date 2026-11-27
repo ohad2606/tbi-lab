@@ -3169,6 +3169,72 @@ select {
   stroke-width: 2;
 }
 
+/* Forced colours replace the muted colour of a disabled button: say it with the system colour. */
+@media (forced-colors: active) {
+  .view-note-scroll button {
+    border-color: ButtonText;
+    color: ButtonText;
+  }
+
+  .view-note-scroll button[aria-disabled='true'] {
+    border-color: GrayText;
+    color: GrayText;
+  }
+
+  .view-note-scroll button:focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: -3px;
+  }
+}
+
+/* A very low window (400% zoom: 320 x 256 CSS px): the view keeps room for its controls and, below
+   them, a message tall enough for whole scroll buttons; the page scrolls (WCAG 1.4.10). The 3D view
+   is taller (its preset buttons wrap to two rows), so it needs this from a higher window. */
+@media (max-height: 20rem) {
+  .canvas-wrap {
+    min-block-size: 9rem;
+  }
+
+  .workspace:has(.canvas-slot:not([hidden]) > .canvas-wrap) {
+    min-block-size: 11.5rem;
+  }
+}
+
+@media (max-height: 22rem) {
+  .view3d-wrap {
+    min-block-size: 12rem;
+  }
+
+  /* The row grows with the taller view (the tabs and the view), so the status bar moves down
+     instead of being painted over. Anything more (the next-step card) scrolls in the column. */
+  .workspace:has(.view3d-wrap) {
+    min-block-size: 14.5rem;
+  }
+
+  .workspace:has(.canvas-wrap, .view3d-wrap) > .workspace-center {
+    overflow-y: auto;
+  }
+}
+
+/* A very narrow window: a message is no wider than the window, so its buttons are on screen. */
+@media (max-width: 30rem) {
+  .canvas-wrap.view-short > .canvas-hint {
+    max-width: min(calc(100% - 1.5rem), calc(100vw - 1.5rem));
+  }
+
+  .canvas-wrap:not(.view-short) > .canvas-hint {
+    max-width: min(calc(100% - 6rem), calc(100vw - 1.5rem));
+  }
+
+  .view3d-wrap.view-short > .view-note {
+    max-inline-size: min(calc(100% - 10.5rem), calc(100vw - 1.5rem));
+  }
+
+  .view3d-wrap:not(.view-short) > .view-note {
+    max-inline-size: min(calc(100% - 6rem), calc(100vw - 1.5rem));
+  }
+}
+
 .sch-wire {
   fill: none;
   stroke: var(--wire);

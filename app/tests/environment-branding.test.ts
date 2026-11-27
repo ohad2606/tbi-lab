@@ -140,7 +140,11 @@ describe('screen support policy', () => {
     ['Pixel 7 portrait 412 x 915', 412, 915, true, 'phone'],
     ['Pixel 7 landscape 915 x 412', 915, 412, true, 'phone'],
     ['iPhone 15 Pro Max landscape 932 x 430', 932, 430, true, 'phone'],
-    ['phone-size desktop window 500 x 900', 500, 900, false, 'phone'],
+    // Phones have a coarse primary pointer: a small window with a mouse is a computer.
+    ['phone-size desktop window 500 x 900', 500, 900, false, 'narrow'],
+    ['desktop zoomed to 200%, 640 x 360', 640, 360, false, 'narrow'],
+    ['desktop zoomed to 400%, 320 x 256', 320, 256, false, 'narrow'],
+    ['small touch screen 640 x 360', 640, 360, true, 'phone'],
   ];
   for (const [name, w, h, coarse, want] of cases)
     it(`${name}: ${want}`, () => expect(screenSupport(w, h, coarse)).toBe(want));

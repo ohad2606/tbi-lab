@@ -913,7 +913,8 @@ export const he: Record<MessageKey, string> = {
   'app.screen.phone':
     'TBI Lab אינו תומך בטלפונים, בטאבלטים או במסכים קטנים כאלה. השתמשו במחשב עם Chrome או Edge.',
   'app.screen.rotate': 'TBI Lab אינו תומך בטאבלטים. השתמשו במחשב עם Chrome או Edge.',
-  'app.screen.narrow': 'לחוויה הטובה ביותר, השתמשו בחלון ברוחב של 1024 פיקסלים לפחות.',
+  'app.screen.narrow':
+    'לחוויה הטובה ביותר, השתמשו בחלון ברוחב של 1024 פיקסלים לפחות, או הקטינו את התצוגה.',
   'rating.heading': 'חריגה מדירוגי הרכיב',
   'rating.atRisk': '{component} עלול להינזק',
   'rating.row.forward_current': 'זרם: {value} (מקסימום {limit})',
@@ -1393,6 +1394,8 @@ export const he: Record<MessageKey, string> = {
     'הקושחה שנבחרה אינה זמינה בשירות הריצה. הפרויקט לא נפגע.',
   'sim.error.unmodelled':
     'התוכנית התחילה להשתמש ב{feature}, שהסימולטור אינו ממדל. הסימולציה נעצרה ברגע זה, במקום להציג תוצאה מתה או קריסה.',
+  'sim.error.unmodelled.interrupt':
+    'התוכנית הפעילה פסיקת GPIO שה־Runtime הזה של הסימולטור אינו מוסר, ולכן הסימולציה נעצרה ברגע זה, במקום להציג תוצאה מתה. פסיקות רמה, NMI,‏ SDIO והתעוררות משינה אינן נמסרות; בחלק מגרסאות ה־Runtime הישנות לא נמסרות פסיקות GPIO כלל, גם לא פסיקות קצה ({edges}; ב־MicroPython:‏ {mpyEdges}). כדי להמשיך, הסירו את הפסיקה וקראו את הפין בלולאה.',
   'sim.error.runtime.unsupported_feature':
     'הקושחה משתמשת ביכולת שה־Runtime הזה של הסימולטור אינו תומך בה. ההרצה נדחתה או נעצרה.',
   'sim.error.runtime.inverted_output':
@@ -1763,7 +1766,7 @@ export const he: Record<MessageKey, string> = {
     'אינם מדומים. סקיצ׳ שמשתמש בהם נדחה בבנייה. לעמעום, קראו ל־ledcWrite בצעדים.',
   'capabilities.facility.interrupt.name': 'פסיקות GPIO ‏(attachInterrupt)',
   'capabilities.facility.interrupt.body':
-    'פסיקות קצה נמסרות: RISING,‏ FALLING ו־CHANGE (ב־MicroPython:‏ IRQ_RISING,‏ IRQ_FALLING). מטפל הפסיקה עשוי לרוץ באיחור של עד פרוסת אמולטור אחת, כי שתי הליבות רצות בתורות. פסיקות רמה, NMI והתעוררות משינה אינן מדומות: ההרצה נעצרת עם הודעה על כך. גם פסיקה על כניסה ללא רמה מוגדרת עוצרת את ההרצה. פסיקות קצה דורשות Runtime של הסימולטור שמוסר אותן; Runtime ישן יותר דוחה תוכניות שמשתמשות בפסיקות.',
+    'פסיקות קצה נמסרות: RISING,‏ FALLING ו־CHANGE (ב־MicroPython:‏ IRQ_RISING,‏ IRQ_FALLING). מטפל הפסיקה עשוי לרוץ באיחור של עד פרוסת אמולטור אחת, כי שתי הליבות רצות בתורות. פסיקות רמה, NMI,‏ SDIO והתעוררות משינה אינן מדומות: ההרצה נעצרת עם הודעה על כך. גם פסיקה על כניסה ללא רמה מוגדרת עוצרת את ההרצה. פסיקות קצה דורשות Runtime של הסימולטור שמוסר אותן. ב־Runtime ישן יותר בלעדיהן, תוכנית Arduino שמשתמשת בפסיקות נדחית לפני ההרצה, ותוכנית MicroPython נעצרת כשהיא מפעילה את הפסיקה.',
   'capabilities.facility.internal_pull.name':
     'Pull-up / Pull-down פנימיים (INPUT_PULLUP,‏ INPUT_PULLDOWN)',
   'capabilities.facility.internal_pull.body': 'אינם מדומים. הוסיפו נגד חיצוני למעגל.',
@@ -2301,7 +2304,7 @@ export const he: Record<MessageKey, string> = {
   'mpy.contract.irq_edge.note':
     'פסיקות קצה נמסרות על ידי Runtime v5 לפי הסדר; השהיה של עד פרוסת אמולטור אחת (הליבות רצות בתורות)',
   'mpy.contract.irq_level.note':
-    'פסיקות רמה, NMI והתעוררות משינה לא מדומות; נדחות בכתיבה לרגיסטר, לפני שהמטפל מופעל (ל־MicroPython 1.29 אין קבועי ⁦IRQ_*_LEVEL⁩; סוג רמה מספרי כן מגיע)',
+    'פסיקות רמה, NMI,‏ SDIO והתעוררות משינה לא מדומות; נדחות בכתיבה לרגיסטר, לפני שהמטפל מופעל (ל־MicroPython 1.29 אין קבועי ⁦IRQ_*_LEVEL⁩; סוג רמה מספרי כן מגיע)',
   'mpy.contract.timing.note':
     'זמן סימולציה; דטרמיניסטי (שתי הרצות נותנות אותו תמלול ואותו רצף חשמלי)',
   'mpy.contract.pulse_timing.note':
