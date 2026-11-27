@@ -19,6 +19,8 @@ export const DEFAULT_MIN_FILL_S = 3;
 export const MAX_MIN_FILL_S = 10;
 export const NAME_MAX = 80;
 export const HEARD_MAX = 80;
+/** A request with no complete answer after this long counts as a network failure (nothing stays busy for ever). */
+export const REQUEST_TIMEOUT_MS = 20_000;
 
 /**
  * EXACT copy of the server's address check (runtime/admin/accounts.ts `ADD_EMAIL_RE` / `normalizeAddEmail`), so the
@@ -79,6 +81,20 @@ async function readJson(res) {
   }
 }
 
+/** One request, headers and body, aborted after REQUEST_TIMEOUT_MS. Throws on a network failure or a timeout. */
+async function request(fetchFn, url, init) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetchFn(url, { ...init, signal: ctl.signal });
+    const body = await readJson(res);
+    if (ctl.signal.aborted) throw new Error('timeout');
+    return { ok: res.ok, status: res.status, body };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The server's minimum fill time in ms, clamped to 0..MAX_MIN_FILL_S seconds; a missing or odd value = the default. */
 export function minFillMs(v) {
   const s = typeof v === 'number' && Number.isFinite(v) ? v : DEFAULT_MIN_FILL_S;
@@ -93,7 +109,7 @@ export function createTokenStore({ fetchFn, base, now = () => Date.now() }) {
   async function load() {
     let res;
     try {
-      res = await fetchFn(`${base}/form-token`, {
+      res = await request(fetchFn, `${base}/form-token`, {
         method: 'GET',
         cache: 'no-store',
         credentials: 'same-origin',
@@ -103,7 +119,7 @@ export function createTokenStore({ fetchFn, base, now = () => Date.now() }) {
       throw { msg: MSG.network };
     }
     if (!res.ok) throw { msg: msgForStatus(res.status) };
-    const j = await readJson(res);
+    const j = res.body;
     if (typeof j.token !== 'string' || !j.token) throw { msg: MSG.generic };
     const ttl = Number.isFinite(j.ttl) && j.ttl > 0 ? j.ttl : DEFAULT_TTL_S;
     const at = now();
@@ -152,9 +168,8 @@ export function createSubmitter({
 }) {
   let busy = false;
   async function post(payload, token) {
-    let res;
     try {
-      res = await fetchFn(`${base}/web`, {
+      return await request(fetchFn, `${base}/web`, {
         method: 'POST',
         credentials: 'same-origin',
         cache: 'no-store',
@@ -162,9 +177,8 @@ export function createSubmitter({
         body: JSON.stringify({ ...payload, token }),
       });
     } catch {
-      return { network: true };
+      return { network: true, body: {} };
     }
-    return { status: res.status, body: await readJson(res) };
   }
   const isTooFast = (r) =>
     r.status === 400 && (r.body.error === 'too_fast' || r.body.code === 'too_fast');
@@ -399,7 +413,8 @@ export function initSignup(doc = document, fetchFn = (...a) => fetch(...a)) {
   form.addEventListener('focusin', () => !tokens.has() && warm());
   form.hidden = false;
   doc.getElementById('su-nojs')?.setAttribute('hidden', '');
-  warm();
+  // After the whole module has run: a form that another view has hidden by then needs no token yet.
+  queueMicrotask(() => form.closest?.('[hidden]') || warm());
   return { tokens, sub };
 }
 

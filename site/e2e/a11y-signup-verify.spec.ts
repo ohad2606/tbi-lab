@@ -219,7 +219,7 @@ for (const { lang, dir } of [
         await expect(h).toHaveText((await msg(page, 'resultSentH'))!);
         await expect(box).toBeFocused();
         await expect(page.locator('#vf-resend')).toBeHidden();
-        expect(log.resend).toEqual([{ email: 'dana@example.com', website: '', token: 'w1.test2' }]);
+        expect(log.resend).toEqual([{ email: 'dana@example.com', website: '', token: 'w1.test1' }]);
         expect(await axe(page)).toEqual([]);
       });
     }
@@ -389,6 +389,135 @@ for (const { lang, dir } of [
       await check('#vf-resend-button');
       await page.evaluate(() => (document.documentElement.style.fontSize = '200%'));
       expect(await noOverflow(page)).toBeLessThanOrEqual(0);
+    });
+
+    test('a confirm link load asks for no form token until the resend form is shown', async ({
+      page,
+    }) => {
+      const log = await stub(page, { verify: [[410, {}]] });
+      const tokenGets = () => log.urls.filter((u) => u.endsWith('/signup/form-token')).length;
+      await page.goto(url);
+      await expect(page.locator('#vf-button')).toBeVisible();
+      await page.waitForLoadState('networkidle');
+      expect(tokenGets()).toBe(0);
+      await page.locator('#vf-button').click();
+      await expect(page.locator('#vf-resend')).toBeVisible();
+      await expect.poll(tokenGets).toBe(1);
+    });
+
+    test('Back after a same-tab link restores the sign-up form; focus on its heading', async ({
+      page,
+    }) => {
+      const log = await stub(page);
+      await page.goto(`/${lang}/signup/`);
+      const h1 = page.getByRole('heading', { level: 1 });
+      const title = await page.title();
+      const heading = await h1.innerHTML();
+      await page.locator('#su-name').fill('Dana');
+      await page.evaluate((t) => (location.hash = `verify=${t}`), TOKEN);
+      await expect(page.locator('#vf')).toBeVisible();
+      await page.goBack();
+      await expect(page.locator('#signup-form')).toBeVisible();
+      await expect(page.locator('#vf')).toBeHidden();
+      await expect(page.locator('#su-intro-extra')).toBeVisible();
+      await expect(page.locator('#su-nojs')).toBeHidden();
+      await expect(page).toHaveTitle(title);
+      expect(await h1.innerHTML()).toBe(heading);
+      await expect(h1).toBeFocused();
+      await expect(page.locator('#su-name')).toHaveValue('Dana');
+      expect(await axe(page)).toEqual([]);
+      // Forward does not bring the dropped link back; opening it again does.
+      await page.goForward();
+      await expect(page.locator('#signup-form')).toBeVisible();
+      await expect(page.locator('#vf')).toBeHidden();
+      await page.evaluate((t) => (location.hash = `verify=${t}`), TOKEN);
+      await expect(page.locator('#vf-button')).toBeVisible();
+      await page.locator('#vf-button').click();
+      await expect(page.locator('#vf-result')).toBeFocused();
+      expect(log.verify).toEqual([{ token: TOKEN }]);
+    });
+
+    test('the skip link and Back from it keep the confirm view', async ({ page }) => {
+      const log = await stub(page);
+      await page.goto(url);
+      await page.locator('a.skip').focus();
+      await page.keyboard.press('Enter');
+      await expect(page).toHaveURL(`${ORIGIN}/${lang}/signup/#main`);
+      await expect(page.locator('#vf-button')).toBeVisible();
+      await page.goBack();
+      await expect(page).toHaveURL(`${ORIGIN}/${lang}/signup/`);
+      await expect(page.locator('#vf-button')).toBeVisible();
+      await page.locator('#vf-button').click();
+      await expect(page.locator('#vf-result')).toBeFocused();
+      expect(log.verify).toEqual([{ token: TOKEN }]);
+    });
+
+    for (const hang of ['form-token', 'resend']) {
+      test(`a hung ${hang} request times out with a message; the next click works`, async ({
+        page,
+      }) => {
+        await stub(page, { verify: [[410, {}]] });
+        let calls = 0;
+        await page.route(new RegExp(`/signup/${hang}$`), (r) => {
+          if (calls++ === 0) return; // never answered
+          return r.fulfill({
+            json: hang === 'resend' ? { ok: true } : { token: 'w1.late', ttl: 1800, minFill: 0 },
+          });
+        });
+        await page.clock.install();
+        await page.goto(url);
+        await page.locator('#vf-button').click();
+        await page.clock.runFor(100);
+        await expect(page.locator('#vf-result')).toBeFocused();
+        await page.locator('#vf-email').fill('dana@example.com');
+        const send = page.locator('#vf-resend-button');
+        await send.focus();
+        await page.keyboard.press('Enter');
+        await expect.poll(() => calls).toBe(1);
+        await expect(send).toHaveAttribute('aria-disabled', 'true');
+        await page.clock.fastForward(21_000);
+        await page.clock.runFor(100);
+        await expect(page.locator('#vf-result-p')).toHaveText(
+          (await page.locator('[data-msg="msgNetwork"]').textContent())!,
+        );
+        await expect(page.locator('#vf-result')).toBeFocused();
+        await expect(send).toHaveAttribute('aria-disabled', 'false');
+        await send.focus();
+        await page.keyboard.press('Enter');
+        await page.clock.runFor(5_000);
+        await expect(page.locator('#vf-result-h')).toHaveText((await msg(page, 'resultSentH'))!);
+        expect(calls).toBe(2);
+      });
+    }
+
+    test('a missing message element does not throw: the generic message is shown', async ({
+      page,
+    }) => {
+      await stub(page, {
+        verify: [[410, {}]],
+        resend: [
+          [429, {}],
+          [429, {}],
+        ],
+      });
+      const errors: string[] = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await page.goto(url);
+      await page.evaluate(() => document.querySelector('[data-msg="msgRate"]')!.remove());
+      await page.locator('#vf-button').click();
+      await expect(page.locator('#vf-result')).toBeFocused();
+      await page.locator('#vf-email').fill('dana@example.com');
+      await page.locator('#vf-resend-button').click();
+      await expect(page.locator('#vf-result-h')).toHaveText((await msg(page, 'resultFailH'))!);
+      await expect(page.locator('#vf-result-p')).toHaveText(
+        (await page.locator('[data-msg="msgGeneric"]').textContent())!,
+      );
+      await page.evaluate(() => document.querySelector('[data-msg="msgGeneric"]')!.remove());
+      await page.locator('#vf-resend-button').click();
+      await expect(page.locator('#vf-result')).toBeFocused();
+      await expect(page.locator('#vf-result-h')).toHaveText((await msg(page, 'resultFailH'))!);
+      await expect(page.locator('#vf-result-p')).toHaveText('');
+      expect(errors).toEqual([]);
     });
   });
 }

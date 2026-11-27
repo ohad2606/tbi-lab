@@ -72,6 +72,8 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
   if (!view) return null;
   const base = $('signup-form').dataset.api ?? '/signup';
   const text = (key) => doc.querySelector(`[data-vf="${key}"]`);
+  const plain = (key) => text(key)?.textContent ?? '';
+  const message = (key) => doc.querySelector(`[data-msg="${key}"]`);
   const button = $('vf-button');
   const form = $('vf-resend');
   const input = $('vf-email');
@@ -82,6 +84,9 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
   let token = '';
   let busy = false;
   let resender = null;
+  /** What close() restores, and the history position of the open link (Navigation API; Chrome and Edge have it). */
+  let before = null;
+  let entry;
   /** A newer confirm link or action makes older pending answers and announcements stale. */
   let run = 0;
   let shown = 0;
@@ -102,9 +107,9 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
       ['resendSending', 'vf-resend-sending'],
     ]) {
       $(id).hidden = name !== key;
-      $(id).textContent = name === key ? text(name).textContent : '';
+      $(id).textContent = name === key ? plain(name) : '';
     }
-    say(key ? text(key).textContent : '');
+    say(key ? plain(key) : '');
   }
 
   function clearResult() {
@@ -124,8 +129,8 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
     const seq = shown;
     win.setTimeout(() => {
       if (seq !== shown) return;
-      heading.textContent = text(headingKey).textContent;
-      body.replaceChildren(...[...source.childNodes].map((n) => n.cloneNode(true)));
+      heading.textContent = plain(headingKey);
+      body.replaceChildren(...[...(source?.childNodes ?? [])].map((n) => n.cloneNode(true)));
       box.hidden = false;
       box.focus();
     }, 60);
@@ -159,6 +164,14 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
     const found = readVerifyToken(win.location.hash);
     if (found === null) return false;
     win.history.replaceState(win.history.state, '', win.location.pathname + win.location.search);
+    // The page as it was, for Back (see close); a second link keeps the first snapshot.
+    if (view.hidden)
+      before = {
+        title: doc.title,
+        heading: [...$('su-h1').childNodes],
+        hidden: ['su-flow', 'su-intro-extra', 'su-nojs'].map((id) => [id, $(id).hidden]),
+      };
+    entry = win.navigation?.currentEntry?.index;
     token = found;
     run++;
     busy = false;
@@ -169,8 +182,8 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
     $('su-flow').hidden = true;
     $('su-intro-extra').hidden = true;
     $('su-nojs').hidden = true;
-    doc.title = text('confirmTitle').textContent;
-    $('su-h1').textContent = text('confirmH').textContent;
+    doc.title = plain('confirmTitle');
+    $('su-h1').textContent = plain('confirmH');
     $('vf-intro').hidden = false;
     $('vf-confirm').hidden = false;
     form.hidden = true;
@@ -178,6 +191,25 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
     setEmailError(false);
     view.hidden = false;
     return true;
+  }
+
+  /** Leaves the confirm view: the token is dropped, pending answers go stale and the sign-up page comes back. */
+  function close() {
+    token = '';
+    run++;
+    busy = false;
+    progress('');
+    clearResult();
+    view.hidden = true;
+    doc.title = before.title;
+    $('su-h1').replaceChildren(...before.heading);
+    for (const [id, hidden] of before.hidden) $(id).hidden = hidden;
+    focusHeading();
+  }
+
+  function focusHeading() {
+    $('su-h1').setAttribute('tabindex', '-1');
+    $('su-h1').focus();
   }
 
   button.addEventListener('click', async () => {
@@ -231,10 +263,7 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
     }
     // The sign-up texts for these two talk about the sign-up form, so the resend has its own.
     const own = { [MSG.unavailable]: 'resendUnavailable', [MSG.invalid]: 'resendInvalid' }[r.msg];
-    result(
-      'resultFailH',
-      own ? text(own) : doc.querySelector(`[data-msg="${r.msg ?? MSG.generic}"]`),
-    );
+    result('resultFailH', own ? text(own) : (message(r.msg) ?? message(MSG.generic)));
   });
 
   input.addEventListener('input', () => {
@@ -245,9 +274,14 @@ export function initVerify(win = window, fetchFn = (...a) => fetch(...a)) {
 
   // The link opened in a tab that already shows the page changes only the fragment: no reload, so listen.
   win.addEventListener('hashchange', () => {
-    if (!open()) return;
-    $('su-h1').setAttribute('tabindex', '-1');
-    $('su-h1').focus();
+    if (open()) focusHeading();
+  });
+  // Back to a history entry older than the link's must not keep the confirm view. Later entries (the skip link)
+  // and returns from them stay. A link that loaded the page has no older entry in this document.
+  win.addEventListener('popstate', () => {
+    // A new link also fires popstate, with its fragment still in place: hashchange handles that one.
+    if (view.hidden || readVerifyToken(win.location.hash) !== null) return;
+    if (win.navigation?.currentEntry?.index < entry) close();
   });
   open();
   return { open };
