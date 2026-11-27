@@ -32,7 +32,7 @@ describe('capabilities registry', () => {
   });
 
   it('GPIO interrupts: limited and runtime-gated (`gpio-irq`), not refused by every build', () => {
-    // Runtime v5 delivers edge interrupts; level, NMI and wake-up are refused, and a runtime
+    // Runtime v5 delivers edge interrupts; level, NMI, SDIO and wake-up are refused, and a runtime
     // without `gpio-irq` refuses every interrupt (runtime/builder/tests/s25-features.test.ts).
     expect(facilityForFeature('interrupt')).toEqual({
       id: 'interrupt',
@@ -42,10 +42,10 @@ describe('capabilities registry', () => {
     });
   });
 
-  it('board limitations: only level, NMI and wake-up interrupts are listed as not modelled', () => {
+  it('board limitations: only level, NMI, SDIO and wake-up interrupts are listed as not modelled', () => {
     const lines = ESP32_DEVKITC_WROOM32.simulatorLimitations.filter((l) => /interrupt/i.test(l));
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatch(/level-triggered, NMI and wake-up/i);
+    expect(lines[0]).toMatch(/level-triggered, NMI, SDIO and wake-up/i);
     expect(lines[0]).toMatch(/gpio-irq/);
   });
 

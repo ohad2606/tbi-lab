@@ -188,7 +188,7 @@ export const ESP32_DEVKITC_WROOM32: BoardCapabilityMap = {
   pins: ROWS.map((r) => ({ ...r, exposed: true as const })),
   simulatorLimitations: [
     'Internal pull-up/pull-down (INPUT_PULLUP / INPUT_PULLDOWN) is not modelled: the hardware capability is listed in internalPull, but the runtime does not yet apply it to the circuit.',
-    'Level-triggered, NMI and wake-up GPIO interrupts are not modelled. Edge interrupts are delivered only by a runtime announcing gpio-irq (Runtime v5).',
+    'Level-triggered, NMI, SDIO and wake-up GPIO interrupts are not modelled. Edge interrupts are delivered only by a runtime announcing gpio-irq (Runtime v5).',
     'Peripheral signals routed through the GPIO matrix (PWM/LEDC, UART1/2, I2C, SPI, RMT...) do not drive pads.',
     'Analog functions (ADC, DAC, touch) are not modelled.',
     'Open-drain mode and drive-strength selection are not modelled (the approved V1 pin model uses maximum drive strength).',
