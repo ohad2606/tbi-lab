@@ -763,8 +763,13 @@ export const he: Record<MessageKey, string> = {
   'move.done.up': '{id} הוזז למעלה',
   'move.done.down': '{id} הוזז למטה',
   'move.refused': '{id} לא הוזז',
+  'junctions.list.title': 'צמתים',
+  'junctions.list.item': 'צומת {id}: חוטים {wires}',
+  'junctions.list.wire': '{n}',
+  'junctions.list.selected': 'צומת {id} נבחר',
+  'junctions.removed': 'צומת {id} והחוטים שלו הוסרו',
   'inspector.shortcuts':
-    'מקלדת: החיצים מזיזים, R מסובב, Delete מוחק, Esc מבטל. בלי גרירה: בוחרים רכיב ומשתמשים בכפתורי ההזזה.',
+    'מקלדת: החיצים מזיזים, R מסובב, Delete מוחק, Esc מבטל. בלי גרירה: בוחרים רכיב, או צומת ברשימת הצמתים, ומשתמשים בכפתורי ההזזה.',
 
   'error.parse.empty': 'יש להזין ערך.',
   'error.parse.invalid': 'מספר לא תקין. יש להזין מספר כגון 4.7 ולבחור את היחידה.',

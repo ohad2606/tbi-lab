@@ -29,7 +29,7 @@ Based on an internal review of a pre-public release and a later check of the cur
 
 **Circuit editor and other views**
 - You can create, select, delete and reconnect wires with the keyboard, and a "Wires" list lets you select a wire. A new wire made with the keyboard starts at a part's pin. Moving the end of an existing wire with the keyboard can only move it to a pin. Shaping a single segment of a wire's route requires dragging.
-- Wire junctions cannot be selected or moved with the keyboard, and adding bends while drawing a wire requires a pointer.
+- An existing wire junction can be selected in a "Junctions" list, moved with the Move buttons or the arrow keys, and deleted. Adding bends while drawing a wire requires a pointer.
 - A "Connections (text list)" panel lists the parts and which pins are connected together. It does not announce changes to the connections. Neither this panel nor keyboard wiring has been tested with screen readers. Screen-reader support of the circuit drawing itself is not promised.
 - A selected part can be moved without dragging: with the arrow keys, or one grid step per click with the Move buttons in Properties. This has not been tested with screen readers.
 

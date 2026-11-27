@@ -772,8 +772,13 @@ export const en = {
   'move.done.up': '{id} moved up',
   'move.done.down': '{id} moved down',
   'move.refused': '{id} was not moved',
+  'junctions.list.title': 'Junctions',
+  'junctions.list.item': '{id}: wires {wires}',
+  'junctions.list.wire': 'W{n}',
+  'junctions.list.selected': 'Junction {id} selected',
+  'junctions.removed': 'Junction {id} and its wires removed',
   'inspector.shortcuts':
-    'Keyboard: arrows move, R rotates, Delete removes, Esc cancels. Without dragging: select a part and use the Move buttons.',
+    'Keyboard: arrows move, R rotates, Delete removes, Esc cancels. Without dragging: select a part, or a junction in the Junctions list, and use the Move buttons.',
 
   'error.parse.empty': 'Enter a value.',
   'error.parse.invalid': 'Not a valid number. Enter a number such as 4.7 and choose the unit.',

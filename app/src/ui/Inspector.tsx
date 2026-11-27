@@ -162,7 +162,18 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
         class="button button-danger"
         data-testid="inspector-delete"
         disabled={simActive}
-        onClick={() => store.apply(deleteSelection(doc, selection), emptySelection())}
+        onClick={() => {
+          const deleted = store.apply(deleteSelection(doc, selection), emptySelection());
+          if (!deleted || !junction) return;
+          announce(t('junctions.removed', { id: isolateLtr(junction) }));
+          // This button goes with the selection: focus moves to the list, or to the heading.
+          requestAnimationFrame(() =>
+            (
+              document.querySelector<HTMLElement>('.junctions-list-item') ??
+              document.getElementById('inspector-heading')
+            )?.focus(),
+          );
+        }}
       >
         {t('inspector.delete')}
       </button>
@@ -180,7 +191,9 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
 
   return (
     <aside class="inspector" aria-labelledby="inspector-heading" data-testid="inspector">
-      <h2 id="inspector-heading">{t('inspector.heading')}</h2>
+      <h2 id="inspector-heading" tabIndex={-1}>
+        {t('inspector.heading')}
+      </h2>
       {count === 0 && <p class="muted">{t('inspector.empty')}</p>}
       {count > 1 && <p>{t('inspector.multi', { count })}</p>}
       {single?.type === 'instrument.lab_psu' ? (

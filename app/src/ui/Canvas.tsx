@@ -111,6 +111,8 @@ import {
 
 export interface CanvasApi {
   placeAtCenter(type: ComponentTypeId): void;
+  /** Pans so that a point of the drawing is visible (nothing while the view is hidden). */
+  reveal(at: Point): void;
 }
 
 interface Props {
@@ -425,6 +427,12 @@ export function Canvas({
   };
 
   apiRef.current = {
+    reveal(at) {
+      // After the render: the hint (which the point must stay clear of) follows the selection.
+      requestAnimationFrame(() => {
+        if (svgRef.current?.getBoundingClientRect().width) revealPoint(at);
+      });
+    },
     placeAtCenter(type) {
       if (readOnly) return;
       const center = snapPoint({
@@ -1696,6 +1704,9 @@ export function Canvas({
                 r={4.5}
                 aria-label={t('canvas.junctionLabel', { id: j.id })}
               />
+              {selected.junctions.has(j.id) && (
+                <circle class="junction-selected-ring" cx={j.x} cy={j.y} r={9} />
+              )}
               {(kbRepickJunction === j.id || kbJunctionTarget === j.id) && (
                 <circle class="kb-ring" cx={j.x} cy={j.y} r={11} />
               )}

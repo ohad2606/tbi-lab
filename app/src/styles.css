@@ -902,6 +902,21 @@ select {
   fill: var(--selected);
 }
 
+/* A selected junction differs by shape (a ring), not by colour alone. */
+.junction-selected-ring {
+  fill: none;
+  stroke: var(--selected);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+@media (forced-colors: active) {
+  .junction-selected-ring {
+    forced-color-adjust: none;
+    stroke: Highlight;
+  }
+}
+
 .rubber-band {
   fill: rgba(11, 87, 208, 0.08);
   stroke: var(--selected);
@@ -5273,6 +5288,51 @@ select {
   background: var(--accent-soft);
 }
 .wires-list-item:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* Junctions list (BETA-G3): as the Wires list. */
+.junctions-list {
+  border-block-start: 1px solid var(--border);
+  padding: 8px 12px;
+  max-height: 18vh;
+  overflow: auto;
+  min-width: 0;
+}
+.junctions-list h2 {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+.junctions-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+}
+.junctions-list-item {
+  display: block;
+  inline-size: 100%;
+  min-block-size: 28px;
+  padding: 4px 8px;
+  text-align: start;
+  overflow-wrap: anywhere;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  margin-block-end: 4px;
+  scroll-margin: 6px;
+  cursor: pointer;
+}
+.junctions-list-item[aria-pressed='true'] {
+  border-width: 2px;
+  border-color: var(--accent-strong);
+  font-weight: 600;
+  background: var(--accent-soft);
+}
+.junctions-list-item:focus-visible,
+#inspector-heading:focus-visible {
   outline: 3px solid currentColor;
   outline-offset: 2px;
 }

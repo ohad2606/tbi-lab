@@ -10,6 +10,7 @@ import { ConnectionsPanel } from './ConnectionsPanel.js';
 import { McuTerminal } from './McuTerminal.js';
 import { requiresMcuRuntime } from '../runtime/snapshot.js';
 import { WiresList } from './WiresList.js';
+import { JunctionsList } from './JunctionsList.js';
 import { Palette } from './Palette.js';
 import { NextStepCard } from './NextStepCard.js';
 import { shouldShowNextStep } from './nextStep.js';
@@ -234,6 +235,7 @@ export function Editor() {
         />
         <ConnectionsPanel />
         <WiresList />
+        <JunctionsList onReveal={(at) => canvasApi.current?.reveal(at)} />
         {doc && requiresMcuRuntime(doc) && <McuTerminal />}
       </div>
     </main>
