@@ -84,6 +84,13 @@ const macOf = (key: Buffer, purpose: VerifyPurpose, p: Omit<ParsedToken, 'mac'>)
     .update(`${LABEL}\n${purpose}\n${p.id}\n${p.gen}\n${p.exp}\n${p.nonce}`)
     .digest('base64url');
 
+/**
+ * S4a: a public 16-hex id of a verify key (sha256 under its own label), stored with each minted
+ * generation so rotating or removing a key revokes its outstanding links. Never the key itself.
+ */
+export const verifyKeyId = (key: Buffer): string =>
+  createHash('sha256').update('tbi-signup-verify-kid-v1\n').update(key).digest('hex').slice(0, 16);
+
 /** sha256 hex of the whole token: the only form the admin state stores. */
 export const tokenHash = (token: string): string =>
   createHash('sha256').update(token, 'utf8').digest('hex');

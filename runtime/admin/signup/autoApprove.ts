@@ -540,6 +540,19 @@ export class AutoApprover {
     return israelDay(this.now());
   }
 
+  /**
+   * S4a (unverified purge): the ids in the claim set; null when the state dir is unsafe or the
+   * state unreadable (the caller then purges nothing). No write, no log.
+   */
+  async claimedIds(): Promise<Set<string> | null> {
+    if (await autoStateDirCheck(this.d.dir)) return null;
+    try {
+      return new Set(Object.keys((await this.readState(this.today(), false)).claims));
+    } catch {
+      return null;
+    }
+  }
+
   /** Today's count as persisted (for tests and the design's operator check). */
   async todayCount(): Promise<number> {
     return (await this.readState(this.today())).count;

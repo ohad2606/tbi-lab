@@ -14,6 +14,7 @@ import { errorClass } from './errors.js';
 import { NonceCache, verifyRequest, type VerifyFailure } from './hmac.js';
 import { SlidingWindowLimiter } from './limits.js';
 import type { SignupNotifier } from './notify.js';
+import { MailCapError } from './mailGate.js';
 import { isQuiet, nextSendAt, type QuietWindow } from './quietHours.js';
 import type { EmailSender } from './email.js';
 import { serialById } from './locks.js';
@@ -568,7 +569,8 @@ export type ApproveOutcome =
         | 'cap_reached'
         | 'account_error'
         | 'email_failed'
-        | 'email_failed_use_resend';
+        | 'email_failed_use_resend'
+        | 'mail_cap';
       record?: SignupRecord;
     };
 
@@ -766,6 +768,20 @@ export class SignupApprover {
         id: r.id,
       });
     } catch (e) {
+      // S4a mail gate: refused before the provider call, nothing was sent. The mail waits
+      // (`email_queued`, due when a slot frees) and is never `email_failed`; the attempt is not
+      // counted. The owner's own action sees the class `mail_cap`.
+      if (e instanceof MailCapError) {
+        r = await this.d.store.update(r.id, {
+          status: 'email_queued',
+          emailSendAfter: new Date(Math.max(e.retryAt, nowMs)).toISOString(),
+          emailAttempts: Math.max(0, r.emailAttempts - 1),
+          lastError: 'mail_cap',
+        });
+        return explicit && this.d.ownerActions
+          ? { ok: false, code: 'mail_cap', record: r }
+          : { ok: true, record: r, note: 'email_queued' };
+      }
       const code = errorClass(e);
       r = await this.d.store.update(r.id, { status: 'email_failed', lastError: code });
       return { ok: false, code: 'email_failed', record: r };
@@ -797,9 +813,12 @@ export class SignupApprover {
         if (!r || r.status !== 'email_queued' || !r.accountAdded) return false;
         if (r.emailSendAfter && Date.parse(r.emailSendAfter) > (this.d.now ?? Date.now)())
           return false;
-        await this.audited(r.id, 'drain', await this.send(r, true));
-        return true;
+        const out = await this.send(r, true);
+        await this.audited(r.id, 'drain', out);
+        return out.ok && out.note === 'email_queued' ? 'cap' : true;
       });
+      // Over the mail cap: the rest waits for the next drain (each stays `email_queued`).
+      if (sent === 'cap') break;
       if (sent) n++;
     }
     return n;

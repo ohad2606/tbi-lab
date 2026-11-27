@@ -64,9 +64,11 @@ import {
   parseSiteUrl,
   sameHash,
   tokenHash,
+  verifyKeyId,
   verifyLink,
   type VerifyKeys,
 } from './verify.js';
+import { MailCapError, MailPausedError, type MailGate } from './mailGate.js';
 
 export const VERIFY_DIR = 'verify';
 export const VERIFY_MAX_PER_DAY = 50;
@@ -146,6 +148,8 @@ interface Gen {
   exp: string;
   addr: string;
   sentAt: string;
+  /** S4a: verifyKeyId of the key that minted it (absent on older state: never matches). */
+  kid?: string;
 }
 interface IdState {
   v: 1;
@@ -174,6 +178,7 @@ function validId(s: IdState | null, id: string): s is IdState {
   for (const g of s.gens)
     if (!g || !isCount(g.gen) || !HEX64.test(g.hash) || !HEX64.test(g.addr)) return false;
     else if (!isTime(g.exp) || !isTime(g.sentAt)) return false;
+    else if (g.kid !== undefined && !/^[0-9a-f]{16}$/.test(g.kid)) return false;
   if (s.usedAt !== undefined && !isTime(s.usedAt)) return false;
   if (s.verifiedAt !== undefined && !isTime(s.verifiedAt)) return false;
   if (s.approvedAddr !== undefined && !HEX64.test(s.approvedAddr)) return false;
@@ -254,6 +259,7 @@ export type MintOutcome =
   | 'limit_gap'
   | 'limit_record'
   | 'limit_live'
+  | 'limit_mail'
   | 'limit_unreadable';
 
 export interface VerifySweepResult {
@@ -275,6 +281,21 @@ export interface VerifierDeps {
   log?: (line: string) => void;
   /** Test hook: replaces lstat for the kill switch. */
   stat?: (p: string) => Promise<unknown>;
+  /** S4a: TBI_SIGNUP_VERIFY_MAX_PER_DAY (unset: VERIFY_MAX_PER_DAY). */
+  maxPerDay?: number;
+  /** S4a: the mail gate (read-only check before a generation is minted); unset = no gate. */
+  gate?: MailGate | null;
+  /** S4a: TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS; unset = no unverified purge. */
+  unverifiedDays?: number;
+  /** S4a: ids in the auto-approve claim set (null = unreadable: nothing is purged). */
+  claimed?: () => Promise<Set<string> | null>;
+}
+
+export interface UnverifiedPurgeResult {
+  purged: number;
+  /** Of those: requests that never got a verify mail (e.g. a verify-cap backlog). */
+  neverMailed: number;
+  stopped?: string;
 }
 
 export type ApprovalMailCheck = 'ok' | 'addr_changed' | 'unbound' | 'unproven' | 'state_unsafe';
@@ -452,6 +473,8 @@ export class Verifier {
       if (st.sends >= VERIFY_PER_RECORD) return 'limit_record';
       if (st.gens.filter((g) => Date.parse(g.exp) > t).length >= VERIFY_LIVE_GENS)
         return 'limit_live';
+      // S4a: no mail slot now = no generation, no counter (the request is minted fresh later).
+      if (this.d.gate && (await this.d.gate.check())) return 'limit_mail';
       const gen = st.gens.reduce((m, g) => Math.max(m, g.gen), 0) + 1;
       const minted = mintVerifyToken(keys.current, { id, gen, now: t, purpose: 'verify' });
       const at = new Date(t).toISOString();
@@ -468,7 +491,7 @@ export class Verifier {
         const cur: Counters = c ?? { v: 1, day, dayCount: 0, addrs: {} };
         if (cur.day > day) return 'limit_unreadable';
         const dayCount = cur.day === day ? cur.dayCount : 0;
-        if (dayCount >= VERIFY_MAX_PER_DAY) return 'limit_day';
+        if (dayCount >= (this.d.maxPerDay ?? VERIFY_MAX_PER_DAY)) return 'limit_day';
         const addrs: Record<string, string[]> = {};
         for (const [h, l] of Object.entries(cur.addrs)) {
           const keep = l.filter((x) => t - Date.parse(x) < VERIFY_ADDRESS_WINDOW_MS);
@@ -490,14 +513,23 @@ export class Verifier {
         exp: new Date(minted.exp).toISOString(),
         addr,
         sentAt: at,
+        kid: verifyKeyId(keys.current),
       };
       await writeJson(this.vdir, `${id}.json`, {
         ...st,
         gens: [...st.gens, g].slice(-VERIFY_PER_RECORD),
         sends: st.sends + 1,
       } satisfies IdState);
+      // A refused send revokes the generation again: no token of an unsent mail stays live.
+      const revoke = () =>
+        writeJson(this.vdir, `${id}.json`, st).catch((e: unknown) => {
+          this.logHourly(`signup: verify generation not revoked (${errorClass(e)})`);
+        });
       // 3. The kill switch once more, right before the send (the slot stays counted).
-      if (await this.paused()) return 'paused';
+      if (await this.paused()) {
+        await revoke();
+        return 'paused';
+      }
       const lang = r.lang === 'en' ? 'en' : 'he';
       try {
         await this.d.email.sendVerify!({
@@ -508,6 +540,10 @@ export class Verifier {
           link: verifyLink(this.d.siteUrl, lang, minted.token),
         });
       } catch (e) {
+        if (e instanceof MailCapError || e instanceof MailPausedError) {
+          await revoke();
+          return e instanceof MailCapError ? 'limit_mail' : 'paused';
+        }
         this.log(`signup: verify send failed (${errorClass(e)})`);
         return 'send_failed';
       }
@@ -582,6 +618,12 @@ export class Verifier {
           : samePrefix(x.hash.slice(0, 16), suffix),
       );
       if (!g) return { cls: 'unknown_gen', unlink: true };
+      // An empty marker carries no MAC: its generation must come from a key still held (current
+      // or prev), so rotating or removing a key revokes every link it minted.
+      if (!p) {
+        const held = [keys.current, ...(keys.prev ? [keys.prev] : [])].map(verifyKeyId);
+        if (!g.kid || !held.includes(g.kid)) return { cls: 'key_retired', unlink: true };
+      }
       const t = this.now();
       if (Date.parse(g.exp) <= t) return { cls: 'expired', unlink: true };
       const addr = addressHash(r.email);
@@ -604,6 +646,78 @@ export class Verifier {
     });
   }
 
+  /**
+   * S4a: purges web `pending` requests created after the verify cut-off, at least `days` old by
+   * `createdAt` (minus `horizonMs`, the time to the next run), with no admin-recorded verification
+   * and not in the auto-approve claim set; all re-checked under the per-id lock. An unreadable
+   * verify state or claim set keeps the request. Also expires address-hash counters (7 days).
+   */
+  async purgeUnverified(days: number, horizonMs = 0): Promise<UnverifiedPurgeResult> {
+    const out: UnverifiedPurgeResult = { purged: 0, neverMailed: 0 };
+    const bad = await this.checkDirs();
+    if (bad) return { ...out, stopped: 'state_dir_unsafe' };
+    let since: number;
+    try {
+      since = await this.cutoff();
+    } catch {
+      return { ...out, stopped: 'since_unreadable' };
+    }
+    const t = this.now();
+    const old = (r: SignupRecord) => {
+      const c = Date.parse(r.createdAt);
+      return (
+        r.status === 'pending' &&
+        r.origin === 'web' &&
+        Number.isFinite(c) &&
+        c > since &&
+        t + horizonMs - c >= days * 86_400_000
+      );
+    };
+    for (const cand of await this.d.store.list()) {
+      if (!old(cand)) continue;
+      let never = false;
+      const gone = await this.d.store
+        .purgeIf(
+          cand.id,
+          async (r) => {
+            if (!old(r)) return false;
+            let s: IdState | null;
+            try {
+              s = await this.readId(r.id);
+            } catch {
+              return false; // unreadable verify state = keep
+            }
+            if (s?.verifiedAt || s?.usedAt) return false;
+            const claims = this.d.claimed ? await this.d.claimed().catch(() => null) : new Set();
+            if (!claims || claims.has(r.id)) return false;
+            never = !s || s.sends === 0;
+            return true;
+          },
+          () => this.remove(cand.id),
+        )
+        .catch(() => false);
+      if (gone) {
+        out.purged++;
+        if (never) out.neverMailed++;
+      }
+    }
+    await countersLock(async () => {
+      const c = await readJson<Counters>(join(this.vdir, COUNTERS)).catch(() => null);
+      if (!validCounters(c)) return;
+      const addrs: Record<string, string[]> = {};
+      for (const [h, l] of Object.entries(c.addrs)) {
+        const keep = l.filter((x) => t - Date.parse(x) < VERIFY_ADDRESS_WINDOW_MS);
+        if (keep.length > 0) addrs[h] = keep;
+      }
+      if (Object.keys(addrs).length !== Object.keys(c.addrs).length)
+        await writeJson(this.vdir, COUNTERS, { ...c, addrs });
+    }).catch(() => undefined);
+    if (out.purged > 0) this.log(`signup: purge unverified removed ${out.purged}`);
+    if (out.neverMailed > 0) this.log(`signup: purge unverified never mailed ${out.neverMailed}`);
+    return out;
+  }
+
+  private lastPurge: number | undefined;
   private sweeping = false;
 
   /** One pass: orphan state, first mails, then confirm markers. Never throws for a single item. */
@@ -667,7 +781,8 @@ export class Verifier {
       if (o === 'sent') out.sent++;
       else if (o !== 'skip' && o !== 'not_pending') bump(`not sent (${o})`);
       // Shared conditions: no later record can be sent in this sweep either.
-      if (o === 'paused' || o === 'limit_day' || o === 'limit_unreadable') break;
+      if (o === 'paused' || o === 'limit_day' || o === 'limit_unreadable' || o === 'limit_mail')
+        break;
     }
     let seen = 0;
     for (const e of await readdir(this.d.storeDir, { withFileTypes: true })) {
@@ -707,10 +822,24 @@ export class Verifier {
       if (o === 'sent') out.sent++;
       else if (o !== 'skip' && o !== 'not_pending') bump(`resend not sent (${o})`);
       // Unreadable state or counters: kept for the next sweep (nothing was decided).
-      if (o === 'state_unreadable' || o === 'limit_unreadable') continue;
+      // Over the mail cap: kept too, the new link is minted when a slot frees.
+      if (o === 'state_unreadable' || o === 'limit_unreadable' || o === 'limit_mail') continue;
       await unlink(join(this.d.storeDir, f)).catch((e: NodeJS.ErrnoException) => {
         if (e.code !== 'ENOENT') bump(`marker not removed (${errorClass(e)})`);
       });
+    }
+    // S4a: the unverified purge at most once per hour (deadline met within the hour).
+    const days = this.d.unverifiedDays;
+    const t = this.now();
+    if (
+      days !== undefined &&
+      !stop() &&
+      (this.lastPurge === undefined || t - this.lastPurge >= 3_600_000 || t < this.lastPurge)
+    ) {
+      this.lastPurge = t;
+      const p = await this.purgeUnverified(days, 3_600_000).catch(() => null);
+      if (!p || p.stopped)
+        this.logHourly(`signup: purge unverified skipped (${p?.stopped ?? 'error'})`);
     }
     if (out.sent > 0) this.log(`signup: verify sent ${out.sent}`);
     if (out.verified > 0) this.log(`signup: verify ok ${out.verified}`);

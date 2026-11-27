@@ -506,32 +506,72 @@ export class PendingStore {
           if ((e as { code?: string }).code !== 'ENOENT') throw e;
         }
       };
-      await gone(`${id}.notified`);
-      await gone(`${id}.notifyq`);
-      // The web marker counts against the web sub-cap: removed before the record (a crash
-      // part-way leaves the record, so a retry finishes), and an orphan one on not_found too.
-      await gone(`${id}.web`);
-      for (const f of await readdir(this.dir)) {
-        if (
-          f.startsWith(`${id}.`) &&
-          (f.endsWith('.tmp') || f.startsWith(`${id}.vq-`) || f === `${id}.rq`)
-        )
-          // Intake-made names: a directory under such a name is left alone (never EISDIR here).
-          await gone(f).catch((e: unknown) => {
-            const code = (e as { code?: string }).code;
-            if (code !== 'EISDIR' && code !== 'EPERM') throw e;
-          });
-        else if (/^[0-9a-f]{64}\.mark$/.test(f)) {
-          const holder = (await readFile(join(this.dir, f), 'utf8').catch(() => '')).trim();
-          if (holder === id) await gone(f);
-        }
-      }
+      await this.removeSideFiles(id);
       if (!existed)
         return (await this.auditHas(id, 'delete', 'ok')) ? 'already_deleted' : 'not_found';
       await gone(`${id}.json`);
       await this.removed(id);
       await this.audit(id, 'delete', 'ok');
       return 'deleted';
+    });
+  }
+
+  /**
+   * Every file of `id` but the record (the caller holds the per-id lock): `.notified`, `.notifyq`,
+   * `.web` (web sub-cap: before the record, so a crash part-way leaves the record and a retry
+   * finishes), `.rq`, every `.vq-*`, `<id>.*.tmp`, and the address marker this id holds.
+   */
+  private async removeSideFiles(id: string): Promise<void> {
+    const gone = async (name: string) => {
+      try {
+        await unlink(join(this.dir, name));
+      } catch (e) {
+        if ((e as { code?: string }).code !== 'ENOENT') throw e;
+      }
+    };
+    await gone(`${id}.notified`);
+    await gone(`${id}.notifyq`);
+    await gone(`${id}.web`);
+    for (const f of await readdir(this.dir)) {
+      if (
+        f.startsWith(`${id}.`) &&
+        (f.endsWith('.tmp') || f.startsWith(`${id}.vq-`) || f === `${id}.rq`)
+      )
+        // Intake-made names: a directory under such a name is left alone (never EISDIR here).
+        await gone(f).catch((e: unknown) => {
+          const code = (e as { code?: string }).code;
+          if (code !== 'EISDIR' && code !== 'EPERM') throw e;
+        });
+      else if (/^[0-9a-f]{64}\.mark$/.test(f)) {
+        const holder = (await readFile(join(this.dir, f), 'utf8').catch(() => '')).trim();
+        if (holder === id) await gone(f);
+      }
+    }
+  }
+
+  /**
+   * S4a unverified purge: under the per-id lock, re-reads the record; only a web record (origin
+   * `web` AND its `<id>.web` marker) for which `judge` still says yes is removed: side files,
+   * then `beforeRecord` (the admin verify state), then LAST the record. Returns whether removed.
+   */
+  purgeIf(
+    id: string,
+    judge: (r: SignupRecord) => Promise<boolean>,
+    beforeRecord: () => Promise<void>,
+  ): Promise<boolean> {
+    if (!REQUEST_ID_RE.test(id)) return Promise.resolve(false);
+    return serialById(id, async () => {
+      const cur = await this.get(id).catch(() => null);
+      if (!cur || cur.origin !== 'web') return false;
+      const web = await stat(join(this.dir, `${id}.web`)).then(
+        (s) => s.isFile(),
+        () => false,
+      );
+      if (!web || !(await judge(cur))) return false;
+      await this.removeSideFiles(id);
+      await beforeRecord();
+      await unlink(this.path(id));
+      return true;
     });
   }
 

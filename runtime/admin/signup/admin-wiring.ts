@@ -30,6 +30,10 @@
  *                                TBI_SIGNUP_VERIFY_KEY_FILE, TBI_SIGNUP_SITE_URL and a separate
  *                                TBI_SIGNUP_AUTO_STATE_DIR). Approval stays manual unless
  *                                TBI_SIGNUP_AUTO_WEB=verified with auto-approve on.
+ *   TBI_SIGNUP_MAIL_MAX_PER_HOUR / _PER_DAY / _PER_30D, TBI_SIGNUP_VERIFY_MAX_PER_DAY,
+ *   TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS   S4a safeguards (mailGate.ts), all unset = today's
+ *                                behaviour. A bad value disables the sign-up admin routes (one log
+ *                                line); TBI_SIGNUP_AUTO_WEB=verified needs the mail caps.
  */
 import {
   AUTO_APPROVE_INTERVAL_MS,
@@ -54,6 +58,8 @@ import {
   type Retention,
 } from './store.js';
 import { loadVerifyKeys } from './verify.js';
+import { MailGate, safeguardsFromEnv, type MailLimits } from './mailGate.js';
+import { VERIFY_MAX_PER_DAY } from './verifyState.js';
 import { Verifier, verifyConfigFromEnv, type VerifyConfig } from './verifyState.js';
 import type { AdminSpool } from '../accounts.js';
 import type { FunnelSink } from '../funnel/counters.js';
@@ -78,7 +84,9 @@ export interface AdminSignupConfig {
     webSignups?: AutoWebSignups;
   };
   /** G1-AUTO-VERIFY: email verification; unset = off (no key read, nothing written). */
-  verify?: VerifyConfig;
+  verify?: VerifyConfig & { maxPerDay?: number; unverifiedDays?: number };
+  /** S4a: the mail gate around every applicant mail; unset = no gate (today's behaviour). */
+  mailCaps?: MailLimits & { stateDir: string };
 }
 
 export type AdminSignupConfigResult =
@@ -120,9 +128,22 @@ export function adminSignupConfigFromEnv(
   } catch (e) {
     return bad((e as Error).message);
   }
+  let mailCaps: AdminSignupConfig['mailCaps'];
+  try {
+    const sg = safeguardsFromEnv(env);
+    if (sg.mail) {
+      const sd = env.TBI_SIGNUP_AUTO_STATE_DIR ?? '';
+      if (!sd.startsWith('/') || sd.replace(/\/+$/, '') === dir.replace(/\/+$/, ''))
+        return bad('the mail caps need TBI_SIGNUP_AUTO_STATE_DIR (not the store dir)');
+      mailCaps = { ...sg.mail, stateDir: sd };
+    }
+  } catch (e) {
+    return bad((e as Error).message);
+  }
   return {
     enabled: true,
     config: {
+      ...(mailCaps ? { mailCaps } : {}),
       quiet,
       retention,
       dir,
@@ -207,7 +228,7 @@ export async function wireSignupAdmin(
     );
     if (problem) io.log(`signup: warning mail key not usable at start (${problem})`);
   }
-  const email: EmailSender =
+  const rawEmail: EmailSender =
     io.email ??
     new ResendSender({
       from: c.from,
@@ -216,6 +237,18 @@ export async function wireSignupAdmin(
       readKey: () => readSecretFile(c.keyFile),
       fetch: io.fetch,
     });
+  // S4a: ONE gate around the sender, so every applicant mail (approval, drain, owner resend,
+  // verify) takes a persisted slot first. No caps configured = the sender itself, unchanged.
+  const gate = c.mailCaps
+    ? new MailGate({
+        stateDir: c.mailCaps.stateDir,
+        storeDir: c.dir,
+        limits: c.mailCaps,
+        now: io.now,
+        log: io.log,
+      })
+    : null;
+  const email: EmailSender = gate ? gate.wrap(rawEmail) : rawEmail;
   const runPurge = async () => {
     try {
       const removed = await store.purge(
@@ -241,6 +274,14 @@ export async function wireSignupAdmin(
       siteUrl: v.siteUrl,
       keys: () => loadVerifyKeys(v.keyFile),
       ...(v.since !== undefined ? { since: v.since } : {}),
+      ...(v.maxPerDay !== undefined ? { maxPerDay: v.maxPerDay } : {}),
+      ...(v.unverifiedDays !== undefined
+        ? {
+            unverifiedDays: v.unverifiedDays,
+            claimed: () => (auto ? auto.claimedIds() : Promise.resolve(new Set<string>())),
+          }
+        : {}),
+      gate,
       now: io.now,
       log: io.log,
     });
@@ -427,9 +468,18 @@ export async function signupWiringFromEnv(
     if (cfg.error) io.log(`signup: admin routes disabled (config: ${cfg.reason})`);
     return null;
   }
-  const auto = autoApproveConfigFromEnv(env);
+  let auto = autoApproveConfigFromEnv(env);
   if (auto.enabled === false && auto.error)
     io.log(`signup: auto-approve off (config: ${auto.reason})`);
+  // S4a: no automatic approval of web sign-ups without the mail caps.
+  if (auto.enabled && auto.webSignups === 'verified' && !cfg.config.mailCaps) {
+    auto = {
+      enabled: false,
+      error: true,
+      reason: 'TBI_SIGNUP_AUTO_WEB=verified needs the mail caps',
+    };
+    io.log(`signup: auto-approve off (config: ${auto.reason})`);
+  }
   const config: AdminSignupConfig = auto.enabled
     ? {
         ...cfg.config,
@@ -445,6 +495,22 @@ export async function signupWiringFromEnv(
   const ver = verifyConfigFromEnv(env, cfg.config.dir);
   if (ver.enabled) config.verify = ver.config;
   else if (ver.error) io.log(`signup: email verification off (config: ${ver.reason})`);
+  const sg = safeguardsFromEnv(env); // already validated by adminSignupConfigFromEnv
+  const refuse = (reason: string) => {
+    io.log(`signup: admin routes disabled (config: ${reason})`);
+    return null;
+  };
+  if ((sg.verifyPerDay !== undefined || sg.unverifiedDays !== undefined) && !config.verify)
+    return refuse(
+      'TBI_SIGNUP_VERIFY_MAX_PER_DAY / _RETENTION_UNVERIFIED_DAYS need TBI_SIGNUP_VERIFY=1',
+    );
+  if (config.verify) {
+    const perDay = sg.verifyPerDay ?? VERIFY_MAX_PER_DAY;
+    if (config.mailCaps && perDay > config.mailCaps.perDay)
+      return refuse('TBI_SIGNUP_VERIFY_MAX_PER_DAY must not exceed TBI_SIGNUP_MAIL_MAX_PER_DAY');
+    if (sg.verifyPerDay !== undefined) config.verify.maxPerDay = sg.verifyPerDay;
+    if (sg.unverifiedDays !== undefined) config.verify.unverifiedDays = sg.unverifiedDays;
+  }
   if (auto.enabled && auto.webSignups === 'verified' && !ver.enabled)
     io.log(
       'signup: warning auto-approve web=verified without email verification; nothing is auto-approved',
