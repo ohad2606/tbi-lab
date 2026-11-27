@@ -168,6 +168,11 @@ export async function handleSignupRequest(
 
 export const WEB_TOKEN_PATH = '/signup/form-token';
 export const WEB_SIGNUP_PATH = '/signup/web';
+/** G1-AUTO-VERIFY slice 2 (`TBI_SIGNUP_VERIFY=1`): exist only with the web route. */
+export const VERIFY_PATH = '/signup/verify';
+export const RESEND_PATH = '/signup/resend';
+/** A verify / resend body is one token (and an address): anything larger is refused. */
+export const MAX_VERIFY_BODY_BYTES = 1024;
 
 export interface WebHttpOptions {
   sourceHeader: string;
@@ -249,17 +254,34 @@ export async function handleWebSignupRequest(
   if (!STRICT_JSON.test(req.headers['content-type'] ?? ''))
     return refuse(req, res, 415, 'unsupported_media_type');
   if (key === null) return noSource();
+  const small = path === VERIFY_PATH || path === RESEND_PATH;
   let body: Buffer;
   try {
-    body = await readCappedBody(req);
+    body = await readCappedBody(req, small ? MAX_VERIFY_BODY_BYTES : undefined);
   } catch (e) {
     return send(res, e instanceof BodyTooLarge ? 413 : 400, {
       error: e instanceof BodyTooLarge ? 'body_too_large' : 'invalid',
     });
   }
+  if (path === VERIFY_PATH) {
+    let v;
+    try {
+      v = await intake.submitVerify(key, body);
+    } catch {
+      return send(res, 500, { error: 'internal' });
+    }
+    // One answer for every well-formed unexpired token (the marker is written afterwards).
+    if (v.status === 202) return send(res, 202, { ok: true, status: 'received' });
+    if (v.status === 429 && v.retryAfterMs)
+      res.setHeader('retry-after', String(Math.ceil(v.retryAfterMs / 1000)));
+    return send(res, v.status, { error: v.error });
+  }
   let out;
   try {
-    out = await intake.submitWeb(key, body);
+    out =
+      path === RESEND_PATH
+        ? await intake.submitResend(key, body)
+        : await intake.submitWeb(key, body);
   } catch {
     return send(res, 500, { error: 'internal' });
   }

@@ -356,8 +356,9 @@ export async function wireSignupAdmin(
           io.log(`signup: auto-approve not started (state dir unsafe: ${bad}); manual only`);
           if (!verifier) return;
         } else autoOk = !!auto;
-        tick();
+        // A stop requested while the state dir was checked: no sweep at all.
         if (stopped) return;
+        tick();
         t = setInterval(tick, AUTO_APPROVE_INTERVAL_MS);
         t.unref();
         running = autoOk;

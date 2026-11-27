@@ -207,8 +207,12 @@ describe('token (verify.ts)', () => {
   });
   it('forged, other key, other purpose, wrong gen or bad syntax never check; .prev checks', () => {
     const m = mintVerifyToken(key, { id: ID, gen: 1, now: T0, purpose: 'verify' });
-    const last = m.token.at(-1) === 'A' ? 'B' : 'A';
-    expect(checkVerifyToken([key], m.token.slice(0, -1) + last, 'verify')).toBeNull();
+    // Tamper the first MAC character: the last one carries padding bits, so changing it can
+    // decode to the same bytes (about 1 run in 16).
+    const at = m.token.lastIndexOf('.') + 1;
+    const other = m.token[at] === 'A' ? 'B' : 'A';
+    const forged = m.token.slice(0, at) + other + m.token.slice(at + 1);
+    expect(checkVerifyToken([key], forged, 'verify')).toBeNull();
     expect(checkVerifyToken([key2], m.token, 'verify')).toBeNull();
     expect(checkVerifyToken([key2, key], m.token, 'verify')).not.toBeNull();
     expect(checkVerifyToken([key], m.token, 'reset')).toBeNull();
@@ -1064,5 +1068,114 @@ describe('review findings (slice 1 fix-up)', () => {
     for (let i = 0; i < 100 && !stopping; i++) await new Promise((res) => setTimeout(res, 5));
     await stopping;
     expect(r.sent).toHaveLength(1);
+  });
+});
+
+// ------------------------------------------------------------------ slice 2: `.rq` and empty `.vq`
+describe('slice 2: resend markers and empty confirm markers (admin side)', () => {
+  const rq = (r: Rig, id: string) =>
+    writeFileSync(join(r.storeDir, `${id}.rq`), '', { mode: 0o600 });
+  const rqs = (r: Rig) => readdirSync(r.storeDir).filter((f) => f.endsWith('.rq'));
+
+  it('100 duplicate resend requests for one address: at most 1 mail, the next sweep 0', async () => {
+    const r = await rig();
+    const id = await webRecord(r);
+    // One marker per id (the intake writes it exclusively): 100 requests = one `.rq` file.
+    for (let i = 0; i < 100; i++) {
+      try {
+        writeFileSync(join(r.storeDir, `${id}.rq`), '', { mode: 0o600, flag: 'wx' });
+      } catch {
+        /* EEXIST = success, as in the intake */
+      }
+    }
+    await r.w.verifier!.sweep();
+    expect(r.sent).toHaveLength(1); // the first mail; the resend is blocked by the 10 min gap
+    expect(rqs(r)).toEqual([]); // consumed although a limit blocked it
+    rq(r, id);
+    await r.w.verifier!.sweep();
+    expect(r.sent).toHaveLength(1);
+    expect(rqs(r)).toEqual([]);
+  });
+
+  it('after the gap a resend mints a new generation; per-address limit 3 holds', async () => {
+    const r = await rig();
+    const id = await webRecord(r);
+    await r.w.verifier!.sweep();
+    for (let i = 0; i < 5; i++) {
+      r.clock.t += 11 * 60_000;
+      rq(r, id);
+      await r.w.verifier!.sweep();
+    }
+    expect(r.sent).toHaveLength(3);
+    expect(rqs(r)).toEqual([]);
+  });
+
+  it('hostile .rq: directory skipped, symlink and non-web or unknown id removed without mail', async () => {
+    const r = await rig();
+    const id = await webRecord(r);
+    await r.w.verifier!.sweep();
+    r.clock.t += 11 * 60_000;
+    const other = (await r.w.store.createIfNew(person(2))).record.id; // not web
+    mkdirSync(join(r.storeDir, `${ID}.rq`));
+    symlinkSync(join(r.storeDir, `${other}.json`), join(r.storeDir, `${id}.rq`));
+    rq(r, other);
+    await r.w.verifier!.sweep();
+    expect(r.sent).toHaveLength(1);
+    expect(rqs(r)).toEqual([`${ID}.rq`]);
+    expect(readFileSync(join(r.storeDir, `${other}.json`), 'utf8')).toContain('"pending"');
+  });
+
+  it('an EMPTY confirm marker (the intake form) verifies by hash prefix; a wrong prefix does not', async () => {
+    const r = await rig();
+    const id = await webRecord(r);
+    await r.w.verifier!.sweep();
+    const tok = tokenOf(r.sent[0]!);
+    writeFileSync(join(r.storeDir, `${id}.vq-0000000000000000`), '', { mode: 0o600 });
+    await r.w.verifier!.sweep();
+    expect(vstate(r, id).verifiedAt).toBeUndefined();
+    writeFileSync(join(r.storeDir, `${id}.vq-${tokenHash(tok).slice(0, 16)}`), '', { mode: 0o600 });
+    const res = await r.w.verifier!.sweep();
+    expect(res.verified).toBe(1);
+    expect(vstate(r, id).verifiedAt).toBeDefined();
+    expect(markers(r)).toEqual([]);
+  });
+
+  it('a resend marker obeys the verify cut-off: older request no mail, newer one mailed', async () => {
+    const r = await rig({ verifySince: T0 + 60_000 });
+    const old = await webRecord(r, 1);
+    rq(r, old);
+    await r.w.verifier!.sweep();
+    expect(r.sent).toHaveLength(0);
+    expect(rqs(r)).toEqual([]);
+    expect(r.logs).toContain('signup: verify resend not sent (before_cutoff) 1');
+    expect(r.logs.join('\n')).not.toContain(old);
+    r.clock.t += 120_000;
+    const fresh = await webRecord(r, 2);
+    await r.w.verifier!.sweep(); // first mail
+    r.clock.t += 11 * 60_000;
+    rq(r, fresh);
+    await r.w.verifier!.sweep();
+    expect(r.sent.map((m) => m.id)).toEqual([fresh, fresh]);
+    expect(rqs(r)).toEqual([]);
+  });
+
+  it('delete and purge remove the .rq marker', async () => {
+    const r = await rig();
+    const id = await webRecord(r);
+    rq(r, id);
+    expect(await r.w.store.deleteNow(id)).toBe('deleted');
+    expect(rqs(r)).toEqual([]);
+    rq(r, ID); // orphan
+    await r.w.store.purge();
+    expect(rqs(r)).toEqual([]);
+  });
+
+  it('stop requested before the start check finished: no sweep runs', async () => {
+    const r = await rig();
+    await webRecord(r);
+    const stop = r.w.startAutoApprove();
+    await stop();
+    await new Promise((res) => setTimeout(res, 20));
+    expect(r.sent).toHaveLength(0);
   });
 });

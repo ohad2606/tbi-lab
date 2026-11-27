@@ -15,7 +15,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AUTO_MARKER_FILE,
   AUTO_STATE_FILE,
@@ -763,6 +763,8 @@ describe('wiring with the flag on', () => {
     );
     const rec = (await w.store.createIfNew(person(3))).record;
     const stop = w.startAutoApprove();
+    // A stop requested before the start check finished runs no sweep: wait for the first one.
+    await vi.waitFor(() => expect(submitted.length).toBeGreaterThan(0));
     await stop();
     expect(submitted).toEqual([{ actor: owner, email: 'tester3@example.com' }]);
     expect(mails).toEqual([rec.id]);
@@ -886,7 +888,9 @@ describe('ops review follow-up (slice 2)', () => {
       },
     );
     const rec = (await w.store.createIfNew(person(4))).record;
-    await w.startAutoApprove()();
+    const stop = w.startAutoApprove();
+    await vi.waitFor(() => expect(counter(join(root, 'p')).claims[rec.id]).toBeDefined());
+    await stop();
     expect(counter(join(root, 'p')).claims[rec.id]).toEqual({
       at: new Date(NOON_IL).toISOString(),
       attempts: 1,
@@ -1336,6 +1340,8 @@ describe('BETA-G1 s8 fix round: web-origin requests are not auto-approved by def
     await w.store.createIfNew(person(4), { origin: 'web' });
     await w.store.createIfNew(person(5));
     const stop = w.startAutoApprove();
+    // A stop requested before the start check finished runs no sweep: wait for the first one.
+    await vi.waitFor(() => expect(submitted.length).toBeGreaterThan(0));
     await stop();
     expect(submitted).toEqual(['tester5@example.com']);
   });

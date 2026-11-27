@@ -137,6 +137,13 @@ describe('renderCaddyfile (offline)', () => {
     expect(plain).not.toMatch(/Strict-Transport-Security/);
     expect(rollback).not.toMatch(/reverse_proxy|\/signup\/|@tbi_intake/);
   });
+  it('the intake route regex is exactly the four paths on the raw URI', () => {
+    const t = readFileSync(new URL('../deploy/Caddyfile.signup.template', import.meta.url), 'utf8');
+    const m = t.match(/\.matches\("([^"]*)"\)/g);
+    expect(m).toEqual(['.matches("^/signup/(form-token|web|verify|resend)([?].*)?$")']);
+    expect(t).toContain('{http.request.uri}.matches(');
+  });
+
   it('the template CSP is the exported SITE_CSP (also sent by site/serve.mjs)', () => {
     expect(renderCaddyfile(VALUES('127.0.0.1:7411'))).toContain(
       `Content-Security-Policy "${SITE_CSP}"`,
@@ -284,10 +291,23 @@ describe.skipIf(!HAVE)(`real caddy ${VERSION?.join('.')} (loopback only)`, () =>
       headers: { ...forged, 'content-type': 'application/json' },
       body: '{}',
     });
-    expect([a.status, b.status]).toEqual([200, 200]);
+    // G1-AUTO-VERIFY slice 2: the two new POST routes pass too, identity headers stripped alike.
+    const c = await send(port, '/signup/verify', {
+      method: 'POST',
+      headers: { ...forged, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    const d = await send(port, '/signup/resend?x=1', {
+      method: 'POST',
+      headers: { ...forged, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect([a.status, b.status, c.status, d.status]).toEqual([200, 200, 200, 200]);
     expect(seen.map((s) => `${s.method} ${s.url}`)).toEqual([
       'GET /signup/form-token?x=1',
       'POST /signup/web',
+      'POST /signup/verify',
+      'POST /signup/resend?x=1',
     ]);
     for (const s of seen) {
       const h = s.headers;
@@ -325,6 +345,13 @@ describe.skipIf(!HAVE)(`real caddy ${VERSION?.join('.')} (loopback only)`, () =>
       '/signup//web',
       '/signup/other',
       '/admin',
+      '/signup/VERIFY',
+      '/signup/verify/',
+      '/signup/%76erify',
+      '/signup/verifyx',
+      '/signup/Resend',
+      '/signup/resend/',
+      '/signup/%72esend',
     ];
     const got = {};
     for (const p of paths) {
@@ -354,9 +381,10 @@ describe.skipIf(!HAVE)(`real caddy ${VERSION?.join('.')} (loopback only)`, () =>
       body: big,
       chunked: true,
     });
+    const vf = await send(port, '/signup/verify', { method: 'POST', headers: h, body: big });
     // Caddy 2.6.2: 413 for both. Chunked is streamed, so the intake may see up to 8 KB and then an
     // aborted request (never the full body; the intake's own 4 KiB cap stays authoritative).
-    expect([cl.status, ch.status]).toEqual([413, 413]);
+    expect([cl.status, ch.status, vf.status]).toEqual([413, 413, 413]);
     await new Promise((r) => setTimeout(r, 200));
     for (const s of seen) {
       expect(s.complete, JSON.stringify(s)).toBe(false);

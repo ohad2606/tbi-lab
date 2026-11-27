@@ -7,6 +7,8 @@
  *                  approval email), reject, resend. Idempotent: an account is added once and an
  *                  approval email is sent once unless the owner explicitly resends after a failure.
  */
+import { createHash } from 'node:crypto';
+import { normalizeAddEmail } from '../accounts.js';
 import type { FunnelEvent, FunnelSink } from '../funnel/counters.js';
 import { errorClass } from './errors.js';
 import { NonceCache, verifyRequest, type VerifyFailure } from './hmac.js';
@@ -47,7 +49,30 @@ export interface IntakeDeps {
   web?: WebIntakeDeps;
   /** K12: funnel counters (`signup_submitted`, `signup_form_view`); null / unset = off. */
   counters?: FunnelSink | null;
+  /**
+   * G1-AUTO-VERIFY slice 2 (`TBI_SIGNUP_VERIFY=1`, needs `web`): `POST /signup/verify` and
+   * `/signup/resend`, and a duplicate web sign-up asks for a resend. Absent = all of it is off.
+   * The intake never holds the verify key: it checks the token's format and plaintext expiry only.
+   */
+  verify?: VerifyIntakeDeps;
 }
+
+/** Own buckets, separate from `/signup/web`'s. */
+export interface VerifyIntakeDeps {
+  verifyRate: SlidingWindowLimiter;
+  verifyGlobal: SlidingWindowLimiter;
+  resendRate: SlidingWindowLimiter;
+  resendGlobal: SlidingWindowLimiter;
+}
+
+/** Token syntax as the admin mints it (verify.ts); the intake cannot and does not check the MAC. */
+const VERIFY_TOKEN_RE =
+  /^v1\.([0-9A-HJKMNP-TV-Z]{26})\.[1-9][0-9]{0,3}\.([1-9][0-9]{9,10})\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/;
+/** A token never expires more than this far ahead (24 h + clock slack). */
+const VERIFY_MAX_AHEAD_MS = 25 * 3_600_000;
+
+export type VerifyOutcome =
+  { status: 202 } | { status: 400 | 404 | 410 | 429; error: string; retryAfterMs?: number };
 
 /** K12: counts an event; the counters never throw, and this guard keeps it so for any sink. */
 function count(sink: FunnelSink | null | undefined, event: FunnelEvent): void {
@@ -246,6 +271,138 @@ export class SignupIntake {
     return { status: 200 };
   }
 
+  /**
+   * Marker work after the answer: detached (never awaited by the caller), errors caught and
+   * logged as one class line. The answer therefore cannot depend on the id or the address.
+   */
+  private later(fn: () => Promise<string>, what: string): void {
+    const p = new Promise<void>((resolve) => setImmediate(resolve))
+      .then(fn)
+      .then(
+        (o) => {
+          if (o === 'limit') this.d.log?.(`signup: ${what} marker limit`);
+        },
+        (e: unknown) =>
+          this.d.log?.(
+            `signup: ${what} marker failed (${e instanceof StoreError ? e.code : errorClass(e)})`,
+          ),
+      )
+      .finally(() => this.pendingAlerts.delete(p));
+    this.pendingAlerts.add(p);
+  }
+
+  /**
+   * `POST /signup/verify` `{token}`: per-source limit, format, plaintext expiry, global limit,
+   * then 202 `received` for every well-formed unexpired token; the confirm marker is written
+   * afterwards (`later`), so unknown, verified and over-limit ids answer exactly alike.
+   */
+  async submitVerify(source: string, body: Buffer): Promise<VerifyOutcome> {
+    const v = this.d.web && this.d.verify;
+    if (!v) return { status: 404, error: 'not_found' };
+    const refuse = (why: string) => this.d.log?.(`signup: verify refused (${why})`);
+    const s = v.verifyRate.take(source);
+    if (!s.ok) {
+      refuse('source_limit');
+      return { status: 429, error: 'rate_limited', retryAfterMs: s.retryAfterMs };
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(body.toString('utf8'));
+    } catch {
+      refuse('bad_json');
+      return { status: 400, error: 'invalid' };
+    }
+    const token =
+      typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>).token
+        : undefined;
+    const m = typeof token === 'string' ? VERIFY_TOKEN_RE.exec(token) : null;
+    if (!m) {
+      refuse('bad_format');
+      return { status: 400, error: 'invalid' };
+    }
+    const now = (this.d.now ?? Date.now)();
+    const exp = Number(m[2]) * 1000;
+    if (!Number.isSafeInteger(exp) || exp - now > VERIFY_MAX_AHEAD_MS) {
+      refuse('bad_exp');
+      return { status: 400, error: 'invalid' };
+    }
+    if (exp <= now) {
+      refuse('expired');
+      return { status: 410, error: 'expired' };
+    }
+    const g = v.verifyGlobal.take('all');
+    if (!g.ok) {
+      refuse('global_limit');
+      return { status: 429, error: 'rate_limited', retryAfterMs: g.retryAfterMs };
+    }
+    const id = m[1]!;
+    const suffix = createHash('sha256')
+      .update(token as string, 'utf8')
+      .digest('hex')
+      .slice(0, 16);
+    this.later(() => this.d.store.writeVerifyMarker(id, suffix), 'verify');
+    return { status: 202 };
+  }
+
+  /**
+   * `POST /signup/resend` `{email, token, website}`: the same form token, honeypot and minimum
+   * fill as `/signup/web` (same refusals), own limits; then 200 for any address, valid or not.
+   * The resend marker is written afterwards (`later`) and only for a web pending unverified record.
+   */
+  async submitResend(source: string, body: Buffer): Promise<WebOutcome> {
+    const w = this.d.web;
+    const v = w && this.d.verify;
+    if (!w || !v) return { status: 404, error: 'not_found' };
+    const now = (this.d.now ?? Date.now)();
+    const refuse = (why: string) => this.d.log?.(`signup: resend refused (${why})`);
+    const s = v.resendRate.take(source);
+    if (!s.ok) {
+      refuse('source_limit');
+      return { status: 429, error: 'rate_limited', retryAfterMs: s.retryAfterMs };
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(body.toString('utf8'));
+    } catch {
+      refuse('bad_json');
+      return { status: 400, error: 'invalid' };
+    }
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      refuse('bad_json');
+      return { status: 400, error: 'invalid' };
+    }
+    const o = raw as Record<string, unknown>;
+    const t = checkToken(w.webKey, o[TOKEN_FIELD], now, { ttlMs: w.ttlMs, minFillMs: w.minFillMs });
+    if (!t.ok) {
+      refuse(t.reason);
+      return t.reason === 'too_fast'
+        ? { status: 400, error: 'too_fast' }
+        : { status: 401, error: webAuthError(t.reason) };
+    }
+    if (o[HONEYPOT_FIELD] !== '') {
+      refuse('honeypot');
+      return { status: 400, error: 'invalid' };
+    }
+    if (w.nonces.has(t.nonce, now)) {
+      refuse('replayed');
+      return { status: 401, error: 'unauthorized' };
+    }
+    const g = v.resendGlobal.take('all');
+    if (!g.ok) {
+      refuse('global_limit');
+      return { status: 429, error: 'rate_limited', retryAfterMs: g.retryAfterMs };
+    }
+    if (!w.nonces.take(t.nonce, now)) {
+      refuse('replayed');
+      return { status: 401, error: 'unauthorized' };
+    }
+    // Any address answers 200: an invalid one simply writes nothing.
+    const email = normalizeAddEmail(o.email);
+    if (email) this.later(() => this.d.store.writeResendMarkerFor(email), 'resend');
+    return { status: 200 };
+  }
+
   /** Alerts the web route started without waiting (tests and shutdown can await them). */
   private readonly pendingAlerts = new Set<Promise<void>>();
 
@@ -273,6 +430,12 @@ export class SignupIntake {
         : this.d.store.createIfNew(input));
       if (!r.created) {
         this.d.log?.('signup: duplicate ignored');
+        // G1-AUTO-VERIFY: a web duplicate of a waiting unverified request asks for a new link
+        // (the admin sweep applies every mail limit). Detached: the answer stays the same.
+        if (origin && this.d.web && this.d.verify) {
+          const id = r.record.id;
+          this.later(() => this.d.store.writeResendMarker(id), 'resend');
+        }
         return 'stored';
       }
       rec = r.record;
