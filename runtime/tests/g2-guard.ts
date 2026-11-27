@@ -172,7 +172,7 @@ export type G2Decision =
 
 export function g2Decision(
   env: NodeJS.ProcessEnv = process.env,
-  holdsLock: () => boolean = holdsPipelineLock,
+  holdsLock: () => boolean = () => holdsPipelineLock(),
 ): G2Decision {
   const instance = (env[G2_ENV] ?? '').trim();
   if (instance === '') return { kind: 'off' };

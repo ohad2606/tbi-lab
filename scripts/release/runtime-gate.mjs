@@ -85,16 +85,18 @@ const INSTANCE_PICKERS = [
 /** The picker that holds a comma-separated list: every entry is checked. */
 const LIST_PICKER = 'TBI_ALLOW_SERVICE_MUTATION';
 /**
- * systemd unit prefixes of the services themselves (runtime/host and runtime/builder main.ts). A
- * process the suites start could inherit them and act on a deployed instance's units: refused
- * whenever they have a value.
+ * systemd unit prefixes and the session root of the services themselves (runtime/host and
+ * runtime/builder main.ts). A process the suites start could inherit them and act on a deployed
+ * instance's units or session directories: refused whenever they have a value.
  */
-const UNIT_SETTINGS = ['TBI_BUILD_JOB_UNIT', 'TBI_HOST_RUNTIME_UNIT'];
+const UNIT_SETTINGS = ['TBI_BUILD_JOB_UNIT', 'TBI_HOST_RUNTIME_UNIT', 'TBI_HOST_SESSION_ROOT'];
+/** Moves the pipeline lock's files, so a private lease would pass: refused whenever set. */
+const LOCK_REDIRECT = 'TBI_PIPELINE_LOCK_DIR';
 /**
  * A proxy address on this host, written plainly: no user info, path or other spelling of a host.
  * It does not tell which instance listens on the port.
  */
-const LOOPBACK_PROXY = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\]):[0-9]{1,5}\/?$/;
+const LOOPBACK_PROXY = /^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):([0-9]{1,5})\/?$/;
 /** Proxies of playwright.app.config.ts that have a fake-service default: must be set. */
 const REQUIRED_PROXIES = ['TBI_RUNTIME_PROXY', 'TBI_BUILD_PROXY', 'TBI_FEEDBACK_RUNTIME_PROXY'];
 /** Inherited by the preview servers (app/vite.config.ts); optional, loopback when set. */
@@ -108,6 +110,7 @@ const NAMES_VARIABLE = [
   'live_instance',
   'instance_not_allowed',
   'unit_setting',
+  'lock_redirect',
   'no_real_proxy',
   'proxy_not_loopback',
   'weakening_env',
@@ -184,6 +187,12 @@ function realProxy(value) {
   }
 }
 
+/** A loopback proxy address with a port a service can listen on (1 to 65535). */
+function loopbackProxy(value) {
+  const port = Number(LOOPBACK_PROXY.exec(value)?.[1]);
+  return port >= 1 && port <= 65535;
+}
+
 /** The path with symlinks resolved, also when its last parts do not exist yet. */
 function real(path) {
   return existsSync(path) ? realpathSync(path) : join(real(dirname(path)), basename(path));
@@ -222,15 +231,18 @@ export function runGate(argv, deps) {
   const pre = [];
   if (!opts.from) {
     if (dirty()) pre.push({ code: 'dirty_tree' });
-    if (!deps.holdsLock()) pre.push({ code: 'no_lock' });
+    if (env[LOCK_REDIRECT] !== undefined) {
+      pre.push({ code: 'lock_redirect', test: LOCK_REDIRECT });
+      log(`${LOCK_REDIRECT} must be unset: only the host-wide pipeline lock counts.`);
+    } else if (!deps.holdsLock()) pre.push({ code: 'no_lock' });
     for (const name of REQUIRED_PROXIES)
       if (!realProxy(env[name])) pre.push({ code: 'no_real_proxy', test: name });
     for (const name of [...REQUIRED_PROXIES, ...OPTIONAL_PROXIES])
-      if (env[name] && !LOOPBACK_PROXY.test(env[name])) {
+      if (env[name] && !loopbackProxy(env[name])) {
         pre.push({ code: 'proxy_not_loopback', test: name });
         log(
           `${name} must be a loopback address of this host, written as ` +
-            'http(s)://127.0.0.1:<port>, localhost or [::1].',
+            'http(s)://127.0.0.1:<port>, localhost or [::1], with a port from 1 to 65535.',
         );
       }
     for (const name of WEAKENING)
@@ -265,7 +277,10 @@ export function runGate(argv, deps) {
     for (const name of UNIT_SETTINGS)
       if (env[name]) {
         pre.push({ code: 'unit_setting', test: name });
-        log(`${name} must be unset: it names systemd units a process under test would act on.`);
+        log(
+          `${name} must be unset: a process under test would act on the systemd units or ` +
+            'session directory it names.',
+        );
       }
     // The C-5 fault drills run only on request and only against an instance in the mutation opt-in.
     if (env.TBI_C5_FAULTS !== '1') pre.push({ code: 'fault_drills_off', test: 'TBI_C5_FAULTS' });
@@ -360,7 +375,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     git: capture,
     log: (line) => console.log(line),
     read: (file) => readFileSync(join(root, file), 'utf8'),
+    // runGate refuses TBI_PIPELINE_LOCK_DIR before it asks; never ask with it either way.
     holdsLock: () =>
+      process.env.TBI_PIPELINE_LOCK_DIR === undefined &&
       spawnSync(process.execPath, [join(root, 'deploy/ops/pipeline-lock.mjs'), 'check'], {
         stdio: 'ignore',
       }).status === 0,

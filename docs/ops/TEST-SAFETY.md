@@ -13,6 +13,8 @@ under `/etc/<instance>`, or kills QEMU / session units with systemctl runs only 
 
 1. `TBI_ALLOW_SERVICE_MUTATION` names the instance (`tbi-s8`, `tbi`; comma-separated), and
 2. the caller holds the host-wide pipeline lock (`deploy/ops/pipeline-lock.mjs check`).
+   `TBI_PIPELINE_LOCK_DIR` must be unset: it moves the lock's files, so with it set (to any value)
+   the lock counts as not held.
 
 Otherwise it is skipped and prints the reason. Tests that only create sessions on a deployed
 instance need the instance named explicitly (`TBI_S8_INSTANCE`, `TBI_C5_DEPLOYED`,
@@ -178,12 +180,19 @@ so another name or case, a wildcard, a path or a systemd unit name is refused
 (`instance_not_allowed`); a value or list entry that is the live DEV-Lab name `tbi` is refused as
 `live_instance`. A further test instance needs a change of the rule in the gate script.
 
-`TBI_HOST_RUNTIME_UNIT` and `TBI_BUILD_JOB_UNIT` (unit prefixes of the services) must be unset or
-empty (`unit_setting`).
+`TBI_HOST_RUNTIME_UNIT`, `TBI_BUILD_JOB_UNIT` (unit prefixes of the services) and
+`TBI_HOST_SESSION_ROOT` (the Session Host's session directory) must be unset or empty
+(`unit_setting`). `TBI_PIPELINE_LOCK_DIR` must be unset, even empty (`lock_redirect`).
+
+The operator must also leave these unset. The gate does **not** check them: `TBI_HOST_STATE`,
+`TBI_ARTIFACTS`, every `TBI_HOST_SIM_*` variable and `TBI_ACCESS_VIEW`. They point a process the
+suites start at another instance's state or artifacts, or change how it admits users.
 
 `TBI_RUNTIME_PROXY`, `TBI_BUILD_PROXY`, `TBI_FEEDBACK_RUNTIME_PROXY` and, when set,
 `TBI_ADMIN_PROXY` must be written as `http(s)://<host>:<port>` with host `127.0.0.1`, `localhost`
-or `[::1]` (`proxy_not_loopback`). The gate **does not check which instance listens on those
+or `[::1]` and a port from 1 to 65535 (`proxy_not_loopback`). An unset or empty `TBI_ADMIN_PROXY`
+is accepted, but unset it falls back to the default of `app/vite.config.ts`,
+`http://127.0.0.1:7410`: set it if whatever listens there is not part of the instance under test. The gate **does not check which instance listens on those
 ports**: a local relay to a live instance would pass. The operator verifies the relays.
 Starting private services for the browser specs: [PRIVATE-STACK.md](PRIVATE-STACK.md) (not
 rehearsed).

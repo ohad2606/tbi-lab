@@ -609,7 +609,13 @@ describe('the gate run (fake git and runners)', () => {
     // G2_DEPLOYED is read through a constant, and refused whenever set.
     expect([...names].sort()).toEqual([...PICKERS].sort());
   });
-  it.each(['TBI_HOST_RUNTIME_UNIT', 'TBI_BUILD_JOB_UNIT'])(
+  it('refuses a redirected pipeline lock whenever TBI_PIPELINE_LOCK_DIR is set', () => {
+    for (const value of ['', '/run/lock', '/tmp/private-lock'])
+      expect(refusal({ ...ENV, TBI_PIPELINE_LOCK_DIR: value }).failures, value).toEqual([
+        { code: 'lock_redirect', test: 'TBI_PIPELINE_LOCK_DIR' },
+      ]);
+  });
+  it.each(['TBI_HOST_RUNTIME_UNIT', 'TBI_BUILD_JOB_UNIT', 'TBI_HOST_SESSION_ROOT'])(
     'refuses the service unit setting %s whenever it has a value',
     (name) => {
       for (const value of ['tbi-qemu', 'tbi-s8-qemu', ' '])
@@ -650,6 +656,17 @@ describe('the gate run (fake git and runners)', () => {
         refusal({ ...ENV, [name]: url }).failures.map((f) => f.test),
         url,
       ).toContain(name);
+  });
+  it.each(PROXIES)('refuses %s with port 0 or a port above 65535', (name) => {
+    for (const port of ['0', '00000', '65536', '99999'])
+      expect(
+        refusal({ ...ENV, [name]: `http://127.0.0.1:${port}` }).failures.map((f) => f.code),
+        port,
+      ).toContain('proxy_not_loopback');
+    for (const port of ['1', '65535']) {
+      const { deps } = fake({ env: { ...ENV, [name]: `http://127.0.0.1:${port}` } });
+      expect(runGate(['--out', tmp()], deps), port).toBe(0);
+    }
   });
   it('accepts the loopback spellings, and an unset or empty admin proxy', () => {
     for (const url of ['http://127.0.0.1:7410', 'http://localhost:7410/', 'https://[::1]:7410']) {
