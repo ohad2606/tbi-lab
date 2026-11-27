@@ -52,6 +52,7 @@ import {
 import micropythonRecord from './profiles/esp32-micropython-1.29.json' with { type: 'json' };
 import { createBuildHttpServer } from './http.js';
 import { BuildService, DEFAULT_LIMITS, revokeBuildsOnReload } from './service.js';
+import { startPrewarm } from './prewarm.js';
 import { ArtifactStore } from './store.js';
 import { runtimeCapabilitiesFrom } from './runtimeJson.js';
 import { verifyRegistry } from '../libraries/tree.js';
@@ -145,11 +146,15 @@ await provider.verifyToolchain();
 // the service does not start.
 verifyRegistry();
 const grants = new Grants(join(stateDir, 'grants.db'));
-const store = new ArtifactStore({
+// TBI_BUILD_PREWARM=0 turns off both the prewarm passes and the pinning of their images.
+const prewarm = process.env.TBI_BUILD_PREWARM !== '0';
+const store: ArtifactStore = new ArtifactStore({
   dir: storeDir,
   capBytes,
   graceMs: leaseMs,
   onEvicted: (sha) => grants.dropArtifact(sha),
+  // Asked only on publish, after the service below exists.
+  ...(prewarm ? { isPinned: (sha: string) => service.isPinned(sha) } : {}),
 });
 await store.load();
 // Grants recorded before Phase 4 learn their sizes (storage quota).
@@ -196,9 +201,5 @@ process.stdout.write(
   `tbi-build listening on ${describeListen(where)} (profiles: ${service.profiles().join(', ')})\n`,
 );
 // Sprint 18F: in the background, the curated examples' shared builds (and the core seed), so
-// the first user after a deploy is not the one who waits. TBI_BUILD_PREWARM=0 turns it off.
-if (process.env.TBI_BUILD_PREWARM !== '0')
-  void service
-    .prewarm(systemBuildRequests())
-    .then((n) => process.stdout.write(`${JSON.stringify({ event: 'prewarm', built: n })}\n`))
-    .catch((e: Error) => process.stderr.write(`prewarm: ${e.message}\n`));
+// the first user after a deploy is not the one who waits. Capacity A4: repeated every 10 minutes.
+if (prewarm) startPrewarm(service, systemBuildRequests());

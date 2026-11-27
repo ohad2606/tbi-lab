@@ -12,7 +12,8 @@
  * and an existing `<sha>.bin` is never rewritten. Files without a manifest (the R1-provisioned
  * reference images) are not managed here, are never evicted, and are usable by everyone.
  *
- * Eviction (LRU over managed artifacts, above the byte cap) skips any artifact under a lease:
+ * Eviction (LRU over managed artifacts, above the byte cap) skips pinned artifacts (`isPinned`:
+ * current curated builds; they still count toward the cap) and any artifact under a lease:
  * a lease is taken just before a runtime session is created, which covers the interval until the
  * Session Host has made its private copy (D-S7-8). `onEvicted` lets the owner of the grants drop
  * them with the blob.
@@ -43,6 +44,10 @@ export interface StoreOptions {
   now?: () => number;
   /** Called for every evicted artifact (the grants on it are dropped). */
   onEvicted?: (sha256: string) => void;
+  /** Capacity A4: never evicted by LRU while true (still counted toward the cap). */
+  isPinned?: (sha256: string) => boolean;
+  /** Operator log, one line (default stderr). */
+  warn?: (line: string) => void;
 }
 
 const SHA = /^[0-9a-f]{64}$/;
@@ -54,6 +59,8 @@ export class ArtifactStore {
   private readonly now: () => number;
   /** Reference images present at start without a manifest: never managed, never evicted. */
   private readonly provisioned = new Set<string>();
+
+  private pinsOverCapLogged = false;
 
   constructor(private readonly opts: StoreOptions) {
     this.now = opts.now ?? Date.now;
@@ -189,15 +196,35 @@ export class ArtifactStore {
     this.leases.delete(sha);
   }
 
-  /** LRU over managed artifacts; never leased, never inside the grace period. */
+  /** Once per process: the pinned images alone no longer fit the cap. */
+  private warnPinsOverCap(pinned: Manifest[]) {
+    const pinnedBytes = pinned.reduce((n, m) => n + m.bytes, 0);
+    const { capBytes } = this.opts;
+    if (this.pinsOverCapLogged || pinnedBytes <= capBytes) return;
+    this.pinsOverCapLogged = true;
+    const warn = this.opts.warn ?? ((l: string) => void process.stderr.write(`${l}\n`));
+    warn(JSON.stringify({ event: 'artifact_pins_over_cap', pinnedBytes, capBytes }));
+  }
+
+  /**
+   * LRU over managed artifacts; never pinned, never leased, never inside the grace period. When
+   * what is protected exceeds the cap the store stays over it (publishing still succeeds; the
+   * host's free-disk floor is what refuses new work).
+   */
   async evict(): Promise<string[]> {
     const removed: string[] = [];
     const now = this.now();
+    let total = this.managedBytes();
+    if (total <= this.opts.capBytes) return removed;
+    const pinned = new Set(
+      [...this.manifests.values()].filter((m) => this.opts.isPinned?.(m.sha256)),
+    );
+    this.warnPinsOverCap([...pinned]);
     const candidates = [...this.manifests.values()]
+      .filter((m) => !pinned.has(m))
       .filter((m) => (this.leases.get(m.sha256) ?? 0) <= now)
       .filter((m) => now - (this.lastUsed.get(m.sha256) ?? 0) >= this.opts.graceMs)
       .sort((a, b) => (this.lastUsed.get(a.sha256) ?? 0) - (this.lastUsed.get(b.sha256) ?? 0));
-    let total = this.managedBytes();
     for (const m of candidates) {
       if (total <= this.opts.capBytes) break;
       await rm(join(this.opts.dir, `${m.sha256}.json`), { force: true });
