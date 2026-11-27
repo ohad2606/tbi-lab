@@ -110,6 +110,32 @@ cannot trust its state in `/var/lib/<N>-admin-auto` and sends nothing:
    This forgets the mails already counted, so up to a full cap can be sent again. Check the provider's usage for
    the last 30 days first, and lower the caps for that period if needed. The restart is a RED zone step, as above.
 
+## Morning summary and cut-off window (S4b settings, all off when unset)
+
+| Unit | Setting | Values | Effect |
+|---|---|---|---|
+| admin | `TBI_SIGNUP_SUMMARY` | `1`; unset = off. Another value: off, `summary file off (config: ...)` | About once a minute writes `auto-summary.json` into the sign-up store: counts, booleans and dates only. Never read back. |
+| intake | `TBI_SIGNUP_NOTIFY` | `summary`; unset or empty = one Telegram alert per request. Another value: the intake refuses to start | No alert per request. One summary a day when quiet hours (`TBI_SIGNUP_QUIET` of the intake) end, 08:00 when `off`; alerts (auto cap, verify cap, mail 80% of day or 30 days, verify key unreadable, pause on / off), at most one per type per day, never in quiet hours. State: `auto-notify.state.json` in the store. |
+| admin | `TBI_SIGNUP_AUTO_CUTOFF_KEEP_S` | `0`..`3600` seconds; unset or `0` = off. Bad value, or no separate `TBI_SIGNUP_AUTO_STATE_DIR`: sign-up admin routes disabled | **Owner decision open (DEC-38).** A restart whose first approving sweep comes within this many seconds of the last one keeps the cut-off. Sweeps run every 60 s, so a value near or below 60 mostly resets. |
+
+- **Before using `summary`:** enable the admin setting first and check that `auto-summary.json` appears. The file is
+  0600 and owned by the admin service user, so the intake can read it only when **both services run as the same
+  user**. The store already needs that today (0700 directory, 0600 records written by both sides). With another user
+  the intake logs `summary ignored (unreadable)` and, with per-request alerts off, **no notification arrives at
+  all**. The same happens while the admin service is stopped (`summary ignored (stale)`): a missing morning
+  summary means "check the services". If both share a user, only the units' sandbox keeps the intake out of the
+  control-state directory: check that the intake unit lists it under `InaccessiblePaths`.
+- Counts come from the requests the store holds at that moment (deleted or purged ones are not counted).
+  `n/a` means unknown or the feature is off.
+- A forged file can cause a wrong message only. It approves nothing and changes nothing in the admin service.
+- Log classes (intake): `summary ignored (missing|unreadable|not_file|too_large|invalid|stale|future)`,
+  `summary send failed (<class>)` (retried after 5, 10, 20, 40, then every 60 minutes), `summary state invalid`
+  or `unreadable`. Admin: `summary file not written (<class>)`, `auto-approve heartbeat not written / removed`.
+- With the cut-off window on, a pause, missing owner, unsafe directory or unreadable state removes the heartbeat,
+  and so does a start without auto-approve or without the setting: the next start resets the cut-off as described
+  below (`auto-approve cut-off reset`; a kept one logs `auto-approve cut-off kept`). **A pause file created and
+  removed while the service was stopped, or between two sweeps, is not seen** and does not reset a kept cut-off.
+
 ## Pause (kill switch) and resume
 
 Pausing needs no restart. Run it as root:
@@ -128,7 +154,7 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
 - The pause is checked once per sweep (every 60 s). A pause file created and removed between two sweeps is **not**
   seen: nothing is paused and no reset happens. Keep the file for at least one sweep interval (see the
   `auto-approve paused` line in the log) before you rely on it, or restart the service.
-- The same reset happens on **every restart** of the admin service and every re-enable: each new process first
+- Unless the cut-off window above is on, the same reset happens on **every restart** of the admin service and every re-enable: each new process first
   moves the cut-off to now (never earlier), so requests that arrived before it are yours to handle. The cost: a
   restart or resume (also one for an unrelated reason) leaves **all** requests still pending from before it for
   manual approval, including older ones that were waiting for the next day's cap.

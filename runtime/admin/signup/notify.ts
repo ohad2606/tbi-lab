@@ -54,10 +54,14 @@ export function telegramText(n: { name: string; role: string }, adminLink: strin
 export class TelegramNotifier implements SignupNotifier {
   constructor(private readonly c: TelegramConfig) {}
 
-  async notify(n: { name: string; role: string }): Promise<void> {
+  notify(n: { name: string; role: string }): Promise<void> {
+    return this.send(telegramText(n, this.c.adminLink));
+  }
+
+  /** One plain-text message to the owner's chat. */
+  async send(text: string): Promise<void> {
     const token = (await this.c.readToken()).trim();
     if (!TELEGRAM_TOKEN_RE.test(token)) throw new NotifyError('bad_token');
-    const text = telegramText(n, this.c.adminLink);
     let res;
     try {
       res = await this.c.fetch(`https://api.telegram.org/bot${token}/sendMessage`, {

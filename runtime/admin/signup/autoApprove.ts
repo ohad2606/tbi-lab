@@ -51,6 +51,15 @@
  *                  marked record; state removed before any sweep of this release saw it (and no
  *                  marked record); a run that only ever saw an unsafe dir (nothing is written
  *                  there); a failed marker write followed by a restart.
+ *   Heartbeat      S4b, only with TBI_SIGNUP_AUTO_CUTOFF_KEEP_S > 0 (owner decision open, DEC-38;
+ *                  default off): every approving sweep writes `<state>/auto-approve.heartbeat.json`
+ *                  after the cut-off is confirmed. A NEW process keeps the stored cut-off instead of
+ *                  resetting it only when the state says `active`, this process saw no inactive
+ *                  sweep, and the heartbeat is valid, not before the cut-off, not in the future and
+ *                  at most KEEP_S old. Every paused, no_owner, unsafe-dir or unreadable-state sweep
+ *                  removes it. Missing, invalid or not removable by the rules above = reset as
+ *                  before. A pause set and removed while no sweep ran is not seen (as between two
+ *                  sweeps).
  *   Kill switch    while `<state>/auto-approve.paused` exists (any entry: file, dir, symlink, even
  *                  dangling; lstat, never followed) nothing is auto-approved; every check error
  *                  other than ENOENT counts as paused (fail closed). Checked before every claim
@@ -78,6 +87,7 @@
  * Single writer: only one admin service runs the sweep (the in-process mutex below, plus the
  * per-id lock shared with the owner's actions, locks.ts).
  */
+import { constants } from 'node:fs';
 import { lstat as lstatAsync, open, readFile, realpath, rename, unlink } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -85,12 +95,15 @@ import { errorClass } from './errors.js';
 import { serialById } from './locks.js';
 import type { SignupApprover } from './service.js';
 import type { PendingStore, SignupRecord } from './store.js';
+import { replaceJson } from './summary.js';
 
 export const AUTO_PAUSE_FILE = 'auto-approve.paused';
 /** Day count, retries, claim set and cut-off (admin-owned state). */
 export const AUTO_STATE_FILE = 'auto-approve.state.json';
 /** Empty file: "an earlier run used this dir". Must not end in `.mark` / `.tmp` (store purge). */
 export const AUTO_MARKER_FILE = 'auto-approve.marker';
+/** S4b: `{"v":1,"at":<ms>}`, only with a keep window. */
+export const AUTO_HEARTBEAT_FILE = 'auto-approve.heartbeat.json';
 export const AUTO_CAP_MAX = 1000;
 export const AUTO_APPROVE_INTERVAL_MS = 60_000;
 export const AUTO_TZ = 'Asia/Jerusalem';
@@ -326,6 +339,17 @@ function validState(c: unknown): c is AutoState {
   return true;
 }
 
+/** tmp (O_EXCL, 0600) + fsync + rename + dir fsync. */
+async function replaceDurably(dir: string, name: string, value: unknown): Promise<void> {
+  await replaceJson(dir, name, value);
+  const dh = await open(dir, constants.O_RDONLY | constants.O_DIRECTORY);
+  try {
+    await dh.sync();
+  } finally {
+    await dh.close();
+  }
+}
+
 /** Per state directory: one sweep step / claim at a time in this process. */
 const mutexes = new Map<string, Promise<unknown>>();
 function exclusive<T>(key: string, fn: () => Promise<T>): Promise<T> {
@@ -365,6 +389,8 @@ export interface AutoApproverDeps {
   log?: (line: string) => void;
   /** Test hook: replaces lstat for the kill switch. */
   stat?: (p: string) => Promise<unknown>;
+  /** S4b: TBI_SIGNUP_AUTO_CUTOFF_KEEP_S in ms; unset = no heartbeat, every restart resets. */
+  keepMs?: number;
 }
 
 export interface SweepResult {
@@ -445,6 +471,7 @@ export class AutoApprover {
   private sawInactive = false;
   /** Last time (ms) each marker-write failure errno was logged: at most once per hour each. */
   private readonly markerFailLoggedAt = new Map<string, number>();
+  private readonly heartbeatLoggedAt = new Map<string, number>();
   /** This process has read a state file (so a later ENOENT is lost state, not a first run). */
   private hadState = false;
 
@@ -553,6 +580,32 @@ export class AutoApprover {
     }
   }
 
+  /**
+   * S4b (summary file, read-only): whether today's cap is used up, and how many eligible requests
+   * it holds back (0 while not used up; null while the cut-off is not confirmed). null = unsafe
+   * state dir or unreadable state.
+   */
+  async capStatus(): Promise<{ reached: boolean; waiting: number | null } | null> {
+    if (await autoStateDirCheck(this.d.dir)) return null;
+    let s: AutoState;
+    try {
+      s = await this.readState(this.today(), false);
+    } catch {
+      return null;
+    }
+    if (s.count < this.d.dailyCap) return { reached: false, waiting: 0 };
+    if (this.unconfirmed || s.active !== true || !s.since) return { reached: true, waiting: null };
+    const since = Math.max(this.d.since ?? -Infinity, Date.parse(s.since));
+    let waiting = 0;
+    for (const r of await this.d.store.list()) {
+      if (!eligible(r, s, since, this.d.webSignups)) continue;
+      // The record mirror first: the admin proof check costs several file system calls.
+      if (this.d.webSignups === 'verified' && !r.verifiedAt) continue;
+      if (await this.proven(r, since)) waiting++;
+    }
+    return { reached: true, waiting };
+  }
+
   /** Today's count as persisted (for tests and the design's operator check). */
   async todayCount(): Promise<number> {
     return (await this.readState(this.today())).count;
@@ -638,6 +691,7 @@ export class AutoApprover {
     this.unconfirmed = true;
     this.sawInactive = true;
     return exclusive(this.d.dir, async () => {
+      await this.dropHeartbeat();
       // First, so that it is there even when the state cannot be read or written.
       try {
         await this.writeMarker();
@@ -665,6 +719,7 @@ export class AutoApprover {
       if (!this.unconfirmed && s.active === true && s.since) return;
       const env = this.d.since;
       let firstRun = this.unconfirmed && s.since === undefined && s.active === undefined;
+      const kept = await this.keptCutoff(s);
       // Lost state (not a true first run): fail closed, the cut-off is now (or a later SINCE).
       if (firstRun && (await this.lostState())) {
         firstRun = false;
@@ -672,7 +727,7 @@ export class AutoApprover {
       }
       const since = firstRun
         ? (env ?? this.now())
-        : Math.max(this.now(), s.since ? Date.parse(s.since) : -Infinity, env ?? -Infinity);
+        : Math.max(kept ?? this.now(), s.since ? Date.parse(s.since) : -Infinity, env ?? -Infinity);
       try {
         await this.writeState({ ...s, since: new Date(since).toISOString(), active: true });
         // After the state, so a failed first write stays a first run; nothing is claimed without it.
@@ -684,9 +739,79 @@ export class AutoApprover {
       this.log(
         firstRun
           ? 'signup: auto-approve cut-off recorded (only requests created from now on)'
-          : 'signup: auto-approve cut-off reset (only requests created from now on)',
+          : kept !== null
+            ? 'signup: auto-approve cut-off kept (restart within the heartbeat window)'
+            : 'signup: auto-approve cut-off reset (only requests created from now on)',
       );
     });
+  }
+
+  /**
+   * S4b: the stored cut-off (ms) when this restart may keep it, else null (= reset). Fail closed
+   * on anything missing, invalid, in the future, older than the window or older than the cut-off
+   * (a run that moved the cut-off without writing a heartbeat).
+   */
+  private async keptCutoff(s: AutoState): Promise<number | null> {
+    const keep = this.d.keepMs;
+    if (!keep || !this.unconfirmed || this.sawInactive || s.active !== true || !s.since)
+      return null;
+    const cut = Date.parse(s.since);
+    const at = await this.readHeartbeat();
+    const t = this.now();
+    return at !== null && at >= cut && at <= t && t - at <= keep ? cut : null;
+  }
+
+  private async readHeartbeat(): Promise<number | null> {
+    try {
+      const fh = await open(
+        join(this.d.dir, AUTO_HEARTBEAT_FILE),
+        constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+      );
+      try {
+        const st = await fh.stat();
+        if (!st.isFile() || st.size > 128) return null;
+        const h = JSON.parse(await fh.readFile('utf8')) as { v?: unknown; at?: unknown } | null;
+        return h?.v === 1 && Number.isSafeInteger(h.at) ? (h.at as number) : null;
+      } finally {
+        await fh.close();
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  /** A failed write only lets the heartbeat age (= reset at the next restart). */
+  private async writeHeartbeat(): Promise<void> {
+    if (!this.d.keepMs) return;
+    await exclusive(this.d.dir, async () => {
+      if (this.unconfirmed) return;
+      await replaceDurably(this.d.dir, AUTO_HEARTBEAT_FILE, { v: 1, at: this.now() });
+    }).catch((e: unknown) => this.logHeartbeat('written', errnoOf(e)));
+  }
+
+  /** Removing it can only cause a reset, so it is also tried when the dir check failed. */
+  async dropHeartbeat(): Promise<void> {
+    if (!this.d.keepMs) return;
+    await unlink(join(this.d.dir, AUTO_HEARTBEAT_FILE)).catch((e: NodeJS.ErrnoException) => {
+      if (e.code !== 'ENOENT') this.logHeartbeat('removed', errnoOf(e));
+    });
+  }
+
+  /** At most once per hour per failure. */
+  private logHeartbeat(what: 'written' | 'removed', cls: string): void {
+    const key = `${what} ${cls}`;
+    const last = this.heartbeatLoggedAt.get(key);
+    const t = this.now();
+    if (last !== undefined && t >= last && t - last < AUTO_UNREADABLE_LOG_MS) return;
+    this.heartbeatLoggedAt.set(key, t);
+    this.log(`signup: auto-approve heartbeat not ${what} (${cls})`);
+  }
+
+  /** An inactive sweep: unconfirmed, never a first run again, and no heartbeat to keep. */
+  private async inactive(): Promise<void> {
+    this.unconfirmed = true;
+    this.sawInactive = true;
+    await this.dropHeartbeat();
   }
 
   /** Creates the marker when no entry of that name exists (the caller has checked the dir). */
@@ -762,10 +887,7 @@ export class AutoApprover {
     } catch {
       r = 'paused';
     }
-    if (r !== 'ok') {
-      this.unconfirmed = true;
-      this.sawInactive = true;
-    }
+    if (r !== 'ok') await this.inactive();
     return r;
   }
 
@@ -941,6 +1063,7 @@ export class AutoApprover {
     } catch (e) {
       if (e instanceof CounterUnreadable) {
         this.sawInactive = true;
+        await this.dropHeartbeat();
         const last = this.unreadableLoggedAt.get(e.message);
         const t = this.now();
         // A clock stepped back also logs again (never silent for longer than the window).
@@ -974,8 +1097,7 @@ export class AutoApprover {
     if (await this.checkStateDir()) {
       // Like a pause (the state is not touched: the dir is not trusted): reset on recovery, and
       // a missing state file after it is lost state (cut-off = now), never a first run.
-      this.unconfirmed = true;
-      this.sawInactive = true;
+      await this.inactive();
       return { ...out, stopped: 'state_dir_unsafe' };
     }
     if (await this.paused()) {
@@ -1000,6 +1122,7 @@ export class AutoApprover {
     this.noOwnerLogged = false;
     // The reset completes (persisted) before any retry or claim of this sweep.
     await this.confirm();
+    await this.writeHeartbeat();
     const since = await this.sinceMs();
     const records = await this.d.store.list(); // oldest first
     const state = await this.prune(new Map(records.map((r) => [r.id, r])));
@@ -1011,8 +1134,7 @@ export class AutoApprover {
       if (!e || r.status !== 'approved' || r.emailAttemptedAt) continue;
       if (this.now() - Date.parse(e.lastAttemptAt) < AUTO_RETRY_BACKOFF_MS) continue;
       if (await this.paused()) {
-        this.unconfirmed = true;
-        this.sawInactive = true;
+        await this.inactive();
         return { ...out, stopped: 'paused' };
       }
       const res = await this.reserveRetry(r.id);
@@ -1037,8 +1159,7 @@ export class AutoApprover {
       if (!eligible(r, state, since, this.d.webSignups)) continue;
       if (!(await this.proven(r, since))) continue;
       if (await this.paused()) {
-        this.unconfirmed = true;
-        this.sawInactive = true;
+        await this.inactive();
         return { ...out, stopped: 'paused' };
       }
       const c = await this.claim(r.id, since);

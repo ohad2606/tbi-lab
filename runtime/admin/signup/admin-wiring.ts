@@ -35,9 +35,21 @@
  *                                behaviour. A bad value disables the sign-up admin routes (one log
  *                                line); TBI_SIGNUP_AUTO_WEB=verified needs the mail caps (without
  *                                them: no auto-approve and no verify mail; the binding stays).
+ *   TBI_SIGNUP_SUMMARY           S4b, OFF by default: `1` writes the counts-only
+ *                                `auto-summary.json` into the store dir after each sweep (once a
+ *                                minute) for the intake (TBI_SIGNUP_NOTIFY=summary). Any other
+ *                                value: no file (one log line). Admin and intake must be able to
+ *                                read each other's 0600 files in the store (same uid).
+ *   TBI_SIGNUP_AUTO_CUTOFF_KEEP_S  S4b, OFF by default (DEC-38 open): 0..3600; above 0 a restart
+ *                                within that many seconds of the last sweep keeps the auto-approve
+ *                                cut-off (autoApprove.ts). Needs a separate
+ *                                TBI_SIGNUP_AUTO_STATE_DIR; a bad value disables the routes.
  */
+import { unlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   AUTO_APPROVE_INTERVAL_MS,
+  AUTO_HEARTBEAT_FILE,
   AutoApprover,
   type AutoApproveStatus,
   autoApproveConfigFromEnv,
@@ -60,6 +72,7 @@ import {
 } from './store.js';
 import { loadVerifyKeys } from './verify.js';
 import { MailGate, safeguardsFromEnv, type MailLimits } from './mailGate.js';
+import { writeSummary, type SummaryDeps } from './summaryAdmin.js';
 import { VERIFY_MAX_PER_DAY } from './verifyState.js';
 import { Verifier, verifyConfigFromEnv, type VerifyConfig } from './verifyState.js';
 import type { AdminSpool } from '../accounts.js';
@@ -83,6 +96,8 @@ export interface AdminSignupConfig {
     since?: number;
     /** BETA-G1 s8: unset = `excluded` (web-origin requests are never auto-approved). */
     webSignups?: AutoWebSignups;
+    /** S4b: heartbeat keep window (ms); unset = every restart resets the cut-off. */
+    keepMs?: number;
   };
   /** G1-AUTO-VERIFY: email verification; unset = off (no key read, nothing written). */
   verify?: VerifyConfig & { maxPerDay?: number; unverifiedDays?: number };
@@ -93,6 +108,8 @@ export interface AdminSignupConfig {
   verifiedMode?: boolean;
   /** S4a: the mail gate around every applicant mail; unset = no gate (today's behaviour). */
   mailCaps?: MailLimits & { stateDir: string };
+  /** S4b: write the counts-only summary file; unset = never. */
+  summary?: boolean;
 }
 
 export type AdminSignupConfigResult =
@@ -137,6 +154,14 @@ export function adminSignupConfigFromEnv(
   let mailCaps: AdminSignupConfig['mailCaps'];
   try {
     const sg = safeguardsFromEnv(env);
+    const own = env.TBI_SIGNUP_AUTO_STATE_DIR ?? '';
+    if (
+      sg.cutoffKeepMs !== undefined &&
+      (!own.startsWith('/') || own.replace(/\/+$/, '') === dir.replace(/\/+$/, ''))
+    )
+      return bad(
+        'TBI_SIGNUP_AUTO_CUTOFF_KEEP_S needs TBI_SIGNUP_AUTO_STATE_DIR (not the store dir)',
+      );
     if (sg.mail) {
       const sd = env.TBI_SIGNUP_AUTO_STATE_DIR ?? '';
       if (!sd.startsWith('/') || sd.replace(/\/+$/, '') === dir.replace(/\/+$/, ''))
@@ -324,6 +349,7 @@ export async function wireSignupAdmin(
         ...(c.autoApprove.since !== undefined ? { since: c.autoApprove.since } : {}),
         ...(c.autoApprove.webSignups ? { webSignups: c.autoApprove.webSignups } : {}),
         ...(verifier ? { verified: verifier } : {}),
+        ...(c.autoApprove.keepMs !== undefined ? { keepMs: c.autoApprove.keepMs } : {}),
         now: io.now,
         log: io.log,
         approver: (hooks) => {
@@ -364,6 +390,39 @@ export async function wireSignupAdmin(
         },
       })
     : null;
+  // S4b: the counts-only file for the intake's summary and alerts (written, never read back).
+  const summaryDeps: SummaryDeps | null = c.summary
+    ? {
+        storeDir: c.dir,
+        store,
+        auto,
+        verify:
+          verifier && c.verify
+            ? {
+                verifier,
+                maxPerDay: c.verify.maxPerDay ?? VERIFY_MAX_PER_DAY,
+                keys: () => loadVerifyKeys(c.verify!.keyFile),
+              }
+            : null,
+        mail: gate && c.mailCaps ? { gate, limits: c.mailCaps } : null,
+        pauseDir: auto
+          ? (c.autoApprove!.stateDir ?? c.dir)
+          : (c.mailCaps?.stateDir ?? c.verify?.stateDir ?? null),
+        now: io.now,
+      }
+    : null;
+  let summaryFailedAt: number | undefined;
+  const summarize = async (deps: SummaryDeps) => {
+    try {
+      await writeSummary(deps);
+    } catch (e) {
+      const t = (io.now ?? Date.now)();
+      if (summaryFailedAt !== undefined && t >= summaryFailedAt && t - summaryFailedAt < 3_600_000)
+        return;
+      summaryFailedAt = t;
+      io.log(`signup: summary file not written (${errorClass(e)})`);
+    }
+  };
   let sweeping: Promise<void> | null = null;
   let running = false;
   return {
@@ -371,9 +430,10 @@ export async function wireSignupAdmin(
     auto,
     verifier,
     startAutoApprove() {
-      if (!auto && !verifier) return async () => undefined;
+      if (!auto && !verifier && !summaryDeps) return async () => undefined;
       if (auto) io.log(`signup: auto-approve on (daily cap ${c.autoApprove!.dailyCap})`);
       if (verifier) io.log('signup: email verification on');
+      if (summaryDeps) io.log('signup: summary file on');
       let t: ReturnType<typeof setInterval> | undefined;
       let stopped = false;
       let autoOk = false;
@@ -385,13 +445,17 @@ export async function wireSignupAdmin(
             await verifier
               .sweep({ stop: () => stopped })
               .catch((e: unknown) => io.log(`signup: verify sweep failed (${errorClass(e)})`));
-          if (!auto || !autoOk) return;
-          await auto
-            .sweep()
-            .then((r) => {
-              if (r.attempted > 0) io.log(`signup: auto-approve processed ${r.attempted}`);
-            })
-            .catch((e: unknown) => io.log(`signup: auto-approve sweep failed (${errorClass(e)})`));
+          if (auto && autoOk)
+            await auto
+              .sweep()
+              .then((r) => {
+                if (r.attempted > 0) io.log(`signup: auto-approve processed ${r.attempted}`);
+              })
+              .catch((e: unknown) =>
+                io.log(`signup: auto-approve sweep failed (${errorClass(e)})`),
+              );
+          // After the sweeps, also when auto-approve could not start (the owner still hears).
+          if (summaryDeps && !stopped) await summarize(summaryDeps);
         })().finally(() => {
           sweeping = null;
         });
@@ -399,10 +463,11 @@ export async function wireSignupAdmin(
       // Refuse to start on an unsafe state dir (one log line); manual approval is unaffected.
       const started = (
         auto ? autoStateDirCheck(c.autoApprove!.stateDir ?? c.dir) : Promise.resolve(null)
-      ).then((bad) => {
+      ).then(async (bad) => {
         if (bad) {
           io.log(`signup: auto-approve not started (state dir unsafe: ${bad}); manual only`);
-          if (!verifier) return;
+          await auto!.dropHeartbeat();
+          if (!verifier && !summaryDeps) return;
         } else autoOk = !!auto;
         // A stop requested while the state dir was checked: no sweep at all.
         if (stopped) return;
@@ -470,7 +535,14 @@ export async function signupWiringFromEnv(
   io: Parameters<typeof wireSignupAdmin>[2],
 ): Promise<SignupAdminWiring | null> {
   const cfg = adminSignupConfigFromEnv(env);
+  // S4b: a start that does not run auto-approve with a keep window removes an older heartbeat, so
+  // off -> on (or a refused start in between) never keeps a cut-off. Absent file: nothing happens.
+  const forgetHeartbeat = async () => {
+    const d = env.TBI_SIGNUP_AUTO_STATE_DIR ?? '';
+    if (d.startsWith('/')) await unlink(join(d, AUTO_HEARTBEAT_FILE)).catch(() => undefined);
+  };
   if (!cfg.enabled) {
+    await forgetHeartbeat();
     // The reasons are fixed texts naming a variable, never its value.
     if (cfg.error) io.log(`signup: admin routes disabled (config: ${cfg.reason})`);
     return null;
@@ -487,6 +559,8 @@ export async function signupWiringFromEnv(
     };
     io.log(`signup: auto-approve off (config: ${auto.reason})`);
   }
+  const keepMs = auto.enabled ? safeguardsFromEnv(env).cutoffKeepMs : undefined;
+  if (keepMs === undefined) await forgetHeartbeat();
   const config: AdminSignupConfig = auto.enabled
     ? {
         ...cfg.config,
@@ -495,6 +569,7 @@ export async function signupWiringFromEnv(
           ...(auto.stateDir !== undefined ? { stateDir: auto.stateDir } : {}),
           ...(auto.since !== undefined ? { since: auto.since } : {}),
           webSignups: auto.webSignups,
+          ...(keepMs !== undefined ? { keepMs } : {}),
         },
       }
     : { ...cfg.config };
@@ -504,8 +579,13 @@ export async function signupWiringFromEnv(
   const ver = verifyConfigFromEnv(env, cfg.config.dir);
   if (ver.enabled) config.verify = ver.config;
   else if (ver.error) io.log(`signup: email verification off (config: ${ver.reason})`);
+  const summaryFlag = env.TBI_SIGNUP_SUMMARY ?? '';
+  if (summaryFlag === '1') config.summary = true;
+  else if (summaryFlag !== '')
+    io.log('signup: summary file off (config: TBI_SIGNUP_SUMMARY must be 1 or unset)');
   const sg = safeguardsFromEnv(env); // already validated by adminSignupConfigFromEnv
-  const refuse = (reason: string) => {
+  const refuse = async (reason: string) => {
+    await forgetHeartbeat();
     io.log(`signup: admin routes disabled (config: ${reason})`);
     return null;
   };
@@ -527,6 +607,7 @@ export async function signupWiringFromEnv(
   try {
     return await wireSignupAdmin(config, spool, io);
   } catch (e) {
+    await forgetHeartbeat();
     const code =
       e instanceof StoreError ? e.code : `store_${errorClass(e).replace(/^secret_/, '')}`;
     io.log(`signup: admin routes disabled (${code})`);

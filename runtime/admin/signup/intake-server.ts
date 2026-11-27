@@ -20,6 +20,10 @@
  *                                 (design §3: no silent fallback that puts every client in one bucket).
  *                                 Requests without a valid IP in it are logged (throttled) as
  *                                 `source_header_missing` (they share the proxy's rate bucket)
+ *   TBI_SIGNUP_NOTIFY             G1-AUTO-VERIFY slice 4b: `summary` = no alert per request; the
+ *                                 morning summary and alerts from the admin's counts file instead
+ *                                 (summaryNotify.ts). Unset / empty = one alert per request; any
+ *                                 other value = refusal to start
  *   TBI_SIGNUP_WEB                BETA-G1 s8: exactly `1` adds the browser route (`GET /signup/form-token`,
  *                                 `POST /signup/web`); unset / empty / `0` = off (both paths 404); any
  *                                 other value = refusal to start. docs/plans/BETA-G1-WEB-INTAKE.md
@@ -49,6 +53,7 @@ import { parseQuiet, type QuietWindow } from './quietHours.js';
 import { readSecretFile } from './secret-file.js';
 import { SignupIntake } from './service.js';
 import { PendingStore } from './store.js';
+import { SummaryNotifier } from './summaryNotify.js';
 import { deriveWebKey, parseOrigins, WEB_TOKEN_TTL_MS } from './web.js';
 
 export interface IntakeConfig {
@@ -66,6 +71,8 @@ export interface IntakeConfig {
   web?: { origins: string[] } | null;
   /** G1-AUTO-VERIFY slice 2: `/signup/verify`, `/signup/resend`, duplicate -> resend (needs web). */
   verify?: boolean;
+  /** Slice 4b: `summary` replaces the per-request alert; unset = per-request alerts. */
+  notify?: 'summary';
 }
 
 export const INTAKE_DRAIN_MS = 60_000;
@@ -172,9 +179,13 @@ export function intakeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Intak
   if (verifyFlag !== '' && verifyFlag !== '0' && verifyFlag !== '1')
     return bad('TBI_SIGNUP_VERIFY must be 1, 0 or unset');
   const verify = verifyFlag === '1' && web !== null;
+  const notify = env.TBI_SIGNUP_NOTIFY ?? '';
+  if (notify !== '' && notify !== 'summary')
+    return bad('TBI_SIGNUP_NOTIFY must be summary or unset');
   return {
     enabled: true,
     config: {
+      ...(notify === 'summary' ? { notify } : {}),
       quiet,
       web,
       verify,
@@ -194,6 +205,8 @@ export interface RunningIntake {
   server: Server;
   /** The intake itself (tests await `settled()` for web-route alerts). */
   intake: SignupIntake;
+  /** TBI_SIGNUP_NOTIFY=summary: the summary / alert sender (tests call `tick()`); else null. */
+  summary: SummaryNotifier | null;
   port: number;
   close(): Promise<void>;
 }
@@ -229,15 +242,26 @@ export async function startIntake(
   });
   await store.init();
   const now = io.now ?? Date.now;
+  const telegram = new TelegramNotifier({
+    readToken: () => readSecretFile(c.tokenFile),
+    chatId: c.chatId,
+    adminLink: c.adminLink,
+    fetch: io.fetch,
+  });
+  const summary =
+    c.notify === 'summary'
+      ? new SummaryNotifier({
+          storeDir: c.dir,
+          send: (text) => telegram.send(text),
+          quiet: c.quiet ?? null,
+          now,
+          log: io.log,
+        })
+      : null;
   const intake = new SignupIntake({
     secret,
     store,
-    notifier: new TelegramNotifier({
-      readToken: () => readSecretFile(c.tokenFile),
-      chatId: c.chatId,
-      adminLink: c.adminLink,
-      fetch: io.fetch,
-    }),
+    notifier: summary ? null : telegram,
     now,
     quiet: c.quiet ?? null,
     sourceRate: new SlidingWindowLimiter(INTAKE_SOURCE_LIMIT, now),
@@ -316,16 +340,32 @@ export async function startIntake(
     drainTimer = setInterval(tick, INTAKE_DRAIN_MS);
     drainTimer.unref();
   }
+  let summaryTimer: NodeJS.Timeout | null = null;
+  if (summary) {
+    io.log('signup: owner notifications: summary and alerts only');
+    void summary.tick();
+    summaryTimer = setInterval(() => void summary.tick(), INTAKE_DRAIN_MS);
+    summaryTimer.unref();
+  }
   if (c.web) io.log(`web route on (${c.web.origins.length} origin(s))`);
   return {
     server,
     intake,
+    summary,
     port: (server.address() as AddressInfo).port,
     close: () =>
       new Promise<void>((resolve) => {
         if (drainTimer) clearInterval(drainTimer);
+        if (summaryTimer) clearInterval(summaryTimer);
         // Web-route alerts still in flight finish first (each is bounded by the notifier timeout).
-        server.close(() => void intake.settled().then(resolve, resolve));
+        const done = () => Promise.all([intake.settled(), summary?.settled()]);
+        server.close(
+          () =>
+            void done().then(
+              () => resolve(),
+              () => resolve(),
+            ),
+        );
         server.closeAllConnections();
       }),
   };
