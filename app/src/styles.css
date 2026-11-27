@@ -617,6 +617,29 @@ select {
   margin-block: 0.5rem 1rem;
 }
 
+/* BETA-G3: move buttons (a single-pointer alternative to dragging). Physical order, set LTR. */
+.move-group {
+  margin-block: 0.5rem;
+}
+.move-group h3 {
+  font-size: 0.9rem;
+  margin: 0 0 0.35rem;
+}
+.move-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.move-buttons .icon-button {
+  display: grid;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  padding: 0;
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
 /* ---------------------------------------------------------------- canvas */
 
 .canvas-wrap {

@@ -25,7 +25,7 @@ It works on a computer, in Chrome or Edge. Your projects are saved in your brows
 With the mouse:
 
 1. In **Components**, choose a part, then click on the canvas to place it. `Esc` cancels placing.
-2. Select a part to move it, and use the inspector to change its values. `R` rotates a selected part; `Delete` removes it.
+2. Drag a part to move it, or select it and use the **Move** buttons in **Properties** (one grid step per click, no dragging needed). Use the inspector to change its values. `R` rotates a selected part; `Delete` removes it.
 3. To wire, click a terminal. Click another terminal, a junction or a wire to finish. Click empty space to add a bend. `Esc` cancels.
 4. Wiring and editing are not possible while the simulation runs. Stop it first.
 

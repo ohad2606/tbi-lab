@@ -35,6 +35,8 @@ import { useAppState, useStore, useT } from './context.js';
 import { checkIssueText, checksFor } from './checks.js';
 import { NEUTRAL_HEX, resolveWireColors } from '../views/wireColors.js';
 import { rotateRouted } from './routing.js';
+import { MoveControls } from './MoveControls.js';
+import { useAnnounce } from './useAnnounce.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
 import { McuPanel } from './McuPanel.js';
 import { isLogicType, LogicStateView } from './LogicStateView.js';
@@ -125,11 +127,12 @@ function WireRouteField({ wire, readOnly }: { wire: Wire; readOnly: boolean }) {
 }
 
 export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorProps) {
-  const { doc, selection, readOnly, sim } = useAppState();
+  const { doc, selection, readOnly, sim, locale } = useAppState();
   const simActive = sim.status === 'running' || sim.status === 'starting';
   const outcome = sim.status === 'running' && sim.outcome.ok ? sim.outcome : null;
   const store = useStore();
   const t = useT();
+  const [status, announce] = useAnnounce();
   if (!doc) return null;
   const count = selection.components.length + selection.wires.length + selection.junctions.length;
   const single =
@@ -232,7 +235,19 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
           <dd>{t('inspector.junction')}</dd>
         </dl>
       )}
+      {!readOnly && (single || junction) && (
+        <MoveControls id={single?.id ?? junction!} announce={announce} />
+      )}
       {actions}
+      <div
+        class="visually-hidden"
+        role="status"
+        aria-live="polite"
+        data-testid="inspector-status"
+        dir={locale.dir}
+      >
+        {status}
+      </div>
       <ProbesSection probes={probes} onRemove={onRemoveProbe} onClear={onClearProbes} />
       {/* Kept mounted while running (hidden), so Run/Stop never re-renders the list. */}
       <ChecksSection hidden={simActive} />
