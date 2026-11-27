@@ -23,6 +23,8 @@
  *   TBI_SIGNUP_WEB                BETA-G1 s8: exactly `1` adds the browser route (`GET /signup/form-token`,
  *                                 `POST /signup/web`); unset / empty / `0` = off (both paths 404); any
  *                                 other value = refusal to start. docs/plans/BETA-G1-WEB-INTAKE.md
+ *   TBI_SIGNUP_VERIFY             G1-AUTO-VERIFY slice 2: exactly `1` (with TBI_SIGNUP_WEB=1) adds
+ *                                 `POST /signup/verify` and `/signup/resend`; unset / `0` = off (404).
  *   TBI_SIGNUP_WEB_ORIGINS        REQUIRED when TBI_SIGNUP_WEB=1, no default: comma-separated exact
  *                                 `https://host[:port]` origins of the sign-up page
  */
@@ -36,6 +38,8 @@ import {
   handleWebSignupRequest,
   parseSourceHeader,
   readSecret,
+  RESEND_PATH,
+  VERIFY_PATH,
   WEB_SIGNUP_PATH,
   WEB_TOKEN_PATH,
 } from './http.js';
@@ -60,6 +64,8 @@ export interface IntakeConfig {
   quiet?: QuietWindow | null;
   /** BETA-G1 s8: the browser route; null / unset = off (its paths answer 404). */
   web?: { origins: string[] } | null;
+  /** G1-AUTO-VERIFY slice 2: `/signup/verify`, `/signup/resend`, duplicate -> resend (needs web). */
+  verify?: boolean;
 }
 
 export const INTAKE_DRAIN_MS = 60_000;
@@ -94,6 +100,11 @@ export const WEB_MAX_RECORDS = 1_500;
 export const WEB_TOKEN_SOURCE_LIMIT = { count: 20, windowMs: 10 * 60_000 } as const;
 export const WEB_POST_SOURCE_LIMIT = { count: 10, windowMs: 10 * 60_000 } as const;
 export const WEB_GLOBAL_LIMIT = { count: 200, windowMs: 3_600_000 } as const;
+/** G1-AUTO-VERIFY slice 2 (design section 7 / 4): own buckets, separate from `/signup/web`. */
+export const VERIFY_SOURCE_LIMIT = { count: 10, windowMs: 10 * 60_000 } as const;
+export const VERIFY_GLOBAL_LIMIT = { count: 300, windowMs: 3_600_000 } as const;
+export const RESEND_SOURCE_LIMIT = { count: 5, windowMs: 10 * 60_000 } as const;
+export const RESEND_GLOBAL_LIMIT = { count: 100, windowMs: 3_600_000 } as const;
 
 /** At most one `source_header_missing` line per this interval. */
 export const SOURCE_FALLBACK_LOG_MS = 10 * 60_000;
@@ -156,11 +167,17 @@ export function intakeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Intak
       );
     web = { origins };
   } else if (webFlag !== '' && webFlag !== '0') return bad('TBI_SIGNUP_WEB must be 1, 0 or unset');
+  // The flag only: the intake never reads the verify key (the admin unit holds it).
+  const verifyFlag = env.TBI_SIGNUP_VERIFY ?? '';
+  if (verifyFlag !== '' && verifyFlag !== '0' && verifyFlag !== '1')
+    return bad('TBI_SIGNUP_VERIFY must be 1, 0 or unset');
+  const verify = verifyFlag === '1' && web !== null;
   return {
     enabled: true,
     config: {
       quiet,
       web,
+      verify,
       dir: dir!,
       hmacFile: hmacFile!,
       tokenFile: tokenFile!,
@@ -240,6 +257,16 @@ export async function startIntake(
           },
         }
       : {}),
+    ...(c.web && c.verify
+      ? {
+          verify: {
+            verifyRate: new SlidingWindowLimiter(VERIFY_SOURCE_LIMIT, now),
+            verifyGlobal: new SlidingWindowLimiter(VERIFY_GLOBAL_LIMIT, now),
+            resendRate: new SlidingWindowLimiter(RESEND_SOURCE_LIMIT, now),
+            resendGlobal: new SlidingWindowLimiter(RESEND_GLOBAL_LIMIT, now),
+          },
+        }
+      : {}),
   });
   let lastFallbackLog = -Infinity;
   const onSourceFallback = () => {
@@ -250,7 +277,12 @@ export async function startIntake(
   };
   const server = createServer((req, res) => {
     const path = (req.url ?? '').split('?')[0];
-    if (c.web && (path === WEB_TOKEN_PATH || path === WEB_SIGNUP_PATH)) {
+    if (
+      c.web &&
+      (path === WEB_TOKEN_PATH ||
+        path === WEB_SIGNUP_PATH ||
+        (c.verify === true && (path === VERIFY_PATH || path === RESEND_PATH)))
+    ) {
       void handleWebSignupRequest(req, res, intake, path, {
         sourceHeader: c.sourceHeader,
         origins: c.web.origins,

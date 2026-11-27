@@ -40,6 +40,7 @@
  *              owner's own approve/resend, which binds the address the owner is looking at.
  * Logs carry class codes and counts only: never an id, token, hash, file name, address or name.
  */
+import { timingSafeEqual } from 'node:crypto';
 import { constants } from 'node:fs';
 import { mkdir, open, readdir, realpath, rename, unlink } from 'node:fs/promises';
 import { createHash, randomBytes } from 'node:crypto';
@@ -50,7 +51,13 @@ import { AUTO_PAUSE_FILE, autoPauseCheck, autoStateDirCheck, israelDay } from '.
 import type { EmailSender } from './email.js';
 import { errorClass } from './errors.js';
 import { serialById } from './locks.js';
-import { StoreError, VERIFY_MARKER_RE, type PendingStore, type SignupRecord } from './store.js';
+import {
+  RESEND_MARKER_RE,
+  StoreError,
+  VERIFY_MARKER_RE,
+  type PendingStore,
+  type SignupRecord,
+} from './store.js';
 import {
   checkVerifyToken,
   mintVerifyToken,
@@ -276,6 +283,13 @@ export interface VerifySweepOptions {
   stop?: () => boolean;
 }
 
+/** Timing-safe equality of two 16-hex hash prefixes (an empty confirm marker's name). */
+function samePrefix(a: string, b: string): boolean {
+  const x = Buffer.from(a, 'hex');
+  const y = Buffer.from(b, 'hex');
+  return x.length === 8 && y.length === 8 && timingSafeEqual(x, y);
+}
+
 export class Verifier {
   private readonly vdir: string;
   private readonly onceLogged = new Map<string, number>();
@@ -418,7 +432,7 @@ export class Verifier {
     return serialById(id, async () => {
       if (await this.paused()) return 'paused';
       const r = await this.d.store.get(id).catch(() => null);
-      if (!r || r.status !== 'pending') return 'not_pending';
+      if (!r || r.status !== 'pending' || (resend && r.origin !== 'web')) return 'not_pending';
       const addr = addressHash(r.email);
       if (!addr) return 'bad_address';
       let s: IdState | null;
@@ -523,15 +537,23 @@ export class Verifier {
     } finally {
       await fh.close();
     }
-    const hash = tokenHash(token);
-    if (hash.slice(0, 16) !== suffix) return { cls: 'bad_marker', unlink: true };
-    const p = checkVerifyToken(
-      keys.prev ? [keys.current, keys.prev] : [keys.current],
-      token,
-      'verify',
-    );
-    if (!p) return { cls: /^v1\./.test(token) ? 'bad_mac' : 'bad_format', unlink: true };
-    if (p.id !== fileId) return { cls: 'id_mismatch', unlink: true };
+    // Slice 2: the intake writes an EMPTY marker (it never stores the token); the 64-bit hash
+    // prefix in the name is then matched against this id's minted generations (hash only, timing
+    // safe). A marker holding a token (slice 1 form) is still checked by its MAC first.
+    let p: { gen: number } | null = null;
+    let hash: string | null = null;
+    if (token !== '') {
+      hash = tokenHash(token);
+      if (hash.slice(0, 16) !== suffix) return { cls: 'bad_marker', unlink: true };
+      const q = checkVerifyToken(
+        keys.prev ? [keys.current, keys.prev] : [keys.current],
+        token,
+        'verify',
+      );
+      if (!q) return { cls: /^v1\./.test(token) ? 'bad_mac' : 'bad_format', unlink: true };
+      if (q.id !== fileId) return { cls: 'id_mismatch', unlink: true };
+      p = q;
+    }
     return serialById(fileId, async () => {
       let r: SignupRecord;
       try {
@@ -549,7 +571,11 @@ export class Verifier {
       }
       if (!s) return { cls: 'unknown_gen', unlink: true };
       if (s.usedAt) return { cls: 'replay', unlink: true };
-      const g = s.gens.find((x) => x.gen === p.gen && sameHash(x.hash, hash));
+      const g = s.gens.find((x) =>
+        p && hash
+          ? x.gen === p.gen && sameHash(x.hash, hash)
+          : samePrefix(x.hash.slice(0, 16), suffix),
+      );
       if (!g) return { cls: 'unknown_gen', unlink: true };
       const t = this.now();
       if (Date.parse(g.exp) <= t) return { cls: 'expired', unlink: true };
@@ -659,6 +685,27 @@ export class Verifier {
         await unlink(join(this.d.storeDir, f)).catch((e: NodeJS.ErrnoException) => {
           if (e.code !== 'ENOENT') bump(`marker not removed (${errorClass(e)})`);
         });
+    }
+    // Resend requests (`<id>.rq`, intake: /signup/resend or a duplicate web sign-up). `mint`
+    // applies every mail limit under the per-id lock; the marker is removed once the outcome is
+    // persisted, also when a limit blocks (so repeated requests never queue up mails).
+    let rqSeen = 0;
+    for (const e of await readdir(this.d.storeDir, { withFileTypes: true })) {
+      if (stop()) break;
+      const f = e.name;
+      const m = RESEND_MARKER_RE.exec(f);
+      if (!m || e.isDirectory()) continue;
+      if (++rqSeen > VERIFY_MARKERS_PER_SWEEP) break;
+      const o: string = e.isFile()
+        ? await this.mint(m[1]!, keys, true).catch(() => 'state_unreadable')
+        : 'bad_marker';
+      if (o === 'sent') out.sent++;
+      else if (o !== 'skip' && o !== 'not_pending') bump(`resend not sent (${o})`);
+      // Unreadable state or counters: kept for the next sweep (nothing was decided).
+      if (o === 'state_unreadable' || o === 'limit_unreadable') continue;
+      await unlink(join(this.d.storeDir, f)).catch((e: NodeJS.ErrnoException) => {
+        if (e.code !== 'ENOENT') bump(`marker not removed (${errorClass(e)})`);
+      });
     }
     if (out.sent > 0) this.log(`signup: verify sent ${out.sent}`);
     if (out.verified > 0) this.log(`signup: verify ok ${out.verified}`);

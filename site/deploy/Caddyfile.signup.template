@@ -32,9 +32,10 @@ https://{{SITE_HOST}} {
 	# Exact, case-sensitive paths only, matched on the RAW request URI (query allowed). Caddy 2.6
 	# `path` is case-insensitive and `path`/`path_regexp` see a cleaned, decoded path, so
 	# /signup%2Fweb, /signup/%77eb, /signup//web and /x/../signup/web would match them.
-	# The signed /signup (Apps Script forwarder) is NOT routed here.
+	# The signed /signup (Apps Script forwarder) is NOT routed here. verify/resend: G1-AUTO-VERIFY
+	# (the intake answers 404 for them unless TBI_SIGNUP_VERIFY=1).
 	@tbi_intake {
-		expression `{http.request.uri}.matches("^/signup/(form-token|web)([?].*)?$")`
+		expression `{http.request.uri}.matches("^/signup/(form-token|web|verify|resend)([?].*)?$")`
 	}
 	handle @tbi_intake {
 		request_body {

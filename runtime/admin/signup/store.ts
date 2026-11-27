@@ -86,6 +86,14 @@ export interface SignupRecord extends SignupInput {
 
 /** G1-AUTO-VERIFY: a confirm marker dropped by the intake (`<id>.vq-<sha256(token)[0:16]>`). */
 export const VERIFY_MARKER_RE = /^([0-9A-HJKMNP-TV-Z]{26})\.vq-([0-9a-f]{16})$/;
+/** G1-AUTO-VERIFY slice 2: a resend request dropped by the intake (`<id>.rq`, empty, one per id). */
+export const RESEND_MARKER_RE = /^([0-9A-HJKMNP-TV-Z]{26})\.rq$/;
+/** At most this many confirm markers per request (counted under the store mutex). */
+export const VERIFY_MARKERS_PER_ID = 3;
+const VQ_SUFFIX_RE = /^[0-9a-f]{16}$/;
+
+/** Outcome class of an intake marker write (logged as a class only; the answer never depends on it). */
+export type MarkerOutcome = 'written' | 'exists' | 'skip' | 'limit';
 
 /**
  * Retention (owner directive 2026-11-21, matching the notice published in the sign-up form):
@@ -233,6 +241,60 @@ export class PendingStore {
       if (m && ids.has(m[1]!)) web++;
     }
     return { all: ids.size, web };
+  }
+
+  /** A web, pending, not (mirror-)verified record, else null; never throws for a missing one. */
+  private async markerTarget(id: string): Promise<SignupRecord | null> {
+    if (!REQUEST_ID_RE.test(id)) return null;
+    const r = await this.get(id).catch(() => null);
+    return r && r.origin === 'web' && r.status === 'pending' && !r.verifiedAt ? r : null;
+  }
+
+  /** Empty file, exclusive, 0600; EEXIST counts as success. Names only from fixed patterns. */
+  private async touchMarker(name: string): Promise<MarkerOutcome> {
+    try {
+      const fh = await open(join(this.dir, name), 'wx', 0o600);
+      await fh.close();
+      return 'written';
+    } catch (e) {
+      if ((e as { code?: string }).code === 'EEXIST') return 'exists';
+      throw e;
+    }
+  }
+
+  /**
+   * G1-AUTO-VERIFY slice 2 (intake): `<id>.vq-<suffix>`, zero bytes, only for an existing web
+   * pending unverified record, at most VERIFY_MARKERS_PER_ID per id (counted under the mutex).
+   */
+  writeVerifyMarker(id: string, suffix: string): Promise<MarkerOutcome> {
+    if (!REQUEST_ID_RE.test(id) || !VQ_SUFFIX_RE.test(suffix)) return Promise.resolve('skip');
+    return this.exclusive(async () => {
+      if (!(await this.markerTarget(id))) return 'skip';
+      const name = `${id}.vq-${suffix}`;
+      let n = 0;
+      for (const f of await readdir(this.dir)) {
+        if (f === name) return 'exists';
+        const m = VERIFY_MARKER_RE.exec(f);
+        if (m && m[1] === id) n++;
+      }
+      if (n >= VERIFY_MARKERS_PER_ID) return 'limit';
+      return this.touchMarker(name);
+    });
+  }
+
+  /** `<id>.rq` for an existing web pending unverified record (empty, one per id). */
+  writeResendMarker(id: string): Promise<MarkerOutcome> {
+    if (!REQUEST_ID_RE.test(id)) return Promise.resolve('skip');
+    return this.exclusive(async () => {
+      if (!(await this.markerTarget(id))) return 'skip';
+      return this.touchMarker(`${id}.rq`);
+    });
+  }
+
+  /** Resend by address: the address marker's holder (sha256 key), then as `writeResendMarker`. */
+  async writeResendMarkerFor(email: string): Promise<MarkerOutcome> {
+    const holder = (await readFile(this.markPath(email), 'utf8').catch(() => '')).trim();
+    return REQUEST_ID_RE.test(holder) ? this.writeResendMarker(holder) : 'skip';
   }
 
   private webMarkPath(id: string): string {
@@ -450,7 +512,10 @@ export class PendingStore {
       // part-way leaves the record, so a retry finishes), and an orphan one on not_found too.
       await gone(`${id}.web`);
       for (const f of await readdir(this.dir)) {
-        if (f.startsWith(`${id}.`) && (f.endsWith('.tmp') || f.startsWith(`${id}.vq-`)))
+        if (
+          f.startsWith(`${id}.`) &&
+          (f.endsWith('.tmp') || f.startsWith(`${id}.vq-`) || f === `${id}.rq`)
+        )
           // Intake-made names: a directory under such a name is left alone (never EISDIR here).
           await gone(f).catch((e: unknown) => {
             const code = (e as { code?: string }).code;
@@ -517,6 +582,7 @@ export class PendingStore {
         await unlink(join(this.dir, `${id}.notified`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.notifyq`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.web`)).catch(() => undefined);
+        await unlink(join(this.dir, `${id}.rq`)).catch(() => undefined);
         await this.removed(id);
         return true;
       });
@@ -542,6 +608,7 @@ export class PendingStore {
         await unlink(join(this.dir, `${id}.notified`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.notifyq`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.web`)).catch(() => undefined);
+        await unlink(join(this.dir, `${id}.rq`)).catch(() => undefined);
         await this.removed(id);
         return true;
       });
@@ -563,7 +630,7 @@ export class PendingStore {
         continue;
       }
       // Confirm markers whose record is gone (G1-AUTO-VERIFY): nothing can consume them any more.
-      const vq = VERIFY_MARKER_RE.exec(f);
+      const vq = VERIFY_MARKER_RE.exec(f) ?? RESEND_MARKER_RE.exec(f);
       if (vq) {
         if (
           !(await stat(this.path(vq[1]!)).then(
