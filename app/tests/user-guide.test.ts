@@ -31,6 +31,13 @@ describe('user guide', () => {
     });
   }
 
+  // The Probe tool has one Hebrew name (glossary `probe`); older words must not come back.
+  it('Hebrew uses the product term for the Probe tool', () => {
+    const he = read('he');
+    expect(headings(he)).toContain('## נקודות מדידה ואזהרות');
+    expect(he).not.toMatch(/בוחן|בוחנ|מצב ה?בדיקה|probe\)/);
+  });
+
   it('Hebrew and English have the same headings structure', () => {
     const en = headings(read('en'));
     const he = headings(read('he'));

@@ -2076,8 +2076,20 @@ export const en = {
   'report.category.legend': 'Area',
   'report.blocking': 'This stops me from continuing',
   'report.disclosure.heading': 'What is sent',
-  'report.disclosure.sent':
-    'Your description, the area and whether it blocks you; the app version and interface language; the status of the current simulation, if any; your browser name, version and operating system. The report is linked to the account you signed in with.',
+  'report.disclosure.always': 'Every report sends, when it applies:',
+  'report.disclosure.item.text':
+    'The type of report and your text. For a problem: the area and whether it blocks you. For a [[component]] request: the [[component]] name, if you give one.',
+  'report.disclosure.item.app':
+    'The interface language, the screen you are on (projects or editor), the app version and its build identifier.',
+  'report.disclosure.item.sim':
+    'The simulation status, with its error code if it failed. If the simulation has an ESP32 run: the run ID.',
+  'report.disclosure.item.browser':
+    'Your browser name, its major version and your operating system.',
+  'report.disclosure.server': 'Our server adds:',
+  'report.disclosure.item.account':
+    'A code that identifies the account you signed in with (not your email address), a report ID, the time it was received and the server version.',
+  'report.disclosure.item.run':
+    'If the run is yours: its state, why it ended, its outcome, how long ago it was created, how long ago it ended and its simulated time.',
   'report.disclosure.notSent':
     'Your project, circuit, code and screenshots are not sent. Please do not include personal information.',
   'report.disclosure.retention': 'Reports are deleted after at most 90 days.',
@@ -2346,9 +2358,9 @@ export const en = {
   'report.problem.messageRequired': 'Write your message.',
   'report.context.label': 'Include technical details',
   'report.context.detail':
-    'The runtime version, the device type (desktop or tablet) and the open project’s id. Never the project’s contents.',
+    'The runtime version, the device type (desktop, tablet or other) and the open project’s id. Never the project’s contents.',
   'report.disclosure.context':
-    'If you include technical details: the runtime version, the device type and the open project’s id (not its contents).',
+    'If “Include technical details” is checked (it is checked by default): the runtime version, the device type (desktop, tablet or other) and the open project’s ID (not its contents).',
   'status.feedback': 'Feedback',
   'status.admin': 'Administration',
 

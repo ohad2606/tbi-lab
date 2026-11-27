@@ -4332,6 +4332,10 @@ select {
 .report-disclosure p {
   margin-block: 0.3rem;
 }
+.report-disclosure ul {
+  margin-block: 0.3rem;
+  padding-inline-start: 1.2rem;
+}
 .report-id {
   display: inline-block;
   font-size: 1.15rem;
