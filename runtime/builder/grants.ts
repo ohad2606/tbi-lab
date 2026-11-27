@@ -236,7 +236,7 @@ export class Grants {
    * system build is rebuilt under 'global' while the principal's own older record stays), so the
    * caller picks the current one.
    */
-  buildsOf(principal: Principal, sha: string): StoredBuild[] {
+  buildsOf(principal: Owner, sha: string): StoredBuild[] {
     const rows = this.db
       .prepare(
         `SELECT record FROM artifact_grant
