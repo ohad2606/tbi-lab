@@ -39,13 +39,14 @@ import {
   tokenHash,
 } from '../signup/verify.js';
 import {
+  addressHash,
   VERIFY_DIR,
   VERIFY_MARKERS_PER_SWEEP,
   VERIFY_MAX_PER_DAY,
   verifyConfigFromEnv,
   Verifier,
 } from '../signup/verifyState.js';
-import { PendingStore } from '../signup/store.js';
+import { PendingStore, StoreError } from '../signup/store.js';
 import type { AdminSpool } from '../accounts.js';
 import type { Principal } from '../../identity/principal.js';
 
@@ -91,6 +92,7 @@ interface Rig {
   w: SignupAdminWiring;
   sent: VerifyMailTo[];
   approvals: string[];
+  approvalTo: { email: string; name: string }[];
   submitted: string[];
   logs: string[];
   sendVerify: (to: VerifyMailTo) => Promise<void>;
@@ -114,12 +116,16 @@ async function rig(
     clock,
     sent: [] as VerifyMailTo[],
     approvals: [] as string[],
+    approvalTo: [] as { email: string; name: string }[],
     submitted: [] as string[],
     logs: [] as string[],
   } as Rig;
   r.sendVerify = async (to) => void r.sent.push(to);
   const email: EmailSender = {
-    sendApproval: async (to) => void r.approvals.push(to.id),
+    sendApproval: async (to) => {
+      r.approvals.push(to.id);
+      r.approvalTo.push({ email: to.email, name: to.name });
+    },
     sendVerify: (to) => r.sendVerify(to),
   };
   const spool = {
@@ -456,10 +462,24 @@ describe('end to end: mint, mail, marker, consume, approve with the bound addres
   });
   it('the timer runs the verify step before the auto-approve sweep', async () => {
     const r = await rig();
-    await webRecord(r);
-    await r.w.startAutoApprove()();
-    expect(r.sent).toHaveLength(1);
-    expect(r.logs).toContain('signup: email verification on');
+    await webRecord(r, 3);
+    await r.w.verifier!.sweep();
+    r.clock.t += 60_000;
+    dropMarker(r, tokenOf(r.sent[0]!));
+    // One tick: the marker is consumed first, so the same tick's auto-approve sweep claims it.
+    // (Auto-approve first would see no confirmation and submit nothing in this tick.)
+    const stop = r.w.startAutoApprove();
+    for (let i = 0; i < 200 && !r.logs.some((l) => /auto-approve processed/.test(l)); i++)
+      await new Promise((res) => setTimeout(res, 5));
+    await stop();
+    expect(markers(r)).toEqual([]);
+    expect(r.submitted).toEqual(['tester3@example.com']);
+    const on = r.logs.indexOf('signup: email verification on');
+    const ok = r.logs.indexOf('signup: verify ok 1');
+    const done = r.logs.indexOf('signup: auto-approve processed 1');
+    expect(on).toBeGreaterThanOrEqual(0);
+    expect(ok).toBeGreaterThan(on);
+    expect(done).toBeGreaterThan(ok);
   });
 });
 
@@ -501,17 +521,22 @@ describe('compromised intake (req 15)', () => {
     const real = join(r.root, 'outside');
     writeFileSync(real, token);
     const h = tokenHash(token).slice(0, 16);
+    // An hour between sweeps: the identical class line is logged at most hourly.
+    const sweep = () => {
+      r.clock.t += 3_600_000;
+      return r.w.verifier!.sweep();
+    };
     symlinkSync(real, join(r.storeDir, `${id}.vq-${h}`));
-    expect(await r.w.verifier!.sweep()).toMatchObject({ verified: 0, rejected: 1 });
+    expect(await sweep()).toMatchObject({ verified: 0, rejected: 1 });
     expect(existsSync(real)).toBe(true);
     execFileSync('mkfifo', [join(r.storeDir, `${id}.vq-${h}`)]);
-    expect(await r.w.verifier!.sweep()).toMatchObject({ verified: 0, rejected: 1 });
+    expect(await sweep()).toMatchObject({ verified: 0, rejected: 1 });
     linkSync(real, join(r.storeDir, `${id}.vq-${h}`));
-    expect(await r.w.verifier!.sweep()).toMatchObject({ verified: 0, rejected: 1 });
+    expect(await sweep()).toMatchObject({ verified: 0, rejected: 1 });
     writeFileSync(join(r.storeDir, `${id}.vq-${h}`), token + ' '.repeat(1100));
-    expect(await r.w.verifier!.sweep()).toMatchObject({ verified: 0, rejected: 1 });
+    expect(await sweep()).toMatchObject({ verified: 0, rejected: 1 });
     writeFileSync(join(r.storeDir, `${id}.vq-${'0'.repeat(16)}`), token);
-    expect(await r.w.verifier!.sweep()).toMatchObject({ verified: 0, rejected: 1 });
+    expect(await sweep()).toMatchObject({ verified: 0, rejected: 1 });
     expect(r.logs.filter((l) => l.startsWith('signup: verify rejected (bad_marker)'))).toHaveLength(
       5,
     );
@@ -665,14 +690,25 @@ describe('compromised intake (req 15)', () => {
   });
   it('reject racing a consume: the rejected request is never verified', async () => {
     const r = await rig();
-    const { id, token } = await minted(r);
-    dropMarker(r, token);
+    const owner = r.w.signups.approver('p_ownerownerownerownerowner' as Principal);
+    // The reject takes the per-id lock first: the consume sees `rejected` and records nothing.
+    const a = await minted(r, 1);
+    dropMarker(r, a.token);
+    const rejected = owner.reject(a.id);
     const consumed = r.w.verifier!.sweep();
-    await r.w.signups.approver('p_ownerownerownerownerowner' as Principal).reject(id);
-    await consumed;
-    const rec = JSON.parse(recordText(r, id));
-    // Whoever held the per-id lock first wins; either way the request ends rejected, no account.
-    expect(rec.status).toBe('rejected');
+    await rejected;
+    expect(await consumed).toMatchObject({ verified: 0, rejected: 1 });
+    expect(rejectedLog(r, 'not_pending')).toBe(true);
+    expect(JSON.parse(recordText(r, a.id))).toMatchObject({ status: 'rejected' });
+    expect(JSON.parse(recordText(r, a.id)).verifiedAt).toBeUndefined();
+    expect(vstate(r, a.id).verifiedAt).toBeUndefined();
+    expect(vstate(r, a.id).usedAt).toBeUndefined();
+    // The consume first: verified, then rejected; the rejected request still gets no account.
+    const b = await minted(r, 2);
+    dropMarker(r, b.token);
+    expect(await r.w.verifier!.sweep()).toMatchObject({ verified: 1 });
+    await owner.reject(b.id);
+    expect(JSON.parse(recordText(r, b.id))).toMatchObject({ status: 'rejected' });
     await r.w.auto!.sweep();
     expect(r.submitted).toEqual([]);
   });
@@ -715,12 +751,13 @@ describe('limits, persistence and cleanup (req 8, 9, 11, 14)', () => {
     for (let i = 0; i < VERIFY_MAX_PER_DAY + 2; i++) await webRecord(r, i);
     await r.w.verifier!.sweep();
     expect(r.sent).toHaveLength(VERIFY_MAX_PER_DAY);
-    expect(r.logs).toContain('signup: verify not sent (limit_day) 2');
+    // Stops at the first limit_day: no further record is tried in this sweep.
+    expect(r.logs).toContain('signup: verify not sent (limit_day) 1');
     r.clock.t += DAY;
     writeFileSync(join(r.stateDir, VERIFY_DIR, 'mail-counters.json'), '{corrupt');
     await r.w.verifier!.sweep();
     expect(r.sent).toHaveLength(VERIFY_MAX_PER_DAY);
-    expect(r.logs).toContain('signup: verify not sent (limit_unreadable) 2');
+    expect(r.logs).toContain('signup: verify not sent (limit_unreadable) 1');
   });
   it('switch-on cut-off: the pending backlog is never mailed', async () => {
     const r = await rig();
@@ -769,5 +806,263 @@ describe('limits, persistence and cleanup (req 8, 9, 11, 14)', () => {
     expect(await r.w.store.purge()).toEqual([b]);
     expect(existsSync(join(r.stateDir, VERIFY_DIR, `${b}.json`))).toBe(false);
     expect(markers(r)).toEqual([]);
+  });
+});
+
+describe('review findings (slice 1 fix-up)', () => {
+  const OWNER = 'p_ownerownerownerownerowner' as Principal;
+  const rewrite = (r: Rig, id: string, patch: Record<string, unknown>) => {
+    const rec = JSON.parse(recordText(r, id));
+    writeFileSync(join(r.storeDir, `${id}.json`), JSON.stringify({ ...rec, ...patch }));
+  };
+  /** A web request with a recorded confirmation (mail, marker, consume). */
+  async function confirmed(r: Rig, i = 1) {
+    const id = await webRecord(r, i);
+    await r.w.verifier!.sweep();
+    r.clock.t += 60_000;
+    dropMarker(r, tokenOf(r.sent.at(-1)!));
+    expect(await r.w.verifier!.sweep()).toMatchObject({ verified: 1 });
+    return id;
+  }
+  const forgeVerified = (dir: string, id: string, email: string, at: number) => {
+    const iso = new Date(at).toISOString();
+    writeFileSync(
+      join(dir, `${id}.json`),
+      JSON.stringify({
+        v: 1,
+        id,
+        gens: [],
+        sends: 0,
+        usedAt: iso,
+        verifiedAt: iso,
+        verifiedAddr: addressHash(email),
+      }),
+      { mode: 0o600 },
+    );
+  };
+
+  it('1: auto-approve never trusts an unsafe verify/ (mode 0777 or a symlink)', async () => {
+    for (const mode of ['control', '0777', 'symlink'] as const) {
+      const r = await rig();
+      const id = await webRecord(r, 1);
+      await r.w.verifier!.sweep(); // creates verify/ (0700) and mails
+      r.clock.t += 60_000;
+      const vdir = join(r.stateDir, VERIFY_DIR);
+      let target = vdir;
+      if (mode === '0777') chmodSync(vdir, 0o777);
+      if (mode === 'symlink') {
+        target = join(r.root, 'elsewhere');
+        mkdirSync(target, { mode: 0o700 });
+        rmSync(vdir, { recursive: true });
+        symlinkSync(target, vdir);
+      }
+      forgeVerified(target, id, 'tester1@example.com', r.clock.t);
+      const v = await r.w.verifier!.sweep();
+      if (mode !== 'control') expect(v).toMatchObject({ stopped: 'state_dir_unsafe' });
+      await r.w.auto!.sweep();
+      // The control shows the forged file has the right shape: only the dir check stops it.
+      expect(r.submitted).toEqual(mode === 'control' ? ['tester1@example.com'] : []);
+    }
+  });
+
+  it('2a: auto path, address rewritten after the account request: no approval mail', async () => {
+    const r = await rig();
+    const id = await confirmed(r, 1);
+    const update = r.w.store.update.bind(r.w.store);
+    r.w.store.update = async (i, patch) => {
+      const out = await update(i, patch);
+      if (patch.accountAdded) rewrite(r, i, { email: 'victim@example.org', name: 'evil.example' });
+      return out;
+    };
+    await r.w.auto!.sweep();
+    expect(r.submitted).toEqual(['tester1@example.com']);
+    expect(r.approvals).toEqual([]);
+    expect(JSON.parse(recordText(r, id))).toMatchObject({
+      status: 'email_failed',
+      lastError: 'mail_addr_changed',
+    });
+    expect(r.logs).toContain('signup: approval mail refused (addr_changed)');
+  });
+
+  it('2b: verified mode mails the proven address without the sign-up name', async () => {
+    const r = await rig();
+    const id = await confirmed(r, 1);
+    rewrite(r, id, { name: 'evil.example' });
+    await r.w.auto!.sweep();
+    expect(r.approvalTo).toEqual([{ email: 'tester1@example.com', name: '' }]);
+  });
+
+  it('2c: owner approval of a never-verified request still mails (bound to what was added)', async () => {
+    const r = await rig();
+    const id = (await r.w.store.createIfNew(person(4))).record.id; // Apps Script: never mailed
+    const out = await r.w.signups.approver(OWNER).approve(id);
+    expect(out).toMatchObject({ ok: true, record: { status: 'email_sent' } });
+    expect(r.submitted).toEqual(['tester4@example.com']);
+    expect(r.approvalTo).toEqual([{ email: 'tester4@example.com', name: '' }]);
+  });
+
+  it('2d: drain path: a rewritten or never-bound queued record gets no mail; owner resend binds', async () => {
+    const r = await rig();
+    const owner = r.w.signups.approver(OWNER);
+    const a = (await r.w.store.createIfNew(person(5))).record.id;
+    await owner.approve(a);
+    expect(r.approvals).toEqual([a]);
+    // The intake re-queues the approved request for another address.
+    rewrite(r, a, {
+      status: 'email_queued',
+      email: 'victim@example.org',
+      emailSendAfter: new Date(r.clock.t - 1000).toISOString(),
+    });
+    // The intake forges an "added, queued" record the admin never approved.
+    const b = (await r.w.store.createIfNew(person(6))).record.id;
+    rewrite(r, b, {
+      status: 'email_queued',
+      accountAdded: true,
+      emailSendAfter: new Date(r.clock.t - 1000).toISOString(),
+    });
+    await r.w.startDrain()();
+    expect(r.approvals).toEqual([a]);
+    expect(JSON.parse(recordText(r, a))).toMatchObject({ lastError: 'mail_addr_changed' });
+    expect(JSON.parse(recordText(r, b))).toMatchObject({
+      status: 'email_failed',
+      lastError: 'mail_unbound',
+    });
+    expect(r.logs).toContain('signup: approval mail refused (addr_changed)');
+    expect(r.logs).toContain('signup: approval mail refused (unbound)');
+    // The owner looks at the request and resends: the current address is bound and mailed.
+    expect(await owner.resend(b)).toMatchObject({ ok: true });
+    expect(r.approvalTo.at(-1)).toEqual({ email: 'tester6@example.com', name: '' });
+    expect(r.submitted).toEqual(['tester5@example.com']);
+  });
+
+  it('2e: other modes unchanged: the forged queued record is drained, the name is kept', async () => {
+    const r = await rig({ web: 'excluded' });
+    const b = (await r.w.store.createIfNew(person(6))).record.id;
+    rewrite(r, b, {
+      status: 'email_queued',
+      accountAdded: true,
+      emailSendAfter: new Date(r.clock.t - 1000).toISOString(),
+    });
+    await r.w.startDrain()();
+    expect(r.approvalTo).toEqual([{ email: 'tester6@example.com', name: 'Tester 6' }]);
+  });
+
+  it('3: orphan cleanup removes verify state only when the record is not_found', async () => {
+    const r = await rig();
+    const id = await webRecord(r, 1);
+    await r.w.verifier!.sweep();
+    const st = join(r.stateDir, VERIFY_DIR, `${id}.json`);
+    r.w.store.list = async () => [];
+    const get = r.w.store.get.bind(r.w.store);
+    r.w.store.get = async () => {
+      throw new StoreError('corrupt');
+    };
+    await r.w.verifier!.sweep();
+    expect(existsSync(st)).toBe(true);
+    r.w.store.get = async () => {
+      throw new Error('EIO');
+    };
+    await r.w.verifier!.sweep();
+    expect(existsSync(st)).toBe(true);
+    r.w.store.get = async () => {
+      throw new StoreError('not_found');
+    };
+    await r.w.verifier!.sweep();
+    expect(existsSync(st)).toBe(false);
+    r.w.store.get = get;
+  });
+
+  it('4: limit_day stops the sweep; a repeated identical line at most hourly', async () => {
+    const r = await rig({ web: 'excluded' });
+    let tried = 0;
+    const mint = r.w.verifier!.mint.bind(r.w.verifier!);
+    r.w.verifier!.mint = (...a: Parameters<typeof mint>) => {
+      tried++;
+      return mint(...a);
+    };
+    for (let i = 0; i < VERIFY_MAX_PER_DAY + 5; i++) await webRecord(r, i);
+    await r.w.verifier!.sweep();
+    expect(tried).toBe(VERIFY_MAX_PER_DAY + 1);
+    const line = 'signup: verify not sent (limit_day) 1';
+    await r.w.verifier!.sweep();
+    expect(r.logs.filter((l) => l === line)).toHaveLength(1);
+    r.clock.t += 3_600_000;
+    await r.w.verifier!.sweep();
+    expect(r.logs.filter((l) => l === line)).toHaveLength(2);
+  });
+
+  it('4: a stuck rejected marker logs at most hourly', async () => {
+    const r = await rig();
+    const id = await webRecord(r, 1);
+    await r.w.verifier!.sweep();
+    dropMarker(r, tokenOf(r.sent[0]!));
+    writeFileSync(join(r.stateDir, VERIFY_DIR, `${id}.json`), '{corrupt', { mode: 0o600 });
+    for (let i = 0; i < 3; i++) await r.w.verifier!.sweep();
+    expect(markers(r)).toHaveLength(1); // kept: state unreadable is not the marker's fault
+    expect(r.logs.filter((l) => l === 'signup: verify rejected (state_unreadable) 1')).toHaveLength(
+      1,
+    );
+  });
+
+  it('5: marker-named directories take no sweep slot and do not break the owner delete', async () => {
+    const r = await rig();
+    const id = await webRecord(r, 1);
+    await r.w.verifier!.sweep();
+    for (let i = 0; i < VERIFY_MARKERS_PER_SWEEP + 5; i++)
+      mkdirSync(join(r.storeDir, `${ID}.vq-${i.toString(16).padStart(16, '0')}`));
+    mkdirSync(join(r.storeDir, `${id}.vq-${'f'.repeat(16)}`));
+    dropMarker(r, tokenOf(r.sent[0]!));
+    expect(await r.w.verifier!.sweep()).toMatchObject({ verified: 1, rejected: 0 });
+    expect(await r.w.store.deleteNow(id)).toBe('deleted');
+  });
+
+  it('6: AUTO_WEB=verified without TBI_SIGNUP_VERIFY: one warning line', async () => {
+    const root = newRoot();
+    const sd = join(root, 's');
+    mkdirSync(sd, { mode: 0o700 });
+    const logs: string[] = [];
+    const w = await signupWiringFromEnv(
+      {
+        TBI_SIGNUP_ADMIN: '1',
+        TBI_SIGNUP_DIR: join(root, 'p'),
+        TBI_SIGNUP_RESEND_KEY_FILE: join(root, 'key'),
+        TBI_SIGNUP_FROM: 'x',
+        TBI_SIGNUP_LAB_URL: 'https://l.example.invalid/',
+        TBI_SIGNUP_QUIET: 'off',
+        TBI_SIGNUP_AUTO_APPROVE: '1',
+        TBI_SIGNUP_AUTO_DAILY_CAP: '5',
+        TBI_SIGNUP_AUTO_STATE_DIR: sd,
+        TBI_SIGNUP_AUTO_WEB: 'verified',
+      },
+      {} as AdminSpool,
+      {
+        fetch: (async () => ({ ok: true, status: 200 })) as FetchLike,
+        log: (l) => {
+          logs.push(l);
+          allLogs.push(l);
+        },
+        email: { sendApproval: async () => undefined, sendVerify: async () => undefined },
+        autoActor: () => null,
+      },
+    );
+    expect(w!.verifier).toBeNull();
+    expect(logs.filter((l) => /verified/.test(l))).toEqual([
+      'signup: warning auto-approve web=verified without email verification; nothing is auto-approved',
+    ]);
+  });
+
+  it('6: stop() ends the verify send loop after the current send', async () => {
+    const r = await rig();
+    for (let i = 1; i <= 3; i++) await webRecord(r, i);
+    let stopping: Promise<void> | null = null;
+    let stop: (() => Promise<void>) | null = null;
+    r.sendVerify = async (to) => {
+      r.sent.push(to);
+      stopping ??= stop!();
+    };
+    stop = r.w.startAutoApprove();
+    for (let i = 0; i < 100 && !stopping; i++) await new Promise((res) => setTimeout(res, 5));
+    await stopping;
+    expect(r.sent).toHaveLength(1);
   });
 });

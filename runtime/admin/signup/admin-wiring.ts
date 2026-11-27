@@ -231,24 +231,6 @@ export async function wireSignupAdmin(
     }
   };
   const quiet = c.quiet ?? null;
-  // The drain only sends mail for accounts that already exist; it never adds one.
-  const drainer = new SignupApprover({
-    store,
-    accounts: { add: async () => 'error' },
-    email,
-    quiet,
-    now: io.now,
-    log: io.log,
-  });
-  const runDrain = async () => {
-    try {
-      const n = await drainer.drainEmails();
-      if (n > 0) io.log(`signup: queued emails processed ${n}`);
-    } catch (e) {
-      io.log(`signup: email drain failed (${errorClass(e)})`);
-    }
-  };
-  let draining: Promise<void> | null = null;
   if (c.verify) {
     const v = c.verify;
     verifier = new Verifier({
@@ -263,6 +245,29 @@ export async function wireSignupAdmin(
       log: io.log,
     });
   }
+  // Verified mode (G1-AUTO-VERIFY): every approval mail, owner or auto, drained or not, goes only
+  // to the address its account was added for (service.ts ApprovalMailBinding).
+  const mailBinding =
+    verifier && c.autoApprove?.webSignups === 'verified' ? { mailBinding: verifier } : {};
+  // The drain only sends mail for accounts that already exist; it never adds one.
+  const drainer = new SignupApprover({
+    store,
+    accounts: { add: async () => 'error' },
+    email,
+    quiet,
+    now: io.now,
+    log: io.log,
+    ...mailBinding,
+  });
+  const runDrain = async () => {
+    try {
+      const n = await drainer.drainEmails();
+      if (n > 0) io.log(`signup: queued emails processed ${n}`);
+    } catch (e) {
+      io.log(`signup: email drain failed (${errorClass(e)})`);
+    }
+  };
+  let draining: Promise<void> | null = null;
   const auto = c.autoApprove
     ? new AutoApprover({
         dir: c.autoApprove.stateDir ?? c.dir,
@@ -305,6 +310,7 @@ export async function wireSignupAdmin(
                 log: io.log,
                 actor: 'auto',
                 counters: io.counters ?? null,
+                ...mailBinding,
               })
             : null;
         },
@@ -329,7 +335,7 @@ export async function wireSignupAdmin(
           // The verify step first, so a confirmation of this minute counts in this sweep.
           if (verifier)
             await verifier
-              .sweep()
+              .sweep({ stop: () => stopped })
               .catch((e: unknown) => io.log(`signup: verify sweep failed (${errorClass(e)})`));
           if (!auto || !autoOk) return;
           await auto
@@ -376,6 +382,8 @@ export async function wireSignupAdmin(
           now: io.now,
           log: io.log,
           counters: io.counters ?? null,
+          ...mailBinding,
+          ownerActions: true,
         }),
     },
     startDrain() {
@@ -436,6 +444,10 @@ export async function signupWiringFromEnv(
   const ver = verifyConfigFromEnv(env, cfg.config.dir);
   if (ver.enabled) config.verify = ver.config;
   else if (ver.error) io.log(`signup: email verification off (config: ${ver.reason})`);
+  if (auto.enabled && auto.webSignups === 'verified' && !ver.enabled)
+    io.log(
+      'signup: warning auto-approve web=verified without email verification; nothing is auto-approved',
+    );
   try {
     return await wireSignupAdmin(config, spool, io);
   } catch (e) {

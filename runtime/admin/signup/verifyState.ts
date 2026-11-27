@@ -30,8 +30,14 @@
  *              use makes every generation of that request unusable; earlier unexpired generations
  *              stay usable until then (at most 3 live).
  *   Binding    `verifiedFor(id, email)`: the verification counts only while the record's address
- *              hashes to the verified one; checked by auto-approve in `eligible`, in the claim and
- *              right before the account request (autoApprove.ts).
+ *              hashes to the verified one, and only while both dirs pass the same checks as the
+ *              sweep; checked by auto-approve in `eligible`, in the claim and right before the
+ *              account request (autoApprove.ts).
+ *   Approval   verified mode only (`bindApproval` / `checkApproval`, service.ts): after a successful
+ *   mail       account request the admin stores `approvedAddr`, the hash of the address the account
+ *              was added for; right before the approval mail the record's current address must
+ *              hash to it (auto approvals also need the proof). No binding = no mail, except on an
+ *              owner's own approve/resend, which binds the address the owner is looking at.
  * Logs carry class codes and counts only: never an id, token, hash, file name, address or name.
  */
 import { constants } from 'node:fs';
@@ -142,6 +148,8 @@ interface IdState {
   usedAt?: string;
   verifiedAt?: string;
   verifiedAddr?: string;
+  /** Verified mode: sha256 of the address an account was added for (approval mail binding). */
+  approvedAddr?: string;
 }
 interface Counters {
   v: 1;
@@ -161,6 +169,7 @@ function validId(s: IdState | null, id: string): s is IdState {
     else if (!isTime(g.exp) || !isTime(g.sentAt)) return false;
   if (s.usedAt !== undefined && !isTime(s.usedAt)) return false;
   if (s.verifiedAt !== undefined && !isTime(s.verifiedAt)) return false;
+  if (s.approvedAddr !== undefined && !HEX64.test(s.approvedAddr)) return false;
   return s.verifiedAddr === undefined || HEX64.test(s.verifiedAddr);
 }
 
@@ -260,6 +269,13 @@ export interface VerifierDeps {
   stat?: (p: string) => Promise<unknown>;
 }
 
+export type ApprovalMailCheck = 'ok' | 'addr_changed' | 'unbound' | 'unproven' | 'state_unsafe';
+
+/** Options of one sweep: `stop` true = end after the current item (service shutdown). */
+export interface VerifySweepOptions {
+  stop?: () => boolean;
+}
+
 export class Verifier {
   private readonly vdir: string;
   private readonly onceLogged = new Map<string, number>();
@@ -284,6 +300,7 @@ export class Verifier {
     const t = this.now();
     const last = this.onceLogged.get(line);
     if (last !== undefined && t - last < 3_600_000 && t >= last) return;
+    if (this.onceLogged.size >= 256) this.onceLogged.clear(); // bounded: class lines only
     this.onceLogged.set(line, t);
     this.log(line);
   }
@@ -327,6 +344,8 @@ export class Verifier {
    * `after` (ms). Any read error or mismatch = false; a changed address logs `addr_changed`.
    */
   async verifiedFor(id: string, email: string, after = -Infinity): Promise<boolean> {
+    // The same dir checks as the sweep: an unsafe state dir or verify/ is never trusted.
+    if ((await this.checkDirs().catch(() => 'error')) !== null) return false;
     let s: IdState | null;
     try {
       s = REQUEST_ID_RE.test(id) ? await this.readId(id) : null;
@@ -340,6 +359,42 @@ export class Verifier {
       return false;
     }
     return Date.parse(s.verifiedAt) > after;
+  }
+
+  /**
+   * Verified mode, after a successful account request (the caller holds the per-id lock):
+   * records the hash of the address the account was added for. Throws on any failure.
+   */
+  async bindApproval(id: string, email: string): Promise<void> {
+    const addr = addressHash(email);
+    if (!REQUEST_ID_RE.test(id) || !addr) throw new Error('bad_address');
+    const bad = await this.checkDirs();
+    if (bad) throw new Error('state_unsafe');
+    const s = await this.readId(id);
+    await writeJson(this.vdir, `${id}.json`, {
+      ...(s ?? { v: 1, id, gens: [], sends: 0 }),
+      approvedAddr: addr,
+    } satisfies IdState);
+  }
+
+  /**
+   * Verified mode, right before the approval mail (caller holds the per-id lock): `ok` only when
+   * `email` hashes to the bound address and, with `needProof` (auto approvals), also carries the
+   * recorded confirmation. Any read error = `unbound`; an unsafe dir = `state_unsafe`.
+   */
+  async checkApproval(id: string, email: string, needProof: boolean): Promise<ApprovalMailCheck> {
+    if ((await this.checkDirs().catch(() => 'error')) !== null) return 'state_unsafe';
+    let s: IdState | null;
+    try {
+      s = REQUEST_ID_RE.test(id) ? await this.readId(id) : null;
+    } catch {
+      return 'unbound';
+    }
+    if (!s?.approvedAddr) return 'unbound';
+    const h = addressHash(email);
+    if (!h || !sameHash(h, s.approvedAddr)) return 'addr_changed';
+    if (needProof && !(await this.verifiedFor(id, email))) return 'unproven';
+    return 'ok';
   }
 
   /** The verify cut-off: config, else the persisted first-enable time (written now if absent). */
@@ -521,18 +576,21 @@ export class Verifier {
   private sweeping = false;
 
   /** One pass: orphan state, first mails, then confirm markers. Never throws for a single item. */
-  async sweep(): Promise<VerifySweepResult> {
+  async sweep(opts: VerifySweepOptions = {}): Promise<VerifySweepResult> {
     const out: VerifySweepResult = { sent: 0, verified: 0, rejected: 0 };
     if (this.sweeping) return out;
     this.sweeping = true;
     try {
-      return await this.sweepInner(out);
+      return await this.sweepInner(out, opts.stop ?? (() => false));
     } finally {
       this.sweeping = false;
     }
   }
 
-  private async sweepInner(out: VerifySweepResult): Promise<VerifySweepResult> {
+  private async sweepInner(
+    out: VerifySweepResult,
+    stop: () => boolean,
+  ): Promise<VerifySweepResult> {
     if (!this.d.email.sendVerify) {
       this.logHourly('signup: verify off (mail sender cannot send verify mail)');
       return { ...out, stopped: 'no_sender' };
@@ -558,25 +616,35 @@ export class Verifier {
     }
     const records = await this.d.store.list();
     const live = new Set(records.map((r) => r.id));
+    // Orphan state: removed only when the store says the record is gone (not on a read error).
     for (const f of await readdir(this.vdir)) {
       const m = /^([0-9A-HJKMNP-TV-Z]{26})\.json$/.exec(f);
-      if (m && !live.has(m[1]!) && (await this.d.store.get(m[1]!).catch(() => null)) === null)
-        await this.remove(m[1]!).catch(() => undefined);
+      if (!m || live.has(m[1]!)) continue;
+      const gone = await this.d.store.get(m[1]!).then(
+        () => false,
+        (e: unknown) => e instanceof StoreError && e.code === 'not_found',
+      );
+      if (gone) await this.remove(m[1]!).catch(() => undefined);
     }
     const counts = new Map<string, number>();
     const bump = (k: string) => counts.set(k, (counts.get(k) ?? 0) + 1);
     for (const r of records) {
+      if (stop()) break;
       if (r.status !== 'pending' || r.origin !== 'web' || !(Date.parse(r.createdAt) > since))
         continue;
       const o = await this.mint(r.id, keys).catch(() => 'state_unreadable' as const);
       if (o === 'sent') out.sent++;
       else if (o !== 'skip' && o !== 'not_pending') bump(`not sent (${o})`);
-      if (o === 'paused') break;
+      // Shared conditions: no later record can be sent in this sweep either.
+      if (o === 'paused' || o === 'limit_day' || o === 'limit_unreadable') break;
     }
     let seen = 0;
-    for (const f of await readdir(this.d.storeDir)) {
+    for (const e of await readdir(this.d.storeDir, { withFileTypes: true })) {
+      if (stop()) break;
+      const f = e.name;
       const m = VERIFY_MARKER_RE.exec(f);
-      if (!m) continue;
+      // A directory can never be a marker (nor be unlinked): skipped, it takes no slot.
+      if (!m || e.isDirectory()) continue;
       if (++seen > VERIFY_MARKERS_PER_SWEEP) break;
       const res = await this.consume(f, m[1]!, m[2]!, keys).catch((e: unknown) => ({
         cls: `error_${errorClass(e)}`,
@@ -594,7 +662,8 @@ export class Verifier {
     }
     if (out.sent > 0) this.log(`signup: verify sent ${out.sent}`);
     if (out.verified > 0) this.log(`signup: verify ok ${out.verified}`);
-    for (const [k, n] of [...counts].sort()) this.log(`signup: verify ${k} ${n}`);
+    // Repeated identical class lines (a limit, a stuck marker) at most once per hour.
+    for (const [k, n] of [...counts].sort()) this.logHourly(`signup: verify ${k} ${n}`);
     return out;
   }
 }

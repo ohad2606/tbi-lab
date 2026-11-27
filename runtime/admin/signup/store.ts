@@ -451,7 +451,11 @@ export class PendingStore {
       await gone(`${id}.web`);
       for (const f of await readdir(this.dir)) {
         if (f.startsWith(`${id}.`) && (f.endsWith('.tmp') || f.startsWith(`${id}.vq-`)))
-          await gone(f);
+          // Intake-made names: a directory under such a name is left alone (never EISDIR here).
+          await gone(f).catch((e: unknown) => {
+            const code = (e as { code?: string }).code;
+            if (code !== 'EISDIR' && code !== 'EPERM') throw e;
+          });
         else if (/^[0-9a-f]{64}\.mark$/.test(f)) {
           const holder = (await readFile(join(this.dir, f), 'utf8').catch(() => '')).trim();
           if (holder === id) await gone(f);

@@ -381,6 +381,19 @@ export interface AccountAdder {
   add(email: string, displayName: string | null): Promise<AddOutcome>;
 }
 
+/**
+ * G1-AUTO-VERIFY, verified mode only (verifyState.ts `Verifier`): the admin-only binding of the
+ * approval mail to the address the account was added for. The record lives in the intake-owned
+ * store, so its address may change after the account request; the mail goes out only while the
+ * record's current address is the bound one.
+ */
+export interface ApprovalMailBinding {
+  /** Stores the hash of the address an account was just added for. Throws on failure. */
+  bindApproval(id: string, email: string): Promise<void>;
+  /** `ok`, else a class code; `needProof` (auto approvals) also requires the recorded confirmation. */
+  checkApproval(id: string, email: string, needProof: boolean): Promise<string>;
+}
+
 export type ApproveOutcome =
   | { ok: true; record: SignupRecord; note?: 'already_done' | 'email_not_resent' | 'email_queued' }
   | {
@@ -410,6 +423,16 @@ export class SignupApprover {
       actor?: 'auto';
       /** K12: funnel counters (`signup_approved`, once per request); null / unset = off. */
       counters?: FunnelSink | null;
+      /**
+       * G1-AUTO-VERIFY verified mode: the approval mail goes only to the bound address and
+       * carries no sign-up name (intake-rewritable text). Unset = unchanged behaviour.
+       */
+      mailBinding?: ApprovalMailBinding | null;
+      /**
+       * The owner's own approver: an explicit approve / resend of a request with no binding binds
+       * the address the owner is looking at (the drain and auto-approve never do).
+       */
+      ownerActions?: boolean;
     },
   ) {}
 
@@ -475,7 +498,7 @@ export class SignupApprover {
         return { ok: false, code: 'bad_state', record: r };
       if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
       if (r.status === 'email_queued') return { ok: true, record: r, note: 'email_queued' };
-      return this.send(r);
+      return this.send(r, false, true);
     }
   }
 
@@ -499,7 +522,8 @@ export class SignupApprover {
     if (r.status === 'pending')
       r = await this.d.store.update(id, { status: 'approved', lastError: null });
     if (!r.accountAdded) {
-      const out = await this.d.accounts.add(r.email, r.name);
+      const addEmail = r.email;
+      const out = await this.d.accounts.add(addEmail, r.name);
       if (out === 'pending') return { ok: false, code: 'account_pending', record: r };
       if (out === 'cap_reached' || out === 'error') {
         r = await this.d.store.update(id, { status: 'pending', lastError: out });
@@ -509,20 +533,40 @@ export class SignupApprover {
           record: r,
         };
       }
+      // Verified mode: bind the mail to the address the account was added for (admin state).
+      if (this.d.mailBinding)
+        await this.d.mailBinding.bindApproval(id, addEmail).catch((e: unknown) => {
+          this.d.log?.(`signup: approval mail binding not written (${errorClass(e)})`);
+        });
       r = await this.d.store.update(id, { accountAdded: true });
       // Counted exactly once per request: `accountAdded` is set once and never cleared.
       count(this.d.counters, 'signup_approved');
     }
     // A send was attempted before and its outcome is unknown: never repeat it automatically.
     if (r.emailAttemptedAt) return { ok: true, record: r, note: 'email_not_resent' };
-    return this.send(r);
+    return this.send(r, false, true);
+  }
+
+  /**
+   * Verified mode, on the very record whose address is mailed: `ok` or the refusal class.
+   * `explicit` = an approve / resend call (never the drain); only the owner's approver may then
+   * bind a request that has no binding yet.
+   */
+  private async mailCheck(r: SignupRecord, explicit: boolean): Promise<string> {
+    const b = this.d.mailBinding!;
+    const c = await b.checkApproval(r.id, r.email, this.d.actor === 'auto').catch(() => 'unbound');
+    if (c !== 'unbound' || !explicit || !this.d.ownerActions || this.d.actor === 'auto') return c;
+    return b.bindApproval(r.id, r.email).then(
+      () => 'ok',
+      () => 'unbound',
+    );
   }
 
   /**
    * Sends the approval email, or, inside quiet hours, persists `email_queued` with its send time
    * (no attempt is recorded). `force` is the drain, which has already checked the window.
    */
-  private async send(r: SignupRecord, force = false): Promise<ApproveOutcome> {
+  private async send(r: SignupRecord, force = false, explicit = false): Promise<ApproveOutcome> {
     const nowMs = (this.d.now ?? Date.now)();
     if (!force && isQuiet(nowMs, this.d.quiet ?? null)) {
       const q = await this.d.store.update(r.id, {
@@ -542,8 +586,22 @@ export class SignupApprover {
       emailAttemptedAt: at,
       emailAttempts: r.emailAttempts + 1,
     });
+    if (this.d.mailBinding) {
+      const c = await this.mailCheck(r, explicit);
+      if (c !== 'ok') {
+        this.d.log?.(`signup: approval mail refused (${c})`);
+        r = await this.d.store.update(r.id, { status: 'email_failed', lastError: `mail_${c}` });
+        return { ok: false, code: 'email_failed', record: r };
+      }
+    }
     try {
-      await this.d.email.sendApproval({ email: r.email, name: r.name, lang: r.lang, id: r.id });
+      await this.d.email.sendApproval({
+        email: r.email,
+        // Verified mode: no sign-up text in the mail (the generic greeting).
+        name: this.d.mailBinding ? '' : r.name,
+        lang: r.lang,
+        id: r.id,
+      });
     } catch (e) {
       const code = errorClass(e);
       r = await this.d.store.update(r.id, { status: 'email_failed', lastError: code });
