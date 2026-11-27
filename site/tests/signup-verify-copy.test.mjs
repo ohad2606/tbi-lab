@@ -136,6 +136,13 @@ const h2 = (s) => read(s.match(/<h2[^>]*>([\s\S]*?)<\/h2>/)[1]);
 
 describe.each(['he', 'en'])('signupVerify copy: %s', (l) => {
   const c = COPY[l];
+  it('accessibility: the description covers the product statement in meta and Open Graph', () => {
+    const h = html(on, l, 'accessibility');
+    const meta = h.match(/<meta name="description" content="([^"]*)">/)[1];
+    expect(meta).toContain('TBI Lab');
+    expect(meta).toBe(content[l].signupVerify.descriptions.accessibility);
+    expect(h).toContain(`<meta property="og:description" content="${meta}">`);
+  });
   it('home: early-access paragraph', () => {
     expect(paragraphs(section(html(on, l), 'status'))).toEqual([c.home]);
   });

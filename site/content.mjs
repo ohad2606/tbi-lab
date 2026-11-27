@@ -195,6 +195,10 @@ const en = {
    * confirm view and the resend form. The privacy wording is not here: it changes with the lawyer's text (G4).
    */
   signupVerify: {
+    descriptions: {
+      accessibility:
+        'Accessibility of TBI Lab: the known limitations, and what was checked on the public site and what was not.',
+    },
     lead: 'TBI Lab is an electronics lab in your browser. You build a circuit, write Arduino code and run it on a simulated classic [[ESP32]]. The Alpha is free and places are limited. Sign up, confirm your email, and you are in. On busy days it may take longer. You need a computer with Chrome or Edge and a screen at least 1024 pixels wide. The lab is not designed for phones.',
     email: 'The email address of your Google account',
     emailHint:
@@ -672,6 +676,9 @@ const he = {
   },
   /** BETA-G1 G1-AUTO-VERIFY slice 3: used only with the `signupVerify` build option; see the English object. */
   signupVerify: {
+    descriptions: {
+      accessibility: 'נגישות TBI Lab: המגבלות הידועות, ומה נבדק באתר הציבורי ומה עדיין לא.',
+    },
     lead: '[[TBI Lab]] היא מעבדת אלקטרוניקה בדפדפן. בונים מעגל, כותבים קוד [[Arduino]] ומריצים אותו על [[ESP32]] קלאסי מדומה. ה-[[Alpha]] חינמי, ומספר המקומות מוגבל. נרשמים, מאשרים את המייל ונכנסים. בימים עמוסים זה עלול לקחת יותר זמן. דרוש מחשב עם דפדפן [[Chrome]] או [[Edge]], ומסך ברוחב 1024 פיקסלים לפחות. המעבדה לא מיועדת לטלפון.',
     email: 'כתובת המייל של חשבון [[Google]] שלכם',
     emailHint:

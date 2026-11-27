@@ -262,6 +262,8 @@ function renderPage(lang, page, opts) {
   const sections = opts.signupVerify
     ? verifySections(pg.sections, t.signupVerify.pages[page])
     : pg.sections;
+  // A page whose flip copy changes what it covers also overrides the meta description.
+  const description = (opts.signupVerify && t.signupVerify.descriptions?.[page]) || pg.description;
   const nav = (signupOn ? [...NAV_PAGES, 'signup'] : NAV_PAGES)
     .map((n) => {
       const cur = n === page ? ' aria-current="page"' : '';
@@ -358,8 +360,8 @@ ${sections
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(plain(pg.title))}</title>
-<meta name="description" content="${esc(plain(pg.description))}">
-${ogTags({ url: pagePath(lang, page), title: plain(pg.title), description: plain(pg.description), locale: OG_LOCALE[lang] ?? lang, altLocale: OG_LOCALE[t.switchToLang] })}
+<meta name="description" content="${esc(plain(description))}">
+${ogTags({ url: pagePath(lang, page), title: plain(pg.title), description: plain(description), locale: OG_LOCALE[lang] ?? lang, altLocale: OG_LOCALE[t.switchToLang] })}
 ${alts}
 ${page === 'signup' && opts.signupNoindex ? '<meta name="robots" content="noindex">\n' : ''}<link rel="icon" href="/assets/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" href="/assets/favicon-32.png" sizes="32x32">
