@@ -565,13 +565,25 @@ export class PendingStore {
       const cur = await this.get(id).catch(() => null);
       if (!cur || cur.origin !== 'web') return false;
       const web = await stat(join(this.dir, `${id}.web`)).then(
-        (s) => s.isFile(),
-        () => false,
+        (s) => (s.isFile() ? 'file' : 'other'),
+        (e: NodeJS.ErrnoException) => (e.code === 'ENOENT' ? 'gone' : 'other'),
       );
-      if (!web || !(await judge(cur))) return false;
+      // BETA-G1 fix 5: a crash between the `.web` unlink and the record unlink leaves the record
+      // without its marker. Such a record is finished only while it still looks unconfirmed and
+      // untouched: `pending`, no `verifiedAt` mirror, no account; `judge` re-checks the admin
+      // state as for any candidate. Anything but ENOENT on the marker keeps the record.
+      const orphan =
+        web === 'gone' &&
+        cur.status === 'pending' &&
+        !cur.verifiedAt &&
+        !cur.accountAdded &&
+        !cur.autoApprovedAt;
+      if ((web !== 'file' && !orphan) || !(await judge(cur))) return false;
       await this.removeSideFiles(id);
       await beforeRecord();
-      await unlink(join(this.dir, `${id}.web`));
+      await unlink(join(this.dir, `${id}.web`)).catch((e: NodeJS.ErrnoException) => {
+        if (!orphan || e.code !== 'ENOENT') throw e;
+      });
       await unlink(this.path(id));
       return true;
     });

@@ -1,7 +1,8 @@
 # BETA-G1: self-signup without manual approval (design note, slices 1-7)
 
-Status: design plus a tested, **off-by-default** code slice (`runtime/admin/signup/autoApprove.ts`). Nothing is
-deployed or enabled anywhere. This builds on the sign-up automation (TBI-022, `docs/alpha/SIGNUP-AUTOMATION-DESIGN.md`);
+Status: design plus tested, **off-by-default** code (`runtime/admin/signup/`), including the email-verified mode of
+section 10. Nothing is deployed or enabled anywhere, and nothing was run on a host. Sections 1-9 describe the base
+auto-approve; where email-verified mode changes them, section 10 applies. This builds on the sign-up automation (TBI-022, `docs/alpha/SIGNUP-AUTOMATION-DESIGN.md`);
 read that first. Private details (hosts, paths, addresses) are placeholders: `<STORE_DIR>` is `TBI_SIGNUP_DIR`,
 `<STATE_DIR>` is `TBI_SIGNUP_AUTO_STATE_DIR` (default: `<STORE_DIR>`).
 
@@ -46,7 +47,7 @@ helper change, which is out of scope (owner question Q1).
 | `TBI_SIGNUP_AUTO_DAILY_CAP` | required when on: whole number 1..1000. Missing or invalid: off plus one log line. |
 | `TBI_SIGNUP_AUTO_STATE_DIR` | optional absolute, normalized path of the **control-state directory** (pause file + state file). Unset: `<STORE_DIR>` (slice 1 behaviour). Not absolute / not normalized: off plus one log line. See "Control-state directory" below. |
 | `TBI_SIGNUP_AUTO_SINCE` | optional ISO time with zone (`2026-12-12T08:00:00+02:00`). Only requests **created after** it are auto-approved. Unset: the time auto-approve first ran, persisted in the state file (section 3). Invalid: off plus one log line. |
-| `TBI_SIGNUP_AUTO_WEB` | BETA-G1 s8: optional `excluded` (default when unset or empty) or `included`. With `excluded`, requests from the browser route (`origin: "web"`, docs/plans/BETA-G1-WEB-INTAKE.md) are never auto-approved: they stay `pending` for the owner and spend no slot. Must stay `excluded` until the owner answers O1 there. Any other value: off plus one log line. |
+| `TBI_SIGNUP_AUTO_WEB` | optional `excluded` (default when unset or empty), `included` or `verified`. With `excluded`, requests from the browser route (`origin: "web"`, docs/plans/BETA-G1-WEB-INTAKE.md) are never auto-approved: they stay `pending` for the owner and spend no slot. `included` approves them without any proof of the address (not for a public site). `verified`: section 10. Any other value: off plus one log line. |
 
 The flag needs `TBI_SIGNUP_ADMIN=1` (the sign-up feature itself). A bad auto setting never disables the manual
 routes. Turning the flag on or off needs a restart of the admin service. Pausing (section 4) does not.
@@ -301,7 +302,8 @@ day rollover without a write, pause as a file or a directory, `unknown` for a co
   HE+EN keys.
 - Done in slice 5: the admin read-only status route `GET /signups/auto-approve` (section 9).
 - Public copy (G5): the form and landing must stop saying the owner approves each request and must say what
-  happens when the day is full.
+  happens when the day is full. The site has verified-mode text for the sign-up page only, behind a preview build
+  option (section 10); the other pages and the privacy notice are unchanged.
 - The legal note (G4): automatic account creation from form data. Check whether the consent text still matches.
 
 ## 8. Open questions for the owner
@@ -361,3 +363,54 @@ It never writes, takes no lock, writes no log line and does not change the sweep
     the cut-off yet: before its first approving sweep, or while paused / without the owner principal).
 - The answer holds counts, the cap, booleans, the day, the cut-off time and fixed codes only: no id, name, address,
   path or secret (tested).
+
+## 10. Email-verified mode (G1-AUTO-VERIFY)
+
+Off by default, not deployed. Operator steps, values, deletion times and failure behaviour:
+`docs/alpha/SIGNUP-AUTO-APPROVE-RUNBOOK.md`, "Email-verified mode". Intake routes:
+`docs/plans/BETA-G1-WEB-INTAKE.md` section 7.
+
+### Flow and states
+
+`pending` -> confirmation mail sent -> button pressed -> confirmation recorded -> slot of today's cap ->
+`approved` -> `email_sent`, `email_queued` or `email_failed`. There is no new record status. The fields
+`verifySentAt` and `verifiedAt` on a record are display copies; decisions use only the admin's state.
+
+### Who holds what
+
+| Part | Role |
+|---|---|
+| Intake (public) | `POST /signup/verify` checks token format and plaintext expiry only and drops an empty `<id>.vq-<hash prefix>`; `POST /signup/resend` and a duplicate web sign-up drop `<id>.rq`. No verify key, no mail key, no spool. Answers do not depend on whether an address or id exists |
+| Admin | Holds the verify key. Mints and mails links, judges markers, keeps `<STATE_DIR>/verify/`, approves, sends all applicant mail through one gate |
+| Site | With the build option `signupVerify`: confirm view, resend form, Google-account and confirmation copy. The CLI option `--signup-verify` is a preview; a normal build does not include it |
+
+### Rules
+
+- Token `v1.<id>.<gen>.<exp>.<nonce>.<mac>`: HMAC-SHA256, 24 hours, single use, no address inside. The link carries it
+  in the URL fragment, so opening the page sends nothing; only the button posts it. The admin stores its hash.
+- Because the marker is empty, a confirmation is matched to a stored generation, which also records the id of the key
+  that minted it. Removing that key revokes the link. `<key file>.prev` is accepted while present.
+- Eligibility with `TBI_SIGNUP_AUTO_WEB=verified`: every request, whatever its `origin`, needs an admin-recorded
+  confirmation for the address it holds now. The sign-up must be later than the auto-approve cut-off **and** the
+  confirmation must be later than it, so the reset of section 3 also applies to people who were waiting to confirm.
+- The approval mail goes only to the address the account was added for, with a generic greeting.
+- Verify cut-off: `TBI_SIGNUP_VERIFY_SINCE`, else the first sweep's time, stored in `verify/since.json`. Older requests
+  are never mailed.
+- Limits: 50 confirmation mails per Israel day unless set (`mail-counters.json` has a 2 MiB read bound, so every
+  allowed cap fits), 3 per address per 7 days, 10 minutes apart, 5 per request, 3 live links.
+- Mail caps per hour, Israel day and 30 days apply to all applicant mail; the state fails closed. Verified mode
+  requires them.
+- The pause file stops confirmation mails and approvals, not sign-ups, confirmations or deletion. Confirmation mails
+  ignore quiet hours; approval mails follow the admin unit's quiet hours.
+- Optional: deletion of unconfirmed web requests, a counts-only summary file with a daily owner summary and alerts
+  instead of per-request alerts, and a restart keep window for the cut-off. All off unless set.
+
+### Threats added by this mode
+
+| Threat | Control / residual risk |
+|---|---|
+| Mail to addresses that never asked | Fixed text without any sign-up field; per-address, per-day and total caps. Bounces are not monitored |
+| A scanner that follows links | Nothing happens on page load; a button press is needed. A scanner that runs scripts and presses buttons could still confirm |
+| Compromised intake | It cannot mint links or record a confirmation. It shares the store (and today the admin's user): runbook precondition 5 is required |
+| Confirmed address that cannot sign in | Sign-in needs a Google account with exactly that address; confirming a mailbox does not show that it is one |
+| Flood of sign-ups | Verify cap and approval cap delay real people; the kill switch stops mails and approvals |

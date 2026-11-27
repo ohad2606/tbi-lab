@@ -24,6 +24,7 @@ import {
   signupCountView,
   parseRoute,
   section,
+  signupBadgeOverride,
   signupOutcomeView,
   tab,
 } from '../src/views.js';
@@ -99,6 +100,8 @@ describe('sign-up requests view logic', () => {
         'console.signups.status.accountPending',
         'console.signups.status.emailFailed',
         'console.signups.status.emailQueued',
+        'console.signups.status.accountUnconfirmed',
+        'console.signups.err.unbound_state',
         'console.signups.sendAfter',
       ])
         expect(l.messages[k as keyof typeof l.messages], `${l.code} ${k}`).toBeTruthy();
@@ -415,5 +418,15 @@ describe('stored requests: filter, warning, outcome (K12)', () => {
       expect(l.messages[unsure.key as keyof typeof l.messages]).toContain('{id}');
     // Only the service's audit log answers `already_deleted`: that stays true either way.
     expect(deleteOutcomeView({ kind: 'already_deleted' }, 'off').gone).toBe(true);
+  });
+});
+
+describe('the badge of a row after unbound_state', () => {
+  it('is replaced only for that outcome', () => {
+    expect(signupBadgeOverride('console.signups.err.unbound_state')).toBe(
+      'console.signups.status.accountUnconfirmed',
+    );
+    expect(signupBadgeOverride('console.signups.err.email_failed')).toBeNull();
+    expect(signupBadgeOverride(undefined)).toBeNull();
   });
 });

@@ -132,6 +132,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.lang.he': 'עברית',
   'console.signups.lang.en': 'אנגלית',
   'console.signups.lang.other': 'אחרת',
+  'console.signups.status.accountUnconfirmed': 'אין אישור שהחשבון נוסף',
   'console.signups.status.pending': 'ממתינה להחלטה שלך',
   'console.signups.status.emailFailed': 'החשבון נוסף, אבל המייל לא נשלח. אפשר לשלוח שוב.',
   'console.signups.status.accountPending': 'אושרה, אבל החשבון עדיין לא מוכן. אשרו שוב כדי להשלים.',
@@ -211,7 +212,9 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
     'החשבון של {name} נוסף, אבל שליחת המייל נכשלה. השתמשו בשליחת המייל שוב.',
   'console.signups.err.not_found': 'הבקשה של {name} כבר לא קיימת.',
   'console.signups.err.mail_cap':
-    'החשבון של {name} נוסף. הגענו למגבלת המיילים לעכשיו, לכן המייל ממתין ויישלח אוטומטית בהמשך.',
+    'החשבון של {name} נוסף. הגענו כרגע למגבלת המיילים, ולכן המייל ממתין ויישלח אוטומטית בהמשך.',
+  'console.signups.err.unbound_state':
+    'אזהרה: הבקשה של {name} מסומנת כמאושרת, אבל אין ברישומים שלנו אישור שהחשבון נוסף. לא נשלח מייל. בדקו במסך „בודקים” אם החשבון של {name} קיים, ורק אז נסו שוב. אם האזהרה חוזרת, בדקו אם יש מקום פנוי לבודקים ועיינו ביומן השרת.',
   'console.signups.err.not_found.unconfirmed':
     'הבקשה של {name}: לא הצלחנו לאשר מה קרה. ניהול ההרשמה אולי כבוי או לא זמין בשרת, וייתכן שהבקשה עדיין שמורה. אפשר ללחוץ על רענון הבקשות.',
   'console.signups.openStale':
