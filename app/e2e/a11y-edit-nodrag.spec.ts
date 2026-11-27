@@ -2,7 +2,9 @@
  * BETA-G3 (WCAG 2.1.1, 2.5.7): the drawing can be edited without dragging, by single clicks and by
  * the keyboard alone, EN and HE:
  * - a part or junction moves one grid step with the Inspector's Move buttons (one undo step, same
- *   rules as the arrow keys), with the result or the refusal announced.
+ *   rules as the arrow keys), with the result or the refusal announced;
+ * - an existing junction is selected in the Junctions list, moved and deleted;
+ * - one segment of a wire is moved from the Inspector, with the same result as dragging it.
  */
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
@@ -80,6 +82,20 @@ function junctionDoc(name: string): ProjectDocument {
   return c.doc;
 }
 
+/** PSU1+ to R1.a as a manual wire with three segments (right, up, right). */
+function wireDoc(name: string): ProjectDocument {
+  const base = partsDoc(name);
+  const pin = (c: string, t: string) => ({ kind: 'terminal', component: c, terminal: t }) as const;
+  const from = terminalPosition(base, 'PSU1', 'positive')!;
+  const to = terminalPosition(base, 'R1', 'a')!;
+  return must(
+    addWire(base, pin('PSU1', 'positive'), pin('R1', 'a'), [
+      { x: -60, y: from.y },
+      { x: -60, y: to.y },
+    ]),
+  ).doc;
+}
+
 async function open(page: Page, lang: Lang, doc: ProjectDocument): Promise<ProjectDocument> {
   await page.addInitScript((l) => localStorage.setItem('tbi-lab.locale', l), lang);
   await openImported(page, doc);
@@ -124,16 +140,17 @@ async function undo(page: Page, mode: Mode): Promise<void> {
   else await page.keyboard.press('Control+z');
 }
 
-const geometry = (d: ProjectDocument) =>
-  JSON.stringify([d.layout.components, d.layout.junctions, d.layout.wires, d.connections]);
-
 for (const lang of ['en', 'he'] as const) {
   for (const mode of ['clicks', 'keyboard'] as const) {
     test(`move a part (${lang}, ${mode}): one grid step, nets unchanged, one undo`, async ({
       page,
     }) => {
-      const before = await open(page, lang, partsDoc(`nodrag-part-${lang}-${mode}`));
+      // R1 is wired, so "nets unchanged" is about a real net.
+      const before = await open(page, lang, wireDoc(`nodrag-part-${lang}-${mode}`));
+      expect(before.connections.length).toBeGreaterThan(0);
       const x0 = before.layout.components.R1!.x;
+      await expect(page.locator('[data-hit="wire"]')).toHaveCount(1);
+      const drawn = await drawing(page);
       if (mode === 'clicks') await component(page, 'R1').locator('.component-hit').click();
       else await component(page, 'R1').focus();
 
@@ -160,7 +177,9 @@ for (const lang of ['en', 'he'] as const) {
         (d) => d.layout.components.R1!.x === x0,
         'one undo restores',
       );
-      expect(geometry(undone)).toBe(geometry(before));
+      expect(undone.connections).toEqual(before.connections);
+      expect(undone.layout.components).toEqual(before.layout.components);
+      await expect.poll(() => drawing(page)).toEqual(drawn);
 
       // Towards R2 the same rule as the arrow keys refuses the overlap, and it is said.
       const status = page.getByTestId('inspector-status');
@@ -239,20 +258,6 @@ for (const lang of ['en', 'he'] as const) {
       await expect.poll(() => drawing(page)).toEqual(drawn);
     });
   }
-}
-
-/** PSU1+ to R1.a as a manual wire with three segments (right, up, right). */
-function wireDoc(name: string): ProjectDocument {
-  const base = partsDoc(name);
-  const pin = (c: string, t: string) => ({ kind: 'terminal', component: c, terminal: t }) as const;
-  const from = terminalPosition(base, 'PSU1', 'positive')!;
-  const to = terminalPosition(base, 'R1', 'a')!;
-  return must(
-    addWire(base, pin('PSU1', 'positive'), pin('R1', 'a'), [
-      { x: -60, y: from.y },
-      { x: -60, y: to.y },
-    ]),
-  ).doc;
 }
 
 for (const lang of ['en', 'he'] as const) {
