@@ -158,7 +158,10 @@ export function simFailureMessage(
   }
   // `U gpio-interrupt`: level, NMI, SDIO or wake-up; every GPIO interrupt on an older Runtime.
   if (failure.kind === 'unmodelled' && failure.facility === 'interrupt')
-    return t('sim.error.unmodelled.interrupt', { edges: isolateLtr('RISING, FALLING, CHANGE') });
+    return t('sim.error.unmodelled.interrupt', {
+      edges: isolateLtr('RISING, FALLING, CHANGE'),
+      mpyEdges: isolateLtr('IRQ_RISING, IRQ_FALLING'),
+    });
   if (failure.kind === 'unmodelled')
     return t('sim.error.unmodelled', { feature: featureName(locale, failure.facility) });
   if (failure.kind === 'pwm') {

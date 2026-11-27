@@ -209,6 +209,53 @@ for (const lang of ['en', 'he'] as const) {
       expect(h.y).toBeGreaterThanOrEqual(c.y + c.height - 0.5);
     });
 
+    test('640 wide, low window: whole scroll buttons in the Circuit view', async ({ page }) => {
+      await openCircuit(page, lang);
+      const box = page.getByTestId('canvas-hint');
+      for (const height of [330, 360]) {
+        await page.setViewportSize({ width: 640, height });
+        await page.getByTestId('canvas').scrollIntoViewIfNeeded();
+        await page.getByTestId('canvas-fit').click();
+        await shrink(box);
+        await grow(box, 20);
+        await box.scrollIntoViewIfNeeded();
+        await expectWhole(page, box, lang, `circuit 640x${height}`);
+      }
+    });
+
+    test('320x256: the enlarged views do not paint over the status bar', async ({ page }) => {
+      test.setTimeout(180_000);
+      await openCircuit(page, lang);
+      const check = async (view: string) => {
+        await page.setViewportSize({ width: 320, height: 256 });
+        await page.waitForTimeout(300);
+        const controls = page.locator('.statusbar').locator('button:visible, a[href]:visible');
+        const n = await controls.count();
+        expect(n, view).toBeGreaterThan(0);
+        for (let i = 0; i < n; i++) {
+          const c = controls.nth(i);
+          await c.scrollIntoViewIfNeeded();
+          const onTop = await c.evaluate((el) => {
+            const r = el.getClientRects()[0]!;
+            return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+          });
+          expect(onTop, `${view}: status bar control ${i}`).toBe(true);
+        }
+        const [slot, bar] = [
+          await rect(page.locator(view)),
+          await rect(page.locator('.statusbar')),
+        ];
+        expect(slot.y + slot.height, view).toBeLessThanOrEqual(bar.y + 0.5);
+      };
+      await check('.canvas-wrap');
+      await page.setViewportSize({ width: 1366, height: 768 });
+      await page.getByTestId('view-3d').click();
+      await expect(page.getByTestId('view3d')).toHaveAttribute('data-status', 'ready', {
+        timeout: 120_000,
+      });
+      await check('.view3d-wrap');
+    });
+
     test('Tab after the message became short never drops the focus', async ({ page }) => {
       await openCircuit(page, lang);
       await page.setViewportSize({ width: 683, height: 384 });
@@ -245,6 +292,33 @@ for (const lang of ['en', 'he'] as const) {
       await page.keyboard.press('Tab');
       await page.waitForTimeout(100);
       expect(await onBody()).toBe(false);
+    });
+
+    test('window blur keeps the focused scroll button and the focused box', async ({ page }) => {
+      await openCircuit(page, lang);
+      await page.setViewportSize({ width: 683, height: 384 });
+      await page.getByTestId('canvas-fit').click();
+      const box = page.getByTestId('canvas-hint');
+      const down = box.getByRole('button', { name: SCROLL[lang].down, exact: true });
+      // When the window loses focus the browser fires blur on the element that stays active.
+      const windowBlur = (l: Locator) =>
+        l.evaluate((el) => {
+          el.dispatchEvent(new FocusEvent('blur'));
+          el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+        });
+      for (const target of [down, box]) {
+        await grow(box);
+        await target.focus();
+        await shrink(box);
+        await page.waitForTimeout(100);
+        await windowBlur(target);
+        await page.waitForTimeout(100);
+        await expect(target).toBeFocused();
+        await expect(down).toHaveCount(target === down ? 1 : 0);
+        await expect(box).toHaveAttribute('tabindex', '0');
+        await page.getByTestId('canvas-fit').focus();
+        await expect(box).not.toHaveAttribute('tabindex');
+      }
     });
 
     test('forced colours: a disabled scroll button differs; focus stays visible', async ({
@@ -475,6 +549,23 @@ for (const lang of ['en', 'he'] as const) {
       await box.scrollIntoViewIfNeeded();
       await expectWhole(page, box, lang, '3D');
       await scrollByButtons(page, box, lang, '3D 320x256');
+      // Just above the low-window breakpoint, and common 200% zoom sizes.
+      for (const [width, height] of [
+        [320, 321],
+        [320, 330],
+        [481, 321],
+        [683, 321],
+        [320, 353],
+        [640, 330],
+        [640, 360],
+      ] as const) {
+        await page.setViewportSize({ width, height });
+        await page.waitForTimeout(300);
+        await shrink(box);
+        await grow(box, 20);
+        await box.scrollIntoViewIfNeeded();
+        await expectWhole(page, box, lang, `3D ${width}x${height}`);
+      }
     });
   });
 }

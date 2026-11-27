@@ -1456,7 +1456,7 @@ export const en = {
   'sim.error.unmodelled':
     'The program started using {feature}, which the simulator does not model. The simulation stopped at that moment instead of showing a dead or crashed result.',
   'sim.error.unmodelled.interrupt':
-    'The program turned on a GPIO interrupt that this simulator Runtime does not deliver: a level-triggered, NMI, SDIO or wake-up interrupt. An older Runtime delivers no GPIO interrupts, not even edge interrupts ({edges}). The simulation stopped at that moment instead of showing a dead result.',
+    'The program turned on a GPIO interrupt that this simulator Runtime does not deliver, so the simulation stopped at that moment instead of showing a dead result. Level-triggered, NMI, SDIO and wake-up interrupts are not delivered; some older Runtime versions deliver no GPIO interrupts at all, not even edge interrupts ({edges}; in MicroPython {mpyEdges}). To continue, remove the interrupt and read the pin in a loop.',
   'sim.error.runtime.unsupported_feature':
     'The firmware uses a feature that this simulator Runtime does not support. The run was refused or stopped.',
   'sim.error.runtime.inverted_output':
@@ -1814,7 +1814,7 @@ export const en = {
     'Not simulated. A sketch that uses them is refused at Build. Fade by calling ledcWrite in steps.',
   'capabilities.facility.interrupt.name': 'GPIO interrupts (attachInterrupt)',
   'capabilities.facility.interrupt.body':
-    'Edge interrupts are delivered: RISING, FALLING and CHANGE (MicroPython: IRQ_RISING, IRQ_FALLING). A handler can run late by up to one emulator slice, because the two cores run in turn. Level-triggered, NMI and wake-up interrupts are not simulated: the run stops and says so. An interrupt on an input with no defined level also stops the run. Edge interrupts need a simulator Runtime that delivers them; an older Runtime refuses programs that use interrupts.',
+    'Edge interrupts are delivered: RISING, FALLING and CHANGE (MicroPython: IRQ_RISING, IRQ_FALLING). A handler can run late by up to one emulator slice, because the two cores run in turn. Level-triggered, NMI, SDIO and wake-up interrupts are not simulated: the run stops and says so. An interrupt on an input with no defined level also stops the run. Edge interrupts need a simulator Runtime that delivers them. On an older Runtime without them, an Arduino program that uses interrupts is refused before Run, and a MicroPython program stops when it turns the interrupt on.',
   'capabilities.facility.internal_pull.name':
     'Internal pull-up / pull-down (INPUT_PULLUP, INPUT_PULLDOWN)',
   'capabilities.facility.internal_pull.body':
@@ -2431,7 +2431,7 @@ export const en = {
   'mpy.contract.irq_edge.note':
     'edge interrupts delivered by Runtime v5 in order; latency up to one emulator slice (the cores run in turn)',
   'mpy.contract.irq_level.note':
-    'level, NMI and wake-up interrupts are not modelled; refused at the register write, before the handler is armed (MicroPython 1.29 has no IRQ_*_LEVEL constants; a numeric level type reaches it)',
+    'level, NMI, SDIO and wake-up interrupts are not modelled; refused at the register write, before the handler is armed (MicroPython 1.29 has no IRQ_*_LEVEL constants; a numeric level type reaches it)',
   'mpy.contract.timing.note':
     'simulation time; deterministic (two runs give the same transcript and electrical sequence)',
   'mpy.contract.pulse_timing.note':
