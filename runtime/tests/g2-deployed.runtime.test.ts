@@ -1074,66 +1074,45 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         await keeper;
 
         // ---- A1 rounds, only after every drill: labelled workloads on otherwise empty seats
-        const measure = async (rec: NonNullable<typeof a1>) => {
+        const measure = (rec: NonNullable<typeof a1>) => {
           const users = [...free.slice(0, G2_FREE_LIVE), ...preview];
-          const emptySeats = async () => {
-            for (const m of mine)
-              await call(`${HOST}/sessions/${m.id}`, { method: 'DELETE', headers: auth(m) });
-            const empty = await pollUntil(
-              health,
-              (h) => h.live === 0 && h.waiting === 0,
-              performance.now() + L.G2_DRAIN_CHECK_MS,
-              clock,
-            );
-            expect(empty.ok, 'A1: seats not empty').toBe(true);
-          };
-          progress.phase = 'a1-cooldown';
-          await emptySeats();
-          progress.phase = 'a1-builds';
-          const shas = new Map<string, string>();
-          const buildsFrom = performance.now();
-          for (const { runs } of M.G2_A1_ROUNDS)
-            for (const [i, type] of runs) {
-              if (shas.has(`${i} ${type}`)) continue;
-              const text = `${M.G2_A1_SKETCHES[type]}// g2-a1 ${RUN}\n`;
-              expect(performance.now() - buildsFrom, 'A1 build budget').toBeLessThan(
-                M.G2_A1_BUILD_START_MS,
+          return M.g2A1Measure<Mine>(rec, {
+            runId: RUN,
+            cooldownMs: queue.freeCooldownMs,
+            waitMs: LIFETIME_MS + FETCH_MS,
+            now: () => performance.now(),
+            sleep,
+            setPhase: (phase) => {
+              progress.phase = phase;
+            },
+            emptySeats: async () => {
+              for (const m of mine)
+                await call(`${HOST}/sessions/${m.id}`, { method: 'DELETE', headers: auth(m) });
+              const empty = await pollUntil(
+                health,
+                (h) => h.live === 0 && h.waiting === 0,
+                performance.now() + L.G2_DRAIN_CHECK_MS,
+                clock,
               );
+              expect(empty.ok, 'A1: seats not empty').toBe(true);
+            },
+            build: async (i, text) => {
               const b = await buildFor(users[i]!, text, false);
-              expect(b.sha, `A1 build ${type} (status ${b.status})`).toBeTruthy();
-              shas.set(`${i} ${type}`, b.sha!);
-            }
-          for (const { round, phase, runs } of M.G2_A1_ROUNDS) {
-            progress.phase = 'a1-cooldown';
-            await emptySeats();
-            await sleep(queue.freeCooldownMs + 5000);
-            progress.phase = phase;
-            const started: Mine[] = [];
-            for (const [i, type] of runs) {
-              shaOf.set(users[i]!, shas.get(`${i} ${type}`)!);
-              a1Label = [type, round];
+              expect(b.sha, `A1 build (status ${b.status})`).toBeTruthy();
+              return b.sha;
+            },
+            create: async (i, sha, label) => {
+              shaOf.set(users[i]!, sha);
+              a1Label = label;
               const r = await create(users[i]!);
               expect(r.status, `A1 session: ${r.body.error}`).toBe(201);
-              started.push(mine.at(-1)!);
-            }
-            // status reads renew the lease; each session ends at its own lifetime
-            const until = performance.now() + LIFETIME_MS + FETCH_MS;
-            const open = new Set(started);
-            while (open.size && performance.now() < until) {
-              for (const m of open) {
-                const s = await statusOf(m);
-                const ended = isEnded(s.state);
-                rec.pace(m.id, {
-                  simPerWall: s.pace?.simPerWall ?? null,
-                  tickGapP99Ms: s.pace?.tickGapMs?.p99 ?? null,
-                  endReason: ended ? (s.reason ?? null) : null,
-                });
-                if (ended) open.delete(m);
-              }
-              await sleep(5000);
-            }
-            expect(open.size, 'A1 sessions still live after their lifetime').toBe(0);
-          }
+              return mine.at(-1)!;
+            },
+            status: async (m) => {
+              const s = await statusOf(m);
+              return { ended: isEnded(s.state), reason: s.reason, pace: s.pace };
+            },
+          });
         };
         if (a1) {
           a1.state.failuresBefore = [...progress.failures!];
