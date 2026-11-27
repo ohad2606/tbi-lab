@@ -1394,7 +1394,7 @@ export const he: Record<MessageKey, string> = {
   'sim.error.unmodelled':
     'התוכנית התחילה להשתמש ב{feature}, שהסימולטור אינו ממדל. הסימולציה נעצרה ברגע זה, במקום להציג תוצאה מתה או קריסה.',
   'sim.error.runtime.unsupported_feature':
-    'הקושחה משתמשת ביכולת שהסימולטור אינו תומך בה בגרסה זו (Pull-up/Pull-down פנימי או פסיקות GPIO).',
+    'הקושחה משתמשת ביכולת שה־Runtime הזה של הסימולטור אינו תומך בה. ההרצה נדחתה או נעצרה.',
   'sim.error.runtime.inverted_output':
     'הקושחה הופכת את האות ביציאה של פין מחובר דרך מטריצת ה־GPIO. הסימולטור אינו מדמה יציאות הפוכות.',
   'sim.error.runtime.invalid_attachment': 'פין ESP32 מחובר אינו זמין לשימוש בסימולטור.',
@@ -1762,7 +1762,8 @@ export const he: Record<MessageKey, string> = {
   'capabilities.facility.pwm_advanced.body':
     'אינם מדומים. סקיצ׳ שמשתמש בהם נדחה בבנייה. לעמעום, קראו ל־ledcWrite בצעדים.',
   'capabilities.facility.interrupt.name': 'פסיקות GPIO ‏(attachInterrupt)',
-  'capabilities.facility.interrupt.body': 'אינן מדומות. במקומן, קראו את הפין ב־digitalRead.',
+  'capabilities.facility.interrupt.body':
+    'פסיקות קצה נמסרות: RISING,‏ FALLING ו־CHANGE (ב־MicroPython:‏ IRQ_RISING,‏ IRQ_FALLING). מטפל הפסיקה עשוי לרוץ באיחור של עד פרוסת אמולטור אחת, כי שתי הליבות רצות בתורות. פסיקות רמה, NMI והתעוררות משינה אינן מדומות: ההרצה נעצרת עם הודעה על כך. גם פסיקה על כניסה ללא רמה מוגדרת עוצרת את ההרצה. פסיקות קצה דורשות Runtime של הסימולטור שמוסר אותן; Runtime ישן יותר דוחה תוכניות שמשתמשות בפסיקות.',
   'capabilities.facility.internal_pull.name':
     'Pull-up / Pull-down פנימיים (INPUT_PULLUP,‏ INPUT_PULLDOWN)',
   'capabilities.facility.internal_pull.body': 'אינם מדומים. הוסיפו נגד חיצוני למעגל.',

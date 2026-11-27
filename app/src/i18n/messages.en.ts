@@ -1455,7 +1455,7 @@ export const en = {
   'sim.error.unmodelled':
     'The program started using {feature}, which the simulator does not model. The simulation stopped at that moment instead of showing a dead or crashed result.',
   'sim.error.runtime.unsupported_feature':
-    'The firmware uses a feature the simulator does not support in this version (internal pull-up/pull-down or GPIO interrupts).',
+    'The firmware uses a feature that this simulator Runtime does not support. The run was refused or stopped.',
   'sim.error.runtime.inverted_output':
     'The firmware inverts a connected pin through the GPIO matrix. The simulator does not model inverted outputs.',
   'sim.error.runtime.invalid_attachment': 'A connected ESP32 pin cannot be used in the simulator.',
@@ -1810,7 +1810,8 @@ export const en = {
   'capabilities.facility.pwm_advanced.body':
     'Not simulated. A sketch that uses them is refused at Build. Fade by calling ledcWrite in steps.',
   'capabilities.facility.interrupt.name': 'GPIO interrupts (attachInterrupt)',
-  'capabilities.facility.interrupt.body': 'Not simulated. Poll the pin with digitalRead instead.',
+  'capabilities.facility.interrupt.body':
+    'Edge interrupts are delivered: RISING, FALLING and CHANGE (MicroPython: IRQ_RISING, IRQ_FALLING). A handler can run late by up to one emulator slice, because the two cores run in turn. Level-triggered, NMI and wake-up interrupts are not simulated: the run stops and says so. An interrupt on an input with no defined level also stops the run. Edge interrupts need a simulator Runtime that delivers them; an older Runtime refuses programs that use interrupts.',
   'capabilities.facility.internal_pull.name':
     'Internal pull-up / pull-down (INPUT_PULLUP, INPUT_PULLDOWN)',
   'capabilities.facility.internal_pull.body':
