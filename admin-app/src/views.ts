@@ -318,13 +318,12 @@ export const autoStateClass = (s: AutoApproveState): string =>
 
 /**
  * BETA-G1 S5: rows folded away in the "not confirmed yet" group: proven web requests, still
- * pending, no account, no failure, whose confirmation mail is out or not sent. Unknown, changed
+ * pending, no failure, whose confirmation mail is out or not sent. Unknown, changed
  * address, confirmed, failed and non-web rows always stay in the main list.
  */
 export const isUnconfirmedRow = (r: SignupRecord): boolean =>
   r.origin === 'web' &&
   r.status === 'pending' &&
-  !r.accountAdded &&
   r.lastError === null &&
   r.autoApprovedAt === null &&
   (r.verification?.state === 'not_sent' || r.verification?.state === 'sent');

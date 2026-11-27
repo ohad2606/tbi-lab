@@ -601,11 +601,11 @@ function signupRecord(v: unknown, rowStates = false): SignupRecord | null {
     emailAttempts: typeof v.emailAttempts === 'number' ? v.emailAttempts : 0,
     lastError: typeof v.lastError === 'string' ? v.lastError : null,
     emailSendAfter: typeof v.emailSendAfter === 'string' ? v.emailSendAfter : null,
-    // With verification on, "approved automatically" also needs the account to have been added.
+    // With verification on, "approved automatically" also needs an added account and a decided row.
     autoApprovedAt:
       typeof v.autoApprovedAt === 'string' &&
       v.autoApprovedAt !== '' &&
-      (!rowStates || v.accountAdded === true)
+      (!rowStates || (v.accountAdded === true && v.status !== 'pending'))
         ? v.autoApprovedAt
         : null,
     heardFrom:

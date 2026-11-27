@@ -708,16 +708,16 @@ const V = {
     paused: 'Paused: the kill switch',
   },
   he: {
-    group: 'טרם אושרו: 2',
+    group: 'כתובת המייל טרם אומתה: 2',
     count: '4 בקשות',
-    sent: 'ממתין לאישור כתובת המייל (נשלח ',
-    notSent: 'לא רשומה שליחה של מייל אישור',
-    limit: 'כתובת המייל אושרה, ממתין למכסה היומית',
-    unknown: 'מצב אישור כתובת המייל לא ידוע',
-    warn: 'כתובת המייל לא אושרה.',
-    guard: 'אישור כתובות מייל ומגבלות דיוור',
-    today: 'מיילי אישור היום: 7 מתוך 50',
-    waiting: 'בקשות מאושרות שעדיין ממתינות: לא ידוע',
+    sent: 'ממתינה לאימות כתובת המייל (מייל האימות נשלח: ',
+    notSent: 'לא רשומה שליחה של מייל אימות',
+    limit: 'כתובת המייל אומתה, ממתינה למכסה היומית',
+    unknown: 'מצב אימות כתובת המייל לא ידוע',
+    warn: 'כתובת המייל טרם אומתה.',
+    guard: 'אימות כתובות מייל ומגבלות דיוור',
+    today: 'מיילי אימות היום: 7 מתוך 50',
+    waiting: 'בקשות עם כתובת מייל מאומתת שעדיין ממתינות: לא ידוע',
     paused: 'מושהה: מתג העצירה',
   },
 } as const;
@@ -772,6 +772,7 @@ for (const lang of ['he', 'en'] as const) {
     const toggle = page.getByTestId('signups-unconfirmed-toggle');
     await expect(toggle).toHaveText(new RegExp(t.group));
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toContainText(lang === 'he' ? '\u25C2' : '\u25B8');
     await expect(page.getByRole('heading', { level: 2, name: t.group })).toBeVisible();
     // Unknown and confirmed rows stay in the main list; the count includes the folded ones.
     await expect(page.getByTestId('signup-row').filter({ visible: true })).toHaveCount(2);
@@ -789,7 +790,18 @@ for (const lang of ['he', 'en'] as const) {
     await expect(page.getByTestId('signup-row').filter({ visible: true })).toHaveCount(4);
     const sent = page.locator('[data-signup-id="v1"]').getByTestId('signup-verification');
     await expect(sent).toContainText(t.sent);
-    await expect(sent.locator('bdi[dir="ltr"]')).not.toBeEmpty();
+    // The localized date keeps its own direction (a forced LTR scrambles a Hebrew date).
+    await expect(sent.locator('bdi[dir="auto"]')).not.toBeEmpty();
+    await expect(sent.locator('bdi[dir="ltr"]')).toHaveCount(0);
+    expect(await sent.locator('bdi').evaluate((e) => getComputedStyle(e).direction)).toBe(
+      lang === 'he' ? 'rtl' : 'ltr',
+    );
+    await expect(
+      page.getByRole('heading', {
+        level: 2,
+        name: lang === 'he' ? 'בקשות לטיפול' : 'Requests to handle',
+      }),
+    ).toHaveCount(1);
     await expect(page.locator('[data-signup-id="v3"]')).toContainText(t.notSent);
     await page.keyboard.press('Space');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -811,6 +823,9 @@ for (const lang of ['he', 'en'] as const) {
     await page.keyboard.press('Enter');
     const dialog = page.getByRole('alertdialog');
     await expect(dialog).toContainText(V[lang].warn);
+    await expect(
+      dialog.locator('bdi[dir="ltr"]').filter({ hasText: 'v1@example.com' }),
+    ).toHaveCount(1);
     await expect(page.getByTestId('confirm-cancel')).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(approve).toBeFocused();

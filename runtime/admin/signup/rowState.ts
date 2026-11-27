@@ -6,8 +6,8 @@
  *   Sources   only admin-owned state: `verify/<id>.json`, the verify mail counters, the mail gate,
  *             the auto-approve state and the kill switch. The record mirrors (`verifySentAt`,
  *             `verifiedAt`) and the summary file are never read: the intake can write them.
- *             (`approved_auto` rests on the record's `accountAdded` + `autoApprovedAt`, as the
- *             existing badge does.)
+ *             (`approved_auto` rests on the record: not `pending`, with `accountAdded` +
+ *             `autoApprovedAt`.)
  *   Output    a closed state and, for `sent`, the time. A `verification` key found in a record is
  *             always replaced or removed. No hash, key id, generation, address, path or error.
  *   Reads     no write, no directory created, no key loaded. Per computation: one store.list(),
@@ -128,9 +128,7 @@ export function ownerView(d: OwnerViewDeps): {
     checked: Awaited<ReturnType<typeof dirs>>,
   ): Promise<Map<string, RowVerification>> {
     const out = new Map<string, RowVerification>();
-    const todo = records.filter(
-      (r) => r.status === 'pending' && r.origin === 'web' && !(r.accountAdded && r.autoApprovedAt),
-    );
+    const todo = records.filter((r) => r.status === 'pending' && r.origin === 'web');
     const facts =
       !checked.bad && todo.length > 0 && d.auto && d.running()
         ? await d.auto.queueFacts(checked.autoBad).catch(() => null)
@@ -146,9 +144,11 @@ export function ownerView(d: OwnerViewDeps): {
             return { state: 'confirmed_review' };
           return { state: facts.capReached ? 'confirmed_waiting_limit' : 'confirmed_queued' };
         }
-        return s.sentAt
-          ? { state: 'sent', sentAt: new Date(Date.parse(s.sentAt)).toISOString() }
-          : { state: 'not_sent' };
+        if (!s.sent) return { state: 'not_sent' };
+        // "Sent" is only ever said about the address the record holds now.
+        const h = addressHash(r.email);
+        if (!h || !sameHash(h, s.sent.addr)) return { state: 'address_changed' };
+        return { state: 'sent', sentAt: new Date(Date.parse(s.sent.at)).toISOString() };
       } catch {
         log('state_unreadable');
         return { state: 'unknown' };
@@ -177,7 +177,10 @@ export function ownerView(d: OwnerViewDeps): {
       const row: ViewRow = { ...r };
       delete row.verification;
       const v: RowVerification | undefined =
-        r.accountAdded === true && typeof r.autoApprovedAt === 'string' && r.autoApprovedAt
+        r.status !== 'pending' &&
+        r.accountAdded === true &&
+        typeof r.autoApprovedAt === 'string' &&
+        r.autoApprovedAt
           ? { state: 'approved_auto' }
           : (states.get(r.id) ??
             (failed && r.status === 'pending' && r.origin === 'web'

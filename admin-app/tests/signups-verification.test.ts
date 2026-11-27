@@ -71,8 +71,23 @@ describe('row verification', () => {
 
   it('with the feature on, "approved automatically" needs the account', async () => {
     expect((await parse(wire({ autoApprovedAt: AT }))).autoApprovedAt).toBeNull();
-    expect((await parse(wire({ autoApprovedAt: AT, accountAdded: true }))).autoApprovedAt).toBe(AT);
+    const done = { autoApprovedAt: AT, accountAdded: true, status: 'approved' };
+    expect((await parse(wire(done))).autoApprovedAt).toBe(AT);
     expect((await parse(wire({ autoApprovedAt: AT }), {})).autoApprovedAt).toBe(AT);
+  });
+
+  it('a forged pending record with the auto mark stays folded and still warns', async () => {
+    const r = await parse(
+      wire({
+        status: 'pending',
+        accountAdded: true,
+        autoApprovedAt: AT,
+        verification: { state: 'not_sent' },
+      }),
+    );
+    expect(r.autoApprovedAt).toBeNull();
+    expect(isUnconfirmedRow(r)).toBe(true);
+    expect(approveWarningKey(r)).toBe('console.signups.confirmApprove.unconfirmed');
   });
 
   it('folds only proven web, pending, unapproved, unfailed, unverified rows', async () => {
@@ -86,7 +101,6 @@ describe('row verification', () => {
       { origin: undefined },
       { status: 'approved' },
       { status: 'email_failed' },
-      { accountAdded: true },
       { lastError: 'account_error' },
     ])
       expect(isUnconfirmedRow(await row(extra))).toBe(false);

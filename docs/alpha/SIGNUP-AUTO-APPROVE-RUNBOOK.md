@@ -173,8 +173,9 @@ confirmation mails today, confirmed requests still waiting, the mail budget and 
 (no control). "unknown" means the admin state could not be read or trusted: check the log for
 `signup: owner view unknown (...)` and the state dir permissions. Before the first sweep creates
 `verify/`, every web request reads as unknown. A mail minted before this release has no success
-record and reads as "not recorded as sent". "Approved automatically" rests on the request record,
-as before.
+record and reads as "not recorded as sent". "Approved automatically" rests on the request record:
+with these states on, it is shown only for a request that is no longer pending and has its account
+added. A mail sent to an address the record no longer holds reads as "Address changed".
 
 ## Pause (kill switch) and resume
 

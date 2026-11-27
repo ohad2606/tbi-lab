@@ -198,8 +198,11 @@ function validCounters(c: Counters | null): c is Counters {
 
 class Unreadable extends Error {}
 
-/** null = no such file. Throws Unreadable on anything but a small regular JSON file. */
-async function readJson<T>(path: string): Promise<T | null> {
+/**
+ * null = no such file. Throws Unreadable on anything but a small regular JSON file; with
+ * `object`, also on a file that holds null or any other non-object.
+ */
+async function readJson<T>(path: string, object = false): Promise<T | null> {
   let fh;
   try {
     fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -210,7 +213,10 @@ async function readJson<T>(path: string): Promise<T | null> {
   try {
     const st = await fh.stat();
     if (!st.isFile() || st.size > STATE_MAX_BYTES) throw new Unreadable('state_unreadable');
-    return JSON.parse(await fh.readFile('utf8')) as T;
+    const v = JSON.parse(await fh.readFile('utf8')) as unknown;
+    if (object && (v === null || typeof v !== 'object' || Array.isArray(v)))
+      throw new Unreadable('state_unreadable');
+    return v as T;
   } catch {
     throw new Unreadable('state_unreadable');
   } finally {
@@ -250,8 +256,8 @@ function countersLock<T>(fn: () => Promise<T>): Promise<T> {
 
 /** S5 (owner view): what the admin state of one request says. Never leaves the server as is. */
 export interface VerifyPeek {
-  /** Mint time of the newest generation whose send succeeded. */
-  sentAt?: string;
+  /** The newest generation whose send succeeded: mint time and the address hash it went to. */
+  sent?: { at: string; addr: string };
   /** Set once the address was confirmed (with the hash it was confirmed for). */
   confirmed?: { at: number; addr: string };
 }
@@ -281,7 +287,7 @@ export async function verifyDirsReadOnly(
  */
 export async function peekVerifyState(stateDir: string, id: string): Promise<VerifyPeek> {
   if (!REQUEST_ID_RE.test(id)) throw new Unreadable('state_unreadable');
-  const s = await readJson<IdState>(join(stateDir, VERIFY_DIR, `${id}.json`));
+  const s = await readJson<IdState>(join(stateDir, VERIFY_DIR, `${id}.json`), true);
   if (s === null) return {};
   if (!validId(s, id)) throw new Unreadable('state_unreadable');
   if (s.usedAt || s.verifiedAt || s.verifiedAddr) {
@@ -289,12 +295,13 @@ export async function peekVerifyState(stateDir: string, id: string): Promise<Ver
     return { confirmed: { at: Date.parse(s.verifiedAt), addr: s.verifiedAddr } };
   }
   const sent = s.gens.filter((g) => g.ok === true).at(-1);
-  return sent ? { sentAt: sent.sentAt } : {};
+  return sent ? { sent: { at: sent.sentAt, addr: sent.addr } } : {};
 }
 
 /** S5: verify mails counted on Israel day `day`, read only; null = counters not trusted. */
 export async function peekMailCount(stateDir: string, day: string): Promise<number | null> {
-  const c = await readJson<Counters>(join(stateDir, VERIFY_DIR, COUNTERS)).catch(() => undefined);
+  const path = join(stateDir, VERIFY_DIR, COUNTERS);
+  const c = await readJson<Counters>(path, true).catch(() => undefined);
   if (c === null) return 0;
   if (c === undefined || !validCounters(c) || c.day > day) return null;
   return c.day === day ? c.dayCount : 0;

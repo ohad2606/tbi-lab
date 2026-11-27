@@ -163,15 +163,17 @@ export const consoleEn = {
   'console.signups.verify.confirmed_waiting_limit': "Email confirmed, waiting for today's limit",
   'console.signups.verify.confirmed_queued': 'Email confirmed, waiting for the automatic approval',
   'console.signups.verify.confirmed_review': 'Email confirmed, needs your decision',
-  'console.signups.verify.address_changed': 'Address changed after confirmation, needs review',
+  'console.signups.verify.address_changed':
+    'Address changed, needs review: the current address is not confirmed',
   'console.signups.verify.unknown': 'Email confirmation state is unknown',
+  'console.signups.list.heading': 'Requests to handle',
   'console.signups.unconfirmed.heading': 'Not confirmed yet: {count}',
   'console.signups.unconfirmed.counted': 'Listed under "Not confirmed yet": {count}',
   'console.signups.confirmApprove.title': 'Approve the request of {name}?',
   'console.signups.confirmApprove.unconfirmed':
     'The email address has not been confirmed. Approving adds the account and sends the email to this address anyway.',
   'console.signups.confirmApprove.changed':
-    'The address changed after it was confirmed, so the current address has not been confirmed. Approving adds the account and sends the email to this address anyway.',
+    'The address changed, and the current address has not been confirmed. Approving adds the account and sends the email to this address anyway.',
   'console.signups.confirmApprove.unknown':
     'We could not check whether the email address was confirmed. Approving adds the account and sends the email to this address anyway.',
   'console.signups.confirmApprove.ok': 'Approve anyway',

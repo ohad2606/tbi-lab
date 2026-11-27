@@ -343,6 +343,35 @@ describe('S5: row states', () => {
     expect(stateOf(await r.rows(), id)).toEqual({ state: 'confirmed_review' });
   });
 
+  it('a forged pending record with the auto mark keeps its real state', async () => {
+    const r = await rig();
+    const id = await r.add();
+    await r.mint(id);
+    await r.wiring.store.update(id, {
+      accountAdded: true,
+      autoApprovedAt: new Date(NOON).toISOString(),
+    });
+    expect(stateOf(await r.rows(), id)?.state).toBe('sent');
+  });
+
+  it('"sent" is never said about a different address than the record holds', async () => {
+    const r = await rig();
+    const id = await r.add();
+    await r.mint(id);
+    await r.wiring.store.update(id, { email: 'other@example.com' });
+    expect(stateOf(await r.rows(), id)).toEqual({ state: 'address_changed' });
+  });
+
+  it('a state file holding null or a non-object is unknown', async () => {
+    const r = await rig();
+    const id = await r.add();
+    await r.mint(id);
+    for (const text of ['null', '0', '"x"', 'false', '[]']) {
+      writeFileSync(join(r.stateDir, 'verify', `${id}.json`), text);
+      expect(stateOf(await r.rows(), id), text).toEqual({ state: 'unknown' });
+    }
+  });
+
   it('approved automatically needs accountAdded and autoApprovedAt', async () => {
     const r = await rig();
     const id = await r.add();

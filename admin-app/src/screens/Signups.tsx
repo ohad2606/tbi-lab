@@ -247,16 +247,21 @@ function SafeguardsBlock({ value }: { value: SignupSafeguards }) {
 
 /**
  * An action's answer carries no confirmation state: the row keeps the one it had (so a retry of
- * Approve still asks), and its "approved automatically" mark still needs the added account.
+ * Approve still asks), and its "approved automatically" mark still needs an added account on a
+ * decided request.
  */
-const keepState = (next: SignupRecord, old: SignupRecord): SignupRecord =>
-  old.verification
-    ? {
-        ...next,
-        verification: old.verification,
-        autoApprovedAt: next.accountAdded ? next.autoApprovedAt : null,
-      }
+const keepState = (next: SignupRecord, old: SignupRecord): SignupRecord => {
+  if (old.verification)
+    return {
+      ...next,
+      verification: old.verification,
+      autoApprovedAt: next.accountAdded && next.status !== 'pending' ? next.autoApprovedAt : null,
+    };
+  // A mark the loaded list did not show never appears on a still pending request.
+  return old.autoApprovedAt === null && next.status === 'pending'
+    ? { ...next, autoApprovedAt: null }
     : next;
+};
 
 /**
  * Open sign-up requests (TBI-022, owner-only): undecided ones, and approved ones whose account or
@@ -267,7 +272,7 @@ const keepState = (next: SignupRecord, old: SignupRecord): SignupRecord =>
  */
 export function Signups() {
   const t = useT();
-  const { date } = useConsole();
+  const { date, locale } = useConsole();
   const [list, setList] = useState<Loaded<SignupRecord[]> | null>(null);
   const [autoStatus, setAutoStatus] = useState<Loaded<AutoApproveStatus> | null>(null);
   const [statusPending, setStatusPending] = useState(false);
@@ -717,7 +722,7 @@ export function Signups() {
                 i === 0
                   ? [part]
                   : [
-                      <bdi key={i} dir="ltr">
+                      <bdi key={i} dir="auto">
                         {date(r.emailSendAfter!) ?? ''}
                       </bdi>,
                       part,
@@ -733,7 +738,7 @@ export function Signups() {
                 i === 0
                   ? [part]
                   : [
-                      <bdi key={i} dir="ltr">
+                      <bdi key={i} dir="auto">
                         {date(r.verification!.sentAt!) ?? ''}
                       </bdi>,
                       part,
@@ -769,6 +774,11 @@ export function Signups() {
             }}
             onConfirm={() => void act(r, 'approve')}
           >
+            <p data-testid="confirm-email">
+              <bdi dir="ltr" class="code">
+                {r.email}
+              </bdi>
+            </p>
             <p>{t(approveWarningKey(r) as MessageKey)}</p>
           </Confirm>
         ) : confirming === r.id && confirmAct === 'reject' ? (
@@ -917,9 +927,14 @@ export function Signups() {
             {countText(list.value)}
           </p>
           {main.length > 0 && (
-            <ul class="list" data-testid="signups-list">
-              {main.map(row)}
-            </ul>
+            <>
+              <h2 class="visually-hidden" id="signups-list-h">
+                {t('console.signups.list.heading')}
+              </h2>
+              <ul class="list" data-testid="signups-list" aria-labelledby="signups-list-h">
+                {main.map(row)}
+              </ul>
+            </>
           )}
           {folded.length > 0 && (
             <section data-testid="signups-unconfirmed-group">
@@ -932,7 +947,9 @@ export function Signups() {
                   aria-controls="signups-unconfirmed-rows"
                   onClick={() => setGroupOpen((o) => !o)}
                 >
-                  <span aria-hidden="true">{groupOpen ? '\u25BE ' : '\u25B8 '}</span>
+                  <span aria-hidden="true">
+                    {groupOpen ? '\u25BE ' : locale.dir === 'rtl' ? '\u25C2 ' : '\u25B8 '}
+                  </span>
                   {t('console.signups.unconfirmed.heading', { count: folded.length })}
                 </button>
               </h2>
