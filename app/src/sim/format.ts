@@ -156,6 +156,9 @@ export function simFailureMessage(
     const code = failure.code === 'session_idle' ? 'session_lost' : failure.code;
     return limit ?? t(`sim.error.runtime.${code}`);
   }
+  // `U gpio-interrupt`: level, NMI, SDIO or wake-up; every GPIO interrupt on an older Runtime.
+  if (failure.kind === 'unmodelled' && failure.facility === 'interrupt')
+    return t('sim.error.unmodelled.interrupt', { edges: isolateLtr('RISING, FALLING, CHANGE') });
   if (failure.kind === 'unmodelled')
     return t('sim.error.unmodelled', { feature: featureName(locale, failure.facility) });
   if (failure.kind === 'pwm') {

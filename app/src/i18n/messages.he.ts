@@ -913,7 +913,8 @@ export const he: Record<MessageKey, string> = {
   'app.screen.phone':
     'TBI Lab אינו תומך בטלפונים, בטאבלטים או במסכים קטנים כאלה. השתמשו במחשב עם Chrome או Edge.',
   'app.screen.rotate': 'TBI Lab אינו תומך בטאבלטים. השתמשו במחשב עם Chrome או Edge.',
-  'app.screen.narrow': 'לחוויה הטובה ביותר, השתמשו בחלון ברוחב של 1024 פיקסלים לפחות.',
+  'app.screen.narrow':
+    'לחוויה הטובה ביותר, השתמשו בחלון ברוחב של 1024 פיקסלים לפחות, או הקטינו את התצוגה.',
   'rating.heading': 'חריגה מדירוגי הרכיב',
   'rating.atRisk': '{component} עלול להינזק',
   'rating.row.forward_current': 'זרם: {value} (מקסימום {limit})',
@@ -1393,6 +1394,8 @@ export const he: Record<MessageKey, string> = {
     'הקושחה שנבחרה אינה זמינה בשירות הריצה. הפרויקט לא נפגע.',
   'sim.error.unmodelled':
     'התוכנית התחילה להשתמש ב{feature}, שהסימולטור אינו ממדל. הסימולציה נעצרה ברגע זה, במקום להציג תוצאה מתה או קריסה.',
+  'sim.error.unmodelled.interrupt':
+    'התוכנית הפעילה פסיקת GPIO שה־Runtime הזה של הסימולטור אינו מוסר: פסיקת רמה, NMI,‏ SDIO או התעוררות משינה. Runtime ישן יותר אינו מוסר פסיקות GPIO כלל, גם לא פסיקות קצה ({edges}). הסימולציה נעצרה ברגע זה, במקום להציג תוצאה מתה.',
   'sim.error.runtime.unsupported_feature':
     'הקושחה משתמשת ביכולת שה־Runtime הזה של הסימולטור אינו תומך בה. ההרצה נדחתה או נעצרה.',
   'sim.error.runtime.inverted_output':

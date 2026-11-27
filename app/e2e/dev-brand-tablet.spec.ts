@@ -6,7 +6,8 @@
  *    the same source built with VITE_TBI_ENV=dev is served on :4175 (playwright.app.config.ts);
  * 3. screen support: computers and tablets; tablets best in landscape (a gentle hint in portrait);
  *    phones not supported (ui/screenSupport.ts). Public beta: the messages now say that phones
- *    and tablets are not supported; when each is shown is unchanged.
+ *    and tablets are not supported. 2026-11-27: the phone message needs a touch (coarse) primary
+ *    pointer; a small window with a mouse (a zoomed computer) is 'narrow'.
  * Device emulation is Chromium's (isMobile, hasTouch, device scale factor); the iPad descriptors
  * run in Chromium too (this suite has one browser project). With TBI_EVIDENCE_DIR set, every case
  * also saves a screenshot there.
@@ -110,8 +111,8 @@ const MESSAGES = {
     he: 'TBI Lab אינו תומך בטאבלטים. השתמשו במחשב עם Chrome או Edge.',
   },
   narrow: {
-    en: 'For the best experience, use a window at least 1024 pixels wide.',
-    he: 'לחוויה הטובה ביותר, השתמשו בחלון ברוחב של 1024 פיקסלים לפחות.',
+    en: 'For the best experience, use a window at least 1024 pixels wide, or zoom out.',
+    he: 'לחוויה הטובה ביותר, השתמשו בחלון ברוחב של 1024 פיקסלים לפחות, או הקטינו את התצוגה.',
   },
 } as const;
 
@@ -119,6 +120,8 @@ const DEVICES: [string, Parameters<Browser['newContext']>[0], keyof typeof MESSA
   ['desktop-1400x860', { viewport: { width: 1400, height: 860 } }, null],
   ['desktop-1024x768', { viewport: { width: 1024, height: 768 } }, null],
   ['desktop-900x800', { viewport: { width: 900, height: 800 } }, 'narrow'],
+  // A computer zoomed to 200% or more (fine pointer, phone-size layout viewport): not a phone.
+  ['desktop-zoomed-640x360', { viewport: { width: 640, height: 360 } }, 'narrow'],
   ['galaxy-tab-s4-landscape', device('Galaxy Tab S4 landscape'), null],
   ['galaxy-tab-s4-portrait', device('Galaxy Tab S4'), 'rotate'],
   ['ipad-gen7-landscape', device('iPad (gen 7) landscape'), null],

@@ -116,7 +116,15 @@ export function ScrollNote({
         <span
           class="view-note-scroll"
           onFocusIn={() => setButtonFocused(true)}
-          onFocusOut={() => setButtonFocused(false)}
+          onFocusOut={(e) => {
+            // The render can run before the next element has focus: a move between the buttons
+            // keeps them, and a move back to the box keeps it a Tab stop. Otherwise the target
+            // would go while receiving focus, and focus would drop to the page.
+            const to = e.relatedTarget as Node | null;
+            if (e.currentTarget.contains(to)) return;
+            if (to && to === box) setFocused(true);
+            setButtonFocused(false);
+          }}
         >
           {ARROWS.map((a) => {
             const off = !clipped || ends[a.end];

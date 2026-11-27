@@ -937,7 +937,8 @@ export const en = {
   'app.screen.phone':
     'TBI Lab does not support phones, tablets or screens this small. Use a computer with Chrome or Edge.',
   'app.screen.rotate': 'TBI Lab does not support tablets. Use a computer with Chrome or Edge.',
-  'app.screen.narrow': 'For the best experience, use a window at least 1024 pixels wide.',
+  'app.screen.narrow':
+    'For the best experience, use a window at least 1024 pixels wide, or zoom out.',
   'rating.heading': 'Component rating exceeded',
   'rating.atRisk': '{component} may be damaged',
   'rating.row.forward_current': 'Current: {value} (maximum {limit})',
@@ -1454,6 +1455,8 @@ export const en = {
   // Sprint 19B (Runtime v4): a facility the emulator does not model, refused when first used.
   'sim.error.unmodelled':
     'The program started using {feature}, which the simulator does not model. The simulation stopped at that moment instead of showing a dead or crashed result.',
+  'sim.error.unmodelled.interrupt':
+    'The program turned on a GPIO interrupt that this simulator Runtime does not deliver: a level-triggered, NMI, SDIO or wake-up interrupt. An older Runtime delivers no GPIO interrupts, not even edge interrupts ({edges}). The simulation stopped at that moment instead of showing a dead result.',
   'sim.error.runtime.unsupported_feature':
     'The firmware uses a feature that this simulator Runtime does not support. The run was refused or stopped.',
   'sim.error.runtime.inverted_output':
