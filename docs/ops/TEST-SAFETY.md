@@ -170,6 +170,11 @@ Evidence replaces the values of `TBI_*` (4 characters or more) and, whatever the
 `TBI_*_INSTANCE`, `TBI_ALLOW_SERVICE_MUTATION`, `TBI_C5_DEPLOYED`, `TBI_S13_SEC_DEPLOYED` and
 `TBI_S18_UNIT` in test titles.
 
+The gate runs against staging only. It refuses to start (`live_instance`) when
+`TBI_ALLOW_SERVICE_MUTATION` (any entry of the list), `TBI_C5_DEPLOYED`, `TBI_S8_INSTANCE`,
+`TBI_S13_SEC_DEPLOYED` or `TBI_S18_UNIT` names the live DEV-Lab instance `tbi`. Only the exact name
+is refused; `tbi-s8` is allowed. It does not check which instance the proxy addresses reach.
+
 ### Excluded (listed in every evidence file)
 
 - `g2-deployed`, its harness test and the other G2 cases the gate manifest names: staging-only load

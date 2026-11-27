@@ -63,12 +63,26 @@ const WEAKENING = [
  * test then waits up to 600 s more for these builds while the sessions are still being measured.
  */
 const LEASE_KNOBS = ['TBI_C5_BUILDS'];
+/** The DEV-Lab instance, in use by people (deploy/dev-lab/s8/install.sh, target dev-lab). */
+const LIVE_INSTANCE = 'tbi';
+/**
+ * Variables with which the gate's suites pick the deployed instance they use or change. The gate
+ * refuses any of them naming the live instance. (TBI_G2_DEPLOYED is refused whenever set.)
+ */
+const INSTANCE_PICKERS = [
+  'TBI_ALLOW_SERVICE_MUTATION',
+  'TBI_C5_DEPLOYED',
+  'TBI_S13_SEC_DEPLOYED',
+  'TBI_S18_UNIT',
+  'TBI_S8_INSTANCE',
+];
 /** What no verdict of this gate covers, whatever its result: written into every evidence file. */
 const NOT_GATED = [
   'c5-deployed QEMU-unit crash drill: needs N>=2, the gate runs the default N=1; not covered',
 ];
 /** Preconditions whose "test" is a variable name of ours, not something to redact. */
 const NAMES_VARIABLE = [
+  'live_instance',
   'no_real_proxy',
   'weakening_env',
   'lease_knob',
@@ -194,6 +208,14 @@ export function runGate(argv, deps) {
         log(
           `${name} must be unset: its builds can outlast the C-5 session lease, which would end ` +
             'the sessions before the run does. Run that measurement outside the gate.',
+        );
+      }
+    for (const name of INSTANCE_PICKERS)
+      if (list(env[name]).includes(LIVE_INSTANCE)) {
+        pre.push({ code: 'live_instance', test: name });
+        log(
+          `${name} names the live DEV-Lab instance: the gate restarts, reconfigures and loads ` +
+            'the instance under test. Use the staging instance (tbi-s8).',
         );
       }
     // The C-5 fault drills run only on request and only against an instance in the mutation opt-in.

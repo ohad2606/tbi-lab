@@ -483,6 +483,38 @@ describe('the gate run (fake git and runners)', () => {
     expect(ran).toEqual([]);
     expect(codes(evidence(out))).toContain(code);
   });
+  const PICKERS = [
+    'TBI_ALLOW_SERVICE_MUTATION',
+    'TBI_C5_DEPLOYED',
+    'TBI_S8_INSTANCE',
+    'TBI_S13_SEC_DEPLOYED',
+    'TBI_S18_UNIT',
+  ];
+  it.each(PICKERS)('refuses %s naming the live instance, before anything runs', (name) => {
+    const value = name === 'TBI_ALLOW_SERVICE_MUTATION' ? 'secret-instance, tbi' : 'tbi';
+    const { deps, ran } = fake({ env: { ...ENV, [name]: value } });
+    const lines = [];
+    deps.log = (line) => lines.push(line);
+    const out = tmp();
+    expect(runGate(['--out', out], deps)).toBe(1);
+    expect(ran).toEqual([]);
+    expect(evidence(out).failures).toContainEqual({ code: 'live_instance', test: name });
+    expect(lines.join('\n')).toContain(`${name} names the live DEV-Lab instance`);
+  });
+  it('the staging instance is allowed: only the exact live name is refused', () => {
+    for (const instance of ['tbi-s8', 'tbi-lab', 'TBI']) {
+      const env = { ...ENV, ...Object.fromEntries(PICKERS.map((name) => [name, instance])) };
+      const { deps } = fake({ env });
+      expect(runGate(['--out', tmp()], deps), instance).toBe(0);
+    }
+  });
+  it('the refused name is the one install.sh gives the dev-lab target', () => {
+    const install = readFileSync(
+      new URL('../../deploy/dev-lab/s8/install.sh', import.meta.url),
+      'utf8',
+    );
+    expect(/^ {2}dev-lab\)\n {4}N=(\S+)$/m.exec(install)?.[1]).toBe('tbi');
+  });
   it('names the refused knob and says why', () => {
     const { deps } = fake({ env: { ...ENV, TBI_C5_BUILDS: '5' } });
     const lines = [];
