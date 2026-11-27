@@ -6,11 +6,12 @@
  *
  * Asserts: installing the unit does not enable auto-approve; the control-state dir is a systemd
  * StateDirectory with mode 0700 owned by the unit's user; no writable path is added besides it; the
- * hardening stays; no other unit in the repo can write it; the chosen path's parents pass the
- * autoStateDirCheck ancestor rules on this host.
+ * hardening stays; no other unit in the repo can write it; the only other unit running as the admin
+ * user is the draft intake unit (shared-user model), which masks the state dir fail closed; the
+ * chosen path's parents pass the autoStateDirCheck ancestor rules on this host.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, normalize } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { autoApproveConfigFromEnv } from '../signup/autoApprove.js';
@@ -20,7 +21,7 @@ const S8 = join(ROOT, 'deploy', 'dev-lab', 's8');
 const TEMPLATE = join(S8, 'tbi-admin.service.in');
 const INSTALL = readFileSync(join(S8, 'install.sh'), 'utf8');
 const STATE_DIR = '/var/lib/tbi-admin-auto';
-/** The planned intake unit (SIGNUP-AUTOMATION-DESIGN §7 item 2); not in the repo yet. */
+/** The DRAFT intake unit (not rendered, not installed); static checks: signup-intake-unit.test.ts. */
 const INTAKE_UNIT = join(ROOT, 'deploy', 'signup', 'tbi-signup.service.in');
 
 function renderRawFn(): string {
@@ -226,7 +227,7 @@ describe('BETA-G1 deploy: tbi-admin.service.in auto-approve wiring', () => {
       }
   });
 
-  it('no other unit in the repo runs as the admin user or can write the state dir', () => {
+  it('only the draft intake unit shares the admin user; no other unit can write the state dir', () => {
     const units: string[] = [];
     const walk = (dir: string) => {
       for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -237,21 +238,38 @@ describe('BETA-G1 deploy: tbi-admin.service.in auto-approve wiring', () => {
     };
     walk(join(ROOT, 'deploy'));
     expect(units.length).toBeGreaterThan(5);
+    expect(units).toContain(INTAKE_UNIT);
+    const adminUser = all(d, 'User');
+    expect(adminUser).toEqual(['tbi-admin']);
+    const sharing: string[] = [];
     for (const u of units) {
       const ud = serviceDirectives(readFileSync(u, 'utf8'));
-      expect(all(ud, 'User'), u).not.toContain('tbi-admin');
+      if (all(ud, 'User').some((x) => adminUser.includes(x))) sharing.push(u);
       expect(all(ud, 'StateDirectory').join(' '), u).not.toContain('admin-auto');
       for (const k of ['ReadWritePaths', 'BindPaths'])
         for (const p of paths(ud, k).map((x) => x.split(':')[0] ?? x))
           expect(within(STATE_DIR, p) || within(p, STATE_DIR), `${u} ${k} ${p}`).toBe(false);
     }
+    // Exactly one: the intake, by the shared-user model (runbook precondition 5).
+    expect(sharing).toEqual([INTAKE_UNIT]);
   });
 
-  // The intake unit is a later deploy slice; this skip is visible in the count until it lands.
-  it.skipIf(!existsSync(INTAKE_UNIT))('the intake unit has the state dir inaccessible', () => {
-    const ud = serviceDirectives(readFileSync(INTAKE_UNIT, 'utf8'));
-    expect(all(ud, 'User')).not.toContain('tbi-admin');
-    expect(paths(ud, 'InaccessiblePaths').some((p) => within(STATE_DIR, p))).toBe(true);
+  it('the intake unit shares the admin user and group and masks the state dir fail closed', () => {
+    // Shared-user model: the 0700 store holds 0600 files of both services, so the intake runs as
+    // the admin unit's user; file modes do not keep it out of the state dir, only its sandbox does.
+    const ud = serviceDirectives(readFileSync(INTAKE_UNIT, 'utf8').replaceAll('@N@', 'tbi'));
+    expect(all(ud, 'User')).toEqual(all(d, 'User'));
+    expect(all(ud, 'Group')).toEqual(all(d, 'Group'));
+    expect(all(ud, 'SupplementaryGroups')).toEqual([]);
+    // Listed without "-": a missing state dir blocks the start instead of leaving it unmasked.
+    const raw = all(ud, 'InaccessiblePaths').flatMap((v) => v.split(/\s+/).filter(Boolean));
+    expect(raw).toContain(STATE_DIR);
+    expect(raw).not.toContain(`-${STATE_DIR}`);
+    for (const k of ['ReadWritePaths', 'BindPaths', 'ReadOnlyPaths', 'BindReadOnlyPaths'])
+      for (const p of paths(ud, k).map((x) => x.split(':')[0] ?? x))
+        expect(within(STATE_DIR, p) || within(p, STATE_DIR), `${k} ${p}`).toBe(false);
+    expect(all(ud, 'StateDirectory')).toEqual([]);
+    expect(all(ud, 'PrivatePIDs')).toEqual(['yes']);
   });
 
   it("the state dir's parents pass the autoStateDirCheck ancestor rules on this host", () => {

@@ -23,10 +23,10 @@ other private details are kept in the private ops repository, not here.
 - `tbi-admin.service.in` creates the control-state directory through systemd (`StateDirectory=<N>-admin-auto`,
   `StateDirectoryMode=0700`). systemd creates it owned by the admin service user (`tbi-admin`,
   group `tbi-adminio`) with mode 0700 and puts back the owner if it was changed at start. It may not correct a
-  loosened mode: check `stat` shows 0700 after every restart (the code refuses only group/world-writable). Whether the intake can reach it depends on the user model
-  (precondition 5): a **different** user is denied by the 0700 mode; the **same** user, as the store needs today, is
-  not. The admin service can write only there and in the spool (ProtectSystem=strict; no network:
-  PrivateNetwork=yes).
+  loosened mode: check `stat` shows 0700 after every restart (the code refuses only group/world-writable). The 0700
+  mode does **not** keep the intake out: the intake runs as the **same user** (shared-user model, the store needs it),
+  so only the intake unit's sandbox does (precondition 5). The admin service can write only there and in the spool
+  (ProtectSystem=strict; no network: PrivateNetwork=yes).
 - It sets `TBI_SIGNUP_AUTO_STATE_DIR=/var/lib/<N>-admin-auto`, in the unit file itself (not in a drop-in). It approves
   and writes nothing while the flags are off, but with the sign-up admin on, the pause file in that directory already
   [holds applicant mail](#what-the-pause-holds).
@@ -46,30 +46,74 @@ other private details are kept in the private ops repository, not here.
    below the mail provider's daily allowance and the account cap headroom. **No value is chosen in this repo.**
 4. Public copy (G5) and the legal note (G4) match automatic approval (and, in email-verified mode, the
    confirmation mail and the deletion of unconfirmed requests).
-5. **Hard precondition for every flag on this page: isolate the intake.** Today the admin and intake services must
-   run as the **same user**: the sign-up store is 0700 and both write 0600 files in it. File modes then do not
-   separate them; the intake unit's sandbox must. Do not set a flag until all of this is done:
-   - The user model (shared or separate) is recorded in the private ops repository.
-   - The intake unit has `ProtectSystem=strict`; its `ReadWritePaths` holds only the sign-up store and, if
-     funnel counters are on, the intake's own `TBI_FUNNEL_DIR`.
-   - Its `InaccessiblePaths` covers `/var/lib/<N>-admin-auto` (control state, verification state, mail-gate
-     state), the verification state directory and key file wherever they are configured (for a key passed with
-     `LoadCredential`: the source file **and** the admin unit's credential directory), the admin mail key file
-     (`TBI_SIGNUP_RESEND_KEY_FILE`), the admin spool, results and view directories, the admin socket directory,
-     and the admin configuration, log and funnel directories the intake does not need. These paths must exist
-     before the intake starts: an optional (`-` prefixed) path that is absent at start is not masked.
-   - On the host, `systemctl show -p InaccessiblePaths,ReadWritePaths <intake unit>` shows exactly that. Record the
-     output as evidence **before** setting the flags.
-   - The skipped intake case in `signup-auto-deploy-unit.test.ts` is completed when the intake unit lands in the
-     repo: it checks these paths, and its user assertion must match the recorded user model.
-   - **Blocking:** path masking alone is not enough with a shared user, because a process can signal another
-     process of the same user and may reach its files through `/proc/<pid>/root`. Use either separate users
-     (needs a group-based store mode, not built yet), or a separate PID namespace for the intake
-     (`PrivatePIDs=yes`; confirm the host supports it and that it took effect) together with
-     `NoNewPrivileges=yes`, an empty `CapabilityBoundingSet` and `SystemCallFilter=~@debug`.
-   - **Blocking:** from inside the intake's sandbox, check and record that the admin process is not visible and
-     cannot be signalled, and that the control state cannot be read, neither by its path nor through `/proc`.
-     `systemctl show` proves configuration only, not enforcement.
+5. **Hard precondition for every flag on this page: isolate the intake.** The admin and intake services run as the
+   **same user** (`tbi-admin`, group `tbi-adminio`): the sign-up store is 0700 and both write 0600 files in it. File
+   modes therefore do not separate them; the intake unit's sandbox must. **Fail closed:** if any step below fails or
+   cannot be checked, do not set a flag and do not loosen the unit; record the result and stop.
+   - **The unit exists only as a draft:** `deploy/signup/tbi-signup.service.in` (not rendered by any installer, not
+     installed, never run on a host; placeholders listed in its header). Its static tests are
+     `runtime/admin/tests/signup-intake-unit.test.ts` and the intake case of `signup-auto-deploy-unit.test.ts` (user
+     equal to the admin unit's, state directory masked without `-`). Rendering and installing it is a separate,
+     reviewed deploy step with the owner's approval. It keeps `TBI_SIGNUP_INTAKE=0`; the intake is enabled only by a
+     drop-in.
+   - What the draft sets: `User=`/`Group=` exactly the admin unit's, no supplementary groups, `UMask=0077`;
+     `ProtectSystem=strict`, `ReadWritePaths` only the store `/var/lib/tbi-signup` and the optional own funnel
+     directory `/var/lib/tbi-signup-funnel`; its HMAC secret and Telegram token only via `LoadCredential=` (from
+     `/etc/tbi-signup/intake-hmac.key` and `/etc/tbi-signup/intake-telegram.token`, root-owned 0400, read by systemd
+     before the sandbox is set up); `PrivatePIDs=yes`, `ProtectProc=invisible`, `ProcSubset=pid`; no capabilities,
+     `SystemCallFilter=@system-service` minus `@privileged @resources @debug @mount @obsolete` and the cross-process
+     calls; `RestrictAddressFamilies=AF_INET AF_INET6` (no `AF_UNIX`); `IPAddressDeny=any` with loopback, the DNS stub
+     `127.0.0.53` and the messaging provider's address list (placeholder); it may bind only TCP port 7411
+     (`TBI_SIGNUP_LISTEN=127.0.0.1:7411`).
+   - `InaccessiblePaths` **without** `-` (a missing path makes the start fail, which is intended):
+     `/var/lib/<N>-admin-auto` (control, verification and mail-gate state), `/run/<N>-admin` (admin socket),
+     `/run/credentials/<N>-admin.service` (the admin's identity key and, by its drop-ins, the verify and mail keys),
+     `/var/lib/tbi-mail`, `/etc/tbi-signup` (mail key `TBI_SIGNUP_RESEND_KEY_FILE`, verify key, and the intake's own
+     credential sources), `/etc/<N>` (identity key), `/var/lib/tbi-admin` (spool, results, view) and
+     `/var/log/tbi-admin`. Optional (`-`): the artifact store, `/var/lib/<N>-runtime`, `/var/lib/<N>-build`,
+     `/var/lib/private`, `/run/<N>-runtime`, `/run/user`, `/run/credentials/tbi-mailer.service`. `/run/credentials`
+     is never masked as a whole (the intake's own credentials are there). If the verify key or the admin's funnel
+     directory is configured anywhere else, add that path to a drop-in of the intake, without `-`.
+   - **Create first** (or the intake does not start): `/var/lib/tbi-signup` (0700 `tbi-admin:tbi-adminio`), and every
+     path in the list above. Where the mailer is not installed, create `/var/lib/tbi-mail` empty (root-owned, 0755).
+     `/run/<N>-admin` and `/run/credentials/<N>-admin.service` exist only while the admin service runs: the intake
+     unit has `Requires=` and `After=<N>-admin.service` (stopping the admin also stops the intake).
+   - **Fail closed on an old systemd:** `PrivatePIDs=` needs systemd **257** or later; an older systemd ignores the
+     unknown key with a warning only. `AssertVersion=systemd >= 257` is in the unit but exists only from systemd 258
+     (older versions ignore it the same way), so it is not the guard. The guard is the `ExecStart` wrapper: it refuses
+     with exit 78 (`tbi-signup: refusing to start: pid_namespace_missing`, no restart) unless it runs as PID 1 of its
+     own PID namespace.
+   - On the host, `systemctl show -p InaccessiblePaths,ReadWritePaths,User,Group,SupplementaryGroups <intake unit>`
+     shows exactly that. Record the output as evidence **before** setting the flags. It proves configuration only.
+
+   **Host checks** (owner session; record each result in the private ops repository):
+   - `systemd --version` (or `systemctl --version`) is **257** or later, and the kernel supports PID namespaces.
+   - `PrivatePIDs` took effect: the journal shows no `pid_namespace_missing` line, and the negative check below passes.
+   - `id tbi-admin` lists no supplementary group that opens anything the masks do not cover (in particular not
+     `tbi-sock-admin`, `tbi-admin-spool`, `tbi-admin-view` or `tbi-artifacts` as login groups; the admin unit adds them
+     with `SupplementaryGroups=`, the intake unit adds none).
+   - `loginctl show-user tbi-admin` shows no lingering user manager (`Linger=no`), and there is no `user@<uid>`
+     service for that uid.
+   - Loopback listeners: `ss -ltnp` lists every TCP listener on 127.0.0.1 / ::1 (for example a reverse proxy's admin
+     API on TCP). `IPAddressAllow` cannot filter ports, so the intake can connect to every one of them: each must
+     require authentication or be moved to a unix socket.
+   - Every path in the `InaccessiblePaths` list without `-` exists (`stat` each one).
+   - The DNS path works without `AF_UNIX`: `/etc/resolv.conf` points at `127.0.0.53` (or the address in the unit),
+     and `/etc/nsswitch.conf` falls back to `dns` when `resolve` is unavailable (`resolve [!UNAVAIL=return] dns`).
+   - Node with the system call filter: the intake starts, answers on 127.0.0.1:7411 and sends one Telegram
+     notification (a test sign-up) with `SystemCallErrorNumber=EPERM` and `@resources` excluded.
+
+   **Negative check inside the sandbox** (as root, owner session, with the intake unit installed and the admin unit
+   running). Run the commands with the intake's sandbox, for example
+   `sudo systemd-run --wait --pipe --collect -p ... /bin/sh -c '...'` with the same properties as the unit (or
+   `nsenter` into the running intake's namespaces), as the intake user. Each must give the expected result:
+   - `ls /proc` shows only the sandbox's own PIDs (no admin process).
+   - `kill -0 <admin main PID on the host>` fails (`No such process`).
+   - Reading `/var/lib/<N>-admin-auto`, `/run/<N>-admin/api.sock` and `/run/credentials/<N>-admin.service` fails
+     (`Permission denied` or not found), also through `/proc/<pid>/root` for any PID visible.
+   - A connect to an `AF_UNIX` socket fails (address family not supported).
+   - `getent ahosts api.telegram.org` resolves.
+   - **Any failure → do not set the flags.**
 
 Check the directory (expected answer: `tbi-admin:tbi-adminio 700 directory`):
 
