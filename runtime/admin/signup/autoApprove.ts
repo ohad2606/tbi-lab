@@ -63,6 +63,11 @@
  *                  (default `excluded`, until the owner decides O1 of BETA-G1-WEB-INTAKE.md): an
  *                  unauthenticated route must not be able to spend the daily cap and starve the
  *                  Apps Script requests, nor get accounts without the owner looking.
+ *                  G1-AUTO-VERIFY: TBI_SIGNUP_AUTO_WEB=verified makes EVERY request (whatever its
+ *                  `origin` says: the intake can drop the field) eligible only with an admin-written
+ *                  verification (verifyState.ts) recorded after the cut-off for exactly the address
+ *                  the record holds now; checked in the sweep, again inside the claim, and right
+ *                  before the account request (`mayAdd`). Without a verifier nothing is eligible.
  *   Retries        only ids in the admin-owned claim set (never on record fields alone: the intake
  *                  can write records) whose account step answered `account_pending` (status
  *                  `approved`, nothing sent yet). At most one per record per
@@ -108,7 +113,12 @@ export type AutoApproveConfigResult =
     };
 
 /** Whether web-origin requests may be auto-approved (default: excluded). */
-export type AutoWebSignups = 'excluded' | 'included';
+export type AutoWebSignups = 'excluded' | 'included' | 'verified';
+
+/** The admin-side verification as auto-approve sees it (verifyState.ts `Verifier`). */
+export interface VerifiedCheck {
+  verifiedFor(id: string, email: string, after?: number): Promise<boolean>;
+}
 
 const ISO_ZONED = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/;
 
@@ -117,8 +127,8 @@ const ISO_ZONED = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:
  *   TBI_SIGNUP_AUTO_DAILY_CAP   required when enabled: whole number 1..1000
  *   TBI_SIGNUP_AUTO_STATE_DIR   optional absolute, normalized path (default: the store dir)
  *   TBI_SIGNUP_AUTO_SINCE       optional ISO time with zone; only newer requests are taken
- *   TBI_SIGNUP_AUTO_WEB         optional `excluded` (default when unset/empty) or `included`:
- *                               whether browser-route (`origin: 'web'`) requests are eligible
+ *   TBI_SIGNUP_AUTO_WEB         optional `excluded` (default when unset/empty), `included`, or
+ *                               `verified` (every request needs an admin-recorded email proof)
  * Any other value is an error: auto-approve stays OFF (manual approval keeps working).
  */
 export function autoApproveConfigFromEnv(env: NodeJS.ProcessEnv): AutoApproveConfigResult {
@@ -135,8 +145,14 @@ export function autoApproveConfigFromEnv(env: NodeJS.ProcessEnv): AutoApproveCon
   if (cap === undefined || !/^\d{1,4}$/.test(cap) || Number(cap) < 1 || Number(cap) > AUTO_CAP_MAX)
     return bad(`TBI_SIGNUP_AUTO_DAILY_CAP must be a whole number from 1 to ${AUTO_CAP_MAX}`);
   const web = env.TBI_SIGNUP_AUTO_WEB;
-  if (web !== undefined && web !== '' && web !== 'excluded' && web !== 'included')
-    return bad('TBI_SIGNUP_AUTO_WEB must be excluded, included or unset');
+  if (
+    web !== undefined &&
+    web !== '' &&
+    web !== 'excluded' &&
+    web !== 'included' &&
+    web !== 'verified'
+  )
+    return bad('TBI_SIGNUP_AUTO_WEB must be excluded, included, verified or unset');
   const out: {
     enabled: true;
     dailyCap: number;
@@ -146,7 +162,7 @@ export function autoApproveConfigFromEnv(env: NodeJS.ProcessEnv): AutoApproveCon
   } = {
     enabled: true,
     dailyCap: Number(cap),
-    webSignups: web === 'included' ? 'included' : 'excluded',
+    webSignups: web === 'included' || web === 'verified' ? web : 'excluded',
   };
   const sd = env.TBI_SIGNUP_AUTO_STATE_DIR;
   if (sd !== undefined && sd !== '') {
@@ -338,7 +354,13 @@ export interface AutoApproverDeps {
    * is not recorded yet: then nothing is auto-approved (manual only, logged once). `onSpoolRequest`
    * is called with the id of each spool request its account step submits.
    */
-  approver: (hooks: { onSpoolRequest(id: string): void }) => SignupApprover | null;
+  approver: (hooks: {
+    onSpoolRequest(id: string): void;
+    /** Called right before an account request with its address: false = do not submit. */
+    mayAdd(email: string): Promise<boolean>;
+  }) => SignupApprover | null;
+  /** With webSignups `verified`: the admin-side verification; unset = nothing eligible. */
+  verified?: VerifiedCheck;
   now?: () => number;
   log?: (line: string) => void;
   /** Test hook: replaces lstat for the kill switch. */
@@ -764,6 +786,7 @@ export class AutoApprover {
       return serialById(id, async () => {
         const cur = await this.d.store.get(id).catch(() => null);
         if (!cur || !eligible(cur, s, cut, this.d.webSignups)) return 'ineligible' as const;
+        if (!(await this.proven(cur, cut))) return 'ineligible' as const;
         // A pause (or unsafe dir) that appeared since the sweep's check: nothing is written.
         const may = await this.stillMayApprove();
         if (may !== 'ok') return may;
@@ -866,10 +889,31 @@ export class AutoApprover {
     });
   }
 
+  /** Verified mode: the record's current address carries a verification newer than `after`. */
+  private async proven(r: SignupRecord, after: number): Promise<boolean> {
+    if (this.d.webSignups !== 'verified') return true;
+    return (await this.d.verified?.verifiedFor(r.id, r.email, after)) === true;
+  }
+
+  /** The id whose approve call is running (for the `mayAdd` hook). */
+  private current: string | null = null;
+
   private async approveOnce(approver: SignupApprover, id: string): Promise<void> {
     this.spoolId = null;
-    await approver.approve(id);
+    this.current = id;
+    try {
+      await approver.approve(id);
+    } finally {
+      this.current = null;
+    }
     await this.noteSpool(id);
+  }
+
+  /** Right before the account request: in verified mode the address must still be the proven one. */
+  private async mayAdd(email: string): Promise<boolean> {
+    if (this.d.webSignups !== 'verified') return true;
+    const id = this.current;
+    return id !== null && (await this.d.verified?.verifiedFor(id, email)) === true;
   }
 
   private sweeping = false;
@@ -929,6 +973,7 @@ export class AutoApprover {
       onSpoolRequest: (sid) => {
         this.spoolId = sid;
       },
+      mayAdd: (email) => this.mayAdd(email),
     });
     if (!approver) {
       if (!this.noOwnerLogged) {
@@ -977,6 +1022,7 @@ export class AutoApprover {
     // 2. New claims.
     for (const r of records) {
       if (!eligible(r, state, since, this.d.webSignups)) continue;
+      if (!(await this.proven(r, since))) continue;
       if (await this.paused()) {
         this.unconfirmed = true;
         this.sawInactive = true;
@@ -1012,7 +1058,8 @@ function eligible(
 ): boolean {
   return (
     r.status === 'pending' &&
-    (web === 'included' || r.origin !== 'web') &&
+    // `verified`: origin is ignored (every request needs a proof, checked by proven()).
+    (web !== 'excluded' || r.origin !== 'web') &&
     !r.autoApprovedAt &&
     r.lastError === null &&
     !Object.hasOwn(s.claims, r.id) &&

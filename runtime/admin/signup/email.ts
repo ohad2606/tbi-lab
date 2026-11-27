@@ -126,8 +126,57 @@ export function approvalEmail(
   };
 }
 
+/**
+ * G1-AUTO-VERIFY slice 1: the verify mail (HE + EN, plain text, company voice). Fixed text only:
+ * no name or any other sign-up field, so the mail to a not yet confirmed address can never carry
+ * attacker-chosen words (req 4). The link comes from config (TBI_SIGNUP_SITE_URL) + the token.
+ * Wording pending owner OK (design G1-AUTO-VERIFY section 11).
+ */
+export function verifyEmail(lang: 'he' | 'en', link: string): Mail {
+  if (lang === 'he') {
+    return {
+      subject: 'אישור כתובת המייל ל-TBI Lab',
+      text: [
+        'שלום,',
+        '',
+        'קיבלנו בקשת הרשמה ל-TBI Lab עם כתובת המייל הזו. כדי לאשר אותה, יש לפתוח את הקישור וללחוץ על הכפתור לאישור:',
+        link,
+        '',
+        'הקישור תקף ל-24 שעות.',
+        'אם לא נרשמת, אפשר פשוט להתעלם מהמייל הזה. בקשה שלא אושרה תימחק.',
+        '',
+        'צוות TBI Lab',
+      ].join('\n'),
+    };
+  }
+  return {
+    subject: 'Confirm your email for TBI Lab',
+    text: [
+      'Hi,',
+      '',
+      'We received a request to sign up for TBI Lab with this email address. To confirm it, open the link and press the confirm button:',
+      link,
+      '',
+      'The link is valid for 24 hours.',
+      "If this wasn't you, just ignore this email. A request that is not confirmed will be deleted.",
+      '',
+      'The TBI Lab team',
+    ].join('\n'),
+  };
+}
+
+export interface VerifyMailTo {
+  email: string;
+  lang: 'he' | 'en';
+  id: string;
+  gen: number;
+  link: string;
+}
+
 export interface EmailSender {
   sendApproval(to: { email: string; name: string; lang: 'he' | 'en'; id: string }): Promise<void>;
+  /** G1-AUTO-VERIFY: optional; a sender without it leaves email verification off. */
+  sendVerify?(to: VerifyMailTo): Promise<void>;
 }
 
 export class EmailError extends Error {
@@ -149,15 +198,17 @@ export interface ResendConfig extends EmailConfig {
 export class ResendSender implements EmailSender {
   constructor(private readonly c: ResendConfig) {}
 
-  async sendApproval(to: {
-    email: string;
-    name: string;
-    lang: 'he' | 'en';
-    id: string;
-  }): Promise<void> {
+  sendApproval(to: { email: string; name: string; lang: 'he' | 'en'; id: string }): Promise<void> {
+    return this.post(to.email, approvalEmail(to.lang, to, this.c), `signup-approval-${to.id}`);
+  }
+
+  sendVerify(to: VerifyMailTo): Promise<void> {
+    return this.post(to.email, verifyEmail(to.lang, to.link), `signup-verify-${to.id}-g${to.gen}`);
+  }
+
+  private async post(email: string, mail: Mail, idempotencyKey: string): Promise<void> {
     const key = (await this.c.readKey()).trim();
     if (!RESEND_KEY_RE.test(key)) throw new EmailError('bad_key');
-    const mail = approvalEmail(to.lang, to, this.c);
     let res;
     try {
       res = await this.c.fetch('https://api.resend.com/emails', {
@@ -166,11 +217,11 @@ export class ResendSender implements EmailSender {
           authorization: `Bearer ${key}`,
           'content-type': 'application/json',
           // Resend de-duplicates by this key for 24 h: a retry of an ambiguous send cannot double up.
-          'idempotency-key': `signup-approval-${to.id}`,
+          'idempotency-key': idempotencyKey,
         },
         body: JSON.stringify({
           from: this.c.from,
-          to: [to.email],
+          to: [email],
           reply_to: this.c.replyTo ?? this.c.from,
           subject: mail.subject,
           text: mail.text,

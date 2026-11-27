@@ -25,6 +25,11 @@
  *   TBI_SIGNUP_AUTO_STATE_DIR    optional: admin-only dir for the pause file + state (default: the
  *                                store dir); refused when not owned by us or group/world-writable
  *   TBI_SIGNUP_AUTO_SINCE        optional ISO cut-off; unset = the first time auto-approve ran
+ *   TBI_SIGNUP_VERIFY            G1-AUTO-VERIFY, OFF by default: `1` sends the verify mail and
+ *                                records confirmations (verifyState.ts; needs
+ *                                TBI_SIGNUP_VERIFY_KEY_FILE, TBI_SIGNUP_SITE_URL and a separate
+ *                                TBI_SIGNUP_AUTO_STATE_DIR). Approval stays manual unless
+ *                                TBI_SIGNUP_AUTO_WEB=verified with auto-approve on.
  */
 import {
   AUTO_APPROVE_INTERVAL_MS,
@@ -38,7 +43,7 @@ import { errorClass } from './errors.js';
 import { RESEND_KEY_RE, ResendSender, type EmailSender } from './email.js';
 import type { FetchLike } from './notify.js';
 import { parseQuiet, type QuietWindow } from './quietHours.js';
-import { SignupApprover } from './service.js';
+import { SignupApprover, type AccountAdder } from './service.js';
 import { spoolAccountAdder } from './http.js';
 import { readSecretFile } from './secret-file.js';
 import {
@@ -48,6 +53,8 @@ import {
   StoreError,
   type Retention,
 } from './store.js';
+import { loadVerifyKeys } from './verify.js';
+import { Verifier, verifyConfigFromEnv, type VerifyConfig } from './verifyState.js';
 import type { AdminSpool } from '../accounts.js';
 import type { FunnelSink } from '../funnel/counters.js';
 import type { Principal } from '../../identity/principal.js';
@@ -70,6 +77,8 @@ export interface AdminSignupConfig {
     /** BETA-G1 s8: unset = `excluded` (web-origin requests are never auto-approved). */
     webSignups?: AutoWebSignups;
   };
+  /** G1-AUTO-VERIFY: email verification; unset = off (no key read, nothing written). */
+  verify?: VerifyConfig;
 }
 
 export type AdminSignupConfigResult =
@@ -159,6 +168,8 @@ export interface SignupAdminWiring {
   startAutoApprove(): () => Promise<void>;
   /** The sweeper, when auto-approve is configured (tests, operator checks); else null. */
   auto: AutoApprover | null;
+  /** G1-AUTO-VERIFY: the verify step (runs before each auto-approve sweep), or null when off. */
+  verifier: Verifier | null;
 }
 
 export const DRAIN_INTERVAL_MS = 60_000;
@@ -181,7 +192,11 @@ export async function wireSignupAdmin(
     counters?: FunnelSink | null;
   },
 ): Promise<SignupAdminWiring> {
-  const store = new PendingStore(c.dir, { now: io.now });
+  let verifier: Verifier | null = null;
+  const store = new PendingStore(
+    c.dir,
+    c.verify ? { now: io.now, onRemoved: (id) => verifier!.remove(id) } : { now: io.now },
+  );
   await store.init();
   // The key is read at send time only (never held here); a missing file fails the send, not
   // startup. It is checked once now so a deploy mistake shows in the log before the first approval.
@@ -234,6 +249,20 @@ export async function wireSignupAdmin(
     }
   };
   let draining: Promise<void> | null = null;
+  if (c.verify) {
+    const v = c.verify;
+    verifier = new Verifier({
+      stateDir: v.stateDir,
+      storeDir: c.dir,
+      store,
+      email,
+      siteUrl: v.siteUrl,
+      keys: () => loadVerifyKeys(v.keyFile),
+      ...(v.since !== undefined ? { since: v.since } : {}),
+      now: io.now,
+      log: io.log,
+    });
+  }
   const auto = c.autoApprove
     ? new AutoApprover({
         dir: c.autoApprove.stateDir ?? c.dir,
@@ -241,6 +270,7 @@ export async function wireSignupAdmin(
         dailyCap: c.autoApprove.dailyCap,
         ...(c.autoApprove.since !== undefined ? { since: c.autoApprove.since } : {}),
         ...(c.autoApprove.webSignups ? { webSignups: c.autoApprove.webSignups } : {}),
+        ...(verifier ? { verified: verifier } : {}),
         now: io.now,
         log: io.log,
         approver: (hooks) => {
@@ -253,10 +283,22 @@ export async function wireSignupAdmin(
             },
             wait: (id: string) => spool.wait(id),
           };
+          if (!actor) return null;
+          const inner = spoolAccountAdder(watched, actor);
+          // Verified mode: the address handed to the spool must still be the proven one.
+          const accounts: AccountAdder = {
+            add: async (email, name) => {
+              if (await hooks.mayAdd(email)) return inner.add(email, name);
+              io.log(
+                'signup: auto-approve account request refused (not verified for this address)',
+              );
+              return 'error';
+            },
+          };
           return actor
             ? new SignupApprover({
                 store,
-                accounts: spoolAccountAdder(watched, actor),
+                accounts,
                 email,
                 quiet,
                 now: io.now,
@@ -273,34 +315,46 @@ export async function wireSignupAdmin(
   return {
     store,
     auto,
+    verifier,
     startAutoApprove() {
-      if (!auto) return async () => undefined;
-      io.log(`signup: auto-approve on (daily cap ${c.autoApprove!.dailyCap})`);
+      if (!auto && !verifier) return async () => undefined;
+      if (auto) io.log(`signup: auto-approve on (daily cap ${c.autoApprove!.dailyCap})`);
+      if (verifier) io.log('signup: email verification on');
       let t: ReturnType<typeof setInterval> | undefined;
       let stopped = false;
+      let autoOk = false;
       const tick = () => {
         if (sweeping) return;
-        sweeping = auto
-          .sweep()
-          .then((r) => {
-            if (r.attempted > 0) io.log(`signup: auto-approve processed ${r.attempted}`);
-          })
-          .catch((e: unknown) => io.log(`signup: auto-approve sweep failed (${errorClass(e)})`))
-          .finally(() => {
-            sweeping = null;
-          });
+        sweeping = (async () => {
+          // The verify step first, so a confirmation of this minute counts in this sweep.
+          if (verifier)
+            await verifier
+              .sweep()
+              .catch((e: unknown) => io.log(`signup: verify sweep failed (${errorClass(e)})`));
+          if (!auto || !autoOk) return;
+          await auto
+            .sweep()
+            .then((r) => {
+              if (r.attempted > 0) io.log(`signup: auto-approve processed ${r.attempted}`);
+            })
+            .catch((e: unknown) => io.log(`signup: auto-approve sweep failed (${errorClass(e)})`));
+        })().finally(() => {
+          sweeping = null;
+        });
       };
       // Refuse to start on an unsafe state dir (one log line); manual approval is unaffected.
-      const started = autoStateDirCheck(c.autoApprove!.stateDir ?? c.dir).then((bad) => {
+      const started = (
+        auto ? autoStateDirCheck(c.autoApprove!.stateDir ?? c.dir) : Promise.resolve(null)
+      ).then((bad) => {
         if (bad) {
           io.log(`signup: auto-approve not started (state dir unsafe: ${bad}); manual only`);
-          return;
-        }
+          if (!verifier) return;
+        } else autoOk = !!auto;
         tick();
         if (stopped) return;
         t = setInterval(tick, AUTO_APPROVE_INTERVAL_MS);
         t.unref();
-        running = true;
+        running = autoOk;
       });
       return async () => {
         stopped = true;
@@ -367,7 +421,7 @@ export async function signupWiringFromEnv(
   const auto = autoApproveConfigFromEnv(env);
   if (auto.enabled === false && auto.error)
     io.log(`signup: auto-approve off (config: ${auto.reason})`);
-  const config = auto.enabled
+  const config: AdminSignupConfig = auto.enabled
     ? {
         ...cfg.config,
         autoApprove: {
@@ -377,7 +431,11 @@ export async function signupWiringFromEnv(
           webSignups: auto.webSignups,
         },
       }
-    : cfg.config;
+    : { ...cfg.config };
+  // G1-AUTO-VERIFY: all flags unset = `verify` stays absent (no key read, nothing written).
+  const ver = verifyConfigFromEnv(env, cfg.config.dir);
+  if (ver.enabled) config.verify = ver.config;
+  else if (ver.error) io.log(`signup: email verification off (config: ${ver.reason})`);
   try {
     return await wireSignupAdmin(config, spool, io);
   } catch (e) {
