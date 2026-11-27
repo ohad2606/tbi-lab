@@ -1,10 +1,18 @@
 #!/usr/bin/env node
 /**
  * Static generator for the public site (TBI-013). No dependencies, no client JS.
- * Usage: node site/build.mjs [outDir] [--signup-preview]   (default site/dist). Exported: buildSite(outDir, opts).
+ * Usage: node site/build.mjs [outDir] [--signup-preview] [--signup-verify]   (default site/dist).
+ * Exported: buildSite(outDir, opts).
  * --signup-preview: e2e / local preview only (builds the unlinked sign-up page while the flag is off).
  */
-import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -88,17 +96,77 @@ function ogTags({ url, title, description, locale, altLocale }) {
 }
 const OG_LOCALE = { he: 'he_IL', en: 'en_US' };
 
+/**
+ * G1-AUTO-VERIFY slice 3: the confirm view (`#verify=<token>`) and the resend form, hidden until the client script
+ * (site/signup-verify.mjs) shows them. Every sentence is rendered here; the script copies text and toggles. The resend
+ * form has no `action` and no `data-api`: the publish gate allows only the sign-up form's.
+ */
+function renderVerifyView(lang, f, v) {
+  const results = ['Received', 'Expired', 'Invalid', 'Rate', 'Network', 'Unavailable', 'Sent'];
+  const texts = [
+    ['confirmTitle', esc(v.confirmTitle)],
+    ['confirmH', esc(v.confirmH)],
+    ...results.flatMap((r) => [
+      [`result${r}H`, esc(v[`result${r}H`])],
+      [`result${r}P`, rich2(v[`result${r}P`], lang)],
+    ]),
+    ['resultFailH', esc(v.resultFailH)],
+    ['confirmSending', esc(v.confirmSending)],
+    ['resendSending', esc(v.resendSending)],
+  ]
+    .map(([k, html]) => `<span data-vf="${k}">${html}</span>`)
+    .join('\n');
+  return `<div hidden>
+${texts}
+</div>
+<div id="vf" hidden>
+<p id="vf-intro">${esc(v.confirmP)}</p>
+<p id="vf-sending" class="hint-text" aria-hidden="true" hidden></p>
+<div id="vf-progress" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="vf-result" role="status" aria-live="polite" aria-atomic="true">
+<h2 id="vf-result-h" tabindex="-1" hidden></h2>
+<p id="vf-result-p" hidden></p>
+</div>
+<p id="vf-confirm"><button type="button" class="btn btn-primary" id="vf-button" aria-disabled="false">${esc(v.confirmButton)}</button></p>
+<form id="vf-resend" method="post" novalidate hidden aria-labelledby="vf-resend-h">
+<h2 id="vf-resend-h" class="small-h">${esc(v.resendH)}</h2>
+<div class="field">
+<label for="vf-email">${rich(f.email, lang)}</label>
+<p class="hint-text" id="vf-hint-email">${rich(f.emailHint, lang)}</p>
+<input type="email" id="vf-email" name="email" autocomplete="email" inputmode="email" dir="ltr" maxlength="254" spellcheck="false" autocapitalize="off" aria-required="true" aria-describedby="vf-hint-email">
+<p class="field-error" id="vf-err-email" hidden>${esc(f.errEmail)}</p>
+</div>
+<div class="hp" aria-hidden="true" inert>
+<label for="vf-website">${esc(f.honeypot)}</label>
+<input type="text" id="vf-website" name="website" value="" tabindex="-1" autocomplete="off" aria-hidden="true" data-lpignore="true" data-1p-ignore="true">
+</div>
+<p><button type="submit" class="btn btn-primary" id="vf-resend-button" aria-disabled="false">${esc(v.resendButton)}</button></p>
+</form>
+</div>`;
+}
+
 /** Sign-up form body (BETA-G1 s9). All text comes from content.mjs; the client script only toggles it. */
-function renderSignupBody(lang, t, pg) {
-  const f = t.signup;
+function renderSignupBody(lang, t, page, verify) {
+  // signupVerify (off by default): the changed copy replaces the base strings, and the confirm view is added.
+  const v = verify ? t.signupVerify : null;
+  const pg = v ? { ...page, lead: v.lead } : page;
+  const f = v
+    ? {
+        ...t.signup,
+        email: v.email,
+        emailHint: v.emailHint,
+        successH: v.successH,
+        successP: v.successP,
+      }
+    : t.signup;
   const privacyHref = pagePath(lang, 'privacy');
   const errKey = (key) => 'err' + key[0].toUpperCase() + key.slice(1);
   const errP = (key) =>
     `<p class="field-error" id="su-err-${key}" hidden>${esc(f[errKey(key)])}</p>`;
   const field = (key, label, control, hint = '', labelExtra = '') =>
     `<div class="field">
-<label for="su-${key}">${esc(label)}${labelExtra}</label>
-${hint ? `<p class="hint-text" id="su-hint-${key}">${esc(hint)}</p>` : ''}
+<label for="su-${key}">${rich(label, lang)}${labelExtra}</label>
+${hint ? `<p class="hint-text" id="su-hint-${key}">${rich(hint, lang)}</p>` : ''}
 ${control}
 ${errP(key)}
 </div>`;
@@ -137,7 +205,7 @@ ${errP(key)}
 ${msgs}
 </div>
 <div id="su-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
-<form id="signup-form" method="post" action="${esc(SIGNUP_API_BASE)}/web" novalidate hidden data-api="${esc(SIGNUP_API_BASE)}" data-lang="${lang}" aria-labelledby="su-h1">
+${v ? '<div id="su-flow">\n' : ''}<form id="signup-form" method="post" action="${esc(SIGNUP_API_BASE)}/web" novalidate hidden data-api="${esc(SIGNUP_API_BASE)}" data-lang="${lang}" aria-labelledby="su-h1">
 <div id="su-summary" class="summary" role="group" aria-labelledby="su-summary-h" tabindex="-1" hidden>
 <h2 id="su-summary-h"></h2>
 <p id="su-summary-msg" hidden></p>
@@ -160,10 +228,10 @@ ${check('consent', `${esc(f.consentBefore)}<a href="${privacyHref}" target="_bla
 <p id="su-sending" class="hint-text" aria-hidden="true" hidden>${esc(f.statusSending)}</p>
 </form>
 <section id="su-success" hidden>
-<h2 id="su-success-h" tabindex="-1">${esc(f.successH)}</h2>
+<h2 id="su-success-h" tabindex="-1">${rich(f.successH, lang)}</h2>
 ${f.successP.map((x) => `<p>${rich2(x, lang)}</p>`).join('\n')}
 </section>
-<script type="module" src="/assets/signup.mjs"></script>
+${v ? `</div>\n${renderVerifyView(lang, f, v)}\n` : ''}<script type="module" src="/assets/signup.mjs"></script>
 </div>`;
 }
 
@@ -232,7 +300,7 @@ ${pg.sections.map((s) => `<div class="wrap prose">${renderSection(s, 2, lang)}</
 <p>${signIn('signin')}</p>
 </div>`;
   } else if (page === 'signup') {
-    body = renderSignupBody(lang, t, pg);
+    body = renderSignupBody(lang, t, pg, opts.signupVerify);
   } else if (LEGAL_PAGES.includes(page)) {
     body = `<div class="wrap prose">
 <h1>${esc(pg.h1)}</h1>
@@ -349,6 +417,9 @@ ${links}
 /**
  * `signupPreview` (e2e / local preview only, never the published build): also build the sign-up page while the flag
  * is off. It is unlinked, so every other page is byte-identical to a build without it.
+ * `signupVerify` (G1-AUTO-VERIFY, OFF until the owner's flip): the sign-up pages get the Google-account and
+ * confirm-your-email copy, the confirm view and the resend form, and assets/signup.mjs gets site/signup-verify.mjs
+ * appended (one module, so the publish script gate is unchanged). It changes nothing when the page is not built.
  * `signupNoindex` (default SIGNUP_NOINDEX): robots noindex on the sign-up pages, independent of the flag.
  */
 export function buildSite(outDir = join(here, 'dist'), opts = {}) {
@@ -356,6 +427,7 @@ export function buildSite(outDir = join(here, 'dist'), opts = {}) {
     applyUrl: APPLY_URL,
     signupEnabled: SIGNUP_PAGE_ENABLED,
     signupPreview: false,
+    signupVerify: false,
     signupNoindex: SIGNUP_NOINDEX,
     ...opts,
   };
@@ -374,7 +446,12 @@ export function buildSite(outDir = join(here, 'dist'), opts = {}) {
       write(`${lang}${pagePath(lang, page).slice(3)}index.html`, renderPage(lang, page, o));
   mkdirSync(join(out, 'assets'), { recursive: true });
   copyFileSync(join(here, 'site.css'), join(out, 'assets', 'site.css'));
-  if (withSignup) copyFileSync(join(here, 'signup.mjs'), join(out, 'assets', 'signup.mjs'));
+  if (withSignup) {
+    const module = join(out, 'assets', 'signup.mjs');
+    copyFileSync(join(here, 'signup.mjs'), module);
+    if (o.signupVerify)
+      appendFileSync(module, '\n' + readFileSync(join(here, 'signup-verify.mjs')));
+  }
   // Self-hosted Heebo (SIL OFL 1.1, see site/fonts/OFL-Heebo.txt): consistent look, no third-party requests.
   mkdirSync(join(out, 'assets', 'fonts'), { recursive: true });
   for (const f of [
@@ -405,7 +482,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const args = process.argv.slice(2);
   const dir = args.find((a) => !a.startsWith('--'));
   const out = buildSite(dir, {
-    signupPreview: args.includes('--signup-preview'),
+    // --signup-verify: preview of the G1-AUTO-VERIFY views (implies --signup-preview). Never for publishing.
+    signupPreview: args.includes('--signup-preview') || args.includes('--signup-verify'),
+    signupVerify: args.includes('--signup-verify'),
     ...(process.env.SITE_SIGNUP_ENABLED === '1' ? { signupEnabled: true } : {}),
   });
   console.log(`site built: ${out} (default language ${DEFAULT_LANG})`);

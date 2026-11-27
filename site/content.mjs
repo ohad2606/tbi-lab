@@ -182,6 +182,51 @@ const en = {
       'If you have a question, write to us at support@tbi-tech.net.',
     ],
   },
+  /**
+   * BETA-G1 G1-AUTO-VERIFY slice 3: used only with the `signupVerify` build option (off until the owner's flip).
+   * `email` .. `successP` and `lead` replace the sign-up copy; the rest is the confirm view and the resend form.
+   * The privacy wording is not here: it changes with the lawyer's text (G4).
+   */
+  signupVerify: {
+    lead: 'TBI Lab is an electronics lab in your browser. You build a circuit, write Arduino code and run it on a simulated classic [[ESP32]]. The Alpha is free and places are limited. Sign up, confirm your email, and you are in. On busy days it may take longer. You need a computer with Chrome or Edge and a screen at least 1024 pixels wide. The lab is not designed for phones.',
+    email: 'The email address of your Google account',
+    emailHint:
+      'During the beta you sign in with a Google account, using exactly this address. We will send a confirmation link to it.',
+    successH: 'Sign up, confirm your email, and you are in',
+    successP: [
+      'We received your details. We will send a confirmation email to the address you entered. Open the link in it and press the confirm button.',
+      'After you confirm, we set up your access and email you when you can sign in. We have limited capacity, so on busy days it may take longer.',
+      'No email? Check your spam folder, or send the sign-up form again. Questions? Write to us at support@tbi-tech.net.',
+    ],
+    confirmTitle: 'Confirm your email — TBI Lab',
+    confirmH: 'Confirm your email address',
+    confirmP: 'Press the button to confirm that this email address is yours.',
+    confirmButton: 'Confirm my email address',
+    confirmSending: 'Sending your confirmation…',
+    resultReceivedH: 'We received your confirmation',
+    resultReceivedP:
+      'We will email you when your access is ready. On busy days it may take longer. You can close this page.',
+    resultExpiredH: 'This link has expired',
+    resultExpiredP: 'A confirmation link works for 24 hours. You can ask for a new one below.',
+    resultInvalidH: 'This link did not work',
+    resultInvalidP:
+      'It may be incomplete. Open the link in the latest email from us again, or ask for a new one below.',
+    resultRateH: 'Too many attempts',
+    resultRateP:
+      'There have been too many requests from your connection. Please wait a few minutes and press the confirm button again.',
+    resultNetworkH: 'We could not reach the server',
+    resultNetworkP: 'Check your connection and press the confirm button again.',
+    resultUnavailableH: 'We could not confirm your address right now',
+    resultUnavailableP:
+      'Please press the confirm button again in a little while. If it keeps happening, write to us at support@tbi-tech.net.',
+    resendH: 'Ask for a new link',
+    resendButton: 'Send me a new link',
+    resendSending: 'Sending your request for a new link…',
+    resultSentH: 'Check your email',
+    resultSentP:
+      'If a sign-up for this address is waiting for confirmation, we will send a new link to it. On busy days it may take longer.',
+    resultFailH: 'We could not send your request',
+  },
   pages: {
     home: {
       title: 'TBI Lab — an electronics engineering lab for the classic ESP32 in your browser',
@@ -540,6 +585,45 @@ const he = {
       'מספר המקומות באלפא מוגבל, ולכן אנחנו מאשרים בקשות בהדרגה. כשנאשר את הבקשה שלכם, נשלח אליכם במייל את הקישור למעבדה.',
       'יש שאלה? כתבו לנו ל-support@tbi-tech.net.',
     ],
+  },
+  /** BETA-G1 G1-AUTO-VERIFY slice 3: used only with the `signupVerify` build option; see the English object. */
+  signupVerify: {
+    lead: '[[TBI Lab]] היא מעבדת אלקטרוניקה בדפדפן. בונים מעגל, כותבים קוד [[Arduino]] ומריצים אותו על [[ESP32]] קלאסי מדומה. ה-[[Alpha]] חינמי, ומספר המקומות מוגבל. נרשמים, מאשרים את המייל ונכנסים. בימים עמוסים זה עלול לקחת יותר זמן. דרוש מחשב עם דפדפן [[Chrome]] או [[Edge]], ומסך ברוחב 1024 פיקסלים לפחות. המעבדה לא מיועדת לטלפון.',
+    email: 'כתובת המייל של חשבון [[Google]] שלך',
+    emailHint: 'בבטא נכנסים עם חשבון [[Google]] בלבד, עם הכתובת הזו בדיוק. נשלח אליה קישור לאישור.',
+    successH: 'נרשמים, מאשרים את המייל ונכנסים',
+    successP: [
+      'קיבלנו את הפרטים. נשלח מייל אימות לכתובת שהזנתם. פתחו את הקישור שבו ולחצו על כפתור האישור.',
+      'אחרי האישור נפתח לכם גישה ונשלח מייל כשאפשר להיכנס. הקיבולת שלנו מוגבלת, ולכן בימים עמוסים זה עלול לקחת יותר זמן.',
+      'המייל לא הגיע? בדקו בתיקיית הספאם, או שלחו שוב את טופס ההרשמה. יש שאלה? כתבו לנו ל-support@tbi-tech.net.',
+    ],
+    confirmTitle: 'אישור כתובת המייל — TBI Lab',
+    confirmH: 'אישור כתובת המייל',
+    confirmP: 'לחצו על הכפתור כדי לאשר שכתובת המייל הזו שלכם.',
+    confirmButton: 'אישור כתובת המייל שלי',
+    confirmSending: 'שולחים את האישור…',
+    resultReceivedH: 'קיבלנו את האישור',
+    resultReceivedP:
+      'נשלח אליכם מייל כשהגישה תהיה מוכנה. בימים עמוסים זה עלול לקחת יותר זמן. אפשר לסגור את הדף.',
+    resultExpiredH: 'תוקף הקישור פג',
+    resultExpiredP: 'קישור אישור תקף ל-24 שעות. אפשר לבקש כאן למטה קישור חדש.',
+    resultInvalidH: 'הקישור לא עבד',
+    resultInvalidP:
+      'ייתכן שהוא לא שלם. פתחו שוב את הקישור מהמייל האחרון ששלחנו, או בקשו כאן למטה קישור חדש.',
+    resultRateH: 'יותר מדי ניסיונות',
+    resultRateP: 'היו יותר מדי בקשות מהחיבור שלכם. המתינו כמה דקות ולחצו שוב על כפתור האישור.',
+    resultNetworkH: 'לא הצלחנו להתחבר לשרת',
+    resultNetworkP: 'בדקו את החיבור ולחצו שוב על כפתור האישור.',
+    resultUnavailableH: 'לא הצלחנו לאשר את הכתובת כרגע',
+    resultUnavailableP:
+      'לחצו שוב על כפתור האישור בעוד זמן קצר. אם זה חוזר, כתבו לנו ל-support@tbi-tech.net.',
+    resendH: 'בקשת קישור חדש',
+    resendButton: 'שלחו לי קישור חדש',
+    resendSending: 'שולחים את הבקשה לקישור חדש…',
+    resultSentH: 'בדקו את תיבת המייל',
+    resultSentP:
+      'אם יש הרשמה לכתובת הזו שמחכה לאישור, נשלח אליה קישור חדש. בימים עמוסים זה עלול לקחת יותר זמן.',
+    resultFailH: 'לא הצלחנו לשלוח את הבקשה',
   },
   pages: {
     home: {
