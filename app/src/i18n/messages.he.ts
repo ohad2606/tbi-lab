@@ -70,6 +70,8 @@ export const he: Record<MessageKey, string> = {
   'canvas.label': 'משטח השרטוט',
   'canvas.controls': 'פקדי תצוגת המעגל',
   'view.messages': 'הודעות התצוגה',
+  'view.messages.scrollUp': 'גלילת ההודעה למעלה',
+  'view.messages.scrollDown': 'גלילת ההודעה למטה',
   'canvas.zoomIn': 'הגדלה',
   'canvas.zoomOut': 'הקטנה',
   'canvas.zoomFit': 'התאמה לתצוגה',

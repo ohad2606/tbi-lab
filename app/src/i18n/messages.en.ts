@@ -68,6 +68,8 @@ export const en = {
   'canvas.label': 'Schematic canvas',
   'canvas.controls': 'Circuit view controls',
   'view.messages': 'View messages',
+  'view.messages.scrollUp': 'Scroll message up',
+  'view.messages.scrollDown': 'Scroll message down',
   'canvas.zoomIn': 'Zoom in',
   'canvas.zoomOut': 'Zoom out',
   'canvas.zoomFit': 'Fit to view',

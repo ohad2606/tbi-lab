@@ -2,6 +2,7 @@
  * BETA-G3 follow-ups: the message boxes of the Circuit and 3D views, English and Hebrew:
  * - clipped messages scroll with the mouse wheel and the keyboard (WCAG 1.4.10, 2.1.1), while
  *   pointer clicks still reach the drawing under the box;
+ * - a clipped box has two named buttons, so a mouse without a wheel can scroll it;
  * - the box is a named Tab stop only while it overflows;
  * - a focused part is never fully hidden by the box (2.4.11), also when the box grows later;
  * - a wire selected with [ ] is panned into view.
@@ -10,6 +11,10 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { goToProjects, storedProjects, waitSaved } from './helpers.js';
 
 const NAME = { en: 'View messages', he: 'הודעות התצוגה' } as const;
+const SCROLL = {
+  en: { up: 'Scroll message up', down: 'Scroll message down' },
+  he: { up: 'גלילת ההודעה למעלה', down: 'גלילת ההודעה למטה' },
+} as const;
 
 test.beforeEach(async ({ page }) => {
   page.on('pageerror', (e) => {
@@ -59,8 +64,102 @@ async function wheelOver(page: Page, box: Locator, dy: number) {
   await page.mouse.wheel(0, dy);
 }
 
+/** The scroll buttons of one message box, used with a mouse only (no wheel, no keyboard). */
+async function scrollByButtons(page: Page, box: Locator, lang: 'en' | 'he', label: string) {
+  const up = box.getByRole('button', { name: SCROLL[lang].up, exact: true });
+  const down = box.getByRole('button', { name: SCROLL[lang].down, exact: true });
+  await expect(up, label).toBeVisible();
+  await expect(down, label).toBeVisible();
+  await expect(up).toHaveAttribute('aria-disabled', 'true');
+  await expect(down).toHaveAttribute('aria-disabled', 'false');
+  const outer = await rect(box);
+  for (const b of [up, down]) {
+    const r = await rect(b);
+    expect(r.width, label).toBeGreaterThanOrEqual(24);
+    expect(r.height, label).toBeGreaterThanOrEqual(24);
+    // Inside the message box: nothing more of the drawing is covered.
+    expect(r.x, label).toBeGreaterThanOrEqual(outer.x);
+    expect(r.y, label).toBeGreaterThanOrEqual(outer.y);
+    expect(r.x + r.width, label).toBeLessThanOrEqual(outer.x + outer.width + 0.5);
+    expect(r.y + r.height, label).toBeLessThanOrEqual(outer.y + outer.height + 0.5);
+  }
+  /** A real pointer click at the button's centre (fails if anything lies over it). */
+  const press = async (b: Locator) => {
+    await b.scrollIntoViewIfNeeded();
+    const r = await rect(b);
+    const [x, y] = [r.x + r.width / 2, r.y + r.height / 2];
+    expect(
+      await b.evaluate((el, p) => el.contains(document.elementFromPoint(p.x, p.y)), { x, y }),
+      `${label}: the button is on top at its centre`,
+    ).toBe(true);
+    await page.mouse.click(x, y);
+  };
+  await down.scrollIntoViewIfNeeded();
+  const at = await rect(down);
+  await press(down);
+  await expect.poll(() => scrollTop(box), { message: label }).toBeGreaterThan(0);
+  await expect(up).toHaveAttribute('aria-disabled', 'false');
+  // The buttons stay in place while the text moves under the pointer.
+  expect(Math.abs((await rect(down)).y - at.y), label).toBeLessThan(1);
+  for (let i = 0; i < 400; i++) {
+    if ((await down.getAttribute('aria-disabled')) === 'true') break;
+    await press(down);
+  }
+  await expect(down).toHaveAttribute('aria-disabled', 'true');
+  expect(
+    await box.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop),
+    label,
+  ).toBeLessThanOrEqual(1);
+  // Disabled at the end: focus stays on the button, with a visible focus ring from the keyboard.
+  await press(down);
+  await expect(down).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(up).toBeFocused();
+  expect(await up.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
+  const end = await scrollTop(box);
+  await page.keyboard.press('Enter');
+  await expect.poll(() => scrollTop(box)).toBeLessThan(end);
+  for (let i = 0; i < 400; i++) {
+    if ((await up.getAttribute('aria-disabled')) === 'true') break;
+    await press(up);
+  }
+  await expect.poll(() => scrollTop(box)).toBe(0);
+  await expect(up).toBeFocused();
+}
+
 for (const lang of ['en', 'he'] as const) {
   test.describe(lang, () => {
+    test('circuit: a mouse alone scrolls a clipped message with two buttons', async ({ page }) => {
+      await openCircuit(page, lang);
+      const box = page.getByTestId('canvas-hint');
+      await expect(box.getByRole('button')).toHaveCount(0);
+      for (const [width, height] of [
+        [683, 384],
+        [320, 480],
+      ] as const) {
+        await page.setViewportSize({ width, height });
+        await page.getByTestId('canvas').scrollIntoViewIfNeeded();
+        await page.getByTestId('canvas-fit').click();
+        await grow(box);
+        await box.scrollIntoViewIfNeeded();
+        const [view, doc] = [await viewBox(page), await revision(page)];
+        await scrollByButtons(page, box, lang, `${width}x${height}`);
+        expect(await viewBox(page)).toBe(view);
+        expect(await revision(page)).toBe(doc);
+        // The message becomes short while a button has focus: no focus loss.
+        const up = box.getByRole('button', { name: SCROLL[lang].up, exact: true });
+        await shrink(box);
+        await page.waitForTimeout(100);
+        await expect(up).toBeFocused();
+        await expect(up).toHaveAttribute('aria-disabled', 'true');
+        await page.getByTestId('canvas-fit').focus();
+        if (!(await box.evaluate((el) => el.scrollHeight - el.clientHeight > 1)))
+          await expect(box.getByRole('button')).toHaveCount(0);
+      }
+      await page.setViewportSize({ width: 1366, height: 768 });
+      await expect(box.getByRole('button')).toHaveCount(0);
+    });
+
     test('circuit: a clipped message scrolls by wheel; clicks reach the drawing', async ({
       page,
     }) => {
@@ -227,7 +326,13 @@ for (const lang of ['en', 'he'] as const) {
         await expect.poll(() => scrollTop(box)).toBe(0);
         await page.keyboard.press('ArrowDown');
         await expect.poll(() => scrollTop(box)).toBeGreaterThan(0);
+        // Let the smooth keyboard scroll finish before going back to the top.
+        await page.waitForTimeout(500);
+        await box.evaluate((el) => (el.scrollTop = 0));
+        await scrollByButtons(page, box, lang, `3D ${width}x${height}`);
         await shrink(box);
+        await page.getByTestId('view-3d').focus();
+        await expect(box.getByRole('button')).toHaveCount(0);
       }
     });
   });
