@@ -23,6 +23,12 @@ export const APPLY_URL = 'https://forms.gle/iSfCbg4BwWF7HqDCA';
  */
 export const SIGNUP_PAGE_ENABLED = false;
 /**
+ * BETA-G1 G1-AUTO-VERIFY, the owner's flip: true puts the email confirmation (new sign-up copy, confirm view, resend
+ * form) into the sign-up pages of the published build. It needs SIGNUP_PAGE_ENABLED = true; the build refuses
+ * otherwise. No environment variable changes it.
+ */
+export const SIGNUP_VERIFY_ENABLED = false;
+/**
  * DEC-07: the sign-up pages carry `noindex` whatever SIGNUP_PAGE_ENABLED says. Set to false on the public launch day
  * (15.12) only, never as part of the flip.
  */

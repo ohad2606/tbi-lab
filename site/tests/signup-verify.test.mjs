@@ -4,24 +4,26 @@
  * and 7 (POST /signup/verify {token}: 202 received, 410 expired, 400 invalid, 429; POST /signup/resend
  * {email, website, token}: 200 for any address).
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildSite } from '../build.mjs';
-import { content } from '../content.mjs';
+import { buildSite, cliOptions } from '../build.mjs';
+import { content, SIGNUP_VERIFY_ENABLED } from '../content.mjs';
 
 /**
  * sha256 over (relative path, bytes) of every built file, recorded from a build of origin/co/main 6173968 (before this
  * slice). With `signupVerify` off all three build variants must stay exactly that. If you change the site on purpose
  * while the option is off, update these values in the same commit.
+ * `preview` and `enabled` were updated for the request timeouts and the deferred token fetch in signup.mjs (only
+ * assets/signup.mjs differs); `default` is still the co/main value.
  */
 const CO_MAIN_TREES = {
   default: 'e7d2e70cffb4172b51f60010797d8f2eb64959f0fb9ea2968b9d69b90f6ed77c',
-  preview: '30acb1f41e9c797715b6e988d4cd170eedbcb2905b372fe50576f86c4990fd6a',
-  enabled: '5fd9246d6dcb4251e48f401cf1a94056a17d6a8ed890222e05f527d681e205c2',
+  preview: '6b01b357cb9094a2cae94252a04af68ac05b3b108693cf717a0bc8c5debd5b37',
+  enabled: '357234977ba46c3b55189024c445da2f3166a9008be12cc1affab15fb56bec9d',
 };
 const VARIANTS = {
   default: {},
@@ -80,8 +82,37 @@ describe('signupVerify off (the default): nothing changes', () => {
           if (part.length > 20 && !old.includes(part)) expect(t, part).not.toContain(part);
     }
   });
-  it('signupVerify alone builds no sign-up page and no script', () => {
-    expect(treeHash(build({ signupVerify: true }))).toBe(CO_MAIN_TREES.default);
+});
+
+describe('flip switch (SIGNUP_VERIFY_ENABLED)', () => {
+  it('ships off', () => {
+    expect(SIGNUP_VERIFY_ENABLED).toBe(false);
+  });
+  it('verify without the sign-up page is refused outside the preview, before the output is touched', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tbi-vf-refuse-'));
+    writeFileSync(join(dir, 'keep'), 'x');
+    expect(() => buildSite(dir, { signupVerify: true })).toThrow(/SIGNUP_PAGE_ENABLED/);
+    expect(readdirSync(dir)).toEqual(['keep']);
+  });
+  it('page enabled + verify builds the confirm view without the preview option', () => {
+    const out = build({ signupEnabled: true, signupVerify: true });
+    for (const l of ['he', 'en']) expect(page(out, l)).toContain('<div id="vf" hidden>');
+    expect(readFileSync(join(out, 'assets', 'signup.mjs'), 'utf8')).toContain('initVerify');
+  });
+  it('the command line overrides the constant only with --signup-verify; no environment variable', () => {
+    expect(cliOptions([], {})).toEqual({ signupPreview: false });
+    expect(cliOptions(['--signup-preview'], {})).toEqual({ signupPreview: true });
+    expect(cliOptions(['--signup-verify'], {})).toEqual({
+      signupPreview: true,
+      signupVerify: true,
+    });
+    expect(cliOptions([], { SITE_SIGNUP_VERIFY: '1', SITE_SIGNUP_VERIFY_ENABLED: '1' })).toEqual({
+      signupPreview: false,
+    });
+    expect(cliOptions([], { SITE_SIGNUP_ENABLED: '1' })).toEqual({
+      signupPreview: false,
+      signupEnabled: true,
+    });
   });
 });
 
@@ -294,4 +325,64 @@ describe('resend client logic', () => {
       msg: 'msgRate',
     });
   });
+});
+
+describe('hung requests are bounded', () => {
+  afterEach(() => vi.useRealTimers());
+  /** Never answers; like the real fetch it rejects when the signal aborts. */
+  const hung = (signal) =>
+    new Promise((_, reject) =>
+      signal?.addEventListener('abort', () => reject(new Error('aborted'))),
+    );
+  const tokenRes = res(200, { token: 'w1.t', ttl: 1800, minFill: 0 });
+  const settle = async (promise) => {
+    let value = 'pending';
+    promise.then(
+      (v) => (value = v),
+      (e) => (value = e),
+    );
+    await vi.advanceTimersByTimeAsync(mod.REQUEST_TIMEOUT_MS - 1);
+    expect(value).toBe('pending');
+    await vi.advanceTimersByTimeAsync(1);
+    return value;
+  };
+  it.each(['headers', 'body'])(
+    'form token (%s hang): network message, and the next call fetches again',
+    async (where) => {
+      vi.useFakeTimers();
+      let n = 0;
+      const tokens = mod.createTokenStore({
+        base: '/signup',
+        fetchFn: async (url, { signal }) => {
+          if (n++) return tokenRes;
+          if (where === 'headers') return hung(signal);
+          return { status: 200, ok: true, json: () => hung(signal) };
+        },
+      });
+      expect(await settle(tokens.get())).toEqual({ msg: 'msgNetwork' });
+      expect(await tokens.get()).toBe('w1.t');
+    },
+  );
+  it.each(['headers', 'body'])(
+    'resend post (%s hang): network message, and the next submit is not blocked',
+    async (where) => {
+      vi.useFakeTimers();
+      let posts = 0;
+      const fetchFn = async (url, { signal }) => {
+        if (url.endsWith('form-token')) return tokenRes;
+        if (posts++) return res(200, { ok: true });
+        if (where === 'headers') return hung(signal);
+        return { status: 200, ok: true, json: () => hung(signal) };
+      };
+      const sub = mod.createResender({
+        fetchFn,
+        base: '/signup',
+        tokens: mod.createTokenStore({ fetchFn, base: '/signup' }),
+      });
+      const body = { email: 'a@example.com', website: '' };
+      expect(await settle(sub.submit(body))).toEqual({ ok: false, msg: 'msgNetwork' });
+      expect(sub.busy).toBe(false);
+      expect(await sub.submit(body)).toEqual({ ok: true });
+    },
+  );
 });

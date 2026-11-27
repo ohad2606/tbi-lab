@@ -28,6 +28,7 @@ import {
   CONTACT_EMAIL,
   SCREENSHOTS,
   SIGNUP_PAGE_ENABLED,
+  SIGNUP_VERIFY_ENABLED,
   SIGNUP_NOINDEX,
   SIGNUP_API_BASE,
   SIGNUP_ROLE_VALUES,
@@ -420,9 +421,10 @@ ${links}
 /**
  * `signupPreview` (e2e / local preview only, never the published build): also build the sign-up page while the flag
  * is off. It is unlinked, so every other page is byte-identical to a build without it.
- * `signupVerify` (G1-AUTO-VERIFY, OFF until the owner's flip): the sign-up pages get the Google-account and
+ * `signupVerify` (default SIGNUP_VERIFY_ENABLED, OFF until the owner's flip): the sign-up pages get the Google-account and
  * confirm-your-email copy, the confirm view and the resend form, and assets/signup.mjs gets site/signup-verify.mjs
- * appended (one module, so the publish script gate is unchanged). It changes nothing when the page is not built.
+ * appended (one module, so the publish script gate is unchanged). Without `signupPreview` it requires the sign-up
+ * page to be enabled: any other combination is refused, so a flip cannot be silently without effect.
  * `signupNoindex` (default SIGNUP_NOINDEX): robots noindex on the sign-up pages, independent of the flag.
  */
 export function buildSite(outDir = join(here, 'dist'), opts = {}) {
@@ -430,10 +432,15 @@ export function buildSite(outDir = join(here, 'dist'), opts = {}) {
     applyUrl: APPLY_URL,
     signupEnabled: SIGNUP_PAGE_ENABLED,
     signupPreview: false,
-    signupVerify: false,
+    signupVerify: SIGNUP_VERIFY_ENABLED,
     signupNoindex: SIGNUP_NOINDEX,
     ...opts,
   };
+  // Checked before the output directory is touched.
+  if (o.signupVerify && !o.signupEnabled && !o.signupPreview)
+    throw new Error(
+      'site build refused: email confirmation (SIGNUP_VERIFY_ENABLED) needs the sign-up page (SIGNUP_PAGE_ENABLED)',
+    );
   // Flag off (and no preview): no sign-up page and no client script at all (review finding 8).
   const withSignup = o.signupEnabled || o.signupPreview;
   const out = resolve(outDir);
@@ -479,16 +486,25 @@ export function buildSite(outDir = join(here, 'dist'), opts = {}) {
   return out;
 }
 
+/**
+ * Build options from the command line. Only what was asked for is returned, so the content.mjs constants stay the
+ * defaults.
+ * --signup-preview: see buildSite. --signup-verify: preview of the G1-AUTO-VERIFY views (implies --signup-preview),
+ * never for publishing; the published build follows SIGNUP_VERIFY_ENABLED only (no environment variable).
+ * SITE_SIGNUP_ENABLED=1 builds the flag-true (flip) variant of the page flag for e2e checks.
+ */
+export function cliOptions(args, env) {
+  const verify = args.includes('--signup-verify');
+  return {
+    signupPreview: verify || args.includes('--signup-preview'),
+    ...(verify ? { signupVerify: true } : {}),
+    ...(env.SITE_SIGNUP_ENABLED === '1' ? { signupEnabled: true } : {}),
+  };
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  // --signup-preview: see buildSite. SITE_SIGNUP_ENABLED=1 builds the flag-true (flip) variant for e2e checks;
-  // unset keeps the content.mjs default.
   const args = process.argv.slice(2);
   const dir = args.find((a) => !a.startsWith('--'));
-  const out = buildSite(dir, {
-    // --signup-verify: preview of the G1-AUTO-VERIFY views (implies --signup-preview). Never for publishing.
-    signupPreview: args.includes('--signup-preview') || args.includes('--signup-verify'),
-    signupVerify: args.includes('--signup-verify'),
-    ...(process.env.SITE_SIGNUP_ENABLED === '1' ? { signupEnabled: true } : {}),
-  });
+  const out = buildSite(dir, cliOptions(args, process.env));
   console.log(`site built: ${out} (default language ${DEFAULT_LANG})`);
 }
