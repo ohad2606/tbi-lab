@@ -75,7 +75,17 @@ export interface SignupRecord extends SignupInput {
    * from auto-approval by default (autoApprove.ts).
    */
   origin?: 'web';
+  /**
+   * G1-AUTO-VERIFY: display mirrors written by the admin (verify mail sent / address confirmed).
+   * Absent while email verification is off. Never trusted for a decision: the admin-only verify
+   * state (verifyState.ts) is the source.
+   */
+  verifySentAt?: string;
+  verifiedAt?: string;
 }
+
+/** G1-AUTO-VERIFY: a confirm marker dropped by the intake (`<id>.vq-<sha256(token)[0:16]>`). */
+export const VERIFY_MARKER_RE = /^([0-9A-HJKMNP-TV-Z]{26})\.vq-([0-9a-f]{16})$/;
 
 /**
  * Retention (owner directive 2026-11-21, matching the notice published in the sign-up form):
@@ -141,6 +151,12 @@ export class PendingStore {
        * `maxRecords`), so the browser route can never fill the store shared with `/signup`.
        */
       maxWebRecords?: number;
+      /**
+       * G1-AUTO-VERIFY: called under the per-id lock after a record was deleted (owner delete or
+       * purge), to remove the admin's verify state for it. Errors are ignored here (the verify
+       * sweep also removes orphan state).
+       */
+      onRemoved?: (id: string) => Promise<void>;
     } = {},
   ) {}
 
@@ -434,7 +450,12 @@ export class PendingStore {
       // part-way leaves the record, so a retry finishes), and an orphan one on not_found too.
       await gone(`${id}.web`);
       for (const f of await readdir(this.dir)) {
-        if (f.startsWith(`${id}.`) && f.endsWith('.tmp')) await gone(f);
+        if (f.startsWith(`${id}.`) && (f.endsWith('.tmp') || f.startsWith(`${id}.vq-`)))
+          // Intake-made names: a directory under such a name is left alone (never EISDIR here).
+          await gone(f).catch((e: unknown) => {
+            const code = (e as { code?: string }).code;
+            if (code !== 'EISDIR' && code !== 'EPERM') throw e;
+          });
         else if (/^[0-9a-f]{64}\.mark$/.test(f)) {
           const holder = (await readFile(join(this.dir, f), 'utf8').catch(() => '')).trim();
           if (holder === id) await gone(f);
@@ -443,9 +464,14 @@ export class PendingStore {
       if (!existed)
         return (await this.auditHas(id, 'delete', 'ok')) ? 'already_deleted' : 'not_found';
       await gone(`${id}.json`);
+      await this.removed(id);
       await this.audit(id, 'delete', 'ok');
       return 'deleted';
     });
+  }
+
+  private async removed(id: string): Promise<void> {
+    await this.opts.onRemoved?.(id).catch(() => undefined);
   }
 
   /** Whether the audit log has a line `<time> <id> <action> <outcome>[ actor=...]`. */
@@ -491,6 +517,7 @@ export class PendingStore {
         await unlink(join(this.dir, `${id}.notified`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.notifyq`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.web`)).catch(() => undefined);
+        await this.removed(id);
         return true;
       });
       if (gone) removed.push(id);
@@ -515,6 +542,7 @@ export class PendingStore {
         await unlink(join(this.dir, `${id}.notified`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.notifyq`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.web`)).catch(() => undefined);
+        await this.removed(id);
         return true;
       });
       if (gone) this.corruptPurged++;
@@ -531,6 +559,18 @@ export class PendingStore {
             () => false,
           ));
         if (!live && s && t - s.mtimeMs > 3600_000)
+          await unlink(join(this.dir, f)).catch(() => undefined);
+        continue;
+      }
+      // Confirm markers whose record is gone (G1-AUTO-VERIFY): nothing can consume them any more.
+      const vq = VERIFY_MARKER_RE.exec(f);
+      if (vq) {
+        if (
+          !(await stat(this.path(vq[1]!)).then(
+            () => true,
+            () => false,
+          ))
+        )
           await unlink(join(this.dir, f)).catch(() => undefined);
         continue;
       }
