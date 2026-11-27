@@ -300,6 +300,21 @@ export function signupRowKind(r: SignupRecord): SignupRowKind {
   return 'decide';
 }
 
+const STATUS_KEY = {
+  decide: 'console.signups.status.pending',
+  retry: 'console.signups.status.accountPending',
+  resend: 'console.signups.status.emailFailed',
+  queued: 'console.signups.status.emailQueued',
+} as const;
+
+/** The row's status text; an email held by the mail limit does not wait for quiet hours. */
+export function signupStatusKey(r: SignupRecord) {
+  const kind = signupRowKind(r);
+  return kind === 'queued' && r.lastError === 'mail_cap'
+    ? 'console.signups.status.emailMailCap'
+    : STATUS_KEY[kind];
+}
+
 /** What the web form added to a request: the free-text answer (plain text) and the web mark. */
 export const signupSource = (r: SignupRecord): { heardFrom: string | null; web: boolean } => ({
   heardFrom: r.heardFrom ?? null,

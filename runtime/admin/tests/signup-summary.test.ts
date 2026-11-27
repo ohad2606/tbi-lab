@@ -250,6 +250,37 @@ function notifier(start: number, quiet: string | undefined = undefined) {
   };
 }
 
+describe('the auto-approved count', () => {
+  it('counts only requests that really are approved, not a pending or rejected one', async () => {
+    const at = new Date(NOON).toISOString();
+    const rec = (status: string, accountAdded = true) => ({
+      status,
+      accountAdded,
+      autoApprovedAt: at,
+      createdAt: at,
+    });
+    const records = [
+      rec('approved'),
+      rec('email_queued'),
+      rec('email_failed'),
+      rec('email_sent'),
+      rec('pending'),
+      rec('rejected'),
+      rec('approved', false),
+    ];
+    const s = await collectSummary({
+      storeDir: 'unused',
+      store: { list: async () => records } as never,
+      auto: null,
+      verify: null,
+      mail: null,
+      pauseDir: null,
+      now: () => NOON,
+    });
+    expect(s.today.autoApproved).toBe(4);
+  });
+});
+
 describe('morning summary', () => {
   it.each([
     // Israel leaves summer time on 2026-10-25 and enters it on 2027-03-26.

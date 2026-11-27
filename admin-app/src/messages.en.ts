@@ -140,6 +140,8 @@ export const consoleEn = {
     'Approved, but the account is not ready yet. Approve again to finish.',
   'console.signups.status.emailQueued':
     'Account added. The email is scheduled and will be sent when quiet hours end.',
+  'console.signups.status.emailMailCap':
+    'Account added. The email is waiting because of the email limit and will be sent automatically later.',
   'console.signups.heardFrom': 'How they heard about us',
   'console.signups.origin.web': 'Web form',
   'console.signups.autoApproved': 'Approved automatically',
@@ -221,7 +223,7 @@ export const consoleEn = {
     'The account for {name} was added, but the email could not be sent. Use Resend email.',
   'console.signups.err.not_found': 'The request of {name} no longer exists.',
   'console.signups.err.mail_cap':
-    'The account for {name} was added. The email limit has been reached for now, so the email is waiting and will be sent automatically later.',
+    'The account for {name} was added. The email limit has been reached for now, so the email is waiting and will be sent automatically later. You do not need to do anything. The counts are under "Email confirmation and mail limits".',
   'console.signups.err.unbound_state':
     "Warning: {name}'s request is marked as approved, but we have no record that the account was added. No email was sent. Check in Testers whether {name}'s account exists, then try again. If the warning returns, check free tester places and the server log.",
   'console.signups.err.not_found.unconfirmed':
