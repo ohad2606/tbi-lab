@@ -932,10 +932,11 @@ export const en = {
   'brand.logoAlt': 'TBI Lab: Think, Bring ideas to life, Invent',
   'home.subtitle':
     'Circuits are simulated and saved right here in your browser. Start from an example, or create your own project.',
-  // Screen support (2026-10-29): computers and tablets; tablets best in landscape; no phones.
+  // Screen support, public beta: Chrome or Edge on a computer. The messages only inform; nothing
+  // is blocked (ui/screenSupport.ts decides when each is shown).
   'app.screen.phone':
-    'TBI Lab does not support phones or screens this small. Use a computer or a tablet (landscape recommended).',
-  'app.screen.rotate': 'For the best experience, rotate your tablet to landscape.',
+    'TBI Lab does not support phones, tablets or screens this small. Use a computer with Chrome or Edge.',
+  'app.screen.rotate': 'TBI Lab does not support tablets. Use a computer with Chrome or Edge.',
   'app.screen.narrow': 'For the best experience, use a window at least 1024 pixels wide.',
   'rating.heading': 'Component rating exceeded',
   'rating.atRisk': '{component} may be damaged',
@@ -1580,7 +1581,7 @@ export const en = {
   'mcu.caveat.power': 'Supply pin',
   'mcu.caveat.enable': 'Chip enable: reset is not simulated',
   'mcu.note.unsupported':
-    'Not simulated in this version: internal pull-up/pull-down, GPIO interrupts, chip reset, analog, Wi-Fi.',
+    'Not simulated in this version: internal pull-up/pull-down, level-triggered GPIO interrupts, chip reset, analog, Wi-Fi.',
   'mcu.level.high': 'HIGH',
   'mcu.level.low': 'LOW',
   'mcu.mode.output': 'output',
@@ -2035,7 +2036,7 @@ export const en = {
   'onboarding.step3':
     'Press Run. While it runs, select a part and change what it senses (distance, temperature, light, motion): the firmware and the circuit respond.',
   'onboarding.note':
-    'Projects are saved in this browser only: use Export to keep a copy. The ESP32 simulator is shared by the alpha testers; if it is busy, try again in a moment.',
+    'Projects are saved in this browser only: use Export to keep a copy. The ESP32 simulator is shared between users; if it is busy, try again in a moment.',
   'onboarding.dismiss': 'Got it',
   'onboarding.show': 'Show getting started',
   // TBI-014: first-run welcome.

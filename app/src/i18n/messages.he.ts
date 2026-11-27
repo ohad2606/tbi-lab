@@ -911,8 +911,8 @@ export const he: Record<MessageKey, string> = {
   'brand.logoAlt': 'TBI Lab: חושבים, מפיחים חיים ברעיונות, ממציאים',
   'home.subtitle': 'המעגלים מדומים ונשמרים כאן, בדפדפן שלכם. התחילו מדוגמה, או צרו פרויקט משלכם.',
   'app.screen.phone':
-    'TBI Lab אינו תומך בטלפונים או במסכים קטנים כאלה. השתמשו במחשב או בטאבלט (מומלץ במצב לרוחב).',
-  'app.screen.rotate': 'לחוויה הטובה ביותר, סובבו את הטאבלט למצב לרוחב.',
+    'TBI Lab אינו תומך בטלפונים, בטאבלטים או במסכים קטנים כאלה. השתמשו במחשב עם Chrome או Edge.',
+  'app.screen.rotate': 'TBI Lab אינו תומך בטאבלטים. השתמשו במחשב עם Chrome או Edge.',
   'app.screen.narrow': 'לחוויה הטובה ביותר, השתמשו בחלון ברוחב של 1024 פיקסלים לפחות.',
   'rating.heading': 'חריגה מדירוגי הרכיב',
   'rating.atRisk': '{component} עלול להינזק',
@@ -1512,7 +1512,7 @@ export const he: Record<MessageKey, string> = {
   'mcu.caveat.power': 'פין הזנה',
   'mcu.caveat.enable': 'הפעלת השבב: איפוס אינו מדומה',
   'mcu.note.unsupported':
-    'לא מדומה בגרסה זו: Pull-up/Pull-down פנימי, פסיקות GPIO, איפוס שבב, אנלוגי, Wi-Fi.',
+    'לא מדומה בגרסה זו: Pull-up/Pull-down פנימי, פסיקות GPIO לפי רמה, איפוס שבב, אנלוגי, Wi-Fi.',
   'mcu.level.high': 'HIGH',
   'mcu.level.low': 'LOW',
   'mcu.mode.output': 'יציאה',
@@ -1967,7 +1967,7 @@ export const he: Record<MessageKey, string> = {
   'onboarding.step3':
     'לחצו הרצה. בזמן ההרצה, בחרו רכיב ושנו את מה שהוא חש (מרחק, טמפרטורה, אור, תנועה): הקושחה והמעגל מגיבים.',
   'onboarding.note':
-    'הפרויקטים נשמרים בדפדפן הזה בלבד: השתמשו בייצוא כדי לשמור עותק. סימולטור ה־ESP32 משותף לבודקי האלפא; אם הוא תפוס, נסו שוב בעוד רגע.',
+    'הפרויקטים נשמרים בדפדפן הזה בלבד: השתמשו בייצוא כדי לשמור עותק. סימולטור ה־ESP32 משותף למשתמשים; אם הוא תפוס, נסו שוב בעוד רגע.',
   'onboarding.dismiss': 'הבנתי',
   'onboarding.show': 'הצגת צעדים ראשונים',
   // Sprint 13 H7 (shown only when a deployment configures the form).

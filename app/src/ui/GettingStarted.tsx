@@ -1,7 +1,7 @@
 /**
  * Sprint 13 H4: the first-run guide on the Projects screen (three steps, every locale). Shown until
  * dismissed on this device; the header link brings it back. It points to the capability panel and
- * says the two things an alpha tester must know: the simulator is shared, projects live in this
+ * says the two things a new user must know: the simulator is shared, projects live in this
  * browser (Export keeps a copy).
  */
 import { openCapabilities } from './Capabilities.js';
