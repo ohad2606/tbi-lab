@@ -46,5 +46,8 @@ does). `signup.mjs` holds only logic; all text is rendered by the generator. Tes
 Email confirmation (G1-AUTO-VERIFY): `SIGNUP_VERIFY_ENABLED` (content.mjs, `false`) is the flip switch. `true` puts
 the confirm view and resend form into the sign-up pages of the published build and needs `SIGNUP_PAGE_ENABLED = true`
 (the build refuses otherwise). No environment variable changes it. `node site/build.mjs <dir> --signup-verify` builds
-the same views as a preview only, never for publishing. The privacy, consent, home and FAQ wording does not change
-with this switch.
+the same site as a preview only, never for publishing. The switch also changes the home, alpha, FAQ and accessibility
+pages (`signupVerify.pages` in content.mjs; the Hebrew accessibility statement is the owner's wording, directive
+2026-11-27 07:40, and changes only with the owner's approval). The privacy page and the privacy and consent text in the
+form do not change with this switch (lawyer, G4). Tests: `tests/signup-verify-copy.test.mjs`,
+`e2e/a11y-signup-verify.spec.ts`.

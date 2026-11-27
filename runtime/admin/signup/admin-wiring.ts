@@ -23,7 +23,9 @@
  *   TBI_SIGNUP_AUTO_DAILY_CAP    required with it: 1..1000 per Israel day (see autoApprove.ts). A bad
  *                                value leaves auto-approve off (one log line); manual approval stays.
  *   TBI_SIGNUP_AUTO_STATE_DIR    optional: admin-only dir for the pause file + state (default: the
- *                                store dir); refused when not owned by us or group/world-writable
+ *                                store dir); refused when not owned by us or group/world-writable.
+ *                                When set (even with auto-approve off) its pause file also holds
+ *                                queued and automatic approval mail, never the owner's own action
  *   TBI_SIGNUP_AUTO_SINCE        optional ISO cut-off; unset = the first time auto-approve ran
  *   TBI_SIGNUP_VERIFY            G1-AUTO-VERIFY, OFF by default: `1` sends the verify mail and
  *                                records confirmations (verifyState.ts; needs
@@ -52,6 +54,7 @@ import {
   AUTO_PAUSE_FILE,
   AUTO_HEARTBEAT_FILE,
   AutoApprover,
+  approvalHold,
   type AutoApproveStatus,
   autoApproveConfigFromEnv,
   autoPauseCheck,
@@ -110,6 +113,11 @@ export interface AdminSignupConfig {
    * binding stays, and without `mailCaps` no verify mail is sent.
    */
   verifiedMode?: boolean;
+  /**
+   * TBI_SIGNUP_AUTO_STATE_DIR as set, whether or not auto-approve or the caps are on: its pause
+   * file holds the queued drain and automatic approval mail (autoApprove.ts `approvalHold`).
+   */
+  pauseStateDir?: string;
   /** S4a: the mail gate around every applicant mail; unset = no gate (today's behaviour). */
   mailCaps?: MailLimits & { stateDir: string };
   /** S4b: write the counts-only summary file; unset = never. */
@@ -329,10 +337,20 @@ export async function wireSignupAdmin(
   // to the address its account was added for (service.ts ApprovalMailBinding).
   const verifiedMode = c.verifiedMode || c.autoApprove?.webSignups === 'verified';
   const mailBinding = verifier && verifiedMode ? { mailBinding: verifier } : {};
-  // The kill switch's dir (as the summary and owner view use it); null = no pause file at all.
-  const pauseDir = c.autoApprove
-    ? (c.autoApprove.stateDir ?? c.dir)
-    : (c.mailCaps?.stateDir ?? c.verify?.stateDir ?? null);
+  // The kill switch for applicant approval mail (queued drain, automatic approval): it holds
+  // whenever the state dir is configured, with or without the auto-approve drop-in or the caps.
+  const holdDir =
+    c.pauseStateDir ?? c.autoApprove?.stateDir ?? c.mailCaps?.stateDir ?? c.verify?.stateDir;
+  const hold =
+    holdDir === undefined
+      ? undefined
+      : approvalHold({ stateDir: holdDir, storeDir: c.dir, now: io.now, log: io.log });
+  // No state dir: unchanged (with auto-approve on, the drain reads the store dir's pause file).
+  const drainPaused =
+    hold ??
+    (c.autoApprove
+      ? async () => (await autoPauseCheck(join(c.dir, AUTO_PAUSE_FILE))).paused
+      : undefined);
   // The drain only sends mail for accounts that already exist; it never adds one. While paused,
   // auto-approved requests' mails wait (BETA-G1 fix 4); the owner's queued mails still go.
   const drainer = new SignupApprover({
@@ -343,11 +361,7 @@ export async function wireSignupAdmin(
     now: io.now,
     log: io.log,
     ...mailBinding,
-    ...(pauseDir !== null
-      ? {
-          paused: async () => (await autoPauseCheck(join(pauseDir, AUTO_PAUSE_FILE))).paused,
-        }
-      : {}),
+    ...(drainPaused ? { paused: drainPaused } : {}),
   });
   const runDrain = async () => {
     try {
@@ -401,6 +415,7 @@ export async function wireSignupAdmin(
                 log: io.log,
                 actor: 'auto',
                 counters: io.counters ?? null,
+                ...(hold ? { paused: hold } : {}),
                 ...mailBinding,
               })
             : null;
@@ -545,6 +560,8 @@ export async function wireSignupAdmin(
         }),
     },
     startDrain() {
+      // Once per start, never per sweep.
+      if (!hold) io.log('signup: approval mail pause check not configured (state_dir_unset)');
       const tick = () => {
         if (draining) return;
         draining = runDrain().finally(() => {
@@ -624,6 +641,8 @@ export async function signupWiringFromEnv(
     : { ...cfg.config };
   // Keyed on the setting itself: it holds also when auto-approve is off (missing caps, bad cap).
   if (env.TBI_SIGNUP_AUTO_WEB === 'verified') config.verifiedMode = true;
+  // Also without the auto-approve flag or the mail caps: the pause file holds applicant mail.
+  if (env.TBI_SIGNUP_AUTO_STATE_DIR) config.pauseStateDir = env.TBI_SIGNUP_AUTO_STATE_DIR;
   // G1-AUTO-VERIFY: all flags unset = `verify` stays absent (no key read, nothing written).
   const ver = verifyConfigFromEnv(env, cfg.config.dir);
   // BETA-G1 fix 3: contradictory verification settings refuse the sign-up admin wiring (nothing

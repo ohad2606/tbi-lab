@@ -65,9 +65,22 @@ function checkApplyUrl(u) {
 }
 
 function renderSection(s, level = 2, lang = 'en') {
-  const p = (s.p ?? []).map((t) => `<p>${rich2(t, lang)}</p>`).join('\n');
+  const paras = (list) => (list ?? []).map((t) => `<p>${rich2(t, lang)}</p>`).join('\n');
+  const p = paras(s.p);
+  // `pEnd`: paragraphs after the list.
+  const end = s.pEnd ? `${paras(s.pEnd)}\n` : '';
   const ul = s.ul ? `<ul>\n${s.ul.map((t) => `<li>${rich2(t, lang)}</li>`).join('\n')}\n</ul>` : '';
-  return `<section>\n<h${level} id="${s.id}" tabindex="-1">${rich(s.h, lang)}</h${level}>\n${p}\n${ul}\n</section>`;
+  return `<section>\n<h${level} id="${s.id}" tabindex="-1">${rich(s.h, lang)}</h${level}>\n${p}\n${ul}\n${end}</section>`;
+}
+
+/** The `signupVerify` copy of a page's sections; `patch` is content[lang].signupVerify.pages[page] (see content.mjs). */
+function verifySections(sections, patch = {}) {
+  return sections.flatMap((s) => {
+    const change = patch[s.id];
+    if (change === false) return [];
+    const { next = [], ...own } = change ?? {};
+    return [{ ...s, ...own }, ...next];
+  });
 }
 
 /** Public origin of the landing site; used only for link-preview (Open Graph) tags, which must be absolute. */
@@ -241,10 +254,16 @@ ${v ? `</div>\n${renderVerifyView(lang, f, v)}\n` : ''}<script type="module" src
 
 function renderPage(lang, page, opts) {
   const applyUrl = checkApplyUrl(opts.applyUrl);
-  const signupOn = opts.signupEnabled;
+  // signupVerify implies the own sign-up page on every page, so its preview shows the site as the flip builds it.
+  const signupOn = opts.signupEnabled || opts.signupVerify;
   const t = content[lang];
   const other = content[t.switchToLang];
   const pg = t.pages[page];
+  const sections = opts.signupVerify
+    ? verifySections(pg.sections, t.signupVerify.pages[page])
+    : pg.sections;
+  // A page whose flip copy changes what it covers also overrides the meta description.
+  const description = (opts.signupVerify && t.signupVerify.descriptions?.[page]) || pg.description;
   const nav = (signupOn ? [...NAV_PAGES, 'signup'] : NAV_PAGES)
     .map((n) => {
       const cur = n === page ? ' aria-current="page"' : '';
@@ -298,7 +317,7 @@ ${pg.features.map((f) => `<li class="card"><h3>${rich(f.h, lang)}</h3><p>${rich(
 </div>
 </section>
 ${shots}
-${pg.sections.map((s) => `<div class="wrap prose">${renderSection(s, 2, lang)}</div>`).join('\n')}
+${sections.map((s) => `<div class="wrap prose">${renderSection(s, 2, lang)}</div>`).join('\n')}
 <div class="wrap prose join">
 <p class="cta-row">${cta('band')}</p>
 <p>${signIn('signin')}</p>
@@ -309,7 +328,7 @@ ${pg.sections.map((s) => `<div class="wrap prose">${renderSection(s, 2, lang)}</
     body = `<div class="wrap prose">
 <h1>${esc(pg.h1)}</h1>
 ${page === 'privacy' ? `<p class="draft">${esc(t.interimNote)}</p>` : ''}
-${pg.sections.map((s) => renderSection(signupOn && s.pOwn ? { ...s, p: s.pOwn } : s, 2, lang)).join('\n')}
+${sections.map((s) => renderSection(signupOn && s.pOwn ? { ...s, p: s.pOwn } : s, 2, lang)).join('\n')}
 </div>`;
   } else {
     const how = (s) => {
@@ -320,7 +339,7 @@ ${pg.sections.map((s) => renderSection(signupOn && s.pOwn ? { ...s, p: s.pOwn } 
     body = `<div class="wrap prose">
 <h1>${esc(pg.h1)}</h1>
 ${pg.lead ? `<p class="lead">${rich(pg.lead, lang)}</p>` : ''}
-${pg.sections
+${sections
   .map((s) => {
     const r = renderSection(how(s), 2, lang);
     if (s.id === 'how-to-apply')
@@ -341,8 +360,8 @@ ${pg.sections
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(plain(pg.title))}</title>
-<meta name="description" content="${esc(plain(pg.description))}">
-${ogTags({ url: pagePath(lang, page), title: plain(pg.title), description: plain(pg.description), locale: OG_LOCALE[lang] ?? lang, altLocale: OG_LOCALE[t.switchToLang] })}
+<meta name="description" content="${esc(plain(description))}">
+${ogTags({ url: pagePath(lang, page), title: plain(pg.title), description: plain(description), locale: OG_LOCALE[lang] ?? lang, altLocale: OG_LOCALE[t.switchToLang] })}
 ${alts}
 ${page === 'signup' && opts.signupNoindex ? '<meta name="robots" content="noindex">\n' : ''}<link rel="icon" href="/assets/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" href="/assets/favicon-32.png" sizes="32x32">
@@ -423,8 +442,10 @@ ${links}
  * is off. It is unlinked, so every other page is byte-identical to a build without it.
  * `signupVerify` (default SIGNUP_VERIFY_ENABLED, OFF until the owner's flip): the sign-up pages get the Google-account and
  * confirm-your-email copy, the confirm view and the resend form, and assets/signup.mjs gets site/signup-verify.mjs
- * appended (one module, so the publish script gate is unchanged). Without `signupPreview` it requires the sign-up
- * page to be enabled: any other combination is refused, so a flip cannot be silently without effect.
+ * appended (one module, so the publish script gate is unchanged). The home, alpha, FAQ and accessibility pages get the
+ * `signupVerify.pages` copy, and every page is built as with the sign-up page enabled (also in the preview). Without
+ * `signupPreview` it requires the sign-up page to be enabled: any other combination is refused, so a flip cannot be
+ * silently without effect.
  * `signupNoindex` (default SIGNUP_NOINDEX): robots noindex on the sign-up pages, independent of the flag.
  */
 export function buildSite(outDir = join(here, 'dist'), opts = {}) {
@@ -489,7 +510,7 @@ export function buildSite(outDir = join(here, 'dist'), opts = {}) {
 /**
  * Build options from the command line. Only what was asked for is returned, so the content.mjs constants stay the
  * defaults.
- * --signup-preview: see buildSite. --signup-verify: preview of the G1-AUTO-VERIFY views (implies --signup-preview),
+ * --signup-preview: see buildSite. --signup-verify: preview of the G1-AUTO-VERIFY site (implies --signup-preview),
  * never for publishing; the published build follows SIGNUP_VERIFY_ENABLED only (no environment variable).
  * SITE_SIGNUP_ENABLED=1 builds the flag-true (flip) variant of the page flag for e2e checks.
  */

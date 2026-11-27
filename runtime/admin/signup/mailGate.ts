@@ -18,7 +18,9 @@
  * Gate state `<STATE_DIR>/mail-gate.json` (0600, tmp + fsync + rename + dir fsync): reservation
  * times (ms) of the last 30 days and a provider block time. Each send first RESERVES a slot that
  * is persisted before the provider call: a crash, a failed or a retried send counts again
- * (over-count, never under). Fail closed (= "cap reached", one class log line per hour): state dir
+ * (over-count, never under). The one exception: an approval mail held by the pause file after its
+ * reservation gives the slot back.
+ * Fail closed (= "cap reached", one class log line per hour): state dir
  * unsafe (autoStateDirCheck on every reservation), state missing after it existed
  * (`mail-gate.seen`), unreadable, invalid, an entry dated after now (clock stepped back). A
  * provider 429 blocks until the next hour (`http_429`) or the next Israel day (`http_429_quota`).
@@ -103,7 +105,10 @@ export class MailCapError extends Error {
   }
 }
 
-/** A verify mail stopped by the kill switch after its slot was reserved (the slot stays counted). */
+/**
+ * A mail stopped by the kill switch before the send. A verify mail's slot stays counted; an
+ * approval mail's slot is released (nothing was sent).
+ */
 export class MailPausedError extends Error {
   readonly code = 'paused';
   constructor() {
@@ -297,8 +302,8 @@ export class MailGate {
     return new MailCapError(t + HOUR_MS, why);
   }
 
-  /** Reserves (persists) one slot or throws MailCapError. */
-  reserve(): Promise<void> {
+  /** Reserves (persists) one slot and returns its time, or throws MailCapError. */
+  reserve(): Promise<number> {
     return this.serial(async () => {
       const t = this.now();
       let s: GateState;
@@ -316,6 +321,24 @@ export class MailGate {
         await this.write({ ...s, sent: [...s.sent, t] });
       } catch (e) {
         throw this.closed(e, t);
+      }
+      return t;
+    });
+  }
+
+  /**
+   * Gives back the slot reserved at `at`, only for a mail that never reached the provider call.
+   * If the state cannot be read or written the slot stays counted (over-count, never under).
+   */
+  private release(at: number): Promise<void> {
+    return this.serial(async () => {
+      const t = this.now();
+      try {
+        const s = await this.read(t);
+        const i = s.sent.indexOf(at);
+        if (i >= 0) await this.write({ ...s, sent: s.sent.filter((_, n) => n !== i) });
+      } catch (e) {
+        this.closed(e, t);
       }
     });
   }
@@ -356,8 +379,13 @@ export class MailGate {
   /** The one wrapper, built once around the real sender (admin-wiring.ts). */
   wrap(inner: EmailSender): EmailSender {
     const out: EmailSender = {
-      sendApproval: async (to) => {
-        await this.reserve();
+      sendApproval: async (to, held) => {
+        const slot = await this.reserve();
+        // Right before the send (the caller has asked before the reservation).
+        if (held && (await held().catch(() => true))) {
+          await this.release(slot);
+          throw new MailPausedError();
+        }
         await this.deliver(() => inner.sendApproval(to));
       },
     };

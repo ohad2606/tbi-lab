@@ -24,7 +24,8 @@ export const APPLY_URL = 'https://forms.gle/iSfCbg4BwWF7HqDCA';
 export const SIGNUP_PAGE_ENABLED = false;
 /**
  * BETA-G1 G1-AUTO-VERIFY, the owner's flip: true puts the email confirmation (new sign-up copy, confirm view, resend
- * form) into the sign-up pages of the published build. It needs SIGNUP_PAGE_ENABLED = true; the build refuses
+ * form) into the sign-up pages of the published build, and switches the home, alpha, FAQ and accessibility pages to the
+ * matching copy (`signupVerify.pages`). It needs SIGNUP_PAGE_ENABLED = true; the build refuses
  * otherwise. No environment variable changes it.
  */
 export const SIGNUP_VERIFY_ENABLED = false;
@@ -190,10 +191,14 @@ const en = {
   },
   /**
    * BETA-G1 G1-AUTO-VERIFY slice 3: used only with the `signupVerify` build option (off until the owner's flip).
-   * `email` .. `successP` and `lead` replace the sign-up copy; the rest is the confirm view and the resend form.
-   * The privacy wording is not here: it changes with the lawyer's text (G4).
+   * `email` .. `successP` and `lead` replace the sign-up copy; `pages` changes the other public pages; the rest is the
+   * confirm view and the resend form. The privacy wording is not here: it changes with the lawyer's text (G4).
    */
   signupVerify: {
+    descriptions: {
+      accessibility:
+        'Accessibility of TBI Lab: the known limitations, and what was checked on the public site and what was not.',
+    },
     lead: 'TBI Lab is an electronics lab in your browser. You build a circuit, write Arduino code and run it on a simulated classic [[ESP32]]. The Alpha is free and places are limited. Sign up, confirm your email, and you are in. On busy days it may take longer. You need a computer with Chrome or Edge and a screen at least 1024 pixels wide. The lab is not designed for phones.',
     email: 'The email address of your Google account',
     emailHint:
@@ -238,6 +243,77 @@ const en = {
       'We cannot send a new link right now. Your request was not sent. Please try again in a little while.',
     resendInvalid:
       'Your request for a new link was not accepted. Check the email address and ask again.',
+    /**
+     * Changes to the other public pages, by page and section id (build.mjs, verifySections): the fields given replace
+     * that section's own, `next` adds sections after it and `false` drops it. The privacy page is not here: it changes
+     * with the lawyer's text (G4).
+     */
+    pages: {
+      home: {
+        status: {
+          p: [
+            'TBI Lab is in an early access program. It is free and places are limited. Sign up, confirm your email, and you are in. On busy days it may take longer. Read how it works on the Alpha program page.',
+          ],
+        },
+      },
+      alpha: {
+        selection: {
+          h: 'How you get access',
+          ul: [
+            'Sending the form is not enough: you also confirm your email address with a link we send you.',
+            'After you confirm, we set up your access and email you when you can sign in.',
+            'Places are limited. On busy days it may take longer.',
+            'Only accounts that we have activated can sign in to the Lab.',
+          ],
+        },
+        'how-to-apply': {
+          h: 'How to sign up',
+          pOpenOwn: [
+            'Fill in the sign-up form on this site with the button below, using the email address of your Google account.',
+            'Sign up, confirm your email, and you are in. On busy days it may take longer. We will email you when you can sign in.',
+          ],
+        },
+      },
+      faq: {
+        'q-access': {
+          h: 'How do I get access?',
+          p: [
+            'Fill in the sign-up form with the email address of your Google account, open the link we email you and press the confirm button. Then we set up your access and email you when you can sign in. Places are limited, and on busy days it may take longer. Only activated accounts can sign in.',
+          ],
+          next: [
+            {
+              id: 'q-no-email',
+              h: 'I didn’t get the confirmation email. What can I do?',
+              p: [
+                'Check your spam folder. Then reload the sign-up page and send the form again with the same address. A confirmation link works for 24 hours.',
+              ],
+            },
+          ],
+        },
+      },
+      accessibility: {
+        /** `p`, `ul`, `pEnd`: the wording the owner approved (directive 2026-11-27 07:40, item 2). */
+        scope: {
+          id: 'statement',
+          h: 'Accessibility of TBI Lab',
+          p: [
+            'We develop TBI Lab according to the [[WCAG 2.2]] guidelines at level [[AA]]. The full check is not yet complete.',
+            'Known limitations right now:',
+          ],
+          ul: [
+            'A screen at least 1024 pixels wide is required.',
+            'Testing with a screen reader has not yet been done.',
+          ],
+          pEnd: [
+            'Encountered a barrier? Write to support@tbi-tech.net and we will take care of it.',
+          ],
+        },
+        checked: { h: 'What was checked on this website' },
+        'not-checked': { h: 'What was not checked on this website' },
+        // The approved wording ends with the same request.
+        contact: false,
+      },
+    },
   },
   pages: {
     home: {
@@ -600,6 +676,9 @@ const he = {
   },
   /** BETA-G1 G1-AUTO-VERIFY slice 3: used only with the `signupVerify` build option; see the English object. */
   signupVerify: {
+    descriptions: {
+      accessibility: 'נגישות TBI Lab: המגבלות הידועות, ומה נבדק באתר הציבורי ומה עדיין לא.',
+    },
     lead: '[[TBI Lab]] היא מעבדת אלקטרוניקה בדפדפן. בונים מעגל, כותבים קוד [[Arduino]] ומריצים אותו על [[ESP32]] קלאסי מדומה. ה-[[Alpha]] חינמי, ומספר המקומות מוגבל. נרשמים, מאשרים את המייל ונכנסים. בימים עמוסים זה עלול לקחת יותר זמן. דרוש מחשב עם דפדפן [[Chrome]] או [[Edge]], ומסך ברוחב 1024 פיקסלים לפחות. המעבדה לא מיועדת לטלפון.',
     email: 'כתובת המייל של חשבון [[Google]] שלכם',
     emailHint:
@@ -641,6 +720,66 @@ const he = {
     resultFailH: 'לא הצלחנו לשלוח את הבקשה',
     resendUnavailable: 'אי אפשר לשלוח קישור חדש כרגע. הבקשה לא נשלחה. נסו שוב בעוד זמן קצר.',
     resendInvalid: 'הבקשה לקישור חדש לא התקבלה. בדקו את כתובת המייל ובקשו שוב.',
+    pages: {
+      home: {
+        status: {
+          p: [
+            'TBI Lab נמצא בתוכנית גישה מוקדמת. זה ללא עלות ומספר המקומות מוגבל. נרשמים, מאשרים את המייל ונכנסים. בימים עמוסים זה עלול לקחת יותר זמן. איך זה עובד מוסבר בעמוד תוכנית אלפא.',
+          ],
+        },
+      },
+      alpha: {
+        selection: {
+          h: 'איך מקבלים גישה',
+          ul: [
+            'שליחת הטופס לבדה לא מספיקה: צריך גם לאשר את כתובת המייל בקישור שנשלח אליכם.',
+            'אחרי האישור נפעיל לכם את הגישה ונשלח מייל כשאפשר להיכנס.',
+            'מספר המקומות מוגבל. בימים עמוסים זה עלול לקחת יותר זמן.',
+            'רק חשבונות שהפעלנו יכולים להיכנס למעבדה.',
+          ],
+        },
+        'how-to-apply': {
+          h: 'איך נרשמים',
+          pOpenOwn: [
+            'ממלאים את טופס ההרשמה באתר בכפתור שלמטה, עם כתובת המייל של חשבון [[Google]] שלכם.',
+            'נרשמים, מאשרים את המייל ונכנסים. בימים עמוסים זה עלול לקחת יותר זמן. נשלח מייל כשאפשר להיכנס.',
+          ],
+        },
+      },
+      faq: {
+        'q-access': {
+          h: 'איך מקבלים גישה?',
+          p: [
+            'ממלאים את טופס ההרשמה עם כתובת המייל של חשבון [[Google]] שלכם, פותחים את הקישור שנשלח למייל ולוחצים על כפתור האישור. אחר כך נפעיל לכם את הגישה ונשלח מייל כשאפשר להיכנס. מספר המקומות מוגבל, ובימים עמוסים זה עלול לקחת יותר זמן. רק חשבונות שהופעלו יכולים להיכנס.',
+          ],
+          next: [
+            {
+              id: 'q-no-email',
+              h: 'לא קיבלתי את מייל האישור. מה עושים?',
+              p: [
+                'בדקו בתיקיית הספאם. אם לא נמצא, טענו מחדש את דף ההרשמה ושלחו שוב את הטופס עם אותה כתובת. קישור אישור תקף ל-24 שעות.',
+              ],
+            },
+          ],
+        },
+      },
+      accessibility: {
+        /** Verbatim from the owner (directive 2026-11-27 07:40, item 2). Change only with the owner's approval. */
+        scope: {
+          id: 'statement',
+          h: 'נגישות [[TBI Lab]]',
+          p: [
+            'אנחנו מפתחים את [[TBI Lab]] לפי הנחיות [[WCAG 2.2]] ברמה [[AA]]. הבדיקה המלאה עדיין לא הושלמה.',
+            'מגבלות ידועות כרגע:',
+          ],
+          ul: ['נדרש מסך ברוחב 1024 פיקסלים לפחות.', 'בדיקה עם קורא מסך עדיין לא בוצעה.'],
+          pEnd: ['נתקלתם בחסם? כתבו ל-support@tbi-tech.net ונטפל בזה.'],
+        },
+        checked: { h: 'מה נבדק באתר הזה' },
+        'not-checked': { h: 'מה לא נבדק באתר הזה' },
+        contact: false,
+      },
+    },
   },
   pages: {
     home: {

@@ -174,7 +174,14 @@ export interface VerifyMailTo {
 }
 
 export interface EmailSender {
-  sendApproval(to: { email: string; name: string; lang: 'he' | 'en'; id: string }): Promise<void>;
+  /**
+   * `held` (queued drain and automatic approval only): asked again by the mail gate after its
+   * slot reservation; true = do not send. A sender without a gate ignores it.
+   */
+  sendApproval(
+    to: { email: string; name: string; lang: 'he' | 'en'; id: string },
+    held?: () => Promise<boolean>,
+  ): Promise<void>;
   /** G1-AUTO-VERIFY: optional; a sender without it leaves email verification off. */
   sendVerify?(to: VerifyMailTo): Promise<void>;
 }

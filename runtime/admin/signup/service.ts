@@ -14,7 +14,7 @@ import { errorClass } from './errors.js';
 import { NonceCache, verifyRequest, type VerifyFailure } from './hmac.js';
 import { SlidingWindowLimiter } from './limits.js';
 import type { SignupNotifier } from './notify.js';
-import { MailCapError } from './mailGate.js';
+import { MailCapError, MailPausedError } from './mailGate.js';
 import { isQuiet, nextSendAt, type QuietWindow } from './quietHours.js';
 import type { EmailSender } from './email.js';
 import { serialById } from './locks.js';
@@ -605,8 +605,10 @@ export class SignupApprover {
        */
       ownerActions?: boolean;
       /**
-       * The drain only: whether `auto-approve.paused` is present (an error counts as paused).
-       * While paused, queued mails of auto-approved requests wait; the owner's queued mails go.
+       * The drain and the auto approver only (never the owner's approver): whether applicant mail
+       * must wait (`auto-approve.paused`; an error counts as paused). While paused, mails of
+       * automatic approvals and queued mails of auto-approved requests stay `email_queued`; the
+       * owner's queued mails go.
        */
       paused?: () => Promise<boolean>;
     },
@@ -813,6 +815,27 @@ export class SignupApprover {
       });
       return { ok: true, record: q, note: 'email_queued' };
     }
+    // The kill switch: automatic approval, and the drain of an auto-approved request.
+    const paused = this.d.paused;
+    const held =
+      paused && (this.d.actor === 'auto' || (!explicit && r.autoApprovedAt))
+        ? () => paused().catch(() => true)
+        : undefined;
+    const attemptedBefore = r.emailAttemptedAt;
+    // A held mail waits, due at once: no attempt, no failure; the drain sends it after resume.
+    const hold = async (cur: SignupRecord, emailAttempts: number): Promise<ApproveOutcome> => ({
+      ok: true,
+      record: await this.d.store.update(cur.id, {
+        status: 'email_queued',
+        emailSendAfter: new Date(nowMs).toISOString(),
+        emailAttemptedAt: attemptedBefore,
+        emailAttempts,
+        lastError: null,
+      }),
+      note: 'email_queued',
+    });
+    // Before any attempt is recorded or a mail slot is reserved.
+    if (held && (await held())) return hold(r, r.emailAttempts);
     const at = new Date(nowMs).toISOString();
     // Persist the attempt BEFORE sending. A drained (queued) record also leaves `email_queued` in
     // the same write: if the process dies after the provider accepted the mail but before
@@ -831,15 +854,21 @@ export class SignupApprover {
         return { ok: false, code: 'email_failed', record: r };
       }
     }
+    // Again right before the send (a mail gate asks once more, after its reservation).
+    if (held && (await held())) return hold(r, r.emailAttempts - 1);
     try {
-      await this.d.email.sendApproval({
-        email: r.email,
-        // Verified mode: no sign-up text in the mail (the generic greeting).
-        name: this.d.mailBinding ? '' : r.name,
-        lang: r.lang,
-        id: r.id,
-      });
+      await this.d.email.sendApproval(
+        {
+          email: r.email,
+          // Verified mode: no sign-up text in the mail (the generic greeting).
+          name: this.d.mailBinding ? '' : r.name,
+          lang: r.lang,
+          id: r.id,
+        },
+        held,
+      );
     } catch (e) {
+      if (e instanceof MailPausedError) return hold(r, r.emailAttempts - 1);
       // S4a mail gate: refused before the provider call, nothing was sent. The mail waits
       // (`email_queued`, due when a slot frees) and is never `email_failed`; the attempt is not
       // counted. The owner's own action sees the class `mail_cap`.
@@ -889,8 +918,11 @@ export class SignupApprover {
         if (r.emailSendAfter && Date.parse(r.emailSendAfter) > (this.d.now ?? Date.now)())
           return false;
         const out = await this.send(r, true);
+        // Held by the kill switch during the send: the owner's queued mails still go.
+        const queuedAgain = out.ok && out.note === 'email_queued';
+        if (queuedAgain && out.record.lastError !== 'mail_cap') return false;
         await this.audited(r.id, 'drain', out);
-        return out.ok && out.note === 'email_queued' ? 'cap' : true;
+        return queuedAgain ? 'cap' : true;
       });
       // Over the mail cap: the rest waits for the next drain (each stays `email_queued`).
       if (sent === 'cap') break;

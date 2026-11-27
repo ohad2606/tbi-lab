@@ -27,7 +27,9 @@ other private details are kept in the private ops repository, not here.
   (precondition 5): a **different** user is denied by the 0700 mode; the **same** user, as the store needs today, is
   not. The admin service can write only there and in the spool (ProtectSystem=strict; no network:
   PrivateNetwork=yes).
-- It sets `TBI_SIGNUP_AUTO_STATE_DIR=/var/lib/<N>-admin-auto`. This setting does nothing until the flag is on.
+- It sets `TBI_SIGNUP_AUTO_STATE_DIR=/var/lib/<N>-admin-auto`, in the unit file itself (not in a drop-in). It approves
+  and writes nothing while the flags are off, but with the sign-up admin on, the pause file in that directory already
+  [holds applicant mail](#what-the-pause-holds).
 - It does **not** set `TBI_SIGNUP_AUTO_APPROVE` or `TBI_SIGNUP_AUTO_DAILY_CAP`, so **auto-approve stays off**.
   A test checks the rendered unit for this: `runtime/admin/tests/signup-auto-deploy-unit.test.ts`.
 - The parents of the directory (`/var/lib`, `/var`, `/`) must stay owned by root and not group- or
@@ -291,8 +293,8 @@ optional keep window (`TBI_SIGNUP_AUTO_CUTOFF_KEEP_S`, below), which covers shor
 | While `auto-approve.paused` exists | |
 |---|---|
 | Stops | confirmation mails (first mails and new links); automatic approval |
-| Continues | storing sign-ups; recording confirmations; deleting expired and unconfirmed requests; sending queued approval mails of requests **you** approved; your own approve, reject and resend |
-| Waits | queued approval mails of automatically approved requests (also when the pause check itself fails); they are sent after the resume, at the next drain |
+| Continues | storing sign-ups; recording confirmations; deleting expired and unconfirmed requests; account creation already in progress; sending queued approval mails of requests **you** approved; your own approve, reject and resend |
+| Waits | approval mails of automatically approved requests, queued or about to be sent (also when the pause check itself fails); they are sent after the resume, at the next drain ([What the pause holds](#what-the-pause-holds)) |
 | Lost | requests for a new link made while paused are dropped; the person has to ask again |
 
 A request that waited for its first mail during a pause is mailed after the resume, but it stays manual (above). A
@@ -352,8 +354,13 @@ the person has to ask again later. A first mail held by the daily or per-address
 Consequences:
 
 - Links already sent no longer work.
-- Approval mails still queued are sent without the mail caps and without the address binding, **even if the pause
-  file exists** (without the drop-in the admin no longer reads it).
+- Queued approval mails of requests **you** approved are sent without the mail caps and without the address binding,
+  also while the pause file exists.
+- Queued approval mails of automatically approved requests wait while the pause file exists, **as long as
+  `TBI_SIGNUP_AUTO_STATE_DIR` is still set** (the unit file of this repository sets it; see
+  [What the pause holds](#what-the-pause-holds)). After you remove the pause file they are sent, without the mail
+  caps and without the address binding. Reject does not apply to them (their accounts exist): to stop one, delete the
+  request in the admin app before you resume.
 - The `verify/` directory stays, and deleting a request no longer removes its `verify/<id>.json`. It holds hashes and
   times only; remove the directory by hand if verification will not come back.
 - The verify cut-off is stored in `verify/since.json`. **Before enabling again**, set `TBI_SIGNUP_VERIFY_SINCE` to
@@ -434,7 +441,9 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
 ```
 
 - Log: `auto-approve paused`, and later `auto-approve resumed` (at the next sweep, within about a minute).
-- One request already in progress may still finish after the `touch`. The next check stops the sweep.
+- One request already in progress may still finish its account step after the `touch`; its approval mail then waits
+  ([What the pause holds](#what-the-pause-holds)). A mail already handed to the provider cannot be stopped. The next
+  check stops the sweep.
 - While paused, sign-ups are still stored and you approve them by hand (manual mode). The owner alert follows the
   intake's setting (per request, or the summary). Email-verified mode: see
   [What pause stops in this mode](#what-pause-stops-in-this-mode).
@@ -475,6 +484,35 @@ sudo rm /var/lib/<N>-admin-auto/auto-approve.paused        # resume
     (if it was already paused, no new line appears before the restart: find the earlier one since the last service
     start), remove `TBI_SIGNUP_AUTO_SINCE` from the drop-in, change the file, run `sudo systemctl daemon-reload`,
     restart, wait for a **new** `auto-approve paused` line, and only then remove the pause file.
+
+### What the pause holds
+
+Applicant approval mail follows the pause file whenever the admin unit has `TBI_SIGNUP_AUTO_STATE_DIR` and the
+sign-up admin routes are on, **with or without** an auto-approve drop-in or the mail caps.
+
+| Approval mail | Pause file present | Pause check fails, or the directory is unsafe | Setting not set |
+|---|---|---|---|
+| Automatic approval, sent at once | waits | waits | sent (the sweep itself still checks the pause once per request, see above) |
+| Queued mail of an automatically approved request (the minute drain) | waits | waits | sent; with auto-approve on, the drain still reads a pause file in the **store** directory |
+| Queued mail of a request you approved | sent | sent | sent |
+| Your own approve and resend in the admin app | as without a pause | as without a pause | as without a pause |
+
+- The check runs before an attempt is recorded or a mail slot is reserved, and again right before the send.
+- A held mail stays `email_queued`: it is not marked failed or sent, no attempt is counted and no mail slot stays
+  used. The account is created as usual. The admin app shows it as queued, with a send time that is already past;
+  "resend" does not force it. The drain sends it within about a minute after the resume (after quiet hours).
+- The directory must be absolute, pass the same safety checks as for auto-approve (owner, mode, no symlink, parents)
+  and be neither the sign-up store nor inside it. Otherwise these mails wait until it is fixed.
+- The pause file is read only from that directory. A file in the store directory has no effect while the setting is
+  set.
+- **Where the setting comes from decides what roll back does.** The unit file of this repository sets it, so removing
+  a drop-in keeps it and the pause keeps applying. If a host sets it only in a drop-in, removing that drop-in also
+  removes the setting, so **the pause can no longer apply**: queued mails are then sent. Check before you remove a
+  drop-in: `systemctl show -p Environment <N>-admin.service` (and `systemctl cat` to see which file sets it). To keep
+  the pause, the line must be in the unit file or in a drop-in that stays.
+- Admin log lines: `approval mail held (state_dir_unsafe)` and `approval mail held (pause_check_failed)` (each at most
+  hourly while such a mail is waiting): check the directory's owner, mode, parents and disk. `approval mail pause check
+  not configured (state_dir_unset)` (once per start): the setting is missing. A plain pause logs no line per held mail.
 
 ## What to watch in the log (monitoring)
 
@@ -548,7 +586,10 @@ In email-verified mode use [Roll back email-verified mode](#roll-back-email-veri
 
 - Requests approved automatically stay approved, and their accounts exist. Disable an account by hand in the
   admin app if needed. The sign-up audit log marks those approvals `actor=auto`.
-- The directory `/var/lib/<N>-admin-auto` is kept. It is inert while the flag is off; leave it in place.
+- The directory `/var/lib/<N>-admin-auto` is kept; leave it in place. While the flag is off nothing is approved from
+  it, but a pause file in it still holds queued approval mails of automatically approved requests as long as
+  `TBI_SIGNUP_AUTO_STATE_DIR` is set ([What the pause holds](#what-the-pause-holds)). To keep them waiting, create the
+  pause file before step 1.
 - **Turning it on again later:** nothing extra is needed. The first sweep of the new process resets the cut-off to
   now, so requests that arrived while auto-approve was off stay for manual handling. `TBI_SIGNUP_AUTO_SINCE` can
   only move the cut-off later, never earlier.
