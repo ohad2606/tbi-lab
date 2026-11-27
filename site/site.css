@@ -150,6 +150,11 @@ nav a {
   min-inline-size: 44px;
   padding-inline: 0.75rem;
 }
+/* The link is a flex box, which drops the space before the hint: set it as a gap (it also wraps at 320px). */
+nav a.signin {
+  flex-wrap: wrap;
+  column-gap: 0.25em;
+}
 header nav a {
   color: var(--ink);
   font-weight: 500;

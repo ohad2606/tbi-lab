@@ -8,8 +8,9 @@ import { content } from '../content.mjs';
 
 // sha256 over (relative path, bytes) of the whole flag=false build, as of the merge of the PR #94 review fixes
 // (797594d: no sign-up page or script while the flag is off) into BETA-G1 s11; byte-identical to a build of 797594d.
+// Updated for the footer sign-in spacing (assets/site.css only).
 // If you change the flag=false site on purpose, update this value in the same commit.
-const FLAG_FALSE_HASH = '0b4b9aa57cef5aa81a8d2ee09887808cf88c55d44744c3840770298aeee3adc5';
+const FLAG_FALSE_HASH = '850b9cf7be66c8acf8c156a674c4c7d5d813db2ddd499e757d624b2e579c9d88';
 
 const walk = (d) =>
   readdirSync(d)

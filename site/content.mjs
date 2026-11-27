@@ -177,7 +177,7 @@ const en = {
     msgUnavailable:
       'Sign-up is temporarily unavailable. Your details were not sent. Please try again in a little while.',
     msgNetwork:
-      'We could not reach the server. Check your connection and send again. Nothing you typed was lost.',
+      'We did not get an answer from the server. Check your connection and send again. Nothing you typed was lost.',
     msgForbidden:
       'We could not accept this request from this page. Please reload the page and try again.',
     msgGeneric:
@@ -227,7 +227,7 @@ const en = {
     resultRateH: 'Too many attempts',
     resultRateP:
       'There have been too many requests from your connection. Please wait a few minutes and press the confirm button again.',
-    resultNetworkH: 'We could not reach the server',
+    resultNetworkH: 'We did not get an answer from the server',
     resultNetworkP: 'Check your connection and press the confirm button again.',
     resultUnavailableH: 'We could not confirm your address right now',
     resultUnavailableP:
@@ -243,6 +243,7 @@ const en = {
       'We cannot send a new link right now. Your request was not sent. Please try again in a little while.',
     resendInvalid:
       'Your request for a new link was not accepted. Check the email address and ask again.',
+    resendNetwork: 'Check your connection and ask for a new link again.',
     /**
      * Changes to the other public pages, by page and section id (build.mjs, verifySections): the fields given replace
      * that section's own, `next` adds sections after it and `false` drops it. The privacy page is not here: it changes
@@ -664,7 +665,7 @@ const he = {
     msgTooFast: 'זה היה מהיר מאוד. המתינו כמה שניות ושלחו שוב.',
     msgRate: 'היו יותר מדי בקשות מהחיבור שלכם. המתינו כמה דקות ונסו שוב.',
     msgUnavailable: 'ההרשמה אינה זמינה זמנית. הפרטים לא נשלחו. נסו שוב בעוד זמן קצר.',
-    msgNetwork: 'לא הצלחנו להתחבר לשרת. בדקו את החיבור ושלחו שוב. מה שהקלדתם לא אבד.',
+    msgNetwork: 'לא קיבלנו תשובה מהשרת. בדקו את החיבור ושלחו שוב. מה שהקלדתם לא אבד.',
     msgForbidden: 'לא הצלחנו לקבל את הבקשה מהדף הזה. טענו את הדף מחדש ונסו שוב.',
     msgGeneric: 'משהו השתבש והבקשה לא נשלחה. נסו שוב בעוד זמן קצר.',
     msgSession: 'חיבור הטופס חודש. שלחו שוב.',
@@ -686,7 +687,7 @@ const he = {
     successH: 'בדקו את המייל כדי לאשר',
     successP: [
       'קיבלנו את הפרטים. נשלח מייל אישור לכתובת שהזנתם. פתחו את הקישור שבו ולחצו על כפתור האישור.',
-      'אחרי האישור נפתח לכם גישה ונשלח מייל כשאפשר להיכנס. הקיבולת שלנו מוגבלת, ולכן בימים עמוסים זה עלול לקחת יותר זמן.',
+      'אחרי האישור נפעיל לכם את הגישה ונשלח מייל כשאפשר להיכנס. הקיבולת שלנו מוגבלת, ולכן בימים עמוסים זה עלול לקחת יותר זמן.',
       'המייל לא הגיע? בדקו בתיקיית הספאם, או טענו את הדף מחדש ושלחו שוב את הטופס. יש שאלה? כתבו לנו ל-support@tbi-tech.net.',
     ],
     confirmTitle: 'אישור כתובת המייל — TBI Lab',
@@ -706,7 +707,7 @@ const he = {
       'ייתכן שהוא לא שלם. פתחו שוב את הקישור שבמייל האחרון ששלחנו, או בקשו קישור חדש כאן למטה.',
     resultRateH: 'יותר מדי ניסיונות',
     resultRateP: 'היו יותר מדי בקשות מהחיבור שלכם. המתינו כמה דקות ולחצו שוב על כפתור האישור.',
-    resultNetworkH: 'לא הצלחנו להתחבר לשרת',
+    resultNetworkH: 'לא קיבלנו תשובה מהשרת',
     resultNetworkP: 'בדקו את החיבור ולחצו שוב על כפתור האישור.',
     resultUnavailableH: 'לא הצלחנו לאשר את הכתובת כרגע',
     resultUnavailableP:
@@ -720,6 +721,7 @@ const he = {
     resultFailH: 'לא הצלחנו לשלוח את הבקשה',
     resendUnavailable: 'אי אפשר לשלוח קישור חדש כרגע. הבקשה לא נשלחה. נסו שוב בעוד זמן קצר.',
     resendInvalid: 'הבקשה לקישור חדש לא התקבלה. בדקו את כתובת המייל ובקשו שוב.',
+    resendNetwork: 'בדקו את החיבור ובקשו שוב קישור חדש.',
     pages: {
       home: {
         status: {

@@ -355,8 +355,8 @@ Consequences:
 
 - Links already sent no longer work.
 - Queued approval mails of requests **you** approved are sent without the mail caps and without the address binding,
-  also while the pause file exists.
-- Queued approval mails of automatically approved requests wait while the pause file exists, **as long as
+  also while the pause file exists, unless automatic approval had claimed the request (next item).
+- Queued approval mails of automatically approved (or automatically claimed) requests wait while the pause file exists, **as long as
   `TBI_SIGNUP_AUTO_STATE_DIR` is still set** (the unit file of this repository sets it; see
   [What the pause holds](#what-the-pause-holds)). After you remove the pause file they are sent, without the mail
   caps and without the address binding. Reject does not apply to them (their accounts exist): to stop one, delete the
@@ -494,9 +494,14 @@ sign-up admin routes are on, **with or without** an auto-approve drop-in or the 
 |---|---|---|---|
 | Automatic approval, sent at once | waits | waits | sent (the sweep itself still checks the pause once per request, see above) |
 | Queued mail of an automatically approved request (the minute drain) | waits | waits | sent; with auto-approve on, the drain still reads a pause file in the **store** directory |
-| Queued mail of a request you approved | sent | sent | sent |
+| Queued mail of a request you approved that automatic approval never claimed | sent | sent | sent |
+| Queued mail of an automatically claimed request that you later approved or resent | waits | waits | sent; with auto-approve on, the drain still reads a pause file in the **store** directory |
 | Your own approve and resend in the admin app | as without a pause | as without a pause | as without a pause |
 
+- Your approve or resend itself is not held. If its mail is queued instead of sent (quiet hours, mail cap) and
+  automatic approval had claimed the request, the drain holds it while paused.
+- After a crash during a pause, check for approved requests with an email attempt but not recorded as sent: no drain
+  sends them, so resend them by hand.
 - The check runs before an attempt is recorded or a mail slot is reserved, and again right before the send.
 - A held mail stays `email_queued`: it is not marked failed or sent, no attempt is counted and no mail slot stays
   used. The account is created as usual. The admin app shows it as queued, with a send time that is already past;

@@ -17,13 +17,14 @@ import { content, SIGNUP_VERIFY_ENABLED } from '../content.mjs';
  * sha256 over (relative path, bytes) of every built file, recorded from a build of origin/co/main 6173968 (before this
  * slice). With `signupVerify` off all three build variants must stay exactly that. If you change the site on purpose
  * while the option is off, update these values in the same commit.
- * `preview` and `enabled` were updated for the request timeouts and the deferred token fetch in signup.mjs (only
- * assets/signup.mjs differs); `default` is still the co/main value.
+ * `preview` and `enabled` were updated for the request timeouts and the deferred token fetch in signup.mjs. All three
+ * were updated for the footer sign-in spacing (assets/site.css, the only `default` change since co/main); `preview` and
+ * `enabled` also for the neutral no-answer text on the sign-up pages.
  */
 const CO_MAIN_TREES = {
-  default: 'e7d2e70cffb4172b51f60010797d8f2eb64959f0fb9ea2968b9d69b90f6ed77c',
-  preview: '6b01b357cb9094a2cae94252a04af68ac05b3b108693cf717a0bc8c5debd5b37',
-  enabled: '357234977ba46c3b55189024c445da2f3166a9008be12cc1affab15fb56bec9d',
+  default: '81d2008c0bf9198c744f75afdaaa10e52254e16a9b6f030e017e015a2185e567',
+  preview: '6fd2171f74fc5552c7cc1dd771e3a387617e4f5527ef386d2b2198318352f7bf',
+  enabled: '9f290bed92356208bc353f4b230c9c7449d46e7032645644d3476c32ed987975',
 };
 const VARIANTS = {
   default: {},
@@ -261,6 +262,21 @@ describe('confirm client logic', () => {
         TOKEN,
       ),
     ).toBe(want);
+  });
+  it('a timeout while reading the body is the timeout state, not "unavailable"', async () => {
+    const ctl = new AbortController();
+    const spy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(ctl.signal);
+    const f = async () => ({
+      status: 202,
+      json: async () => {
+        ctl.abort();
+        throw new Error('aborted');
+      },
+    });
+    expect(await mod.postVerify(f, '/signup', TOKEN)).toBe('network');
+    spy.mockRestore();
+    const broken = async () => ({ status: 202, json: async () => JSON.parse('<') });
+    expect(await mod.postVerify(broken, '/signup', TOKEN)).toBe('unavailable');
   });
   it('network failure -> network; an unusable token is never sent', async () => {
     expect(
