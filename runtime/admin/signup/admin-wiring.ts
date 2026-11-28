@@ -577,6 +577,7 @@ export async function wireSignupAdmin(
           counters: io.counters ?? null,
           ...mailBinding,
           ...night,
+          ...(drainPaused ? { drainHeld: drainPaused } : {}),
           ownerActions: true,
         }),
     },

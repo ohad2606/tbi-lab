@@ -21,6 +21,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { SignupApprover } from '../signup/service.js';
 import { PendingStore } from '../signup/store.js';
 
 const roots: string[] = [];
@@ -146,5 +147,64 @@ describe('deleteNow: unknown id cleanup errors', () => {
     for (const secret of [unknown, r.id, 'dana', mark(INPUT.email).slice(0, 16), s.dir])
       expect(s.logs[0]).not.toContain(secret);
     expect(existsSync(join(s.dir, `${r.id}.json`))).toBe(true);
+  });
+});
+
+describe('resend of a queued mail held by the pause (BETA-G1 e)', () => {
+  async function queuedAuto(auto: boolean) {
+    const s = await setup();
+    const { record } = await s.store.createIfNew(INPUT, { origin: 'web' });
+    await s.store.update(record.id, {
+      status: 'email_queued',
+      accountAdded: true,
+      emailSendAfter: new Date(T0).toISOString(),
+      lastError: null,
+      ...(auto ? { autoApprovedAt: new Date(T0).toISOString() } : {}),
+    });
+    return { s, id: record.id };
+  }
+  const approver = (s: Awaited<ReturnType<typeof setup>>, drainHeld?: () => Promise<boolean>) => {
+    const sent: string[] = [];
+    const a = new SignupApprover({
+      store: s.store,
+      accounts: { add: async () => 'done' },
+      email: {
+        sendApproval: async (m: { id: string }) => {
+          sent.push(m.id);
+        },
+      },
+      now: () => T0,
+      ownerActions: true,
+      ...(drainHeld ? { drainHeld } : {}),
+    });
+    return { a, sent };
+  };
+
+  it('paused: email_held_paused, nothing sent, the record stays queued (no bypass)', async () => {
+    const { s, id } = await queuedAuto(true);
+    const { a, sent } = approver(s, async () => true);
+    const out = await a.resend(id);
+    expect(out).toMatchObject({ ok: true, note: 'email_held_paused' });
+    expect(sent).toEqual([]);
+    expect((await s.store.get(id)).status).toBe('email_queued');
+  });
+
+  it('a pause-check error counts as paused', async () => {
+    const { s, id } = await queuedAuto(true);
+    const { a } = approver(s, async () => {
+      throw Object.assign(new Error('x'), { code: 'EACCES' });
+    });
+    expect(await a.resend(id)).toMatchObject({ ok: true, note: 'email_held_paused' });
+  });
+
+  it('not paused, or an owner-approved queued mail: email_queued as before', async () => {
+    const one = await queuedAuto(true);
+    expect(await approver(one.s, async () => false).a.resend(one.id)).toMatchObject({
+      note: 'email_queued',
+    });
+    const two = await queuedAuto(false);
+    expect(await approver(two.s, async () => true).a.resend(two.id)).toMatchObject({
+      note: 'email_queued',
+    });
   });
 });

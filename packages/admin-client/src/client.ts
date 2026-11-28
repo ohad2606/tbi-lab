@@ -577,7 +577,7 @@ export type SignupOutcome =
   | {
       kind: 'done';
       record: SignupRecord | null;
-      note: 'already_done' | 'email_not_resent' | 'email_queued' | null;
+      note: 'already_done' | 'email_not_resent' | 'email_queued' | 'email_held_paused' | null;
     }
   | { kind: 'account_pending' }
   | { kind: 'error'; error: SignupError; record: SignupRecord | null }
@@ -740,7 +740,10 @@ export function interpretSignup(status: number | null, body: unknown): SignupOut
       kind: 'done',
       record: signupRecord(b.record),
       note:
-        b.note === 'already_done' || b.note === 'email_not_resent' || b.note === 'email_queued'
+        b.note === 'already_done' ||
+        b.note === 'email_not_resent' ||
+        b.note === 'email_queued' ||
+        b.note === 'email_held_paused'
           ? b.note
           : null,
     };

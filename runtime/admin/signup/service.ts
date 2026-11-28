@@ -568,7 +568,11 @@ export interface ApprovalMailBinding {
 }
 
 export type ApproveOutcome =
-  | { ok: true; record: SignupRecord; note?: 'already_done' | 'email_not_resent' | 'email_queued' }
+  | {
+      ok: true;
+      record: SignupRecord;
+      note?: 'already_done' | 'email_not_resent' | 'email_queued' | 'email_held_paused';
+    }
   | {
       ok: false;
       code:
@@ -622,6 +626,11 @@ export class SignupApprover {
        * hours hold every approval mail, as before.
        */
       nightAutoMail?: boolean;
+      /**
+       * The owner's approver only: the drain's own pause check (`auto-approve.paused`), read so a
+       * resend of a queued auto-approved mail can say it is held. Never holds or sends anything.
+       */
+      drainHeld?: () => Promise<boolean>;
     },
   ) {}
 
@@ -708,7 +717,16 @@ export class SignupApprover {
         r = unbound.record;
       }
       if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
-      if (r.status === 'email_queued') return { ok: true, record: r, note: 'email_queued' };
+      if (r.status === 'email_queued') {
+        // The drain holds a queued mail of an auto-approved request while paused (an error
+        // counts as paused): it is NOT sent automatically, and this resend does not bypass the
+        // pause either (that would need an owner decision). Say so instead of "queued".
+        const held =
+          r.autoApprovedAt && this.d.drainHeld
+            ? await this.d.drainHeld().catch(() => true)
+            : false;
+        return { ok: true, record: r, note: held ? 'email_held_paused' : 'email_queued' };
+      }
       return this.send(r, false, true);
     }
   }

@@ -228,6 +228,8 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
     'הבקשה של {name} אושרה: החשבון נוסף. המייל בתור ויישלח אוטומטית.',
   'console.signups.done.resend.email_queued_cap':
     'המייל אל {name} ממתין בגלל מגבלת המיילים, ובדרך כלל הוא נשלח אוטומטית בהמשך.',
+  'console.signups.done.resend.email_held_paused':
+    'המייל אל {name} מוחזק כי האישור האוטומטי מושהה. הוא לא נשלח כל עוד ההשהיה נמשכת, והכפתור "שליחת המייל שוב" לא עוקף את ההשהיה.',
   'console.signups.done.resend.email_queued_wait': 'המייל אל {name} בתור ויישלח אוטומטית.',
   'console.signups.done.reject': 'הבקשה של {name} נדחתה. לא נשלח מייל.',
   'console.signups.done.resend': 'המייל אל {name} נשלח.',

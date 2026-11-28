@@ -501,7 +501,8 @@ export function signupOutcomeView(
       // A queued email must never read as "sent", for approve and for resend alike; it speaks
       // of quiet hours only when the record says that is why it waits.
       const note =
-        o.note && (action === 'approve' || o.note === 'email_queued')
+        o.note &&
+        (action === 'approve' || o.note === 'email_queued' || o.note === 'email_held_paused')
           ? `.${o.note}${o.note === 'email_queued' ? queuedReason(o.record, nowMs) : ''}`
           : '';
       // A request that is still open (its email queued, or a send whose outcome is unknown)
