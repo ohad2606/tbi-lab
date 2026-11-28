@@ -3,8 +3,9 @@
  * "Fit" shows it, with no connection point, part or label under the view controls or the hint,
  * in the Circuit and Schematic views (every example, English and Hebrew). Also: a wire
  * stepped to with [ ] is panned into view, and the drawing's status stays with its project. A
- * resize fits again only while the user has not panned or zoomed; a list button leaves the
- * instruction of keyboard wiring in place.
+ * window resize fits again only while the user has not panned or zoomed (a panel that resizes
+ * the canvas alone moves nothing); a list button leaves the instruction of keyboard wiring in
+ * place.
  */
 import { expect, test, type Page } from '@playwright/test';
 import { EXAMPLES } from '../src/examples/catalog.js';
@@ -174,7 +175,9 @@ for (const lang of ['en', 'he'] as const) {
   });
 }
 
-test('a resize fits the drawing again only until the user pans or zooms', async ({ page }) => {
+test('a window resize fits the drawing again only until the user pans or zooms', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1400, height: 860 });
   await start(page, 'en');
   await openExample(page, 'rc-fade');
@@ -196,6 +199,21 @@ test('a resize fits the drawing again only until the user pans or zooms', async 
     await page.setViewportSize({ width: w, height: h });
     await expect.poll(width).not.toBe(before);
   };
+  // A panel or banner that takes room from the canvas is no window resize: the drawing must not
+  // move under the pointer.
+  const room = (margin: string) =>
+    page.getByTestId('canvas').evaluate((svg, m) => {
+      svg.parentElement!.style.marginBottom = m;
+    }, margin);
+  const full = await camera();
+  const height = () => page.getByTestId('canvas').evaluate((svg) => svg.clientHeight);
+  const tall = await height();
+  await room('80px');
+  await expect.poll(height).toBeLessThan(tall);
+  expect(await camera()).toBe(full);
+  await room('');
+  await expect.poll(height).toBe(tall);
+  expect(await camera()).toBe(full);
   // Untouched: the new size gets a new fit, with nothing covered.
   const large = await camera();
   await resize(800, 600);

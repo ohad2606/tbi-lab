@@ -207,6 +207,8 @@ function hitOf(target: EventTarget | null): Hit {
   }
 }
 
+const windowSize = () => `${window.innerWidth}x${window.innerHeight}`;
+
 /** Nearest grid point on a wire's drawn route to `p`. */
 /**
  * Radius of a wire bridge in schematic units: at least ~5 screen pixels at any zoom, and always
@@ -349,7 +351,8 @@ export function Canvas({
   const heldByKey = useRef<string | null>(null);
   const pointerDown = useRef(false);
   const fitted = useRef<string | null>(null);
-  const fittedSize = useRef('');
+  // The browser window's size at the last fit.
+  const fittedWindow = useRef('');
   // The camera the last "Fit" chose: while it is still in place, nobody has panned or zoomed.
   const fitChoice = useRef<Camera | null>(null);
   const openedAt = useRef(0);
@@ -418,17 +421,19 @@ export function Canvas({
       content.length ? boundsOf(content) : undefined,
     );
     fitChoice.current = next;
-    fittedSize.current = `${size.w}x${size.h}`;
+    fittedWindow.current = windowSize();
     setCamera(next);
   };
 
-  // Fit each opened project once the element has its real size, and again when the view changes
-  // size, as long as the user has not panned or zoomed since (and is not in mid-interaction).
+  // Fit each opened project once the element has its real size, and again when the browser
+  // window changes size, as long as the user has not panned or zoomed since (and is not in
+  // mid-interaction). A panel or banner that resizes the view alone never moves the drawing:
+  // it would slide away under the pointer.
   useEffect(() => {
     // A hidden view (another tab is shown) has no size; coming back to the same size is no change.
     if (size.w <= 1) return;
     if (fitted.current === doc.projectId) {
-      if (fittedSize.current === `${size.w}x${size.h}` || camera !== fitChoice.current) return;
+      if (fittedWindow.current === windowSize() || camera !== fitChoice.current) return;
       if (mode.kind !== 'idle' || kb.mode !== 'idle') return;
     } else openedAt.current = performance.now();
     fitted.current = doc.projectId;
