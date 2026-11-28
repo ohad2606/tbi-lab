@@ -29,7 +29,8 @@ import {
   type SchPart,
   type SchematicLayout,
 } from '../views/schematic/layout.js';
-import { revealDelta } from './revealDelta.js';
+import { fitCamera, overlayBoxes } from './fitCamera.js';
+import { revealDelta, type Box } from './revealDelta.js';
 import { SCHEMATIC_SYMBOLS, type SchematicSymbolKey } from '../views/schematic/symbols.js';
 
 interface Camera {
@@ -39,6 +40,8 @@ interface Camera {
 }
 
 const MIN_SCALE = 0.2;
+/** "Fit" may go further out: the whole of a wide drawing in a small view. */
+const FIT_MIN_SCALE = 0.1;
 const MAX_SCALE = 5;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 /** Drawing units between a module's body and its focus ring. */
@@ -66,22 +69,47 @@ export function SchematicView() {
     return () => ro.disconnect();
   }, []);
 
-  const fitCamera = (): Camera | null => {
+  // The controls and the note, measured after each render: a fitted drawing stays clear of them.
+  const [overlays, setOverlays] = useState<Box[]>([]);
+  useLayoutEffect(() => {
+    const svg = wrap.current?.querySelector(':scope > svg');
+    if (!svg) return;
+    const next = overlayBoxes(svg, [controls.current, note.current]);
+    setOverlays((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next));
+  });
+
+  const fitted = (): Camera | null => {
     if (!layout) return null;
+    const around = (x0: number, y0: number, x1: number, y1: number): Box => ({
+      left: Math.min(x0, x1),
+      right: Math.max(x0, x1),
+      top: Math.min(y0, y1),
+      bottom: Math.max(y0, y1),
+    });
+    const items = [
+      ...layout.parts.map((p) => {
+        const h = partHalf(p);
+        return around(p.x - h.w, p.y - h.h, p.x + h.w, p.y + h.h);
+      }),
+      ...layout.modules.map((m) =>
+        around(m.x - RING_GAP, m.y - RING_GAP, m.x + m.width + RING_GAP, m.y + m.height + RING_GAP),
+      ),
+      ...layout.wires.flatMap((w) =>
+        w.points.slice(1).map((p, i) => around(w.points[i]!.x, w.points[i]!.y, p.x, p.y)),
+      ),
+    ];
     const b = layout.bounds;
-    const pad = 40;
-    const w = b.maxX - b.minX + 2 * pad;
-    const h = b.maxY - b.minY + 2 * pad;
-    const scale = clamp(Math.min(size.w / w, size.h / h), MIN_SCALE, 1.3);
-    return {
-      scale,
-      x: (b.minX + b.maxX) / 2 - size.w / scale / 2,
-      y: (b.minY + b.maxY) / 2 - size.h / scale / 2,
-    };
+    return fitCamera(
+      items,
+      size,
+      overlays,
+      { marginX: 40, marginY: 40, pad: 8, min: FIT_MIN_SCALE, max: 1.3 },
+      around(b.minX, b.minY, b.maxX, b.maxY),
+    );
   };
   // A different project (or the first layout) is shown whole.
   useEffect(() => setCamera(null), [doc?.projectId]);
-  const cam = camera ?? fitCamera();
+  const cam = camera ?? fitted();
 
   if (!doc || !layout || !cam) return null;
   const viewW = size.w / cam.scale;
@@ -89,7 +117,9 @@ export function SchematicView() {
   const short = size.h < SHORT_VIEW_PX;
 
   const zoomAt = (factor: number, cx = size.w / 2, cy = size.h / 2) => {
-    const scale = clamp(cam.scale * factor, MIN_SCALE, MAX_SCALE);
+    // A drawing fitted below the minimum can be zoomed back out to that fit; never zooms in.
+    const floor = Math.min(MIN_SCALE, cam.scale, fitted()?.scale ?? MIN_SCALE);
+    const scale = clamp(cam.scale * factor, floor, MAX_SCALE);
     const wx = cam.x + cx / cam.scale;
     const wy = cam.y + cy / cam.scale;
     setCamera({ scale, x: wx - cx / scale, y: wy - cy / scale });
@@ -266,6 +296,9 @@ export function SchematicView() {
 
 // -------------------------------------------------------------------------------------------------
 
+/** Half the size of a two-pin part's hit target. */
+const partHalf = (p: SchPart) => (p.vertical ? { w: 16, h: 44 } : { w: 44, h: 16 });
+
 function PartView({
   p,
   c,
@@ -314,10 +347,10 @@ function PartView({
     >
       <rect
         class="sch-hit"
-        x={p.x - (p.vertical ? 16 : 44)}
-        y={p.y - (p.vertical ? 44 : 16)}
-        width={p.vertical ? 32 : 88}
-        height={p.vertical ? 88 : 32}
+        x={p.x - partHalf(p).w}
+        y={p.y - partHalf(p).h}
+        width={2 * partHalf(p).w}
+        height={2 * partHalf(p).h}
       />
       <g class="sch-symbol" transform={transform}>
         {drawSymbol(p.key, c)}

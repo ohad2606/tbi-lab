@@ -8,6 +8,7 @@
  */
 
 import type { MutableRef } from 'preact/hooks';
+import { fitCamera, overlayBoxes } from './fitCamera.js';
 import { PanButtons, SHORT_VIEW_PX } from './PanButtons.js';
 import { revealDelta, type Box } from './revealDelta.js';
 import { ScrollNote } from './scrollNote.js';
@@ -179,6 +180,8 @@ const MAX_SCALE = 4;
 const DRAG_THRESHOLD_PX = 4;
 /** World units kept clear around the keyboard wiring candidate. */
 const KB_TARGET_MARGIN = 40;
+/** World units a pin's hit target and a part's focus ring reach beyond the part's box. */
+const FIT_REACH = 10;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -369,44 +372,44 @@ export function Canvas({
     };
   };
 
-  const contentBounds = () => {
-    const xs: number[] = [];
-    const ys: number[] = [];
-    for (const c of doc.components) {
-      const b = componentBox(doc, c);
-      xs.push(b.minX, b.maxX);
-      ys.push(b.minY, b.maxY);
-    }
-    for (const w of doc.layout.wires) {
-      for (const p of wireRoute(doc, w) ?? []) {
-        xs.push(p.x);
-        ys.push(p.y);
-      }
-    }
-    return xs.length
-      ? {
-          minX: Math.min(...xs),
-          minY: Math.min(...ys),
-          maxX: Math.max(...xs),
-          maxY: Math.max(...ys),
-        }
-      : null;
+  /** What "Fit" must show: each part (with its pins) and each straight piece of each wire. */
+  const contentBoxes = (): Box[] => {
+    const grow = (a: Point, b: Point): Box => ({
+      left: Math.min(a.x, b.x) - FIT_REACH,
+      right: Math.max(a.x, b.x) + FIT_REACH,
+      top: Math.min(a.y, b.y) - FIT_REACH,
+      bottom: Math.max(a.y, b.y) + FIT_REACH,
+    });
+    return [
+      ...doc.components.map((c) => {
+        const box = componentBox(doc, c);
+        return grow({ x: box.minX, y: box.minY }, { x: box.maxX, y: box.maxY });
+      }),
+      ...doc.layout.wires.flatMap((w) => {
+        const route = wireRoute(doc, w) ?? [];
+        return route.slice(1).map((p, i) => grow(route[i]!, p));
+      }),
+    ];
   };
 
   const fit = () => {
-    const b = contentBounds();
-    if (!b) return setCamera({ x: -size.w / 2, y: -size.h / 2, scale: 1 });
-    // Room for labels, which sit outside the parts' boxes (upright parts label to the side).
-    const marginX = 150;
-    const marginY = 90;
-    const bw = b.maxX - b.minX + marginX * 2;
-    const bh = b.maxY - b.minY + marginY * 2;
-    const scale = clamp(Math.min(size.w / bw, size.h / bh), MIN_SCALE, 1.5);
-    setCamera({
-      scale,
-      x: (b.minX + b.maxX) / 2 - size.w / scale / 2,
-      y: (b.minY + b.maxY) / 2 - size.h / scale / 2,
-    });
+    const svg = svgRef.current!;
+    const overlay = (name: string) => svg.parentElement!.querySelector(`:scope > .${name}`);
+    setCamera(
+      fitCamera(
+        contentBoxes(),
+        size,
+        overlayBoxes(svg, [overlay('canvas-controls'), overlay('canvas-hint')]),
+        // Room for labels, which sit outside the parts' boxes (upright parts label to the side).
+        {
+          marginX: 150 - FIT_REACH,
+          marginY: 90 - FIT_REACH,
+          pad: 16,
+          min: MIN_SCALE,
+          max: 1.5,
+        },
+      ),
+    );
   };
 
   // Fit once per opened project, after the element has its real size.
@@ -481,6 +484,9 @@ export function Canvas({
       if (id) focusComponent(id);
     },
   };
+
+  // Another project in the same view: the status and keyboard wiring belonged to the last one.
+  useLayoutEffect(kbReset, [doc.projectId]);
 
   // Cancel an in-progress interaction if the tool changes underneath it.
   useEffect(() => {
