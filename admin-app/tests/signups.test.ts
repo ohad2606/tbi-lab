@@ -101,6 +101,7 @@ describe('sign-up requests view logic', () => {
         'console.signups.status.emailFailed',
         'console.signups.status.emailQueued',
         'console.signups.status.accountUnconfirmed',
+        'console.signups.status.autoWait',
         'console.signups.err.unbound_state',
         'console.signups.sendAfter',
       ])

@@ -135,6 +135,7 @@ export const consoleEn = {
   'console.signups.lang.other': 'Other',
   'console.signups.status.accountUnconfirmed': 'Account not confirmed',
   'console.signups.status.pending': 'Waiting for your decision',
+  'console.signups.status.autoWait': 'Waiting for automatic approval',
   'console.signups.status.emailFailed': 'Account added, but the email was not sent. Use Resend.',
   'console.signups.status.accountPending':
     'Approved, but the account is not ready yet. Approve again to finish.',
@@ -163,7 +164,8 @@ export const consoleEn = {
   'console.signups.auto.value.unknown': 'unknown',
   'console.signups.verify.not_sent': 'No confirmation email is recorded as sent',
   'console.signups.verify.sent': 'Waiting for email confirmation (sent {time})',
-  'console.signups.verify.confirmed_waiting_limit': "Email confirmed, waiting for today's limit",
+  'console.signups.verify.confirmed_waiting_limit':
+    "Email confirmed. Today's automatic approvals have no place left for this request. It can be approved automatically on a later day, or you can approve it now.",
   'console.signups.verify.confirmed_queued': 'Email confirmed, waiting for the automatic approval',
   'console.signups.verify.confirmed_review': 'Email confirmed, needs your decision',
   'console.signups.verify.address_changed':

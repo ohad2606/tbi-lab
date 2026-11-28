@@ -8,7 +8,13 @@ import {
   type SignupRecord,
 } from '@tbi-lab/admin-client';
 import { isMessageKey } from '../src/i18n.js';
-import { approveWarningKey, isUnconfirmedRow, verificationKey } from '../src/views.js';
+import {
+  approveWarningKey,
+  isAutoApproved,
+  isUnconfirmedRow,
+  signupStatusKey,
+  verificationKey,
+} from '../src/views.js';
 
 const AT = '2026-11-23T10:00:00.000Z';
 const wire = (extra: object = {}) => ({
@@ -120,6 +126,48 @@ describe('row verification', () => {
       if (warn) expect(isMessageKey(warn)).toBe(true);
     }
     expect(approveWarningKey(await parse(wire()))).toBeNull();
+  });
+});
+
+describe('row status badge', () => {
+  const AUTO = 'console.signups.status.autoWait';
+  const OWN = 'console.signups.status.pending';
+  const row = (state: string, extra: object = {}, envelope?: object) =>
+    parse(wire({ verification: { state, sentAt: AT }, ...extra }), envelope);
+
+  it('says "waiting for automatic approval" only for the two states that promise it', async () => {
+    const auto = ['confirmed_queued', 'confirmed_waiting_limit'];
+    for (const state of [...VERIFICATION_STATES, 'not_a_state'])
+      expect(signupStatusKey(await row(state)), state).toBe(auto.includes(state) ? AUTO : OWN);
+    expect(signupStatusKey(await parse(wire()))).toBe(OWN);
+    expect(signupStatusKey(await row('confirmed_queued', {}, {}))).toBe(OWN);
+    expect(isMessageKey(AUTO)).toBe(true);
+  });
+
+  it('keeps the owner on a failed, claimed, unknown-status or acted-on row', async () => {
+    for (const state of ['confirmed_queued', 'confirmed_waiting_limit']) {
+      expect(signupStatusKey(await row(state, { lastError: 'account_error' }))).toBe(OWN);
+      expect(signupStatusKey(await row(state, { status: 'something_new' }))).toBe(OWN);
+      const r = await row(state);
+      expect(signupStatusKey({ ...r, autoApprovedAt: AT })).toBe(OWN);
+      // An action's answer on this screen is newer than the loaded state.
+      expect(signupStatusKey(r, true)).toBe(OWN);
+      expect(signupStatusKey(await row(state, { status: 'email_failed' }))).toBe(
+        'console.signups.status.emailFailed',
+      );
+    }
+  });
+
+  it('"approved automatically" needs an added account and a decided row, also with verification off', async () => {
+    for (const envelope of [{}, { rowStates: 1 }]) {
+      const mark = async (extra: object) =>
+        isAutoApproved(await parse(wire({ autoApprovedAt: AT, ...extra }), envelope));
+      expect(await mark({})).toBe(false);
+      expect(await mark({ accountAdded: true })).toBe(false);
+      expect(await mark({ status: 'approved' })).toBe(false);
+      for (const status of ['approved', 'email_queued', 'email_failed'])
+        expect(await mark({ status, accountAdded: true }), status).toBe(true);
+    }
   });
 });
 

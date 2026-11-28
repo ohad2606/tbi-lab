@@ -712,7 +712,7 @@ export function Signups() {
             {t(
               working
                 ? 'console.signups.status.working'
-                : (signupBadgeOverride(msg?.key) ?? signupStatusKey(r)),
+                : (signupBadgeOverride(msg?.key) ?? signupStatusKey(r, !!msg)),
             )}
           </span>
           {src.web && (

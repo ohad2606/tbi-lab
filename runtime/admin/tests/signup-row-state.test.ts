@@ -365,6 +365,42 @@ describe('S5: row states', () => {
     expect(await states()).toEqual(['confirmed_review', 'confirmed_review', 'confirmed_review']);
   });
 
+  it('an unreadable count of today promises nothing: the queued rows need review', async () => {
+    const r = await rig({ verify: true, caps: true });
+    const id = await r.add();
+    await r.mint(id);
+    r.confirm(id, 'tester1@example.com');
+    // The facts are readable, then the count is not (or the status itself fails).
+    for (const status of [
+      async () => ({ count: 'unknown' as const, dailyCap: 5 }),
+      async () => Promise.reject(new Error('EIO')),
+      async () => ({ count: 0, dailyCap: 5 }),
+    ]) {
+      const view = ownerView({
+        storeDir: r.storeDir,
+        store: r.wiring.store,
+        verify: { stateDir: r.stateDir, maxPerDay: 50 },
+        auto: {
+          queueFacts: async () => ({ capReached: false, since: 0, eligible: () => true }),
+          status,
+        } as never,
+        autoDir: r.stateDir,
+        running: () => true,
+        mail: null,
+        pauseDir: r.stateDir,
+        now: () => r.clock.t,
+      });
+      const [row] = await view.rows!();
+      const readable = await status().then(
+        (s) => typeof s.count === 'number',
+        () => false,
+      );
+      expect(row!.verification).toEqual({
+        state: readable ? 'confirmed_queued' : 'confirmed_review',
+      });
+    }
+  });
+
   it('without a running auto-approver a confirmed row needs review', async () => {
     const r = await rig({ verify: true, caps: true });
     const id = await r.add();

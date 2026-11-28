@@ -307,9 +307,25 @@ const STATUS_KEY = {
   queued: 'console.signups.status.emailQueued',
 } as const;
 
-/** The row's status text; an email held by the mail limit does not wait for quiet hours. */
-export function signupStatusKey(r: SignupRecord) {
+/** The verification states in which the server says the approver will take the request itself. */
+const AUTO_WAIT: readonly string[] = ['confirmed_queued', 'confirmed_waiting_limit'];
+
+/**
+ * The row's status text; an email held by the mail limit does not wait for quiet hours. An
+ * undecided request is "waiting for you" unless the loaded state promises an automatic approval
+ * (the server says so only with a running, unpaused, readable approver) and nothing contradicts
+ * it: no failure, no earlier claim, and no action answered on this screen since (`acted`).
+ */
+export function signupStatusKey(r: SignupRecord, acted = false) {
   const kind = signupRowKind(r);
+  if (
+    !acted &&
+    r.status === 'pending' &&
+    r.lastError === null &&
+    r.autoApprovedAt === null &&
+    AUTO_WAIT.includes(r.verification?.state ?? '')
+  )
+    return 'console.signups.status.autoWait' as const;
   return kind === 'queued' && r.lastError === 'mail_cap'
     ? 'console.signups.status.emailMailCap'
     : STATUS_KEY[kind];
@@ -365,8 +381,12 @@ export function approveWarningKey(r: SignupRecord): string | null {
         : null;
 }
 
-/** True when the record carries the automatic approver's mark (BETA-G1). */
-export const isAutoApproved = (r: SignupRecord): boolean => r.autoApprovedAt !== null;
+/**
+ * "Approved automatically" (BETA-G1). The approver marks a request before it approves it, so the
+ * mark counts only with an added account on a decided request, with verification on or off.
+ */
+export const isAutoApproved = (r: SignupRecord): boolean =>
+  r.autoApprovedAt !== null && r.accountAdded && r.status !== 'pending';
 
 /** What the auto-approve block shows (BETA-G1). "off" is a single line; "unknown" means enabled is unreadable. */
 export type AutoApproveState = 'running' | 'paused' | 'notRunning' | 'unknown';

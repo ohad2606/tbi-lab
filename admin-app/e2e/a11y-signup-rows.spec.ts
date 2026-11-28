@@ -58,12 +58,16 @@ async function open(page: Page, context: BrowserContext, baseURL: string, lang: 
 const T = {
   en: {
     unbound: 'Account not confirmed',
+    autoWait: 'Waiting for automatic approval',
+    own: 'Waiting for your decision',
     capStatus: 'Account added. The email is waiting because of the email limit',
     capHelp: 'If it stays waiting, check the server log',
     quiet: 'quiet hours',
   },
   he: {
     unbound: 'אין אישור שהחשבון נוסף',
+    autoWait: 'ממתינה לאישור אוטומטי',
+    own: 'ממתינה להחלטה שלך',
     capStatus: 'החשבון נוסף. המייל ממתין בגלל מגבלת המיילים',
     capHelp: 'אם הוא נשאר ממתין',
     quiet: 'שעות השקט',
@@ -176,5 +180,90 @@ for (const lang of ['he', 'en'] as const) {
     const message = v1.getByTestId('signup-message');
     await expect(message).toContainText(T[lang].capHelp);
     await expect(message).toBeFocused();
+  });
+
+  test(`signup rows (${lang}): the badge asks for a decision only when one is needed`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await mock(
+      page,
+      [
+        web('v1', 'confirmed_queued', 1),
+        web('v2', 'confirmed_waiting_limit', 2),
+        web('v3', 'confirmed_review', 3),
+        web('v4', 'unknown', 4),
+        // A claim mark without an added account, with verification on or off: no "approved" mark.
+        web('v5', 'confirmed_review', 5, { autoApprovedAt: '2026-11-23T10:00:00.000Z' }),
+      ],
+      { 'v1/approve': { status: 502, json: { error: 'account_error' } } },
+    );
+    await open(page, context, baseURL!, lang);
+    const row = (id: string) => page.locator(`[data-signup-id="${id}"]`);
+    const badge = (id: string) => row(id).getByTestId('signup-status');
+    for (const id of ['v1', 'v2']) {
+      await expect(badge(id)).toHaveText(T[lang].autoWait);
+      // The owner can still decide.
+      await expect(row(id).getByTestId('signup-approve')).toBeEnabled();
+      await expect(row(id).getByTestId('signup-reject')).toBeEnabled();
+    }
+    for (const id of ['v3', 'v4', 'v5']) await expect(badge(id)).toHaveText(T[lang].own);
+    await expect(page.getByTestId('signup-auto-approved')).toHaveCount(0);
+    // A failed approval is newer than the loaded state: the row needs the owner again.
+    await row('v1').getByTestId('signup-approve').click();
+    await expect(row('v1').getByTestId('signup-message')).toBeVisible();
+    await expect(badge('v1')).toHaveText(T[lang].own);
+    await expect(page.getByTestId('signups-live')).toContainText('Tester v1');
+    await expect(row('v1').getByTestId('signup-approve')).toBeFocused();
+  });
+
+  test(`signup rows (${lang}): with verification off a claimed row is not called approved`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const claimed = {
+      ...web('v1', 'sent', 1, {
+        status: 'approved',
+        autoApprovedAt: '2026-11-23T10:00:00.000Z',
+      }),
+      verification: undefined,
+    };
+    await page.route('**/admin-api/signups/**', (route) =>
+      route.fulfill({
+        json: new URL(route.request().url()).pathname.endsWith('/auto-approve')
+          ? { enabled: false }
+          : { signups: [claimed] },
+      }),
+    );
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('signup-approve')).toBeVisible();
+    await expect(page.getByTestId('signup-auto-approved')).toHaveCount(0);
+  });
+
+  test(`signup rows (${lang}): Refresh leaves focus that is outside the list alone`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const list = await mock(page, [web('v1', 'confirmed_review', 1)]);
+    await open(page, context, baseURL!, lang);
+    const v1 = page.locator('[data-signup-id="v1"]');
+    await expect(v1).toBeVisible();
+    const release = list.hold();
+    await page.getByTestId('signups-refresh').click();
+    const outside = page.getByTestId('stored-toggle');
+    await outside.focus();
+    // The list changes completely, so every focus rule of a reload has a reason to run.
+    list.rows = [web('v2', 'confirmed_review', 2)];
+    release();
+    await expect(page.locator('[data-signup-id="v2"]')).toBeVisible();
+    await expect(v1).toHaveCount(0);
+    // Past the frame in which a reload would move focus.
+    await page.evaluate(
+      () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+    );
+    await expect(outside).toBeFocused();
   });
 }

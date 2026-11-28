@@ -134,6 +134,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.lang.other': 'אחרת',
   'console.signups.status.accountUnconfirmed': 'אין אישור שהחשבון נוסף',
   'console.signups.status.pending': 'ממתינה להחלטה שלך',
+  'console.signups.status.autoWait': 'ממתינה לאישור אוטומטי',
   'console.signups.status.emailFailed': 'החשבון נוסף, אבל המייל לא נשלח. אפשר לשלוח שוב.',
   'console.signups.status.accountPending': 'אושרה, אבל החשבון עדיין לא מוכן. אשרו שוב כדי להשלים.',
   'console.signups.status.emailQueued': 'החשבון נוסף. המייל מתוזמן ויישלח בתום שעות השקט.',
@@ -160,7 +161,8 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.auto.value.unknown': 'לא ידוע',
   'console.signups.verify.not_sent': 'לא רשומה שליחה של מייל אימות',
   'console.signups.verify.sent': 'ממתינה לאימות כתובת המייל (מייל האימות נשלח: {time})',
-  'console.signups.verify.confirmed_waiting_limit': 'כתובת המייל אומתה, ממתינה למכסה היומית',
+  'console.signups.verify.confirmed_waiting_limit':
+    'כתובת המייל אומתה. במכסת האישורים האוטומטיים של היום לא נשאר מקום לבקשה הזאת. היא יכולה להיות מאושרת אוטומטית ביום אחר, ואפשר גם לאשר אותה עכשיו.',
   'console.signups.verify.confirmed_queued': 'כתובת המייל אומתה, ממתינה לאישור האוטומטי',
   'console.signups.verify.confirmed_review': 'כתובת המייל אומתה, ממתינה להחלטה שלך',
   'console.signups.verify.address_changed': 'הכתובת השתנתה ונדרשת בדיקה: הכתובת הנוכחית לא אומתה',
