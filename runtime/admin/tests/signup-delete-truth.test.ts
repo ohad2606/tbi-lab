@@ -134,6 +134,70 @@ describe('deleteNow: own address marker that is not a regular file', () => {
   });
 });
 
+describe('deleteNow: record unreadable or gone, a non-file .mark (ownMark unknown)', () => {
+  it('unreadable record + directory .mark: incomplete (never deleted), entry untouched, record last', async () => {
+    const s = await setup();
+    const { record: r } = await s.store.createIfNew(INPUT);
+    const { path } = replaceOwnMark(s.root, s.dir, 'directory');
+    chmodSync(join(s.dir, `${r.id}.json`), 0o000);
+
+    expect(await s.store.deleteNow(r.id)).toBe('incomplete');
+    expect(existsSync(join(s.dir, `${r.id}.json`))).toBe(true);
+    expect(lstatSync(path).isDirectory()).toBe(true);
+    expect(existsSync(join(path, 'inner'))).toBe(true);
+    expect(audit(s.dir)).toBe(`${new Date(T0).toISOString()} ${r.id} delete incomplete\n`);
+    expect(s.logs).toEqual(['signup: delete incomplete (mark_not_file)']);
+    for (const l of s.logs)
+      for (const secret of [r.id, 'dana', 'example', mark(INPUT.email).slice(0, 16), s.dir])
+        expect(l).not.toContain(secret);
+
+    // The record removed meanwhile (retention): the retry still answers incomplete ...
+    chmodSync(join(s.dir, `${r.id}.json`), 0o600);
+    unlinkSync(join(s.dir, `${r.id}.json`));
+    expect(await s.store.deleteNow(r.id)).toBe('incomplete');
+    expect(audit(s.dir)).not.toContain('delete ok');
+    expect(lstatSync(path).isDirectory()).toBe(true);
+    // ... and finishes once the operator removed the entry (append-only audit).
+    rmSync(path, { recursive: true, force: true });
+    expect(await s.store.deleteNow(r.id)).toBe('deleted');
+    expect(audit(s.dir).split('\n').filter(Boolean)).toEqual([
+      `${new Date(T0).toISOString()} ${r.id} delete incomplete`,
+      `${new Date(T0).toISOString()} ${r.id} delete incomplete`,
+      `${new Date(T0).toISOString()} ${r.id} delete ok`,
+    ]);
+  });
+
+  it('purge then delete: the purged id answers not_found (never deleted), a non-file .mark stays', async () => {
+    const s = await setup();
+    const { record } = await s.store.createIfNew(INPUT, { origin: 'web' });
+    const id = record.id;
+    expect(
+      await s.store.purgeIf(
+        id,
+        async () => true,
+        async () => undefined,
+      ),
+    ).toBe(true);
+    const foreign = join(s.dir, mark(INPUT.email));
+    mkdirSync(foreign, { mode: 0o700 });
+    expect(await s.store.deleteNow(id)).toBe('not_found');
+    expect(audit(s.dir)).toBe('');
+    expect(lstatSync(foreign).isDirectory()).toBe(true);
+  });
+
+  it('leftovers only (no record, no delete audited) with a directory .mark: not_found, never deleted', async () => {
+    const s = await setup();
+    const { record: r } = await s.store.createIfNew(INPUT);
+    const id = r.id;
+    unlinkSync(join(s.dir, `${id}.json`));
+    writeFileSync(join(s.dir, `${id}.notified`), '', { mode: 0o600 });
+    replaceOwnMark(s.root, s.dir, 'directory');
+    expect(await s.store.deleteNow(id)).toBe('not_found');
+    expect(await s.store.deleteNow(id)).toBe('not_found');
+    expect(audit(s.dir)).not.toContain('delete');
+  });
+});
+
 describe('deleteNow: unknown id cleanup errors', () => {
   it('an EACCES marker during an unknown-id cleanup: not_found, class-only log, no audit line', async () => {
     const s = await setup();
@@ -195,6 +259,45 @@ describe('resend of a queued mail held by the pause (BETA-G1 e)', () => {
       throw Object.assign(new Error('x'), { code: 'EACCES' });
     });
     expect(await a.resend(id)).toMatchObject({ ok: true, note: 'email_held_paused' });
+  });
+
+  it('owner approve of a held queued mail: email_held_paused, nothing sent, still queued', async () => {
+    const { s, id } = await queuedAuto(true);
+    const { a, sent } = approver(s, async () => true);
+    expect(await a.approve(id)).toMatchObject({ ok: true, note: 'email_held_paused' });
+    expect(sent).toEqual([]);
+    expect((await s.store.get(id)).status).toBe('email_queued');
+    const errored = approver(s, async () => {
+      throw Object.assign(new Error('x'), { code: 'EACCES' });
+    });
+    expect(await errored.a.approve(id)).toMatchObject({ note: 'email_held_paused' });
+    expect(await approver(s, async () => false).a.approve(id)).toMatchObject({
+      note: 'email_queued',
+    });
+  });
+
+  it('owner resend of email_failed during a pause still sends (runbook: as without a pause)', async () => {
+    const { s, id } = await queuedAuto(true);
+    await s.store.update(id, { status: 'email_failed', lastError: 'error' });
+    const sent: string[] = [];
+    const a = new SignupApprover({
+      store: s.store,
+      accounts: { add: async () => 'done' },
+      email: {
+        sendApproval: async (m: { id: string }, held?: () => Promise<boolean>) => {
+          // The owner's own send carries no pause hold.
+          expect(held).toBeUndefined();
+          sent.push(m.id);
+        },
+      },
+      now: () => T0,
+      ownerActions: true,
+      paused: async () => true,
+      drainHeld: async () => true,
+    });
+    expect(await a.resend(id)).toMatchObject({ ok: true });
+    expect(sent).toEqual([id]);
+    expect((await s.store.get(id)).status).toBe('email_sent');
   });
 
   it('not paused, or an owner-approved queued mail: email_queued as before', async () => {

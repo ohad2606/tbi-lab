@@ -366,7 +366,8 @@ export function signupStatusKey(r: SignupRecord, acted = false) {
   if (awaitsAuto(r, acted)) return 'console.signups.status.autoWait' as const;
   const failure = mailFailure(r);
   if (failure) return `console.signups.status.emailFailed.${failure}` as const;
-  return kind === 'queued' && r.lastError === 'mail_cap'
+  // An auto-approved mail may also be held by the pause: no "sent later" promise for it.
+  return kind === 'queued' && r.lastError === 'mail_cap' && !r.autoApprovedAt
     ? 'console.signups.status.emailMailCap'
     : STATUS_KEY[kind];
 }
@@ -379,7 +380,7 @@ export function signupStatusKey(r: SignupRecord, acted = false) {
  * drain (service.ts `drainEmails`). So is a time already past, or no record.
  */
 function queuedReason(r: SignupRecord | null, nowMs: number): '' | '_cap' | '_wait' {
-  if (r?.lastError === 'mail_cap') return '_cap';
+  if (r?.lastError === 'mail_cap' && !r.autoApprovedAt) return '_cap';
   const after = r?.emailSendAfter ? Date.parse(r.emailSendAfter) : NaN;
   return r !== null && !r.autoApprovedAt && r.lastError === null && after > nowMs ? '' : '_wait';
 }
@@ -504,7 +505,10 @@ export function signupOutcomeView(
       // of quiet hours only when the record says that is why it waits.
       const note =
         o.note &&
-        (action === 'approve' || o.note === 'email_queued' || o.note === 'email_held_paused')
+        (action === 'approve' ||
+          o.note === 'email_queued' ||
+          o.note === 'email_held_paused' ||
+          o.note === 'unknown')
           ? `.${o.note}${o.note === 'email_queued' ? queuedReason(o.record, nowMs) : ''}`
           : '';
       // A request that is still open (its email queued, or a send whose outcome is unknown)

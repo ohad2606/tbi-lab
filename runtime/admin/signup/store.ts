@@ -597,7 +597,8 @@ export class PendingStore {
           });
           return 'not_found';
         }
-        await this.removeSideFiles(id, ownMark);
+        // Record exists or existed but its address is unknown: a non-file marker may be its own.
+        await this.removeSideFiles(id, ownMark, earlier && ownMark === undefined);
         await this.unlinkGone(`${id}.web`);
         if (existed) await this.unlinkGone(`${id}.json`);
         // Idempotent; also on a retry whose record is already gone.
@@ -634,8 +635,14 @@ export class PendingStore {
    * regular file is skipped, except `ownMark` (throws `mark_not_file`: the delete or purge stays
    * unfinished and keeps the record). An unreadable regular marker is a failure when it may be this
    * request's: it is `ownMark`, or `ownMark` is unknown (record gone or unreadable).
+   * `unknownOwn`: the request exists or existed but `ownMark` is unknown; then ANY non-file
+   * `.mark` entry may be its own and also throws `mark_not_file` (never followed or removed).
    */
-  private async removeSideFiles(id: string, ownMark: string | undefined): Promise<void> {
+  private async removeSideFiles(
+    id: string,
+    ownMark: string | undefined,
+    unknownOwn = false,
+  ): Promise<void> {
     await this.unlinkGone(`${id}.notified`);
     await this.unlinkGone(`${id}.notifyq`);
     let skipped = false;
@@ -647,7 +654,8 @@ export class PendingStore {
         // This request's own marker that is not a regular file (directory, symlink, FIFO): it
         // still wedges the address, so the delete is not finished. Never followed, opened or
         // removed here (no recursive removal); a non-file foreign marker stays skipped.
-        if (path === ownMark && (await notRegularFile(path))) throw new Error('mark_not_file');
+        if ((path === ownMark || unknownOwn) && (await notRegularFile(path)))
+          throw new Error('mark_not_file');
         let holder: string | null;
         try {
           holder = await readMark(path);

@@ -721,9 +721,7 @@ export class SignupApprover {
         // The drain holds a queued mail of an auto-approved request while paused (an error
         // counts as paused): it is NOT sent automatically, and this resend does not bypass the
         // pause either (that would need an owner decision). Say so instead of "queued".
-        const held =
-          r.autoApprovedAt && this.d.drainHeld ? await this.d.drainHeld().catch(() => true) : false;
-        return { ok: true, record: r, note: held ? 'email_held_paused' : 'email_queued' };
+        return this.queuedNote(r);
       }
       return this.send(r, false, true);
     }
@@ -814,6 +812,17 @@ export class SignupApprover {
     }
   }
 
+  /**
+   * The note for an owner action on an already queued mail (nothing is sent by it): the drain
+   * holds a queued mail of an auto-approved request while paused, also when the pause check
+   * failed or the state dir is unsafe (`drainHeld` fails closed, an error = held).
+   */
+  private async queuedNote(r: SignupRecord): Promise<ApproveOutcome> {
+    const held =
+      r.autoApprovedAt && this.d.drainHeld ? await this.d.drainHeld().catch(() => true) : false;
+    return { ok: true, record: r, note: held ? 'email_held_paused' : 'email_queued' };
+  }
+
   private async doApprove(id: string): Promise<ApproveOutcome> {
     let r = await this.load(id);
     if (!r) return { ok: false, code: 'not_found' };
@@ -825,7 +834,8 @@ export class SignupApprover {
     }
     // After the binding check: a web row's "sent" is intake-owned text too. Nothing is mailed.
     if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
-    if (r.status === 'email_queued') return { ok: true, record: r, note: 'email_queued' };
+    // Nothing is sent here either: held by the pause it says so, as for resend.
+    if (r.status === 'email_queued') return this.queuedNote(r);
     if (r.status === 'email_failed')
       return { ok: false, code: 'email_failed_use_resend', record: r };
     if (r.status === 'pending') {
