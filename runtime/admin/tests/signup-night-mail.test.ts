@@ -285,16 +285,18 @@ describe('DEC-39: held until the end of quiet hours', () => {
     const r = await rig({ limits: { perHour: 1, perDay: 95, per30d: 2700 } });
     const ids = [await r.queued(1, true), await r.queued(2, true), await r.queued(3, true)];
     expect(await r.drainer().drainEmails()).toBe(1);
-    expect(r.calls).toEqual([ids[0]]);
-    const second = await r.store.get(ids[1]!);
-    expect(second).toMatchObject({
-      status: 'email_queued',
-      lastError: 'mail_cap',
-      emailAttempts: 0,
-    });
-    expect(Date.parse(second.emailSendAfter!)).toBeGreaterThan(r.clock.t);
+    // Same createdAt: the drain order among them is not fixed, the outcome per position is.
+    expect(r.calls).toHaveLength(1);
+    const recs = await Promise.all(ids.map((id) => r.store.get(id)));
+    expect(recs.filter((x) => x.status === 'email_sent').map((x) => x.id)).toEqual(r.calls);
+    const capped = recs.filter((x) => x.lastError === 'mail_cap');
+    expect(capped).toHaveLength(1);
+    expect(capped[0]).toMatchObject({ status: 'email_queued', emailAttempts: 0 });
+    expect(Date.parse(capped[0]!.emailSendAfter!)).toBeGreaterThan(r.clock.t);
     // The drain stopped at the cap: the third was not touched.
-    expect((await r.store.get(ids[2]!)).lastError).toBeNull();
+    const untouched = recs.filter((x) => x.status === 'email_queued' && x.lastError === null);
+    expect(untouched).toHaveLength(1);
+    expect(recs.some((x) => x.status === 'email_failed')).toBe(false);
     expect(await gateCount(r.stateDir)).toBe(1);
   });
 
