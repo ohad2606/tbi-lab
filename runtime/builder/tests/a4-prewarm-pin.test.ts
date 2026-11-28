@@ -29,6 +29,7 @@ const A = principalFor('user-a');
 const curated = [1, 2, 3].map((n) => sketch(`void setup() {} void loop() {} // curated ${n}\n`));
 const user = (n: number) => sketch(`void setup() {} void loop() {} // user ${n}\n`);
 const GRACE = 1000;
+const realSetTimeout = setTimeout;
 
 interface WorldOptions {
   live?: () => number;
@@ -153,7 +154,9 @@ describe('pinned curated images', () => {
     const other = (await build(w, p, user(2))).artifact!.sha256;
     const real = p.service.isPinned.bind(p.service);
     vi.spyOn(p.service, 'isPinned').mockImplementation((sha) => {
-      if (sha === unsure) throw new Error('database is locked');
+      // The shape of a node:sqlite error.
+      if (sha === unsure)
+        throw Object.assign(new Error('private detail'), { code: 'ERR_SQLITE_ERROR', errcode: 5 });
       return real(sha);
     });
     const result = await build(w, p, user(3));
@@ -164,8 +167,58 @@ describe('pinned curated images', () => {
     expect(p.store.exists(unsure)).toBe(true);
     // Once per process; never reported as pins over the cap.
     expect(w.warnings.map((l) => JSON.parse(l) as unknown)).toEqual([
-      { event: 'artifact_pin_check_failed' },
+      { event: 'artifact_pin_check_failed', error: 'Error', code: 'ERR_SQLITE_ERROR', errcode: 5 },
     ]);
+  });
+
+  it.each([
+    // A parse error quotes the stored record in its message.
+    [
+      'parse error',
+      new SyntaxError('Unexpected token, "private source"'),
+      { error: 'SyntaxError' },
+    ],
+    ['free text', { name: 'private source', code: 'private source', errcode: '5' }, {}],
+    ['nothing', null, {}],
+  ])('the logged cause carries no text from the error (%s)', async (_what, thrown, cause) => {
+    const w = world(1);
+    const p = await w.start();
+    vi.spyOn(p.service, 'isPinned').mockImplementation(() => {
+      throw thrown;
+    });
+    await build(w, p, user(1));
+    expect((await build(w, p, user(2))).ok).toBe(true);
+    expect(w.warnings.map((l) => JSON.parse(l) as unknown)).toEqual([
+      { event: 'artifact_pin_check_failed', ...cause },
+    ]);
+  });
+
+  it('a failing eviction callback does not fail the publish; logged once', async () => {
+    const w = world(1);
+    const p = await w.start();
+    const first = (await build(w, p, user(1))).artifact!.sha256;
+    const drop = vi.spyOn(p.grants, 'dropArtifact').mockImplementation(() => {
+      throw Object.assign(new Error('private detail'), { code: 'ERR_SQLITE_ERROR', errcode: 5 });
+    });
+    const second = await build(w, p, user(2));
+    expect(second.ok).toBe(true);
+    const third = await build(w, p, user(3));
+    expect(third.ok).toBe(true);
+    expect(drop).toHaveBeenCalledTimes(2);
+    expect([first, second.artifact!.sha256].map((s) => p.store.exists(s))).toEqual([false, false]);
+    expect(p.store.managedBytes()).toBe(IMAGE_BYTES);
+    expect(w.warnings.map((l) => JSON.parse(l) as unknown)).toEqual([
+      {
+        event: 'artifact_evict_callback_failed',
+        error: 'Error',
+        code: 'ERR_SQLITE_ERROR',
+        errcode: 5,
+      },
+    ]);
+    // The grant that stayed behind resolves to nothing and is dropped on the next lookup.
+    drop.mockRestore();
+    expect(p.service.lookup(requestKey(user(1)), A)).toBeNull();
+    expect(p.grants.canUse(A, first)).toBe(false);
   });
 
   it('pins over the cap behave as a full store: publish works, protected images stay, one warning', async () => {
@@ -200,7 +253,6 @@ describe('repeated prewarm', () => {
   async function scheduled(requests = curated, opts: WorldOptions = {}) {
     const w = world(64, opts);
     const p = await w.start();
-    const realTimeout = setTimeout;
     vi.useFakeTimers({
       toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
     });
@@ -214,12 +266,19 @@ describe('repeated prewarm', () => {
       stops.push(stop);
       return stop;
     };
-    /** Advance the fake clock while real file work finishes, until `n` passes have logged. */
+    const { active } = p.service as unknown as { active: Set<unknown> };
+    /**
+     * Advance the fake clock until `n` passes have logged. It stands still while a build is
+     * active (real file work), so no timeout depends on the load of the machine.
+     */
     const passes = async (n: number) => {
-      for (let i = 0; lines.length < n; i++) {
-        if (i > 5000) throw new Error(`only ${lines.length} passes`);
+      for (let steps = 0; lines.length < n;) {
+        if (active.size) {
+          await new Promise((r) => realSetTimeout(r, 2));
+          continue;
+        }
+        if (++steps > 5000) throw new Error(`only ${lines.length} passes`);
         await vi.advanceTimersByTimeAsync(2_000);
-        await new Promise((r) => realTimeout(r, 2)); // real file work
       }
       return lines.map((l) => JSON.parse(l) as Record<string, unknown>);
     };
@@ -265,6 +324,50 @@ describe('repeated prewarm', () => {
       built: 0,
       missing: 1,
     });
+  });
+
+  it.each([1, PREWARM_ATTEMPTS])(
+    "a user's successful build of a curated source clears its failures (%s)",
+    async (failures) => {
+      const w = world(64);
+      const p = await w.start();
+      const real = w.provider.build.bind(w.provider);
+      let broken = true;
+      let attempts = 0;
+      w.provider.build = async (job) => {
+        attempts++;
+        if (broken) throw new Error('runner');
+        return real(job);
+      };
+      const pass = () => p.service.prewarm([curated[0]!], { pollMs: 1 });
+      for (let i = 0; attempts < failures; i++) {
+        if (i > 100) throw new Error(`only ${attempts} attempts`);
+        await pass();
+      }
+      broken = false;
+      const sha = (await build(w, p, curated[0])).artifact!.sha256;
+      // The image is lost: the very next pass builds it again.
+      rmSync(p.store.binPath(sha), { force: true });
+      expect(await pass()).toBe(1);
+      // And the backoff starts over: a new failure is the first one (next pass tries again).
+      rmSync(p.store.binPath(sha), { force: true });
+      broken = true;
+      const before = attempts;
+      await pass();
+      await pass();
+      expect(attempts).toBe(before + 2);
+    },
+  );
+
+  it('a build that is slow in real time is not timed out by the fake clock', async () => {
+    const s = await scheduled([curated[0]!]);
+    const real = s.w.provider.build.bind(s.w.provider);
+    s.w.provider.build = async (job) => {
+      await new Promise((r) => realSetTimeout(r, 1_500));
+      return real(job);
+    };
+    s.run();
+    expect((await s.passes(1))[0]).toEqual({ event: 'prewarm', built: 1, missing: 0 });
   });
 
   it('builds that never started (capacity_timeout) are not attempts', async () => {

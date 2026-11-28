@@ -8,7 +8,7 @@ import type { BuildService } from './service.js';
 export const PREWARM_INTERVAL_MS = 10 * 60_000;
 /**
  * Builds a process spends on a curated source that keeps failing, with a doubling number of
- * passes between them (BuildService.prewarm; a success resets it).
+ * passes between them (BuildService.prewarm; a success, a user's build included, resets it).
  */
 export const PREWARM_ATTEMPTS = 6;
 
