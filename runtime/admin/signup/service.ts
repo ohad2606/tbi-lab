@@ -816,6 +816,16 @@ export class SignupApprover {
   private async send(r: SignupRecord, force = false, explicit = false): Promise<ApproveOutcome> {
     const nowMs = (this.d.now ?? Date.now)();
     if (!force && isQuiet(nowMs, this.d.quiet ?? null)) {
+      // BETA-G1: the owner's explicit approve / resend binds and checks BEFORE it queues, so a
+      // failed bind is refused now (never ok / queued). The drain (`force`) and the auto
+      // approver never bind.
+      if (this.d.mailBinding && explicit && this.d.ownerActions && this.d.actor !== 'auto') {
+        const c = await this.mailCheck(r, true);
+        if (c !== 'ok') {
+          this.d.log?.(`signup: approval mail refused before queueing (${c})`);
+          return { ok: false, code: 'unbound_state', record: r };
+        }
+      }
       const q = await this.d.store.update(r.id, {
         status: 'email_queued',
         emailSendAfter: new Date(nextSendAt(nowMs, this.d.quiet ?? null)).toISOString(),

@@ -370,3 +370,81 @@ describe('item 1: owner approval after a failed automatic add', () => {
     expect((await s.store.get(r.id)).status).toBe('email_queued');
   });
 });
+
+describe('item 2: quiet hours, the owner binds and checks before queueing', () => {
+  const failingBind = (): ApprovalMailBinding & { binds: number } => {
+    const b = {
+      binds: 0,
+      bindApproval: async () => {
+        b.binds++;
+        throw Object.assign(new Error('EIO'), { code: 'EIO' });
+      },
+      checkApproval: async () => 'unbound',
+      hasApproval: async () => false,
+    };
+    return b;
+  };
+
+  it('owner approve with a failing bind: unbound_state, nothing queued, the drain sends nothing', async () => {
+    const binding = failingBind();
+    const s = await autoRig({ quiet: '22:00-07:00', binding });
+    s.clock.t = NIGHT_IL;
+    const { record: r } = await s.store.createIfNew(person(1));
+    const out = await s.owner().approve(r.id);
+    expect(out).toMatchObject({ ok: false, code: 'unbound_state' });
+    expect(binding.binds).toBeGreaterThan(0);
+    const after = await s.store.get(r.id);
+    expect(after.status).not.toBe('email_queued');
+    expect(after.emailSendAfter).toBeNull();
+    s.clock.t = NOON_IL + DAY_MS;
+    expect(await s.drainer().drainEmails()).toBe(0);
+    expect(s.mails).toEqual([]);
+    expect(audit(s.dir)).toMatch(new RegExp(` ${r.id} approve unbound_state\n`));
+  });
+
+  it('owner resend of a failed mail in quiet hours with a failing bind: refused, not queued', async () => {
+    const binding = failingBind();
+    const s = await autoRig({ quiet: '22:00-07:00', binding });
+    s.clock.t = NIGHT_IL;
+    const { record: r } = await s.store.createIfNew(person(1));
+    await s.store.update(r.id, { status: 'email_failed', accountAdded: true, origin: undefined });
+    // A bound request (hasApproval) whose mail check fails at the send.
+    binding.hasApproval = async () => true;
+    const out = await s.owner().resend(r.id);
+    expect(out).toMatchObject({ ok: false, code: 'unbound_state' });
+    expect((await s.store.get(r.id)).status).toBe('email_failed');
+  });
+
+  it('owner approve with a working bind still queues in quiet hours', async () => {
+    const bound = new Set<string>();
+    const s = await autoRig({
+      quiet: '22:00-07:00',
+      binding: {
+        bindApproval: async (id) => {
+          bound.add(id);
+        },
+        checkApproval: async (id) => (bound.has(id) ? 'ok' : 'unbound'),
+        hasApproval: async (id) => bound.has(id),
+      },
+    });
+    s.clock.t = NIGHT_IL;
+    const { record: r } = await s.store.createIfNew(person(1));
+    const out = await s.owner().approve(r.id);
+    expect(out).toMatchObject({ ok: true, note: 'email_queued' });
+    expect(s.mails).toEqual([]);
+  });
+
+  it('the drain never binds (a queued unbound mail fails, no bind call)', async () => {
+    const binding = failingBind();
+    const s = await autoRig({ quiet: '22:00-07:00', binding });
+    const { record: r } = await s.store.createIfNew(person(1));
+    await s.store.update(r.id, {
+      status: 'email_queued',
+      accountAdded: true,
+      emailSendAfter: new Date(NOON_IL - 1000).toISOString(),
+    });
+    await s.drainer().drainEmails();
+    expect(binding.binds).toBe(0);
+    expect(s.mails).toEqual([]);
+  });
+});
