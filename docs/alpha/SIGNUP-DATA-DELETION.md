@@ -49,6 +49,11 @@ The service answers the same 404 `not_found` when the sign-up routes have been s
 after "already gone" check the reloaded list: if it says the requests are not available, nothing was
 checked. Any other 404 is reported as "service not available".
 
+A sign-up that arrives while a delete runs can leave an empty marker named after the request ID
+(`<id>.rq`, `<id>.vq-<hex>`, `<id>.notified` or `<id>.notifyq`, never after the address): the
+retention sweep removes only the `.rq` and `.vq-` ones, and deleting the same ID again removes all
+four.
+
 **If auto-approve is on**, check Testers after deleting any pending request: it may have been
 approved just before the deletion.
 
