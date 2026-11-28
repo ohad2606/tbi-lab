@@ -5,12 +5,11 @@
  * While several-selection is on a button adds its junction to the selection or takes it out.
  * Wires are named by their number in the Wires list.
  */
-import { useLayoutEffect } from 'preact/hooks';
 import { emptySelection, type Point } from '@tbi-lab/domain';
 import { isolateLtr } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
 import { toggleFromList } from './multiSelect.js';
-import { useAnnounce } from './useAnnounce.js';
+import { useListStatus } from './useListStatus.js';
 
 export function JunctionsList({
   onReveal,
@@ -22,18 +21,11 @@ export function JunctionsList({
   const { doc, selection, locale, readOnly } = useAppState();
   const store = useStore();
   const t = useT();
-  const [msg, announce, clear] = useAnnounce();
-  // A message from before the mode was turned on again describes an older selection.
-  useLayoutEffect(() => {
-    if (severalOn) clear();
-  }, [severalOn]);
+  const [msg, announce] = useListStatus(severalOn);
   if (!doc) return null;
-  const only =
-    selection.junctions.length === 1 && !selection.components.length && !selection.wires.length
-      ? selection.junctions[0]
-      : undefined;
   const several = severalOn && !readOnly;
-  const pressed = (id: string) => (several ? selection.junctions.includes(id) : only === id);
+  // Pressed means in the selection, in both modes.
+  const pressed = (id: string) => selection.junctions.includes(id);
   const wiresOf = (id: string) =>
     doc.layout.wires
       .flatMap((w, i) =>
@@ -51,7 +43,11 @@ export function JunctionsList({
           data-testid="junctions-list"
         >
           <h2 id="junctions-list-heading">{t('junctions.list.title')}</h2>
-          {several && <p class="list-several-hint">{t('multi.list.hint')}</p>}
+          {several && (
+            <p id="junctions-list-hint" class="list-several-hint">
+              {t('multi.list.hint')}
+            </p>
+          )}
           <ul>
             {doc.layout.junctions.map((j) => (
               <li key={j.id}>
@@ -60,6 +56,7 @@ export function JunctionsList({
                   class="junctions-list-item"
                   data-junction={j.id}
                   aria-pressed={pressed(j.id)}
+                  aria-describedby={several ? 'junctions-list-hint' : undefined}
                   onClick={() => {
                     const id = isolateLtr(j.id);
                     if (several) {

@@ -1946,10 +1946,15 @@ export function Canvas({
                 if (e.key !== 'Escape' || !several || placing) return;
                 e.preventDefault();
                 e.stopPropagation();
-                // One level at a time, as on the drawing: probe mode first.
+                // One level at a time, in the drawing's order: probe mode, (an armed part, above),
+                // an interaction in progress, then the selection and the mode.
                 if (probeMode) {
                   onProbeModeChange(false);
                   kbAnnounce(t('probe.kb.off'));
+                  return;
+                }
+                if (mode.kind !== 'idle') {
+                  setMode({ kind: 'idle' });
                   return;
                 }
                 setSeveralOn(false);

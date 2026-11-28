@@ -766,3 +766,72 @@ for (const lang of ['en', 'he'] as const) {
     await expect(page.locator('#inspector-heading')).toBeFocused();
   });
 }
+
+for (const lang of ['en', 'he'] as const) {
+  const text = TEXT[lang];
+  const l = LISTS[lang];
+
+  test(`Escape on the toggle ends a wire being drawn before the selection (${lang})`, async ({
+    page,
+  }) => {
+    await open(page, lang);
+    const tool = page.getByTestId('canvas-several');
+    const canvas = page.getByTestId('canvas');
+    await tool.click();
+    await component(page, 'R1').locator('.component-hit').click();
+    await terminal(page, 'R2', 'a').click();
+    await expect(canvas).toHaveClass(/mode-wiring/);
+    await tool.focus();
+    await page.keyboard.press('Escape');
+    await expect(canvas).toHaveClass(/mode-idle/);
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    expect(await selected(page)).toEqual(['R1']);
+    await page.keyboard.press('Escape');
+    await expect(tool).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('kbwire-status')).toHaveText(text.cleared);
+    expect(await selected(page)).toEqual([]);
+  });
+
+  test(`list buttons show membership, describe the mode and drop old status (${lang})`, async ({
+    page,
+  }) => {
+    const doc = listsDoc();
+    await page.addInitScript((x) => localStorage.setItem('tbi-lab.locale', x), lang);
+    await openImported(page, doc);
+    const tool = page.getByTestId('canvas-several');
+    const wire = page.locator('.wires-list-item').first();
+    const junction = page.locator('.junctions-list-item');
+    const buttons = page.locator('.side-column li button');
+    const total = doc.layout.wires.length + doc.layout.junctions.length;
+    await expect(wire).not.toHaveAttribute('aria-describedby');
+
+    // Several items selected is shown as pressed with the mode on and after it is turned off.
+    await page.getByTestId('canvas').focus();
+    await page.keyboard.press('Control+a');
+    const pressed = page.locator('.side-column li button[aria-pressed="true"]');
+    await expect(pressed).toHaveCount(total);
+    await expect(wire).toHaveAccessibleDescription(l.hint);
+    await expect(junction).toHaveAccessibleDescription(l.hint);
+    await tool.click();
+    await expect(pressed).toHaveCount(total);
+    await expect(buttons.filter({ hasText: '✓' })).toHaveCount(total);
+    await expect(wire).not.toHaveAttribute('aria-describedby');
+    await expect(junction).not.toHaveAttribute('aria-describedby');
+
+    // The mode turning off clears a list's status.
+    await tool.click();
+    await wire.click();
+    await expect.poll(() => said(page, 'wires-list-status')).not.toBe('');
+    await tool.click();
+    await expect.poll(() => said(page, 'wires-list-status')).toBe('');
+
+    // So does a selection made elsewhere: the other list, then the drawing.
+    await wire.click();
+    await expect.poll(() => said(page, 'wires-list-status')).toBe(l.selectedWire);
+    await junction.click();
+    await expect.poll(() => said(page, 'junctions-list-status')).toBe(l.selectedJunction);
+    await expect.poll(() => said(page, 'wires-list-status')).toBe('');
+    await component(page, 'R1').focus();
+    await expect.poll(() => said(page, 'junctions-list-status')).toBe('');
+  });
+}
