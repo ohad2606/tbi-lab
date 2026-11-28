@@ -1930,46 +1930,55 @@ export function Canvas({
             <path d="M3 17 L9 11 M9 11 l6 -8 l2 2 l-8 6 z" />
           </svg>
         </button>
-        {!readOnly && (
+        {/* One row: a taller column would cover pins of the drawing. */}
+        <div class="view-tool-row">
+          {!readOnly && (
+            <button
+              type="button"
+              class={several ? 'icon-button several-toggle active' : 'icon-button several-toggle'}
+              data-testid="canvas-several"
+              aria-pressed={several}
+              aria-label={t('multi.tool')}
+              title={t('multi.tool')}
+              // Escape leaves the mode from here too, as it does on the drawing.
+              onKeyDown={(e: KeyboardEvent) => {
+                if (e.key !== 'Escape' || !several) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setSeveralOn(false);
+                store.select(emptySelection());
+                kbAnnounce(t('multi.cleared'));
+              }}
+              onClick={() => {
+                setSeveralOn(!several);
+                kbAnnounce(
+                  several
+                    ? t('multi.off')
+                    : t('multi.on', { selected: countText(store.state.selection) }),
+                );
+              }}
+            >
+              <svg
+                viewBox="0 0 20 20"
+                width="18"
+                height="18"
+                aria-hidden="true"
+                class="control-icon"
+              >
+                <path d="M3 6V3h3M9 3h2M14 3h3v3M17 9v2M3 9v2M3 14v3h3M9 17h2M6 10l3 3l8-4" />
+              </svg>
+            </button>
+          )}
           <button
             type="button"
-            class={several ? 'icon-button several-toggle active' : 'icon-button several-toggle'}
-            data-testid="canvas-several"
-            aria-pressed={several}
-            aria-label={t('multi.tool')}
-            title={t('multi.tool')}
-            // Escape leaves the mode from here too, as it does on the drawing.
-            onKeyDown={(e: KeyboardEvent) => {
-              if (e.key !== 'Escape' || !several) return;
-              e.preventDefault();
-              e.stopPropagation();
-              setSeveralOn(false);
-              store.select(emptySelection());
-              kbAnnounce(t('multi.cleared'));
-            }}
-            onClick={() => {
-              setSeveralOn(!several);
-              kbAnnounce(
-                several
-                  ? t('multi.off')
-                  : t('multi.on', { selected: countText(store.state.selection) }),
-              );
-            }}
+            class="icon-button"
+            aria-label={t('canvas.zoomIn')}
+            title={t('canvas.zoomIn')}
+            onClick={() => zoomAt(1.25)}
           >
-            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" class="control-icon">
-              <path d="M3 6V3h3M9 3h2M14 3h3v3M17 9v2M3 9v2M3 14v3h3M9 17h2M6 10l3 3l8-4" />
-            </svg>
+            +
           </button>
-        )}
-        <button
-          type="button"
-          class="icon-button"
-          aria-label={t('canvas.zoomIn')}
-          title={t('canvas.zoomIn')}
-          onClick={() => zoomAt(1.25)}
-        >
-          +
-        </button>
+        </div>
         <button
           type="button"
           class="icon-button"

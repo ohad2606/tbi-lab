@@ -239,3 +239,34 @@ for (const lang of ['en', 'he'] as const) {
     expect(await selected(page)).toEqual([]);
   });
 }
+
+for (const lang of ['en', 'he'] as const) {
+  test(`the toggle shares the zoom-in row, so the controls reach no further down (${lang})`, async ({
+    page,
+  }) => {
+    await open(page, lang);
+    const probe = page.getByTestId('canvas-probe');
+    const tool = page.getByTestId('canvas-several');
+    const controls = page.locator('.canvas-wrap .canvas-controls');
+    const zoomIn = controls.locator('.view-tool-row button').last();
+    const [t, z] = [(await tool.boundingBox())!, (await zoomIn.boundingBox())!];
+    expect(t.y).toBeCloseTo(z.y, 0);
+    for (const box of [t, z]) expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(24);
+    // The row is no wider than the pan buttons.
+    const row = (await controls.locator('.view-tool-row').boundingBox())!;
+    const pan = (await controls.locator('.view-pan').boundingBox())!;
+    expect(row.width).toBeLessThanOrEqual(pan.width + 0.5);
+    // As tall as without the toggle: four rows of single controls and the pan buttons.
+    const withTool = (await controls.boundingBox())!.height;
+    await tool.evaluate((el) => (el.style.display = 'none'));
+    expect((await controls.boundingBox())!.height).toBeCloseTo(withTool, 0);
+    await tool.evaluate((el) => (el.style.display = ''));
+    // Tab order follows the rows.
+    await probe.focus();
+    await page.keyboard.press('Tab');
+    await expect(tool).toBeFocused();
+    expect(await tool.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
+    await page.keyboard.press('Tab');
+    await expect(zoomIn).toBeFocused();
+  });
+}
