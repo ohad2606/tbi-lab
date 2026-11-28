@@ -122,6 +122,8 @@ async function choose(page: Page, mode: Mode, index: number): Promise<void> {
   if (mode === 'clicks') await select.selectOption(String(index));
   else {
     await select.focus();
+    // After the route changed nothing is chosen: the first arrow key picks the first segment.
+    if ((await select.inputValue()) === '') await page.keyboard.press('ArrowDown');
     for (let k = Number(await select.inputValue()); k !== index; k += Math.sign(index - k))
       await page.keyboard.press(index > k ? 'ArrowDown' : 'ArrowUp');
   }
@@ -438,5 +440,154 @@ for (const lang of ['en', 'he'] as const) {
     // The first undo may be this one: the placed part is gone, and so are its buttons.
     await expect(page.getByTestId('move-group')).toHaveCount(0);
     await expect(page.locator('#inspector-heading')).toBeFocused();
+  });
+}
+
+for (const lang of ['en', 'he'] as const) {
+  const T = {
+    en: {
+      stale: 'The wire changed. Choose a segment before moving it.',
+      partRemoved: /R1.? removed/,
+      manyRemoved: /^2 selected items removed/,
+      groupName: /^Move .?2.? selected items down$/,
+      groupMoved: /2.? items moved down/,
+      groupRefused: /^The selected items were not moved\. .*would overlap/,
+      refusedWhy: /R1.? was not moved\. .*would overlap/,
+    },
+    he: {
+      stale: 'החוט השתנה. בחרו מקטע לפני ההזזה.',
+      partRemoved: /R1.? הוסר/,
+      manyRemoved: /^2 פריטים שנבחרו הוסרו/,
+      groupName: /^הזזת .?2.? הפריטים שנבחרו למטה$/,
+      groupMoved: /2.? פריטים הוזזו למטה/,
+      groupRefused: /^הפריטים שנבחרו לא הוזזו\. /,
+      refusedWhy: /R1.? לא הוזז\. /,
+    },
+  }[lang];
+
+  test(`after undo and redo no segment moves until one is chosen again (${lang})`, async ({
+    page,
+  }) => {
+    await open(page, lang, wireDoc(`nodrag-stale-${lang}`));
+    await page.locator('.wires-list-item').click();
+    await choose(page, 'clicks', 0);
+    const up = page.getByTestId('segment-move-up');
+    await up.click();
+    const select = page.getByTestId('segment-select');
+    await expect(select).toHaveValue('1');
+    const moved = await drawing(page);
+
+    await up.focus();
+    await page.keyboard.press('Control+z');
+    await expect(select).toHaveValue('');
+    await expect(page.getByTestId('segment-stale')).toHaveText(T.stale);
+    await expect(page.getByTestId('segment-highlight')).toHaveCount(0);
+    const buttons = page.getByTestId('segment-group').getByRole('button');
+    await expect(buttons).toHaveCount(2);
+    const before = await drawing(page);
+    for (const button of await buttons.all()) {
+      await expect(button).toHaveAttribute('aria-disabled', 'true');
+      await expect(button).toHaveAccessibleDescription(T.stale);
+      await button.focus();
+      await page.keyboard.press('Enter');
+      await expect(button).toBeFocused();
+    }
+    await expect(page.getByTestId('inspector-status')).toContainText(T.stale);
+    expect(await drawing(page)).toEqual(before);
+    // Nothing was applied: redo is still there, and brings back the route the pick was made on.
+    await page.keyboard.press('Control+Shift+Z');
+    await expect.poll(() => drawing(page)).toEqual(moved);
+    await expect(select).toHaveValue('1');
+
+    await page.keyboard.press('Control+z');
+    await choose(page, 'keyboard', 0);
+    await expect(page.getByTestId('segment-stale')).toHaveCount(0);
+    await page.getByTestId('segment-move-up').click();
+    await expect(select).toHaveValue('1');
+  });
+
+  test(`Rotate and Delete keep focus on a sensible element (${lang})`, async ({ page }) => {
+    const before = await open(page, lang, partsDoc(`nodrag-actions-${lang}`));
+    const heading = page.locator('#inspector-heading');
+    for (const id of ['inspector-rotate', 'inspector-delete']) {
+      await page.keyboard.press('Escape');
+      await page.getByTestId('palette-component.resistor').click();
+      const at = await toScreen(page, { x: 60, y: -60 });
+      await page.mouse.click(at.x, at.y);
+      await waitForStoredProject(
+        page,
+        (d) => d.components.length === before.components.length + 1,
+        'placed',
+      );
+      const button = page.getByTestId(id);
+      if (id === 'inspector-rotate') {
+        await button.focus();
+        await page.keyboard.press('Enter');
+        await expect(button).toBeFocused();
+        await page.keyboard.press('Control+z');
+        await expect(button).toBeFocused();
+      }
+      await button.focus();
+      await page.keyboard.press('Control+z');
+      await expect(button).toHaveCount(0);
+      await expect(heading).toBeFocused();
+    }
+  });
+
+  test(`Delete key announces a part and a multi-selection (${lang})`, async ({ page }) => {
+    await open(page, lang, partsDoc(`nodrag-delkey-${lang}`));
+    const status = page.getByTestId('kbwire-status');
+    await component(page, 'R1').locator('.component-hit').click();
+    await page.getByTestId('canvas').focus();
+    await page.keyboard.press('Delete');
+    await expect(status).toContainText(T.partRemoved);
+    await page.keyboard.press('Control+z');
+    await component(page, 'R1').locator('.component-hit').click();
+    await component(page, 'R2')
+      .locator('.component-hit')
+      .click({ modifiers: ['Shift'] });
+    await page.getByTestId('canvas').focus();
+    await page.keyboard.press('Backspace');
+    await expect(status).toContainText(T.manyRemoved);
+    await expect(component(page, 'R2')).toHaveCount(0);
+  });
+
+  test(`a group moves with the Move buttons, one undo per press (${lang})`, async ({ page }) => {
+    const before = await open(page, lang, partsDoc(`nodrag-group-${lang}`));
+    await component(page, 'R1').locator('.component-hit').click();
+    await component(page, 'R2')
+      .locator('.component-hit')
+      .click({ modifiers: ['Shift'] });
+    const down = page.getByTestId('move-down');
+    await expect(down).toHaveAccessibleName(T.groupName);
+    const y = before.layout.components.R1!.y;
+    const at = (d: ProjectDocument) => [d.layout.components.R1!.y, d.layout.components.R2!.y];
+    await activate(page, 'keyboard', down);
+    await waitForStoredProject(page, (d) => at(d).every((v) => v === y + 20), 'one step');
+    await activate(page, 'keyboard', down);
+    await waitForStoredProject(page, (d) => at(d).every((v) => v === y + 40), 'two steps');
+    await expect(down).toBeFocused();
+    await expect(page.getByTestId('inspector-status')).toContainText(T.groupMoved);
+    await page.keyboard.press('Control+z');
+    await waitForStoredProject(page, (d) => at(d).every((v) => v === y + 20), 'one undo');
+    await expect(down).toBeFocused();
+  });
+
+  test(`a refused move is announced once, with the reason (${lang})`, async ({ page }) => {
+    await open(page, lang, partsDoc(`nodrag-once-${lang}`));
+    await component(page, 'R1').locator('.component-hit').click();
+    const status = page.getByTestId('inspector-status');
+    const right = page.getByTestId('move-right');
+    for (let i = 0; i < 8; i++) {
+      await right.click();
+      await expect(status).toContainText(/R1/);
+      if (T.refusedWhy.test((await status.textContent()) ?? '')) break;
+    }
+    await expect(status).toContainText(T.refusedWhy);
+    // The banner is visible, but it is not a second live region.
+    const notice = page.getByTestId('notice');
+    await expect(notice).toBeVisible();
+    await expect(notice).not.toHaveAttribute('role', /.*/);
+    await expect(page.getByRole('alert')).toHaveCount(0);
   });
 }

@@ -108,7 +108,8 @@ import {
   type ProbeInput,
   sameTarget,
 } from './probes.js';
-import { clampSegment, type SegmentPick } from './segments.js';
+import { pickedSegment, type SegmentPick } from './segments.js';
+import { removalMessage } from './removal.js';
 
 export interface CanvasApi {
   placeAtCenter(type: ComponentTypeId): void;
@@ -1268,15 +1269,13 @@ export function Canvas({
         selection.wires.length === 1 && !selection.components.length && !selection.junctions.length
           ? doc.layout.wires.find((x) => x.id === selection.wires[0])
           : undefined;
-      const junction =
-        selection.junctions.length === 1 && !selection.components.length && !selection.wires.length
-          ? selection.junctions[0]
-          : undefined;
       const del = deleteSelection(doc, selection);
       // Refused while the simulation runs (the store shows "stop to edit"): never announce success.
       const applied = store.apply(del, emptySelection());
-      if (junction && del.ok && applied)
-        kbAnnounce(t('junctions.removed', { id: isolateLtr(junction) }));
+      if (!removed && del.ok && applied) {
+        const said = removalMessage(selection);
+        kbAnnounce(t(said.key, said.params));
+      }
       if (removed && !(del.ok && applied)) kbAnnounce(t('kbwire.wireDeleteRefused'));
       if (removed && del.ok && applied)
         kbAnnounce(
@@ -1344,10 +1343,8 @@ export function Canvas({
     const w = view.layout.wires.find((x) => x.id === selection.wires[0]);
     const route = w && wireRoute(view, w);
     if (!w || !route || route.length < 2) return null;
-    const i = clampSegment(
-      segmentPick?.wire === w.id ? segmentPick.index : undefined,
-      route.length - 1,
-    );
+    const i = pickedSegment(segmentPick, w.id, route);
+    if (i === null) return null;
     const [a, b] = [route[i]!, route[i + 1]!];
     return {
       index: i,

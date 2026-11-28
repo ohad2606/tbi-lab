@@ -154,8 +154,10 @@ export function NoticeBar() {
       )}
       {notice && (
         <div
+          // A new element when quietness changes, so an alert is always inserted with its role.
+          key={notice.quiet ? 'quiet' : 'live'}
           class={`banner banner-${notice.tone ?? 'error'}`}
-          role={notice.tone === 'info' ? 'status' : 'alert'}
+          role={notice.quiet ? undefined : notice.tone === 'info' ? 'status' : 'alert'}
           data-testid="notice"
           data-key={notice.key}
           data-tone={notice.tone ?? 'error'}

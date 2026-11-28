@@ -8,6 +8,25 @@ import type { Point } from '@tbi-lab/domain';
 export interface SegmentPick {
   wire: string;
   index: number;
+  /** The route the index was picked on (`routeKey`): the pick is only valid on that route. */
+  route: string;
+}
+
+export const routeKey = (route: readonly Point[]): string =>
+  route.map((p) => `${p.x},${p.y}`).join(' ');
+
+/**
+ * The segment to show and move for one wire: the user's pick, or the middle one when this wire has
+ * none. `null` when the pick was made on another route (undo, redo, re-routing, a drag): the same
+ * index may now be a different segment, so nothing moves until the user picks again.
+ */
+export function pickedSegment(
+  pick: SegmentPick | null,
+  wire: string,
+  route: readonly Point[],
+): number | null {
+  if (pick?.wire !== wire) return clampSegment(undefined, route.length - 1);
+  return pick.route === routeKey(route) ? clampSegment(pick.index, route.length - 1) : null;
 }
 
 export const isHorizontalSegment = (route: readonly Point[], index: number): boolean =>

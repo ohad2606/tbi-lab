@@ -127,6 +127,7 @@ export function Editor() {
   const canvasApi = useRef<CanvasApi | null>(null);
   // The wire segment chosen in Properties, highlighted on the canvas.
   const [segmentPick, setSegmentPick] = useState<SegmentPick | null>(null);
+  useEffect(() => setSegmentPick(null), [doc?.projectId]);
 
   // A different project starts without probes, unless it was just opened from an example
   // that suggests some (presentation state only, never stored in the project).
