@@ -348,10 +348,10 @@ describe('sign-up requests view logic', () => {
         ).toBe(`console.signups.done.${action}.email_queued_wait`);
       });
     }
-    it('the queued row text says the email "will be sent"', () => {
+    it('the queued row text says the email is not sent yet (no promise: a pause may hold it)', () => {
       const en = LOCALES.find((l) => l.code === 'en')!;
       expect(en.messages['console.signups.status.emailQueued']).toBe(
-        'Account added. The email is queued; it will be sent automatically.',
+        'Account added. The email is queued and has not been sent yet.',
       );
     });
   });

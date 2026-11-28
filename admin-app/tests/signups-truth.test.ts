@@ -46,3 +46,45 @@ describe('resend of a mail held by the pause', () => {
     }
   });
 });
+
+describe('quiet hours only when the record proves it', () => {
+  const view = (o: Partial<SignupRecord>, action: 'approve' | 'resend') =>
+    signupOutcomeView(interpretSignup(200, { record: rec(o), note: 'email_queued' }), action, NOW)
+      .key;
+  it('owner-queued, no error, send time ahead: quiet hours', () => {
+    expect(view({}, 'resend')).toBe('console.signups.done.resend.email_queued');
+    expect(view({ autoApprovedAt: FUTURE, approvedBy: 'owner' }, 'approve')).toBe(
+      'console.signups.done.approve.email_queued',
+    );
+  });
+  it('auto-approved (possibly night-exempt) or a pause hold: neutral, no promised send time', () => {
+    const auto = { autoApprovedAt: '2026-11-01T21:00:00.000Z', origin: 'web' as const };
+    for (const action of ['approve', 'resend'] as const) {
+      expect(view(auto, action)).toBe(`console.signups.done.${action}.email_queued_wait`);
+      expect(view({ emailSendAfter: '2026-11-01T21:00:00.000Z' }, action)).toBe(
+        `console.signups.done.${action}.email_queued_wait`,
+      );
+    }
+  });
+  it('neutral and row texts make no send promise; HE and EN alike', () => {
+    for (const key of [
+      'console.signups.done.approve.email_queued_wait',
+      'console.signups.done.resend.email_queued_wait',
+      'console.signups.status.emailQueued',
+    ])
+      for (const t of text(key))
+        expect(t).not.toMatch(/will be sent|quiet hours|יישלח|שעות השקט|MISSING/);
+  });
+  it('delete failures name the refresh button verbatim', () => {
+    for (const key of [
+      'console.signups.delete.failed.server',
+      'console.signups.delete.failed.network',
+    ]) {
+      const [en, he] = text(key);
+      expect(en).toContain('"Refresh requests"');
+      expect(he).toContain('"רענון הבקשות"');
+    }
+    const [en, he] = text('console.signups.refresh');
+    expect([en, he]).toEqual(['Refresh requests', 'רענון הבקשות']);
+  });
+});

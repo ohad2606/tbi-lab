@@ -157,7 +157,7 @@ export const consoleEn = {
   'console.signups.status.accountPending':
     'Approved, but the account is not ready yet. Approve again to finish.',
   'console.signups.status.emailQueued':
-    'Account added. The email is queued; it will be sent automatically.',
+    'Account added. The email is queued and has not been sent yet.',
   'console.signups.status.emailMailCap':
     'Account added. The email is waiting because of the email limit; it is normally sent automatically later.',
   'console.signups.heardFrom': 'How they heard about us',
@@ -231,13 +231,13 @@ export const consoleEn = {
   'console.signups.done.approve.email_queued_cap':
     'Approved {name}: the account was added. The email waits because of the email limit and is normally sent automatically later.',
   'console.signups.done.approve.email_queued_wait':
-    'Approved {name}: the account was added. The email is queued and will be sent automatically.',
+    'Approved {name}: the account was added. The email is queued and has not been sent yet.',
   'console.signups.done.resend.email_queued_cap':
     'The email to {name} waits because of the email limit and is normally sent automatically later.',
   'console.signups.done.resend.email_held_paused':
     'The email to {name} is held because automatic approval is paused. It is not sent while the pause lasts, and the "Resend email" button does not override the pause.',
   'console.signups.done.resend.email_queued_wait':
-    'The email to {name} is queued and will be sent automatically.',
+    'The email to {name} is queued and has not been sent yet.',
   'console.signups.done.reject': 'Rejected the request of {name}. No email was sent.',
   'console.signups.done.resend': 'The email to {name} was sent.',
   'console.signups.err.account_pending':
@@ -319,9 +319,9 @@ export const consoleEn = {
   'console.signups.delete.rateLimitedFor':
     'Request {id}: not deleted. Too many requests; try again later. Seconds to wait: {seconds}.',
   'console.signups.delete.failed.server':
-    'Request {id}: the deletion did not finish. Refresh the list; if the request is still there, try again. If not, ask the operator to check the server log.',
+    'Request {id}: the deletion did not finish. Press "Refresh requests"; if the request is still there, try again. If not, ask the operator to check the server log.',
   'console.signups.delete.failed.network':
-    'Request {id}: the server did not answer, so it may or may not be deleted. Check the list and try again.',
+    'Request {id}: the server did not answer, so it may or may not be deleted. Press "Refresh requests" to check, then try again if it is still there.',
   'console.signups.delete.failed.csrf':
     'Request {id}: not deleted. The server refused it as not coming from this app. Reload the page and try again.',
   'console.signups.delete.failed.forbidden':

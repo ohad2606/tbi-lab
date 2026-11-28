@@ -877,8 +877,11 @@ export class SignupApprover {
   }
 
   /**
-   * Sends the approval email, or, inside quiet hours, persists `email_queued` with its send time
-   * (no attempt is recorded). `force` is the drain, which has already checked the window.
+   * Sends the approval email, or, inside quiet hours (unless `nightExempt`), persists
+   * `email_queued` with its send time (no attempt is recorded). A mail held by the pause or the
+   * mail limit is also `email_queued`: only an owner-queued record with no error and a send time
+   * ahead waits for quiet hours (admin-app views.ts `queuedReason`). `force` is the drain, which
+   * has already checked the window.
    */
   private async send(r: SignupRecord, force = false, explicit = false): Promise<ApproveOutcome> {
     // Every path below writes (queue, attempt, binding): the owner's mark goes first.

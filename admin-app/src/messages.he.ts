@@ -154,7 +154,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.status.emailFailed.temporary':
     'החשבון נוסף, אבל שליחת המייל לא אושרה: ייתכן ששירות המייל אינו זמין זמנית. נסו שוב מאוחר יותר באמצעות „שליחת המייל שוב”.',
   'console.signups.status.accountPending': 'אושרה, אבל החשבון עדיין לא מוכן. אשרו שוב כדי להשלים.',
-  'console.signups.status.emailQueued': 'החשבון נוסף. המייל בתור ויישלח אוטומטית.',
+  'console.signups.status.emailQueued': 'החשבון נוסף. המייל בתור ועדיין לא נשלח.',
   'console.signups.status.emailMailCap':
     'החשבון נוסף. המייל ממתין בגלל מגבלת המיילים; בדרך כלל הוא נשלח אוטומטית בהמשך.',
   'console.signups.heardFrom': 'איך שמעו עלינו',
@@ -225,12 +225,12 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.done.approve.email_queued_cap':
     'הבקשה של {name} אושרה: החשבון נוסף. המייל ממתין בגלל מגבלת המיילים, ובדרך כלל הוא נשלח אוטומטית בהמשך.',
   'console.signups.done.approve.email_queued_wait':
-    'הבקשה של {name} אושרה: החשבון נוסף. המייל בתור ויישלח אוטומטית.',
+    'הבקשה של {name} אושרה: החשבון נוסף. המייל בתור ועדיין לא נשלח.',
   'console.signups.done.resend.email_queued_cap':
     'המייל אל {name} ממתין בגלל מגבלת המיילים, ובדרך כלל הוא נשלח אוטומטית בהמשך.',
   'console.signups.done.resend.email_held_paused':
     'המייל אל {name} מוחזק כי האישור האוטומטי מושהה. הוא לא נשלח כל עוד ההשהיה נמשכת, והכפתור "שליחת המייל שוב" לא עוקף את ההשהיה.',
-  'console.signups.done.resend.email_queued_wait': 'המייל אל {name} בתור ויישלח אוטומטית.',
+  'console.signups.done.resend.email_queued_wait': 'המייל אל {name} בתור ועדיין לא נשלח.',
   'console.signups.done.reject': 'הבקשה של {name} נדחתה. לא נשלח מייל.',
   'console.signups.done.resend': 'המייל אל {name} נשלח.',
   'console.signups.err.account_pending': 'החשבון של {name} עדיין לא מוכן. נסו שוב בעוד רגע.',
@@ -307,9 +307,9 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.delete.rateLimitedFor':
     'בקשה {id}: לא נמחקה. יותר מדי בקשות; נסו שוב מאוחר יותר. שניות להמתנה: {seconds}.',
   'console.signups.delete.failed.server':
-    'בקשה {id}: המחיקה לא הושלמה. רעננו את הרשימה; אם הבקשה עדיין מופיעה, נסו שוב. אם לא, בקשו מהמפעיל לבדוק את יומן השרת.',
+    'בקשה {id}: המחיקה לא הושלמה. לחצו על "רענון הבקשות"; אם הבקשה עדיין מופיעה, נסו שוב. אם לא, בקשו מהמפעיל לבדוק את יומן השרת.',
   'console.signups.delete.failed.network':
-    'בקשה {id}: השרת לא ענה, ולכן לא ידוע אם היא נמחקה. בדקו את הרשימה ונסו שוב.',
+    'בקשה {id}: השרת לא ענה, ולכן לא ידוע אם היא נמחקה. לחצו על "רענון הבקשות" כדי לבדוק, ואם היא עדיין מופיעה נסו שוב.',
   'console.signups.delete.failed.csrf':
     'בקשה {id}: לא נמחקה. השרת דחה אותה כי לא זוהתה כמגיעה מהאפליקציה. טענו את הדף מחדש ונסו שוב.',
   'console.signups.delete.failed.forbidden': 'בקשה {id}: לא נמחקה. רק הבעלים יכולים למחוק בקשות.',
