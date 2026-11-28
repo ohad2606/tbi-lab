@@ -46,6 +46,12 @@
  *                                within that many seconds of the last sweep keeps the auto-approve
  *                                cut-off (autoApprove.ts). Needs a separate
  *                                TBI_SIGNUP_AUTO_STATE_DIR; a bad value disables the routes.
+ *   TBI_SIGNUP_QUIET_AUTO_MAIL   DEC-39, OFF by default: `1` lets the approval mail of an
+ *                                auto-approved, confirmed web request go out in quiet hours
+ *                                (service.ts `nightExempt`; the owner's own mail still waits).
+ *                                Honoured only with the mail caps, TBI_SIGNUP_AUTO_STATE_DIR and
+ *                                TBI_SIGNUP_AUTO_WEB=verified with verification; otherwise, or
+ *                                with another value, it is off (one log line).
  */
 import { unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -122,6 +128,11 @@ export interface AdminSignupConfig {
   mailCaps?: MailLimits & { stateDir: string };
   /** S4b: write the counts-only summary file; unset = never. */
   summary?: boolean;
+  /**
+   * DEC-39: TBI_SIGNUP_QUIET_AUTO_MAIL=1 with its preconditions; used only when the gate, the
+   * pause check and the binding are wired too. Unset = quiet hours hold every approval mail.
+   */
+  quietAutoMail?: boolean;
 }
 
 export type AdminSignupConfigResult =
@@ -348,6 +359,9 @@ export async function wireSignupAdmin(
     holdDir === undefined
       ? undefined
       : approvalHold({ stateDir: holdDir, storeDir: c.dir, now: io.now, log: io.log });
+  // DEC-39: only for the drain and the auto approver, never for the owner's approver.
+  const night =
+    c.quietAutoMail && gate && hold && verifier && verifiedMode ? { nightAutoMail: true } : {};
   // No state dir: unchanged (with auto-approve on, the drain reads the store dir's pause file).
   const drainPaused =
     hold ??
@@ -365,6 +379,7 @@ export async function wireSignupAdmin(
     log: io.log,
     ...mailBinding,
     ...(drainPaused ? { paused: drainPaused } : {}),
+    ...night,
   });
   const runDrain = async () => {
     try {
@@ -420,6 +435,7 @@ export async function wireSignupAdmin(
                 counters: io.counters ?? null,
                 ...(hold ? { paused: hold } : {}),
                 ...mailBinding,
+                ...night,
               })
             : null;
         },
@@ -565,6 +581,7 @@ export async function wireSignupAdmin(
     startDrain() {
       // Once per start, never per sweep.
       if (!hold) io.log('signup: approval mail pause check not configured (state_dir_unset)');
+      if (night.nightAutoMail) io.log('signup: night approval mail on (auto-approved, verified)');
       const tick = () => {
         if (draining) return;
         draining = runDrain().finally(() => {
@@ -690,6 +707,19 @@ export async function signupWiringFromEnv(
     if (sg.verifyPerDay !== undefined) config.verify.maxPerDay = sg.verifyPerDay;
     if (sg.unverifiedDays !== undefined) config.verify.unverifiedDays = sg.unverifiedDays;
   }
+  // DEC-39: an explicit opt-in on top of every mail safeguard; anything less = off.
+  const nightFlag = env.TBI_SIGNUP_QUIET_AUTO_MAIL ?? '';
+  if (nightFlag === '1') {
+    if (config.mailCaps && config.pauseStateDir && config.verifiedMode && config.verify)
+      config.quietAutoMail = true;
+    else
+      io.log(
+        'signup: night approval mail off (config: TBI_SIGNUP_QUIET_AUTO_MAIL needs the mail caps, TBI_SIGNUP_AUTO_STATE_DIR and TBI_SIGNUP_AUTO_WEB=verified with verification)',
+      );
+  } else if (nightFlag !== '')
+    io.log(
+      'signup: night approval mail off (config: TBI_SIGNUP_QUIET_AUTO_MAIL must be 1 or unset)',
+    );
   try {
     return await wireSignupAdmin(config, spool, io);
   } catch (e) {
