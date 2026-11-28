@@ -179,3 +179,28 @@ for (const lang of ['en', 'he'] as const) {
     await expect(status).toHaveText('');
   });
 }
+
+test('Schematic: zoom in then out returns to a fit below the usual minimum', async ({ page }) => {
+  await start(page, 'en');
+  await openExample(page, 'logic-full-adder');
+  await page.getByTestId('view-schematic').click();
+  const view = page.getByTestId('schematic-view').locator(':scope > svg');
+  await expect(view).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 320 });
+  const scale = () =>
+    view.evaluate((svg: SVGSVGElement) => svg.clientWidth / svg.viewBox.baseVal.width);
+  const fit = page.getByTestId('schematic-fit');
+  await expect
+    .poll(async () => {
+      await fit.click();
+      return scale();
+    })
+    .toBeLessThan(0.2);
+  await page.waitForTimeout(200);
+  await fit.click();
+  const fitted = await scale();
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await expect.poll(scale).toBeGreaterThan(fitted * 1.2);
+  await page.getByRole('button', { name: 'Zoom out', exact: true }).click();
+  await expect.poll(scale).toBeCloseTo(fitted, 3);
+});

@@ -840,7 +840,7 @@ export const he: Record<MessageKey, string> = {
   'app.reload': 'טעינה מחדש',
   'library.examples.heading': 'התחלה מדוגמה',
   'library.examples.intro':
-    'כל דוגמה נפתחת כפרויקט חדש משלכם. לחצו על "הרצה" כדי לראות תוצאות אמיתיות.',
+    'כל דוגמה נפתחת כפרויקט חדש משלכם. לחצו על „הרצה” כדי לראות תוצאות אמיתיות.',
   'library.examples.open': 'פתיחת הדוגמה',
   'library.examples.openNamed': 'פתיחת הדוגמה: {name}',
   'library.examples.search': 'חיפוש דוגמאות',
@@ -954,7 +954,7 @@ export const he: Record<MessageKey, string> = {
     'שני ענפים זהים עם [[diode]] ⁦1N4148⁩. ⁦D1⁩ בממתח קדמי ומוליכה כ־⁦4.3 mA⁩; ⁦D2⁩ הפוכה וחוסמת (ננו־אמפרים בודדים).',
   'example.push-button.title': 'לחצן רגעי',
   'example.push-button.summary':
-    'לחצו על "הרצה" ואז החזיקו את ⁦SW1⁩: הנורית דולקת רק כל עוד הלחצן לחוץ. הלחיצה אינה משנה את הפרויקט השמור.',
+    'לחצו על „הרצה” ואז החזיקו את ⁦SW1⁩: הנורית דולקת רק כל עוד הלחצן לחוץ. הלחיצה אינה משנה את הפרויקט השמור.',
   'example.cc-mode.title': 'הגבלת זרם (מצב CC)',
   'example.cc-mode.summary':
     '⁦5 V⁩ עם הגבלה של ⁦100 mA⁩: נגד של ⁦100 Ω⁩ צורך ⁦50 mA⁩ (CV). בזמן ההרצה סגרו את ⁦SW1⁩ כדי להוסיף ⁦10 Ω⁩. עומס זה היה דורש ⁦550 mA⁩, ולכן הספק מחזיק ⁦100 mA⁩ והמתח שלו יורד (CC). זו התנהגות רגילה, לא תקלה.',
@@ -1012,7 +1012,7 @@ export const he: Record<MessageKey, string> = {
     'קושחת בדיקה מוכנה מראש: מפעילה פעם אחת בעלייה את GPIO4, 16, 25, 27, 32 ו-33, ואז מעתיקה את GPIO34 ל-GPIO4 ואת GPIO35 ל-GPIO33 ומדפיסה כל שינוי.',
   'sim.status.runningMcu': 'רץ · ESP32',
   'sim.status.stopping': 'עוצר…',
-  'firmware.program': 'הקוד שלו ("בנה קוד" ואז "הרצה")',
+  'firmware.program': 'הקוד שלו („בנה קוד” ואז „הרצה”)',
   'sim.error.mcu_no_program': 'ללוח {components} אין קוד להרצה.',
   'sim.error.mcu_build_required': 'נדרשת בנייה: בנו את הקוד של {components} ואז לחצו על „הרצה”.',
   'sim.error.mcu_unsupported_features':
@@ -1427,7 +1427,7 @@ export const he: Record<MessageKey, string> = {
   'assist.findings.notAi': 'הם מגיעים מהסימולציה, לא מ-AI.',
   'build.feature.spi': 'אפיק SPI',
   'build.feature.library': 'ספרייה {name}',
-  'mcu.runs.program': 'מריץ את הקוד שלו. ערכו אותו בלשונית "קוד", לחצו על "בנה קוד" ואז על "הרצה".',
+  'mcu.runs.program': 'מריץ את הקוד שלו. ערכו אותו בלשונית „קוד”, לחצו על „בנה קוד” ואז על „הרצה”.',
   'mcu.runs.reference': 'מריץ את קושחת הייחוס „{name}”.',
   'mcu.runs.useProgram': 'להשתמש בקוד שלו במקום',
   'mcu.advanced.heading': 'מתקדם',
@@ -1590,7 +1590,7 @@ export const he: Record<MessageKey, string> = {
   'mcu.serial.dropped': 'פלט ישן יותר קוצץ ({count} תווים).',
   'mcu.terminal.heading': 'מסוף ESP32',
   'mcu.terminal.idle':
-    'לחצו על "הרצה" כדי להפעיל את ה־ESP32. הפלט של המסוף הטורי שלו יופיע כאן, כבר מהאתחול.',
+    'לחצו על „הרצה” כדי להפעיל את ה־ESP32. הפלט של המסוף הטורי שלו יופיע כאן, כבר מהאתחול.',
   'mcu.terminal.simTime': '{time} של סימולציה',
   'mcu.terminal.state.idle': 'לא פועל',
   'mcu.terminal.state.starting': 'מתחיל סשן…',
@@ -1787,7 +1787,7 @@ export const he: Record<MessageKey, string> = {
   'nextStep.title': 'זה רץ. מה לנסות עכשיו',
   'nextStep.step1': 'שנו את מתח ספק הכוח של המעבדה בזמן הריצה וראו איך {probe} עוקב.',
   'nextStep.step2':
-    'לחצו על עצירה, בחרו את הנגד, שנו את ההתנגדות שלו בתכונות ולחצו על „הרצה”: זרם הנורית ישתנה.',
+    'לחצו על „עצירה”, בחרו את הנגד, שנו את ההתנגדות שלו בתכונות ולחצו על „הרצה”: זרם הנורית ישתנה.',
   'nextStep.step3': 'השתמשו בכפתור [[probe]] שעל משטח השרטוט כדי לנעוץ מתח או זרם נוספים.',
   'nextStep.dismiss': 'הבנתי',
   'nextStep.listLabel': 'דברים לנסות',
@@ -1853,7 +1853,7 @@ export const he: Record<MessageKey, string> = {
   'capabilities.facility.drive_strength.body':
     'אינה מדומה: הפינים פועלים בעוצמת ההנעה של ברירת המחדל. קוד שבוחר עוצמה אחרת נדחה בבנייה.',
   'capabilities.facility.restart.name': 'אתחול השבב (ESP.restart)',
-  'capabilities.facility.restart.body': 'אינו מדומה. לחצו עצירה ואז הרצה כדי להתחיל מחדש.',
+  'capabilities.facility.restart.body': 'אינו מדומה. לחצו „עצירה” ואז „הרצה” כדי להתחיל מחדש.',
   'capabilities.facility.cpu_frequency.name': 'שינויי תדר המעבד (setCpuFrequencyMhz)',
   'capabilities.facility.cpu_frequency.body':
     'אינם מדומים: ה־ESP32 פועל ב־240 MHz. קוד שמשנה את תדר המעבד נדחה בבנייה.',
@@ -1881,7 +1881,7 @@ export const he: Record<MessageKey, string> = {
   'capabilities.limit.rate_limited':
     'הופעלו יותר מדי הרצות בזמן קצר. המתינו את הזמן המוצג ונסו שוב.',
   'capabilities.limit.session_expired':
-    'הרצה מסתיימת אחרי 30 דקות או כשהדף מפסיק להגיב. לחצו הרצה כדי להתחיל חדשה.',
+    'הרצה מסתיימת אחרי 30 דקות או כשהדף מפסיק להגיב. לחצו „הרצה” כדי להתחיל חדשה.',
   'capabilities.limit.commands_rate_limited':
     'פקדי הרכיבים שונו מהר מדי בזמן ההרצה; חלק מהשינויים נדחו. שנו אותם לאט יותר.',
   'capabilities.parts.supported': 'מדומה לצד ה־ESP32.',
@@ -2029,12 +2029,12 @@ export const he: Record<MessageKey, string> = {
     'TBI Lab היא סביבת עבודה הנדסית לאלקטרוניקה. היא מדמה את ה־ESP32 הקלאסי ואת המעגל סביבו, כאן בדפדפן שלכם.',
   'onboarding.quick.heading': 'ההתחלה המהירה: בלי בנייה ובלי המתנה',
   'onboarding.quick.body':
-    'פתחו מעגל LED קטן, לחצו הרצה בסרגל העליון, בחרו את הנגד ⁦R1⁩ ושנו את ערכו. זרם ה־LED משתנה בהתאם.',
+    'פתחו מעגל LED קטן, לחצו „הרצה” בסרגל העליון, בחרו את הנגד ⁦R1⁩ ושנו את ערכו. זרם ה־LED משתנה בהתאם.',
   'onboarding.quick.open': 'פתיחת דוגמת ה־LED',
   'onboarding.step1': 'פתחו אחת מדוגמאות ה־ESP32 שלמטה, למשל אזעקת המרחק.',
   'onboarding.step2': 'בלשונית הקוד, לחצו על "בנה קוד". הבנייה הראשונה עשויה להימשך כדקה.',
   'onboarding.step3':
-    'לחצו הרצה. בזמן ההרצה, בחרו רכיב ושנו את מה שהוא חש (מרחק, טמפרטורה, אור, תנועה): הקושחה והמעגל מגיבים.',
+    'לחצו „הרצה”. בזמן ההרצה, בחרו רכיב ושנו את מה שהוא חש (מרחק, טמפרטורה, אור, תנועה): הקושחה והמעגל מגיבים.',
   'onboarding.note':
     'הפרויקטים נשמרים בדפדפן הזה בלבד: השתמשו בייצוא כדי לשמור עותק. סימולטור ה־ESP32 משותף למשתמשים; אם הוא תפוס, נסו שוב בעוד רגע.',
   'onboarding.dismiss': 'הבנתי',
@@ -2579,7 +2579,7 @@ export const he: Record<MessageKey, string> = {
     'ספק מתח למעבדה, לחצן, נגד, נורית LED ואדמה (GND), מחוברים בלולאה אחת. פותחים אותו במעבדה ורואים את המעגל האמיתי.',
   'compguide.button.tryit.heading': 'נסו בעצמכם',
   'compguide.button.tryit.action':
-    'פתחו את הדוגמה, לחצו על "הרצה" ואז החזיקו את הלחצן לחוץ, או העבירו אליו פוקוס והחזיקו רווח.',
+    'פתחו את הדוגמה, לחצו על „הרצה” ואז החזיקו את הלחצן לחוץ, או העבירו אליו פוקוס והחזיקו רווח.',
   'compguide.button.tryit.expect':
     'כל עוד הלחצן לחוץ הנורית דולקת וזרמה {iOn}. כשמשחררים אותו הזרם חוזר ל-{iOff}.',
   'compguide.button.limits.heading': 'מה המודל לא כולל',

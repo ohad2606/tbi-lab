@@ -117,8 +117,9 @@ export function SchematicView() {
   const short = size.h < SHORT_VIEW_PX;
 
   const zoomAt = (factor: number, cx = size.w / 2, cy = size.h / 2) => {
-    // Zooming out of a drawing fitted below the minimum never zooms in.
-    const scale = clamp(cam.scale * factor, Math.min(MIN_SCALE, cam.scale), MAX_SCALE);
+    // A drawing fitted below the minimum can be zoomed back out to that fit; never zooms in.
+    const floor = Math.min(MIN_SCALE, cam.scale, fitted()?.scale ?? MIN_SCALE);
+    const scale = clamp(cam.scale * factor, floor, MAX_SCALE);
     const wx = cam.x + cx / cam.scale;
     const wy = cam.y + cy / cam.scale;
     setCamera({ scale, x: wx - cx / scale, y: wy - cy / scale });

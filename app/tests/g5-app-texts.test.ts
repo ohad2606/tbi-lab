@@ -13,6 +13,14 @@ describe('app texts', () => {
     expect(unquoted.map(([k]) => k)).toEqual([]);
   });
 
+  it('Hebrew sentences quote the Run and Stop button names as „…”', () => {
+    const names = `(?:${he['sim.run']}|${he['sim.stop']})`;
+    // "press X", "press X and then Y", and a name in any other quotation marks.
+    const bad = new RegExp(`(?:לחצו|לחצו על|ואז|ואז על) ${names}(?![א-ת])|["״“]${names}["״”]`);
+    const found = Object.entries(he).filter(([, v]) => bad.test(v));
+    expect(found.map(([k]) => k)).toEqual([]);
+  });
+
   it('the report disclosure says whose run and what is included in plain words', () => {
     expect(he['report.disclosure.item.run']).toMatch(/^אם ההרצה שייכת לכם: /);
     expect(en['report.disclosure.always']).toBe(
