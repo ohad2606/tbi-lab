@@ -1,9 +1,10 @@
 import { Fragment } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
-import { catalogText, formatQuantity } from '../i18n/i18n.js';
+import { useContext, useEffect, useRef } from 'preact/hooks';
+import { catalogText, formatQuantity, isolateLtr } from '../i18n/i18n.js';
 import { emptySelection } from '@tbi-lab/domain';
 import { useAppState, useStore, useT } from './context.js';
 import { describeConnections } from './connectionsText.js';
+import { EndSeveralContext } from './selectionKeys.js';
 
 /**
  * A11Y-028: a text alternative to the canvas — every part, and every net with the pins on it.
@@ -26,6 +27,7 @@ function ConnectionsBody() {
   const { doc, locale, selection } = useAppState();
   const store = useStore();
   const t = useT();
+  const endSeveral = useContext(EndSeveralContext);
   const tableRef = useRef<HTMLTableElement>(null);
   const selectedRef = selection.components.length === 1 ? selection.components[0]! : null;
   // Canvas -> list: bring the selected part's row into view (never moves focus).
@@ -81,7 +83,10 @@ function ConnectionsBody() {
                     data-testid={`connections-select-${p.ref}`}
                     aria-pressed={isSelected(p.ref) ? 'true' : 'false'}
                     aria-label={t('connections.select', { ref: p.ref })}
-                    onClick={() => store.select({ ...emptySelection(), components: [p.ref] })}
+                    onClick={() => {
+                      store.select({ ...emptySelection(), components: [p.ref] });
+                      endSeveral(t('multi.partChosen', { ref: isolateLtr(p.ref) }));
+                    }}
                   >
                     <bdi dir="ltr">{p.ref}</bdi>
                   </button>

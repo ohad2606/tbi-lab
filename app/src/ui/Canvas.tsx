@@ -1940,9 +1940,10 @@ export function Canvas({
               aria-pressed={several}
               aria-label={t('multi.tool')}
               title={t('multi.tool')}
-              // Escape leaves the mode from here too, as it does on the drawing.
+              // Escape leaves the mode from here too, as it does on the drawing. A pending
+              // placement is cancelled first (the editor's own Escape listener does that).
               onKeyDown={(e: KeyboardEvent) => {
-                if (e.key !== 'Escape' || !several) return;
+                if (e.key !== 'Escape' || !several || placing) return;
                 e.preventDefault();
                 e.stopPropagation();
                 setSeveralOn(false);

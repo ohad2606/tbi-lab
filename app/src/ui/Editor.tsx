@@ -16,6 +16,8 @@ import { Palette } from './Palette.js';
 import { NextStepCard } from './NextStepCard.js';
 import { shouldShowNextStep } from './nextStep.js';
 import { probeExists, sameTarget, type Probe, type ProbeInput } from './probes.js';
+import { EndSeveralContext, keepPageUnselected } from './selectionKeys.js';
+import { useAnnounce } from './useAnnounce.js';
 
 // The generated views load on first use (not part of the editor's startup bundle).
 const loadSchematic = () => import('./SchematicView.js').then((m) => m.SchematicView);
@@ -41,7 +43,7 @@ const VIEW_NAME: Partial<Record<View, 'view.name.schematic'>> = {
  * session only and are never written into the project document.
  */
 export function Editor() {
-  const { doc, suggestedProbes, sim, screen } = useAppState();
+  const { doc, suggestedProbes, sim, screen, readOnly, locale } = useAppState();
   const store = useStore();
   const t = useT();
   // TBI-014 slice 2: the next-step card. Latched once the first Run succeeded (the user presses
@@ -123,6 +125,17 @@ export function Editor() {
   }, [simBusy]);
   const [probeMode, setProbeMode] = useState(false);
   const [severalOn, setSeveralOn] = useState(false);
+  const [severalMsg, announceSeveral, clearSeveralMsg] = useAnnounce();
+  // Several-selection belongs to the project it was turned on in.
+  useEffect(() => {
+    setSeveralOn(false);
+    clearSeveralMsg();
+  }, [doc?.projectId]);
+  const endSeveral = (said: string | null) => {
+    if (!severalOn || readOnly) return;
+    setSeveralOn(false);
+    announceSeveral(said === null ? t('multi.cleared') : t('multi.offThen', { said }));
+  };
   const [probes, setProbes] = useState<Probe[]>([]);
   const nextProbe = useRef(1);
   const canvasApi = useRef<CanvasApi | null>(null);
@@ -146,113 +159,118 @@ export function Editor() {
   };
 
   return (
-    <main class="workspace" id="main" tabIndex={-1}>
-      <h1 class="visually-hidden">{t('editor.heading')}</h1>
-      <Palette
-        placing={placing}
-        onPick={(type, viaKeyboard) => {
-          setProbeMode(false);
-          if (viaKeyboard) {
-            setPlacing(null);
-            canvasApi.current?.placeAtCenter(type);
-          } else {
-            setPlacing((p) => (p === type ? null : type));
-          }
-        }}
-      />
-      <div class={nextStep ? 'workspace-center has-next-step' : 'workspace-center'}>
-        <div class="visually-hidden" role="status" data-testid="next-step-status">
-          {nextStepAnnounce}
-        </div>
-        {nextStep && <NextStepCard onDismiss={dismissNextStep} />}
-        <div
-          class="view-tabs"
-          role="tablist"
-          aria-label={t('view.tabs')}
-          onKeyDown={(e) => {
-            // Arrow keys move between tabs, in reading order (mirrored under RTL).
-            const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
-            if (!step) return;
-            e.preventDefault();
-            const forward = document.documentElement.dir === 'rtl' ? -step : step;
-            const next = views[(views.indexOf(active) + forward + views.length) % views.length]!;
-            setView(next);
-            (e.currentTarget as HTMLElement)
-              .querySelector<HTMLElement>(`[data-testid="view-${next}"]`)
-              ?.focus();
+    <EndSeveralContext.Provider value={endSeveral}>
+      <main class="workspace" id="main" tabIndex={-1}>
+        <h1 class="visually-hidden">{t('editor.heading')}</h1>
+        <Palette
+          placing={placing}
+          onPick={(type, viaKeyboard) => {
+            setProbeMode(false);
+            if (viaKeyboard) {
+              setPlacing(null);
+              canvasApi.current?.placeAtCenter(type);
+            } else {
+              setPlacing((p) => (p === type ? null : type));
+            }
           }}
-        >
-          {views.map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="tab"
-              class="view-tab"
-              data-testid={`view-${v}`}
-              aria-selected={active === v}
-              aria-label={VIEW_NAME[v] && t(VIEW_NAME[v])}
-              title={VIEW_NAME[v] && t(VIEW_NAME[v])}
-              tabIndex={active === v ? 0 : -1}
-              onClick={() => setView(v)}
-            >
-              {t(VIEW_LABEL[v])}
-              {v === 'code' && (
-                <span class="view-tab-file technical" dir="ltr">
-                  {doc!.programs[programBoard!]!.fileName}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-        {showCode && <CodeView boardId={programBoard!} focusBuild={focusBuild} />}
-        {active === 'schematic' && (
-          <div class="view-slot">
-            <LazyView load={loadSchematic} />
+        />
+        <div class={nextStep ? 'workspace-center has-next-step' : 'workspace-center'}>
+          <div class="visually-hidden" role="status" data-testid="next-step-status">
+            {nextStepAnnounce}
           </div>
-        )}
-        {/* Mounted only while shown: leaving the tab releases the 3D renderer entirely. */}
-        {active === '3d' && (
-          <div class="view-slot">
-            <LazyView load={loadThree} />
+          <div class="visually-hidden" role="status" data-testid="several-status" dir={locale.dir}>
+            {severalMsg}
           </div>
-        )}
-        <div class="canvas-slot" hidden={active !== 'circuit'}>
-          <Canvas
-            placing={placing}
-            onPlacingDone={() => setPlacing(null)}
-            apiRef={canvasApi}
-            probeMode={probeMode}
-            onProbeModeChange={(on) => {
-              setProbeMode(on);
-              if (on) setPlacing(null);
+          {nextStep && <NextStepCard onDismiss={dismissNextStep} />}
+          <div
+            class="view-tabs"
+            role="tablist"
+            aria-label={t('view.tabs')}
+            onKeyDown={(e) => {
+              // Arrow keys move between tabs, in reading order (mirrored under RTL).
+              const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+              if (!step) return;
+              e.preventDefault();
+              const forward = document.documentElement.dir === 'rtl' ? -step : step;
+              const next = views[(views.indexOf(active) + forward + views.length) % views.length]!;
+              setView(next);
+              (e.currentTarget as HTMLElement)
+                .querySelector<HTMLElement>(`[data-testid="view-${next}"]`)
+                ?.focus();
             }}
+          >
+            {views.map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                class="view-tab"
+                data-testid={`view-${v}`}
+                aria-selected={active === v}
+                aria-label={VIEW_NAME[v] && t(VIEW_NAME[v])}
+                title={VIEW_NAME[v] && t(VIEW_NAME[v])}
+                tabIndex={active === v ? 0 : -1}
+                onClick={() => setView(v)}
+              >
+                {t(VIEW_LABEL[v])}
+                {v === 'code' && (
+                  <span class="view-tab-file technical" dir="ltr">
+                    {doc!.programs[programBoard!]!.fileName}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          {showCode && <CodeView boardId={programBoard!} focusBuild={focusBuild} />}
+          {active === 'schematic' && (
+            <div class="view-slot" onKeyDown={keepPageUnselected}>
+              <LazyView load={loadSchematic} />
+            </div>
+          )}
+          {/* Mounted only while shown: leaving the tab releases the 3D renderer entirely. */}
+          {active === '3d' && (
+            <div class="view-slot" onKeyDown={keepPageUnselected}>
+              <LazyView load={loadThree} />
+            </div>
+          )}
+          <div class="canvas-slot" hidden={active !== 'circuit'} onKeyDown={keepPageUnselected}>
+            <Canvas
+              placing={placing}
+              onPlacingDone={() => setPlacing(null)}
+              apiRef={canvasApi}
+              probeMode={probeMode}
+              onProbeModeChange={(on) => {
+                setProbeMode(on);
+                if (on) setPlacing(null);
+              }}
+              probes={live}
+              onProbe={addProbe}
+              segmentPick={segmentPick}
+              severalOn={severalOn}
+              onSeveralChange={setSeveralOn}
+            />
+          </div>
+        </div>
+        {/* The side column: properties, and under them the ESP32 terminal for ESP32 projects. */}
+        <div class="side-column">
+          <Inspector
             probes={live}
-            onProbe={addProbe}
+            onRemoveProbe={(id) => setProbes(live.filter((p) => p.id !== id))}
+            onClearProbes={() => setProbes([])}
             segmentPick={segmentPick}
+            onSegmentPick={setSegmentPick}
+            onReveal={(at) => canvasApi.current?.reveal(at)}
+          />
+          <ConnectionsPanel />
+          <WiresList severalOn={severalOn} onSeveralChange={setSeveralOn} />
+          <JunctionsList
+            onReveal={(at) => canvasApi.current?.reveal(at)}
             severalOn={severalOn}
             onSeveralChange={setSeveralOn}
           />
+          {doc && requiresMcuRuntime(doc) && <McuTerminal />}
         </div>
-      </div>
-      {/* The side column: properties, and under them the ESP32 terminal for ESP32 projects. */}
-      <div class="side-column">
-        <Inspector
-          probes={live}
-          onRemoveProbe={(id) => setProbes(live.filter((p) => p.id !== id))}
-          onClearProbes={() => setProbes([])}
-          segmentPick={segmentPick}
-          onSegmentPick={setSegmentPick}
-          onReveal={(at) => canvasApi.current?.reveal(at)}
-        />
-        <ConnectionsPanel />
-        <WiresList severalOn={severalOn} onSeveralChange={setSeveralOn} />
-        <JunctionsList
-          onReveal={(at) => canvasApi.current?.reveal(at)}
-          severalOn={severalOn}
-          onSeveralChange={setSeveralOn}
-        />
-        {doc && requiresMcuRuntime(doc) && <McuTerminal />}
-      </div>
-    </main>
+      </main>
+    </EndSeveralContext.Provider>
   );
 }

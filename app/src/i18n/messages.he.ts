@@ -99,6 +99,7 @@ export const he: Record<MessageKey, string> = {
   'multi.off': 'בחירה של כמה פריטים כבויה',
   'multi.cleared': 'הבחירה נוקתה. בחירה של כמה פריטים כבויה',
   'multi.offThen': 'בחירה של כמה פריטים כבויה. {said}',
+  'multi.partChosen': '{ref} נבחר',
   'multi.part.selected': 'נבחר',
   'multi.part.notSelected': 'לא נבחר',
   'multi.count.none': 'לא נבחרו פריטים',

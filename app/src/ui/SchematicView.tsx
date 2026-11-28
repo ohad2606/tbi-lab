@@ -8,7 +8,7 @@
  * pin names, values and net names are never mirrored.
  */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PanButtons, SHORT_VIEW_PX } from './PanButtons.js';
 import { panCamera } from './viewPan.js';
 import {
@@ -17,9 +17,10 @@ import {
   type ComponentInstance,
   type ProjectDocument,
 } from '@tbi-lab/domain';
-import { catalogText, formatQuantity, type LocaleInfo } from '../i18n/i18n.js';
+import { catalogText, formatQuantity, isolateLtr, type LocaleInfo } from '../i18n/i18n.js';
 import { MODEL_CARDS, partNumber } from '@tbi-lab/engine';
 import { useAppState, useStore, useT } from './context.js';
+import { EndSeveralContext } from './selectionKeys.js';
 import {
   schematicLayout,
   type Direction,
@@ -46,6 +47,7 @@ export function SchematicView() {
   const { doc, selection, locale } = useAppState();
   const store = useStore();
   const t = useT();
+  const endSeveral = useContext(EndSeveralContext);
   const layout = useMemo(() => (doc ? schematicLayout(doc) : null), [doc]);
   const wrap = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -129,7 +131,10 @@ export function SchematicView() {
     setCamera({ scale: cam.scale, x: cam.x + dx / cam.scale, y: cam.y + dy / cam.scale });
   };
   const selected = new Set(selection.components);
-  const select = (id: string) => store.select({ ...emptySelection(), components: [id] });
+  const select = (id: string) => {
+    store.select({ ...emptySelection(), components: [id] });
+    endSeveral(t('multi.partChosen', { ref: isolateLtr(id) }));
+  };
   const byId = new Map(doc.components.map((c) => [c.id, c]));
   const supplies = new Set(layout.marks.filter((m) => m.kind === 'rail').map((m) => m.supply));
 
