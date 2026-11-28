@@ -557,7 +557,7 @@ export class PendingStore {
    * deleted too.
    *
    *   deleted          every file and the verify state are gone (audited `delete ok`)
-   *   already_deleted  no record, but the audit log shows an earlier `delete ok` for this id: no-op
+   *   already_deleted  no record, and the LAST audited delete of this id is `ok`: no-op
    *   not_found        no record and no earlier delete (unknown id, or removed by retention);
    *                    with no side file either, never audited
    *   incomplete       a step failed (EPERM, an unreadable address marker, the verify state...):
@@ -579,9 +579,13 @@ export class PendingStore {
             throw e;
           },
         );
-        const deletedBefore = !existed && (await this.auditHas(id, 'delete', 'ok'));
-        const unfinished = !existed && (await this.auditHas(id, 'delete', 'incomplete'));
-        const earlier = existed || deletedBefore || unfinished;
+        // Only the LAST audited delete outcome counts: a later `incomplete` reopens an older `ok`.
+        const last = await this.lastDeleteOutcome(id);
+        const deletedBefore = !existed && last === 'ok';
+        const unfinished = !existed && last === 'incomplete';
+        // The request's own files may remain: the last audited outcome does not say they are gone.
+        const open = existed || unfinished;
+        const earlier = existed || last !== undefined;
         known = earlier || (await readdir(this.dir)).some((f) => f.startsWith(`${id}.`));
         // Derived from the record, as createIfNew names it; unknown when it cannot be read.
         const email: unknown = existed ? (await this.get(id).catch(() => null))?.email : undefined;
@@ -597,7 +601,8 @@ export class PendingStore {
           });
           return 'not_found';
         }
-        await this.removeSideFiles(id, ownMark);
+        // Delete still open and the address unknown: a non-file marker may be its own.
+        await this.removeSideFiles(id, ownMark, open && ownMark === undefined);
         await this.unlinkGone(`${id}.web`);
         if (existed) await this.unlinkGone(`${id}.json`);
         // Idempotent; also on a retry whose record is already gone.
@@ -634,8 +639,14 @@ export class PendingStore {
    * regular file is skipped, except `ownMark` (throws `mark_not_file`: the delete or purge stays
    * unfinished and keeps the record). An unreadable regular marker is a failure when it may be this
    * request's: it is `ownMark`, or `ownMark` is unknown (record gone or unreadable).
+   * `unknownOwn`: the delete is still open but `ownMark` is unknown; then ANY non-file
+   * `.mark` entry may be its own and also throws `mark_not_file` (never followed or removed).
    */
-  private async removeSideFiles(id: string, ownMark: string | undefined): Promise<void> {
+  private async removeSideFiles(
+    id: string,
+    ownMark: string | undefined,
+    unknownOwn = false,
+  ): Promise<void> {
     await this.unlinkGone(`${id}.notified`);
     await this.unlinkGone(`${id}.notifyq`);
     let skipped = false;
@@ -647,7 +658,8 @@ export class PendingStore {
         // This request's own marker that is not a regular file (directory, symlink, FIFO): it
         // still wedges the address, so the delete is not finished. Never followed, opened or
         // removed here (no recursive removal); a non-file foreign marker stays skipped.
-        if (path === ownMark && (await notRegularFile(path))) throw new Error('mark_not_file');
+        if ((path === ownMark || unknownOwn) && (await notRegularFile(path)))
+          throw new Error('mark_not_file');
         let holder: string | null;
         try {
           holder = await readMark(path);
@@ -724,14 +736,18 @@ export class PendingStore {
     });
   }
 
-  /** Whether the audit log has a line `<time> <id> <action> <outcome>[ actor=...]`. */
-  private async auditHas(id: string, action: string, outcome: string): Promise<boolean> {
+  /**
+   * The outcome (`ok` or `incomplete`; any other word is ignored) of the last audit line
+   * `<time> <id> delete <outcome>[ actor=...]`, if any.
+   */
+  private async lastDeleteOutcome(id: string): Promise<'ok' | 'incomplete' | undefined> {
     const text = await readFile(join(this.dir, 'audit.log'), 'utf8').catch(() => '');
-    const needle = ` ${id} ${action} ${outcome}`;
-    return text.split('\n').some((l) => {
-      const i = l.indexOf(needle);
-      return i > 0 && !l.slice(0, i).includes(' ') && /^(\s|$)/.test(l.slice(i + needle.length));
-    });
+    let last: 'ok' | 'incomplete' | undefined;
+    for (const l of text.split('\n')) {
+      const w = l.split(' ');
+      if (w[1] === id && w[2] === 'delete' && (w[3] === 'ok' || w[3] === 'incomplete')) last = w[3];
+    }
+    return last;
   }
 
   /**

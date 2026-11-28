@@ -107,7 +107,11 @@ describe('interpretSignup', () => {
     expect(interpretSignup(200, { record: rec('a1', 'x'), note: 'already_done' })).toMatchObject({
       note: 'already_done',
     });
-    expect(interpretSignup(200, { note: 'weird' })).toMatchObject({ note: null, record: null });
+    // A note this client does not know (newer server) is never dropped to "done, sent".
+    expect(interpretSignup(200, { note: 'weird' })).toMatchObject({
+      note: 'unknown',
+      record: null,
+    });
   });
   it('202 account_pending', () => {
     expect(interpretSignup(202, { error: 'account_pending' })).toEqual({ kind: 'account_pending' });

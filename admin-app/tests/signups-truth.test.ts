@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { interpretSignup, type SignupRecord } from '@tbi-lab/admin-client';
 import { LOCALES } from '../src/i18n.js';
-import { signupOutcomeView } from '../src/views.js';
+import { signupOutcomeView, signupStatusKey } from '../src/views.js';
 
 const NOW = Date.parse('2026-11-01T22:00:00Z');
 const FUTURE = '2026-11-02T06:00:00.000Z';
@@ -38,10 +38,18 @@ describe('resend of a mail held by the pause', () => {
     expect(v).toMatchObject({ key: 'console.signups.done.resend.email_held_paused', ok: true });
     const [en, he] = text(v.key);
     expect(en).toContain('paused');
-    expect(en).toContain('nothing was sent');
-    expect(en).toContain('only after automatic approval is resumed');
-    expect(he).toContain('לא נשלח דבר');
-    expect(he).toContain('רק אחרי שהאישור האוטומטי יחודש');
+    expect(en).toContain('not sent yet');
+    expect(en).not.toContain('nothing was sent');
+    // Pause file, failed pause check or unsafe state dir: no claim that a pause file exists.
+    expect(en).toContain('could not be checked safely');
+    expect(he).toContain('לא ניתן היה לבדוק בבטחה');
+    // Resuming alone does not release a mail held by an unsafe state dir or a failed check.
+    expect(en).toContain('only when automatic approval is not paused and the pause check works');
+    expect(en).not.toContain('resumed');
+    expect(he).toContain('עדיין לא נשלח');
+    expect(he).not.toContain('לא נשלח דבר');
+    expect(he).toContain('רק כשהאישור האוטומטי אינו מושהה ובדיקת מצב ההשהיה פועלת');
+    expect(he).not.toContain('יחודש');
     // The queued row has no resend button, so the note names none.
     expect(en).not.toContain('Resend');
     expect(he).not.toContain('שליחת המייל שוב');
@@ -49,6 +57,60 @@ describe('resend of a mail held by the pause', () => {
       expect(t).not.toMatch(/will be sent automatically|quiet hours|יישלח אוטומטית|שעות השקט/);
       expect(t).toContain('{name}');
     }
+  });
+});
+
+describe('owner approve of a queued mail held by the pause', () => {
+  it('approve.email_held_paused exists in HE and EN with the same truth as resend', () => {
+    const o = interpretSignup(200, { record: rec({}), note: 'email_held_paused' });
+    const v = signupOutcomeView(o, 'approve', NOW);
+    expect(v.key).toBe('console.signups.done.approve.email_held_paused');
+    for (const t of text(v.key)) {
+      expect(t).not.toMatch(/MISSING|was sent|quiet hours|שעות השקט|לא נשלח דבר/);
+      expect(t).toMatch(/not sent yet|עדיין לא נשלח/);
+      expect(t).toContain('{name}');
+    }
+  });
+});
+
+describe('stale tab: a note this client does not know', () => {
+  it('maps to a neutral "changed, reload" text, never "was sent"', () => {
+    const o = interpretSignup(200, { record: rec({}), note: 'some_future_note' });
+    expect(o).toMatchObject({ kind: 'done', note: 'unknown' });
+    for (const action of ['approve', 'reject', 'resend'] as const) {
+      const v = signupOutcomeView(o, action, NOW);
+      expect(v.key).toBe(`console.signups.done.${action}.unknown`);
+      const [en, he] = text(v.key);
+      expect(en).toContain('Reload');
+      expect(he).toContain('טענו את הדף מחדש');
+      for (const t of [en, he]) expect(t).not.toMatch(/MISSING|sent|נשלח/);
+    }
+  });
+  it('no note at all keeps the plain outcome', () => {
+    expect(interpretSignup(200, { record: rec({}) })).toMatchObject({ note: null });
+  });
+});
+
+describe('auto-approved mail over the mail limit: no "sent later" promise', () => {
+  it('outcome and row text are neutral for autoApprovedAt + mail_cap; owner-only keeps the cap text', () => {
+    const auto = { autoApprovedAt: '2026-11-01T21:00:00.000Z', lastError: 'mail_cap' };
+    for (const action of ['approve', 'resend'] as const) {
+      const o = interpretSignup(200, { record: rec(auto), note: 'email_queued' });
+      expect(signupOutcomeView(o, action, NOW).key).toBe(
+        `console.signups.done.${action}.email_queued_wait`,
+      );
+      const cap = interpretSignup(200, {
+        record: rec({ lastError: 'mail_cap' }),
+        note: 'email_queued',
+      });
+      expect(signupOutcomeView(cap, action, NOW).key).toBe(
+        `console.signups.done.${action}.email_queued_cap`,
+      );
+    }
+    const r = interpretSignup(200, { record: rec(auto) });
+    expect(r.kind === 'done' && r.record && signupStatusKey(r.record)).toBe(
+      'console.signups.status.emailQueued',
+    );
   });
 });
 

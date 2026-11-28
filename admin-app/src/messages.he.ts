@@ -187,7 +187,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.verify.unknown': 'מצב אימות כתובת המייל לא ידוע',
   'console.signups.list.heading': 'בקשות לטיפול',
   'console.signups.unconfirmed.heading': 'כתובת המייל טרם אומתה: {count}',
-  'console.signups.unconfirmed.counted': 'מופיעות תחת "כתובת המייל טרם אומתה": {count}',
+  'console.signups.unconfirmed.counted': 'מופיעות תחת „כתובת המייל טרם אומתה”: {count}',
   'console.signups.confirmApprove.title': 'לאשר את הבקשה של {name}?',
   'console.signups.confirmApprove.unconfirmed':
     'כתובת המייל טרם אומתה. אישור הבקשה יוסיף את החשבון וישלח את המייל לכתובת הזו בכל זאת.',
@@ -229,7 +229,15 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.done.resend.email_queued_cap':
     'המייל אל {name} ממתין בגלל מגבלת המיילים, ובדרך כלל הוא נשלח אוטומטית בהמשך.',
   'console.signups.done.resend.email_held_paused':
-    'המייל אל {name} מוחזק כי האישור האוטומטי מושהה: לא נשלח דבר. אפשר יהיה לשלוח אותו רק אחרי שהאישור האוטומטי יחודש.',
+    'המייל אל {name} מוחזק: האישור האוטומטי מושהה, או שלא ניתן היה לבדוק בבטחה את מצב ההשהיה. המייל עדיין לא נשלח. אפשר יהיה לשלוח אותו רק כשהאישור האוטומטי אינו מושהה ובדיקת מצב ההשהיה פועלת.',
+  'console.signups.done.approve.email_held_paused':
+    'המייל אל {name} מוחזק: האישור האוטומטי מושהה, או שלא ניתן היה לבדוק בבטחה את מצב ההשהיה. המייל עדיין לא נשלח. אפשר יהיה לשלוח אותו רק כשהאישור האוטומטי אינו מושהה ובדיקת מצב ההשהיה פועלת.',
+  'console.signups.done.approve.unknown':
+    'הבקשה של {name} השתנתה באופן שהדף הזה לא מכיר. טענו את הדף מחדש כדי לראות את מצבה הנוכחי.',
+  'console.signups.done.reject.unknown':
+    'הבקשה של {name} השתנתה באופן שהדף הזה לא מכיר. טענו את הדף מחדש כדי לראות את מצבה הנוכחי.',
+  'console.signups.done.resend.unknown':
+    'הבקשה של {name} השתנתה באופן שהדף הזה לא מכיר. טענו את הדף מחדש כדי לראות את מצבה הנוכחי.',
   'console.signups.done.resend.email_queued_wait': 'המייל אל {name} בתור ועדיין לא נשלח.',
   'console.signups.done.reject': 'הבקשה של {name} נדחתה. לא נשלח מייל.',
   'console.signups.done.resend': 'המייל אל {name} נשלח.',

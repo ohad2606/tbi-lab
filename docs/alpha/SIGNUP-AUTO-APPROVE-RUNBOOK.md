@@ -345,6 +345,13 @@ Limits fixed in the code: 3 confirmation mails per address in 7 days, at least 1
 most 3 unexpired links. A request for a new link that meets one of these limits, or the daily verify cap, is dropped;
 the person has to ask again later. A first mail held by the daily or per-address limit is tried again by later sweeps.
 
+- **The back-off of that one retry lives in memory only.** After a restart of the admin service the kept request
+  counts as a new one: it is tried at the next sweep, without the 60-minute wait, and with all the limits above (if
+  the 10-minute gap is not over yet, it is dropped and the person has to ask again). A failure then gives it one more
+  retry. The back-off is not stored on disk on purpose (that would change the state format, and a rollback with such
+  state is not tested).
+- These limits are fixed in the code (DEC-38). There is no setting to change them; a change needs a new decision.
+
 ### Upgrading from an earlier version
 
 **Confirmation links sent by a version without key ids (before S4a) stop working**
@@ -436,6 +443,9 @@ cannot trust its state in `/var/lib/<N>-admin-auto` and sends nothing:
 - No alert per mail at night. The sent mails show only as counts in `auto-summary.json` (mail budget, automatic
   approvals). The log carries counts and class codes only.
 - Turning it off: remove the setting and restart (RED zone step). Mails then queue for the end of quiet hours again.
+- **Turn it on or off only with an empty mail queue:** first check in the admin app that no request shows a queued
+  or scheduled email (after quiet hours, or after the drain has sent them). A mail queued before the change keeps the
+  send time and the rule it was queued with, which makes its later send hard to explain.
 - **Before using `summary`:** enable the admin setting first and check that `auto-summary.json` appears. The file is
   0600 and owned by the admin service user, so the intake can read it only when **both services run as the same
   user**. The store already needs that today (0700 directory, 0600 records written by both sides). With another user
@@ -540,6 +550,11 @@ sign-up admin routes are on, **with or without** an auto-approve drop-in or the 
 
 - Your approve or resend itself is not held. If its mail is queued instead of sent (quiet hours, mail cap) and
   automatic approval had claimed the request, the drain holds it while paused.
+- So a resend of a failed mail goes out during a pause: this is intended. Approve or resend on a mail that is
+  already queued and held sends nothing; the admin app then says the mail is held (pause file, a failed pause check
+  or an unsafe directory) and not sent yet.
+- Holding your own approve and resend during a pause too is not built. It would change DEC-38/DEC-39 and needs an
+  owner decision first; until then, to stop all mail, do not approve or resend while paused.
 - After a crash during a pause, check for approved requests with an email attempt but not recorded as sent: no drain
   sends them, so resend them by hand.
 - The check runs before an attempt is recorded or a mail slot is reserved, and again right before the send.

@@ -577,7 +577,17 @@ export type SignupOutcome =
   | {
       kind: 'done';
       record: SignupRecord | null;
-      note: 'already_done' | 'email_not_resent' | 'email_queued' | 'email_held_paused' | null;
+      /**
+       * `unknown`: a note this client does not know (a newer server). Never read as "sent": the
+       * admin app shows a neutral "state changed, reload" text.
+       */
+      note:
+        | 'already_done'
+        | 'email_not_resent'
+        | 'email_queued'
+        | 'email_held_paused'
+        | 'unknown'
+        | null;
     }
   | { kind: 'account_pending' }
   | { kind: 'error'; error: SignupError; record: SignupRecord | null }
@@ -745,7 +755,9 @@ export function interpretSignup(status: number | null, body: unknown): SignupOut
         b.note === 'email_queued' ||
         b.note === 'email_held_paused'
           ? b.note
-          : null,
+          : b.note === undefined || b.note === null
+            ? null
+            : 'unknown',
     };
   if (status === 202 && b.error === 'account_pending') return { kind: 'account_pending' };
   if (status === 403 && b.error === 'csrf') return { kind: 'refused', error: 'csrf' };

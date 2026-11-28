@@ -218,7 +218,8 @@ export const consoleEn = {
   'console.signups.rejectFor': 'Reject {name}',
   'console.signups.resendFor': 'Resend email to {name}',
   'console.signups.confirm.title': 'Reject the request of {name}?',
-  'console.signups.confirm.body': 'No email is sent to this person. The request is closed.',
+  'console.signups.confirm.body':
+    'No email will be sent to this person. The request will be closed.',
   'console.signups.confirm.ok': 'Reject request',
   'console.signups.done.approve': 'Approved {name}: the account was added and the email was sent.',
   'console.signups.done.approve.already_done': 'The request of {name} was already approved.',
@@ -235,7 +236,15 @@ export const consoleEn = {
   'console.signups.done.resend.email_queued_cap':
     'The email to {name} waits because of the email limit and is normally sent automatically later.',
   'console.signups.done.resend.email_held_paused':
-    'The email to {name} is held because automatic approval is paused: nothing was sent. It can be sent only after automatic approval is resumed.',
+    'The email to {name} is held: automatic approval is paused, or its pause state could not be checked safely. The email was not sent yet. It can be sent only when automatic approval is not paused and the pause check works.',
+  'console.signups.done.approve.email_held_paused':
+    'The email to {name} is held: automatic approval is paused, or its pause state could not be checked safely. The email was not sent yet. It can be sent only when automatic approval is not paused and the pause check works.',
+  'console.signups.done.approve.unknown':
+    'The request of {name} changed in a way this page does not know. Reload the page to see its current state.',
+  'console.signups.done.reject.unknown':
+    'The request of {name} changed in a way this page does not know. Reload the page to see its current state.',
+  'console.signups.done.resend.unknown':
+    'The request of {name} changed in a way this page does not know. Reload the page to see its current state.',
   'console.signups.done.resend.email_queued_wait':
     'The email to {name} is queued and has not been sent yet.',
   'console.signups.done.reject': 'Rejected the request of {name}. No email was sent.',
