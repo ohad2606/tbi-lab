@@ -1149,6 +1149,24 @@ describe('admin service: DELETE /signups/<id> (K12), owner only', () => {
     expect((await call(o, '/signups', mutation(o, 'DELETE'))).status).toBe(404);
   });
 
+  it('a step that fails is 500 delete_incomplete (never deleted); the retry deletes', async () => {
+    const { root, wiring, rec, s } = await wired();
+    const path = `/signups/${rec.id}`;
+    // A directory under a `.tmp` name cannot be unlinked (EISDIR): not an intake-made name.
+    const tmp = join(root, 'p', `${rec.id}.abcdef012345.tmp`);
+    mkdirSync(tmp);
+    const o = await s.gate(OWNER);
+    const first = await call(o, path, mutation(o, 'DELETE'));
+    expect(first.status).toBe(500);
+    expect(first.body).not.toHaveProperty('deleted');
+    expect((await wiring.store.get(rec.id)).id).toBe(rec.id);
+    expect(readFileSync(join(root, 'p', 'audit.log'), 'utf8')).not.toMatch(/ delete ok/);
+    rmSync(tmp, { recursive: true });
+    const again = await call(o, path, mutation(o, 'DELETE'));
+    expect(again.status).toBe(200);
+    expect(again.body).toEqual({ deleted: true });
+  });
+
   it('without the sign-up configuration the route does not exist', async () => {
     const s = await serve({ roomyLimits: true });
     const o = await s.gate(OWNER);

@@ -397,10 +397,7 @@ export function approveWarningKey(r: SignupRecord): string | null {
  * and never once the owner's own approval added the account (`approvedBy`).
  */
 export const isAutoApproved = (r: SignupRecord): boolean =>
-  r.autoApprovedAt !== null &&
-  r.accountAdded &&
-  r.status !== 'pending' &&
-  r.approvedBy !== 'owner';
+  r.autoApprovedAt !== null && r.accountAdded && r.status !== 'pending' && r.approvedBy !== 'owner';
 
 /** What the auto-approve block shows (BETA-G1). "off" is a single line; "unknown" means enabled is unreadable. */
 export type AutoApproveState = 'running' | 'paused' | 'notRunning' | 'unknown';
