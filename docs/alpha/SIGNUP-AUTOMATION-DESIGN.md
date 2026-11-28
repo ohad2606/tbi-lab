@@ -95,8 +95,8 @@ Operational rules added by the security review:
 - **Secret rotation:** replace the HMAC file and the form script property together, restart the intake; requests
   signed with the old secret get 401 until the script is updated (a short outage is acceptable). The nonce cache
   is emptied by the restart. Same for the Telegram token and the Resend key (read at use, no restart).
-- **Audit log:** `audit.log` in the store directory (0600, append-only): `<time> <id> <approve|reject|resend>
-  <outcome class>`. No name, address or role. Not purged by the retention job; rotate with the host's log rotation.
+- **Audit log:** `audit.log` in the store directory (0600, append-only): `<time> <id> <approve|reject|resend|delete>
+  <outcome class>` (delete: `started`, then `ok` or `incomplete`). No name, address or role. Not purged by the retention job; rotate with the host's log rotation.
 - **Store full:** `create` refuses at `maxRecords`; the intake answers 503 and logs `store failed (full)`. The owner
   must be told: the monitoring slice alerts on that log line (and on a rising 503 count); the form script retries later
   (see "Form forwarder" below).
@@ -188,7 +188,7 @@ JSON, `no-store`. Mutations need `content-type: application/json`, a same-origin
 | `POST /signups/<id>/approve` | 200 `{record, note?}` (`note`: `already_done` or `email_not_resent`); 202 `account_pending` (helper has not answered yet; retry); 409 `bad_state` / `email_failed_use_resend`; 502 `cap_reached` / `account_error` / `email_failed`; 404 |
 | `POST /signups/<id>/reject` | 200 `{record}`; sends nothing; 409 if already approved |
 | `POST /signups/<id>/resend` | 200 only after a failed or interrupted send for an added account; 409 otherwise |
-| `DELETE /signups/<id>` | K12: deletes the request now (record, markers, address marker; audit `<id> delete ok`). 200 `{deleted:true}`; 200 `{deleted:true,note:"already_deleted"}` when deleted before; 404 unknown. The account is not touched. Runbook: `SIGNUP-DATA-DELETION.md` |
+| `DELETE /signups/<id>` | K12: deletes the request now (record, markers, address marker; audit `<id> delete started`, then `<id> delete ok`). 200 `{deleted:true}`; 200 `{deleted:true,note:"already_deleted"}` when deleted before; 404 unknown. The account is not touched. Runbook: `SIGNUP-DATA-DELETION.md` |
 
 Error answers: `{error: <code>, record?}`. `Record`: `id, name, email, role, lang, status, accountAdded,
 emailAttempts, emailAttemptedAt, lastError, notified, createdAt, updatedAt`. Approve adds the account through the

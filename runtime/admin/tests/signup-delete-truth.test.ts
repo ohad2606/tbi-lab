@@ -92,8 +92,10 @@ describe('deleteNow: own address marker that is not a regular file', () => {
       } else if (kind === 'symlink') expect(st.isSymbolicLink()).toBe(true);
       else expect(st.isFIFO()).toBe(true);
       expect(readFileSync(outside, 'utf8')).toBe('outside-content');
-      expect(audit(s.dir)).toBe(`${new Date(T0).toISOString()} ${r.id} delete incomplete\n`);
-      expect(s.logs).toEqual(['signup: delete incomplete (mark_not_file)']);
+      expect(audit(s.dir)).toBe(
+        `${new Date(T0).toISOString()} ${r.id} delete started\n${new Date(T0).toISOString()} ${r.id} delete incomplete\n`,
+      );
+      expect(s.logs).toEqual(['signup: delete incomplete stage=side (mark_not_file)']);
       for (const l of s.logs)
         for (const secret of [r.id, 'dana', 'example', mark(INPUT.email).slice(0, 16), s.dir])
           expect(l).not.toContain(secret);
@@ -145,8 +147,10 @@ describe('deleteNow: record unreadable or gone, a non-file .mark (ownMark unknow
     expect(existsSync(join(s.dir, `${r.id}.json`))).toBe(true);
     expect(lstatSync(path).isDirectory()).toBe(true);
     expect(existsSync(join(path, 'inner'))).toBe(true);
-    expect(audit(s.dir)).toBe(`${new Date(T0).toISOString()} ${r.id} delete incomplete\n`);
-    expect(s.logs).toEqual(['signup: delete incomplete (mark_not_file)']);
+    expect(audit(s.dir)).toBe(
+      `${new Date(T0).toISOString()} ${r.id} delete started\n${new Date(T0).toISOString()} ${r.id} delete incomplete\n`,
+    );
+    expect(s.logs).toEqual(['signup: delete incomplete stage=side (mark_not_file)']);
     for (const l of s.logs)
       for (const secret of [r.id, 'dana', 'example', mark(INPUT.email).slice(0, 16), s.dir])
         expect(l).not.toContain(secret);
@@ -160,10 +164,14 @@ describe('deleteNow: record unreadable or gone, a non-file .mark (ownMark unknow
     // ... and finishes once the operator removed the entry (append-only audit).
     rmSync(path, { recursive: true, force: true });
     expect(await s.store.deleteNow(r.id)).toBe('deleted');
+    const at = new Date(T0).toISOString();
     expect(audit(s.dir).split('\n').filter(Boolean)).toEqual([
-      `${new Date(T0).toISOString()} ${r.id} delete incomplete`,
-      `${new Date(T0).toISOString()} ${r.id} delete incomplete`,
-      `${new Date(T0).toISOString()} ${r.id} delete ok`,
+      `${at} ${r.id} delete started`,
+      `${at} ${r.id} delete incomplete`,
+      `${at} ${r.id} delete started`,
+      `${at} ${r.id} delete incomplete`,
+      `${at} ${r.id} delete started`,
+      `${at} ${r.id} delete ok`,
     ]);
   });
 
@@ -238,14 +246,17 @@ describe('deleteNow: the LAST audited delete outcome decides (ok then incomplete
     // The last outcome is incomplete and the address unknown: never already_deleted.
     expect(await s.store.deleteNow(r.id)).toBe('incomplete');
     expect(lstatSync(own).isDirectory()).toBe(true);
-    expect(outcomes(s.dir)).toEqual(['delete ok', 'delete incomplete', 'delete incomplete']);
+    const open = ['delete started', 'delete incomplete'];
+    expect(outcomes(s.dir)).toEqual(['delete started', 'delete ok', ...open, ...open]);
     rmSync(own, { recursive: true, force: true });
     expect(await s.store.deleteNow(r.id)).toBe('deleted');
     expect(await s.store.deleteNow(r.id)).toBe('already_deleted');
     expect(outcomes(s.dir)).toEqual([
+      'delete started',
       'delete ok',
-      'delete incomplete',
-      'delete incomplete',
+      ...open,
+      ...open,
+      'delete started',
       'delete ok',
     ]);
     for (const l of s.logs)
@@ -276,14 +287,17 @@ describe('deleteNow: the LAST audited delete outcome decides (ok then incomplete
     mkdirSync(foreign, { mode: 0o700 });
     expect(await store.deleteNow(r.id)).toBe('incomplete');
     expect(lstatSync(foreign).isDirectory()).toBe(true);
-    expect(outcomes(dir)).toEqual(['delete ok', 'delete incomplete', 'delete incomplete']);
+    // The repeat after `ok` removes only strays: no `started`, its failure reopens with `incomplete`.
+    const first = ['delete started', 'delete ok', 'delete incomplete'];
+    expect(outcomes(dir)).toEqual([...first, 'delete started', 'delete incomplete']);
     rmSync(foreign, { recursive: true, force: true });
     // The retry actually finishes the open delete: audited ok, so the id does not stay open.
     expect(await store.deleteNow(r.id)).toBe('deleted');
     expect(outcomes(dir)).toEqual([
-      'delete ok',
+      ...first,
+      'delete started',
       'delete incomplete',
-      'delete incomplete',
+      'delete started',
       'delete ok',
     ]);
     // After the last ok, a foreign non-file .mark: already_deleted, nothing appended.
