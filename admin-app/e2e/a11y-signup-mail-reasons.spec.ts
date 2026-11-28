@@ -115,8 +115,18 @@ for (const lang of ['he', 'en'] as const) {
 }
 
 const HELD = {
-  en: { held: 'held', notice: 'Reload needed', no: /queued|scheduled|sent automatically/i },
-  he: { held: 'מוחזק', notice: 'נדרשת טעינה מחדש', no: /בתור|מתוזמן|נשלח אוטומטית/ },
+  en: {
+    held: 'held',
+    notice: 'Refresh needed',
+    button: '"Refresh requests"',
+    no: /queued|scheduled|sent automatically/i,
+  },
+  he: {
+    held: 'מוחזק',
+    notice: 'נדרש רענון',
+    button: '„רענון הבקשות”',
+    no: /בתור|מתוזמן|נשלח אוטומטית/,
+  },
 } as const;
 
 for (const lang of ['he', 'en'] as const) {
@@ -185,6 +195,95 @@ for (const lang of ['he', 'en'] as const) {
     // A Refresh that loads shows the current state: the notice goes.
     await page.getByTestId('signups-refresh').click();
     await expect(notice).toHaveCount(0);
+  });
+}
+
+/**
+ * Like `mock`, with a stored list and delete, and the open list held on demand: a held load
+ * answers with the rows as they were when it was asked.
+ */
+const V1 = `${'0'.repeat(25)}1`;
+const V2 = `${'0'.repeat(25)}2`;
+async function mockHeld(page: Page, unknownRecord: boolean) {
+  let rows = [row(V1), row(V2)];
+  const m = { hold: null as Promise<void> | null, loads: 0 };
+  await page.route('**/admin-api/signups**', async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname.replace('/admin-api/signups', '');
+    if (path === '/auto-approve') return route.fulfill({ json: { enabled: false } });
+    if (path === '/open') {
+      const asked = rows;
+      const hold = m.hold;
+      m.hold = null;
+      m.loads++;
+      await hold;
+      return route.fulfill({ json: { signups: asked, rowStates: 1 } });
+    }
+    if (req.method() === 'GET') return route.fulfill({ json: { signups: rows } });
+    if (req.method() === 'DELETE') {
+      rows = rows.filter((r) => `/${r.id}` !== path);
+      return route.fulfill({ json: { deleted: true } });
+    }
+    // The action: v1 leaves the open list unless its answer keeps the row.
+    const kept = unknownRecord ? row(V1) : null;
+    if (!kept) rows = rows.filter((r) => r.id !== V1);
+    return route.fulfill({ json: { record: kept, note: 'a_newer_note' } });
+  });
+  return m;
+}
+
+for (const lang of ['he', 'en'] as const) {
+  for (const kept of [false, true])
+    test(`signup truth (${lang}): a Refresh in flight keeps the newer notice of a ${kept ? 'listed' : 'removed'} row`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const m = await mockHeld(page, kept);
+      await open(page, context, baseURL!, lang);
+      const v1 = page.locator(`[data-signup-id="${V1}"]`);
+      await expect(v1).toBeVisible();
+      let release = () => {};
+      m.hold = new Promise<void>((r) => (release = r));
+      const before = m.loads;
+      await page.getByTestId('signups-refresh').click();
+      await expect.poll(() => m.loads).toBe(before + 1);
+      await v1.getByTestId('signup-resend').click();
+      const notice = kept
+        ? v1.getByTestId('signup-message')
+        : page.getByTestId('signups-reload-notice');
+      await expect(notice).toBeVisible();
+      release();
+      // The old list is not shown: it is loaded again, and the notice stays.
+      await expect.poll(() => m.loads).toBe(before + 2);
+      await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+      await expect(notice).toBeVisible();
+      await expect(notice).toContainText(HELD[lang].button);
+      await expect(v1).toHaveCount(kept ? 1 : 0);
+      // A Refresh asked after the answer settles it.
+      await page.getByTestId('signups-refresh').click();
+      await expect(notice).toHaveCount(0);
+    });
+
+  test(`signup truth (${lang}): deleting another request keeps a row's unknown outcome`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const m = await mockHeld(page, true);
+    await open(page, context, baseURL!, lang);
+    const v1 = page.locator(`[data-signup-id="${V1}"]`);
+    await v1.getByTestId('signup-resend').click();
+    const notice = v1.getByTestId('signup-message');
+    await expect(notice).toBeVisible();
+    await page.getByTestId('stored-toggle').click();
+    const before = m.loads;
+    await page.locator(`[data-stored-id="${V2}"]`).getByTestId('stored-delete').click();
+    await page.getByTestId('delete-ok').click();
+    await expect.poll(() => m.loads).toBe(before + 1);
+    await expect(page.locator(`[data-signup-id="${V2}"]`)).toHaveCount(0);
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+    await expect(notice).toContainText(HELD[lang].button);
   });
 }
 

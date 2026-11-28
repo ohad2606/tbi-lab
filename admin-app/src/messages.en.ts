@@ -243,11 +243,11 @@ export const consoleEn = {
   'console.signups.done.approve.email_held_paused':
     'The email to {name} is held: automatic approval is paused, or its pause state could not be checked safely. The email was not sent yet. It can be sent only when automatic approval is not paused and the pause check works.',
   'console.signups.done.approve.unknown':
-    'The request of {name} changed in a way this page does not know. Reload the page to see its current state.',
+    'The request of {name} changed in a way this page does not know. Press "Refresh requests" to see its current state.',
   'console.signups.done.reject.unknown':
-    'The request of {name} changed in a way this page does not know. Reload the page to see its current state.',
+    'The request of {name} changed in a way this page does not know. Press "Refresh requests" to see its current state.',
   'console.signups.done.resend.unknown':
-    'The request of {name} changed in a way this page does not know. Reload the page to see its current state.',
+    'The request of {name} changed in a way this page does not know. Press "Refresh requests" to see its current state.',
   'console.signups.done.resend.email_queued_wait':
     'The email to {name} is queued and has not been sent yet.',
   'console.signups.done.reject': 'Rejected the request of {name}. No email was sent.',
@@ -286,7 +286,7 @@ export const consoleEn = {
     "Warning: {name}'s request is marked as approved, but we have no record that the account was added. No email was sent. Check in Testers whether {name}'s account exists, then try again. If the warning returns, check free tester places and the server log.",
   'console.signups.err.not_found.unconfirmed':
     'Request of {name}: we could not confirm what happened. Sign-up administration may be off or unavailable on the server, so the request may still be stored. Use Refresh requests.',
-  'console.signups.reloadNeeded': 'Reload needed',
+  'console.signups.reloadNeeded': 'Refresh needed',
   'console.signups.openStale':
     'The open requests could not be reloaded and may be out of date. Use Refresh requests.',
   'console.signups.all.heading': 'Stored requests and deletion',
