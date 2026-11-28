@@ -43,19 +43,19 @@ English:
 
 > **What is sent**
 >
-> Every report sends, when it applies:
+> Every report includes the following, where relevant:
 >
 > - The type of report and your text. For a problem: the area and whether it blocks you. For a component request: the component name, if you give one.
 > - The interface language, the screen you are on (projects or editor), the app version and its build identifier.
 > - The simulation status, with its error code if it failed. If the simulation has an ESP32 run: the run ID.
 > - Your browser name, its major version and your operating system.
 >
+> If “Include technical details” is checked (it is checked by default): the runtime version, the device type (desktop, tablet or other) and the open project’s ID (not its contents).
+>
 > Our server adds:
 >
 > - A code that identifies the account you signed in with (not your email address), a report ID, the time it was received and the server version.
 > - If the run is yours: its state, why it ended, its outcome, how long ago it was created, how long ago it ended and its simulated time.
->
-> If “Include technical details” is checked (it is checked by default): the runtime version, the device type (desktop, tablet or other) and the open project’s ID (not its contents).
 >
 > Your project, circuit, code and screenshots are not sent. Please do not include personal information.
 >
@@ -72,12 +72,12 @@ Hebrew:
 > - מצב הסימולציה, וקוד השגיאה אם היא נכשלה. אם לסימולציה יש הרצת ESP32: מזהה ההרצה.
 > - שם הדפדפן, מספר הגרסה הראשי שלו ומערכת ההפעלה.
 >
+> אם „צירוף פרטים טכניים” מסומן (הוא מסומן כברירת מחדל): גרסת סביבת הריצה, סוג המכשיר (מחשב, טאבלט או אחר) ומזהה הפרויקט הפתוח (לא תוכנו).
+>
 > השרת שלנו מוסיף:
 >
 > - קוד שמזהה את החשבון שאיתו נכנסתם (לא את כתובת הדוא״ל), מזהה לדיווח, מועד הקבלה וגרסת השרת.
-> - אם ההרצה שלכם: מצבה, סיבת הסיום, התוצאה, כמה זמן עבר מאז שנוצרה, כמה זמן עבר מאז שהסתיימה והזמן המדומה שלה.
->
-> אם „צירוף פרטים טכניים” מסומן (הוא מסומן כברירת מחדל): גרסת סביבת הריצה, סוג המכשיר (מחשב, טאבלט או אחר) ומזהה הפרויקט הפתוח (לא תוכנו).
+> - אם ההרצה שייכת לכם: מצבה, סיבת הסיום, התוצאה, כמה זמן עבר מאז שנוצרה, כמה זמן עבר מאז שהסתיימה והזמן המדומה שלה.
 >
 > הפרויקט, המעגל, הקוד וצילומי מסך אינם נשלחים. נא לא לכלול מידע אישי.
 >

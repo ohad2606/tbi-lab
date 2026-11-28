@@ -31,7 +31,7 @@ export {
 export type { ReportCategory, ReportKind } from '../../../runtime/host/reportProtocol.js';
 
 /**
- * The "What is sent" lists the dialog shows: what every report sends (when it applies) and what the
+ * The "What is sent" lists the dialog shows: what every report includes (where relevant) and what the
  * host adds. The optional technical context has its own sentence. Every field must be named in one
  * of these messages (tests/report-disclosure.test.ts).
  */

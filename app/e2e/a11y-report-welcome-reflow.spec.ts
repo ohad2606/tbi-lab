@@ -43,6 +43,16 @@ for (const locale of ['en', 'he'])
       await expect(lists.nth(1).getByRole('listitem')).toHaveCount(2);
       await expect(disclosure).toContainText(locale === 'he' ? 'מזהה ההרצה' : 'run ID');
       await expect(disclosure).toContainText(locale === 'he' ? 'קוד השגיאה' : 'error code');
+      // Reading order: what the app sends (the optional details included), then what the server
+      // adds. Each list follows its intro paragraph and is not named a second time.
+      const order = await disclosure.evaluate((el) =>
+        [...el.children].map((c) => c.tagName.toLowerCase()),
+      );
+      expect(order).toEqual(['h3', 'p', 'ul', 'p', 'p', 'ul', 'p', 'p']);
+      await expect(disclosure.locator(':scope > p').nth(1)).toContainText(
+        locale === 'he' ? 'צירוף פרטים טכניים' : 'Include technical details',
+      );
+      for (const list of await lists.all()) await expect(list).toHaveAccessibleName('');
       // The dialog scrolls: the whole text can be read, and focus brings Send into view.
       expect(await dialog.evaluate((d) => d.scrollHeight > d.clientHeight)).toBe(true);
       const last = disclosure.locator('p').last();
