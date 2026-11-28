@@ -84,6 +84,8 @@ This list is copied from the shortcuts registry in the app (`app/src/ui/shortcut
 - <!-- shortcut:wireSelect -->`]` or `[`: Select the previous or next wire; its ends are announced (Circuit view, not in pin mode)
 - <!-- shortcut:wireRepick -->`E`: Re-pick one end of the selected wire (choose the end, then the new pin) (A wire is selected; not while running or read-only)
 - <!-- shortcut:escStep -->`Esc`: Step back one level: probe mode, armed part, drawing mode, then clear the selection (Circuit view)
+- <!-- shortcut:selectToggle -->`Shift + Enter`: Add the focused part to the selection, or take it out (the first press turns on selecting several items; then Enter works too) (A part has focus; not read-only)
+- <!-- shortcut:selectAll -->`Ctrl/Cmd + A`: Select all parts, wires and junctions (Circuit view has focus; not read-only)
 - <!-- shortcut:delete -->`Delete` or `Backspace`: Delete the selected parts, wires or junctions (Something is selected; not in a read-only example)
 - <!-- shortcut:rotate -->`R`: Rotate the selected parts (Parts are selected; not read-only)
 - <!-- shortcut:moveSelection -->`Arrow keys`: Move the selection one grid step (with Shift, five steps) (Something is selected; not read-only)

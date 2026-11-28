@@ -1015,6 +1015,18 @@ select {
   max-width: calc(100% - 6rem);
 }
 
+/* The select-several toggle shares the zoom-in row, no wider than the pan buttons, so the column
+   reaches no further down the drawing. The top row stays one button wide. */
+.view-tool-row {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.view-tool-row > .icon-button:not(:only-child) {
+  inline-size: 1.75rem;
+  padding: 0;
+}
+
 .control-icon {
   fill: none;
   stroke: currentColor;
@@ -1194,6 +1206,11 @@ select {
   background: var(--runtime-bg);
   border-color: var(--runtime);
   color: var(--runtime);
+}
+
+/* The state is not colour alone (1.4.1): a heavier border while selecting several items. */
+.icon-button.several-toggle.active {
+  border-width: 3px;
 }
 
 .canvas.mode-probe {

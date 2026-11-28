@@ -91,6 +91,17 @@ export const en = {
     'Wire {id}: drawn where it may look connected; it is not connected there',
   'canvas.routeLimit':
     'This project is very large: {count} wires are drawn with a simple shape (they may pass close to pins or other wires). The connections are exactly as drawn.',
+  'canvas.hint.several':
+    'Selecting several items. {enter} or a click adds a part or takes it out. Clicking the moving part of a switch (or of a push button during Run) still operates it. {esc} clears and leaves this mode; the “Select several items” button leaves it and keeps the selection.',
+  'multi.tool': 'Select several items',
+  'multi.on': 'Selecting several items is on. {selected}',
+  'multi.off': 'Selecting several items is off',
+  'multi.cleared': 'Selection cleared. Selecting several items is off',
+  'multi.offThen': 'Selecting several items is off. {said}',
+  'multi.part.selected': 'selected',
+  'multi.part.notSelected': 'not selected',
+  'multi.count.none': 'No items selected',
+  'multi.count.one': '1 item selected',
   'canvas.hint.idle': 'Click a terminal to start a wire. Drag on empty space to select.',
   'canvas.hint.placing': 'Click on the canvas to place. Esc cancels.',
   'canvas.hint.wiring':
@@ -2573,6 +2584,11 @@ export const en = {
   'shortcut.escStep.when': 'Circuit view',
   'shortcut.delete.action': 'Delete the selected parts, wires or junctions',
   'shortcut.delete.when': 'Something is selected; not in a read-only example',
+  'shortcut.selectToggle.action':
+    'Add the focused part to the selection, or take it out (the first press turns on selecting several items; then Enter works too)',
+  'shortcut.selectToggle.when': 'A part has focus; not read-only',
+  'shortcut.selectAll.action': 'Select all parts, wires and junctions',
+  'shortcut.selectAll.when': 'Circuit view has focus; not read-only',
   'shortcut.rotate.action': 'Rotate the selected parts',
   'shortcut.rotate.when': 'Parts are selected; not read-only',
   'shortcut.moveSelection.action': 'Move the selection one grid step (with Shift, five steps)',

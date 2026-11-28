@@ -47,6 +47,8 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   { id: 'wireSelect', scope: 'circuit', keys: [']', '['], file: 'Canvas.tsx' },
   { id: 'wireRepick', scope: 'circuit', keys: ['E'], file: 'Canvas.tsx' },
   { id: 'escStep', scope: 'circuit', keys: ['Esc'], file: 'Canvas.tsx' },
+  { id: 'selectToggle', scope: 'circuit', keys: ['Shift + Enter'], file: 'Canvas.tsx' },
+  { id: 'selectAll', scope: 'circuit', keys: ['Mod + A'], file: 'Canvas.tsx' },
   { id: 'delete', scope: 'circuit', keys: ['Delete', 'Backspace'], file: 'Canvas.tsx' },
   { id: 'rotate', scope: 'circuit', keys: ['R'], file: 'Canvas.tsx' },
   { id: 'moveSelection', scope: 'circuit', keys: ['Arrow keys'], file: 'Canvas.tsx' },
