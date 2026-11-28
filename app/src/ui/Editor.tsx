@@ -122,6 +122,7 @@ export function Editor() {
     if (simBusy) setPlacing(null);
   }, [simBusy]);
   const [probeMode, setProbeMode] = useState(false);
+  const [severalOn, setSeveralOn] = useState(false);
   const [probes, setProbes] = useState<Probe[]>([]);
   const nextProbe = useRef(1);
   const canvasApi = useRef<CanvasApi | null>(null);
@@ -228,6 +229,8 @@ export function Editor() {
             probes={live}
             onProbe={addProbe}
             segmentPick={segmentPick}
+            severalOn={severalOn}
+            onSeveralChange={setSeveralOn}
           />
         </div>
       </div>
@@ -242,8 +245,12 @@ export function Editor() {
           onReveal={(at) => canvasApi.current?.reveal(at)}
         />
         <ConnectionsPanel />
-        <WiresList />
-        <JunctionsList onReveal={(at) => canvasApi.current?.reveal(at)} />
+        <WiresList severalOn={severalOn} onSeveralChange={setSeveralOn} />
+        <JunctionsList
+          onReveal={(at) => canvasApi.current?.reveal(at)}
+          severalOn={severalOn}
+          onSeveralChange={setSeveralOn}
+        />
         {doc && requiresMcuRuntime(doc) && <McuTerminal />}
       </div>
     </main>

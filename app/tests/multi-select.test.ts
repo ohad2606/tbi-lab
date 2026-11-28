@@ -74,6 +74,9 @@ describe('selectionCountMessage', () => {
         'multi.cleared',
         'multi.tool',
         'canvas.hint.several',
+        'multi.offThen',
+        'multi.part.selected',
+        'multi.part.notSelected',
       ])
         expect(m[k], k).toBeTruthy();
   });
@@ -89,6 +92,11 @@ describe('multiSelectKey', () => {
   it('Ctrl or Cmd with the physical A key selects all, on any keyboard layout', () => {
     expect(multiSelectKey(key('a', 'KeyA', { ctrlKey: true }), false)).toBe('all');
     expect(multiSelectKey(key('ש', 'KeyA', { metaKey: true }), false)).toBe('all');
+  });
+
+  it('Ctrl+A also by the produced letter, wherever the layout puts it', () => {
+    expect(multiSelectKey(key('a', 'KeyQ', { ctrlKey: true }), false)).toBe('all');
+    expect(multiSelectKey(key('b', 'KeyB', { ctrlKey: true }), false)).toBeNull();
   });
 
   it('ignores a bare letter, AltGr chords and other chords', () => {

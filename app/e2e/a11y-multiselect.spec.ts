@@ -4,7 +4,7 @@
  * items" button also gives single clicks (no Shift, no drag).
  */
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { addComponent, createProject, type ProjectDocument } from '@tbi-lab/domain';
+import { addComponent, addWire, createProject, type ProjectDocument } from '@tbi-lab/domain';
 import { component, openImported, waitForStoredProject } from './helpers.js';
 
 const TEXT = {
@@ -18,6 +18,11 @@ const TEXT = {
     cleared: /^Selection cleared/,
     off: /^Selecting several items is off/,
     help: 'Select all parts, wires and junctions',
+    isSelected: /, selected$/,
+    notSelected: /, not selected$/,
+    switchOpen: /, open, selected$/,
+    switchClosed: /, closed, selected$/,
+    offThen: /^Selecting several items is off\. Wire /,
   },
   he: {
     tool: 'בחירה של כמה פריטים',
@@ -29,6 +34,11 @@ const TEXT = {
     cleared: /^הבחירה נוקתה/,
     off: /^בחירה של כמה פריטים כבויה/,
     help: 'בחירת כל הרכיבים, החוטים והצמתים',
+    isSelected: /, נבחר$/,
+    notSelected: /, לא נבחר$/,
+    switchOpen: /, פתוח, נבחר$/,
+    switchClosed: /, סגור, נבחר$/,
+    offThen: /^בחירה של כמה פריטים כבויה\. /,
   },
 } as const;
 
@@ -82,18 +92,19 @@ for (const lang of ['en', 'he'] as const) {
     const before = await open(page, lang);
     const status = page.getByTestId('kbwire-status');
     const [r1, r2] = [component(page, 'R1'), component(page, 'R2')];
-    await expect(r1).not.toHaveAttribute('aria-pressed');
+    await expect(r1).not.toHaveAccessibleName(text.isSelected);
 
     await tabTo(page, r1);
     await page.keyboard.press('Shift+Enter');
     await expect(status).toHaveText(text.on);
     await expect(r1).toBeFocused();
-    await expect(r1).toHaveAttribute('aria-pressed', 'true');
+    await expect(r1).toHaveAccessibleName(text.isSelected);
+    await expect(r1).not.toHaveAttribute('aria-pressed');
 
     await tabTo(page, r2);
     // Moving focus keeps the selection while selecting several.
     expect(await selected(page)).toEqual(['R1']);
-    await expect(r2).toHaveAttribute('aria-pressed', 'false');
+    await expect(r2).toHaveAccessibleName(text.notSelected);
     await page.keyboard.press('Shift+Enter');
     await expect(status).toHaveText(text.two);
     await expect(r2).toBeFocused();
@@ -102,7 +113,7 @@ for (const lang of ['en', 'he'] as const) {
     // Plain Enter takes it out and puts it back.
     await page.keyboard.press('Enter');
     await expect(status).toHaveText(text.one);
-    await expect(r2).toHaveAttribute('aria-pressed', 'false');
+    await expect(r2).toHaveAccessibleName(text.notSelected);
     await page.keyboard.press('Enter');
     await expect(status).toHaveText(text.two);
 
@@ -177,5 +188,54 @@ for (const lang of ['en', 'he'] as const) {
     await page.keyboard.press('Control+a');
     expect(await selected(page)).toEqual(['R1']);
     await expect(page.getByTestId('canvas-several')).toHaveAttribute('aria-pressed', 'false');
+  });
+}
+
+for (const lang of ['en', 'he'] as const) {
+  const text = TEXT[lang];
+
+  test(`a switch keeps its own state in its name; [ ], lists and Escape end it (${lang})`, async ({
+    page,
+  }) => {
+    let doc = partsDoc();
+    const added = addComponent(doc, 'component.toggle_switch', { x: 280, y: -160 });
+    if (!added.ok) throw new Error('add');
+    const wired = addWire(
+      added.doc,
+      { kind: 'terminal', component: 'R1', terminal: 'b' },
+      { kind: 'terminal', component: 'R2', terminal: 'a' },
+      [],
+    );
+    if (!wired.ok) throw new Error('wire');
+    doc = wired.doc;
+    await page.addInitScript((l) => localStorage.setItem('tbi-lab.locale', l), lang);
+    await openImported(page, doc);
+    const status = page.getByTestId('kbwire-status');
+    const tool = page.getByTestId('canvas-several');
+    const sw = component(page, added.id);
+
+    await sw.focus();
+    await page.keyboard.press('Shift+Enter');
+    await expect(sw).toHaveAccessibleName(text.switchOpen);
+    await page.keyboard.press('Space');
+    await expect(sw).toHaveAccessibleName(text.switchClosed);
+    await expect(sw).not.toHaveAttribute('aria-pressed');
+
+    await page.keyboard.press(']');
+    await expect(status).toHaveText(text.offThen);
+    await expect(tool).toHaveAttribute('aria-pressed', 'false');
+
+    await tool.click();
+    await page.getByTestId('wires-list').getByRole('button').first().click();
+    await expect(page.getByTestId('wires-list-status')).toHaveText(text.offThen);
+    await expect(tool).toHaveAttribute('aria-pressed', 'false');
+
+    await tool.focus();
+    await page.keyboard.press('Space');
+    await page.keyboard.press('Escape');
+    await expect(status).toHaveText(text.cleared);
+    await expect(tool).toHaveAttribute('aria-pressed', 'false');
+    await expect(tool).toBeFocused();
+    expect(await selected(page)).toEqual([]);
   });
 }

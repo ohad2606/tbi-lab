@@ -9,8 +9,16 @@ import { isolateLtr } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
 import { useAnnounce } from './useAnnounce.js';
 
-export function JunctionsList({ onReveal }: { onReveal(at: Point): void }) {
-  const { doc, selection, locale } = useAppState();
+export function JunctionsList({
+  onReveal,
+  severalOn,
+  onSeveralChange,
+}: {
+  onReveal(at: Point): void;
+  severalOn: boolean;
+  onSeveralChange(on: boolean): void;
+}) {
+  const { doc, selection, locale, readOnly } = useAppState();
   const store = useStore();
   const t = useT();
   const [msg, announce] = useAnnounce();
@@ -47,7 +55,11 @@ export function JunctionsList({ onReveal }: { onReveal(at: Point): void }) {
                   onClick={() => {
                     store.select({ ...emptySelection(), junctions: [j.id] });
                     onReveal(j);
-                    announce(t('junctions.list.selected', { id: isolateLtr(j.id) }));
+                    const said = t('junctions.list.selected', { id: isolateLtr(j.id) });
+                    // The list replaces the selection: several-selection ends, in one message.
+                    const ends = severalOn && !readOnly;
+                    if (ends) onSeveralChange(false);
+                    announce(ends ? t('multi.offThen', { said }) : said);
                   }}
                 >
                   <span aria-hidden="true">{only === j.id ? '✓ ' : ''}</span>

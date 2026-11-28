@@ -56,6 +56,10 @@ export function multiSelectKey(
   several: boolean,
 ): 'all' | 'toggle' | null {
   if (e.altKey) return null;
-  if (e.ctrlKey || e.metaKey) return e.code === 'KeyA' && !e.shiftKey ? 'all' : null;
+  if (e.ctrlKey || e.metaKey) {
+    // The physical key (any layout, Hebrew included) or the letter the layout produces.
+    const isA = e.code === 'KeyA' || e.key.toLowerCase() === 'a';
+    return isA && !e.shiftKey ? 'all' : null;
+  }
   return e.key === 'Enter' && (e.shiftKey || several) ? 'toggle' : null;
 }

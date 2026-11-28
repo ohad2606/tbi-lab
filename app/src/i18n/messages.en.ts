@@ -92,11 +92,14 @@ export const en = {
   'canvas.routeLimit':
     'This project is very large: {count} wires are drawn with a simple shape (they may pass close to pins or other wires). The connections are exactly as drawn.',
   'canvas.hint.several':
-    'Selecting several items. {enter} or a click adds a part or takes it out. {esc} clears.',
+    'Selecting several items. {enter} or a click adds a part or takes it out. Clicking the moving part of a switch (or of a push button during Run) still operates it. {esc} clears and leaves this mode; the “Select several items” button leaves it and keeps the selection.',
   'multi.tool': 'Select several items',
   'multi.on': 'Selecting several items is on. {selected}',
   'multi.off': 'Selecting several items is off',
   'multi.cleared': 'Selection cleared. Selecting several items is off',
+  'multi.offThen': 'Selecting several items is off. {said}',
+  'multi.part.selected': 'selected',
+  'multi.part.notSelected': 'not selected',
   'multi.count.none': 'No items selected',
   'multi.count.one': '1 item selected',
   'canvas.hint.idle': 'Click a terminal to start a wire. Drag on empty space to select.',

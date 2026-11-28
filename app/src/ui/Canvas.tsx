@@ -134,6 +134,9 @@ interface Props {
   probes: Probe[];
   onProbe(input: ProbeInput): void;
   segmentPick: SegmentPick | null;
+  /** Several-selection (BETA-G3) is on. */
+  severalOn: boolean;
+  onSeveralChange(on: boolean): void;
 }
 
 interface Camera {
@@ -288,6 +291,8 @@ export function Canvas({
   probes,
   onProbe,
   segmentPick,
+  severalOn,
+  onSeveralChange: setSeveralOn,
 }: Props) {
   const state = useAppState();
   const store = useStore();
@@ -482,7 +487,7 @@ export function Canvas({
 
   // Several-selection (WCAG 2.1.1): while on, moving focus keeps the selection, and Enter or a
   // click adds a part or takes it out. Off in read-only projects, as pointer selection is.
-  const [severalOn, setSeveralOn] = useState(false);
+  // The Editor holds the state: the Wires and Junctions lists end it too.
   const several = severalOn && !readOnly;
   const countText = (sel: Selection) => {
     const said = selectionCountMessage(sel);
@@ -878,6 +883,8 @@ export function Canvas({
     }
     const w = doc.layout.wires.find((x) => x.id === step.id)!;
     store.select({ ...emptySelection(), wires: [step.id] });
+    // Stepping replaces the selection, so several-selection ends, and says so.
+    if (several) setSeveralOn(false);
     // Brought into view after the render: the hint changes with the selection.
     const route = wireRoute(doc, w);
     if (route) requestAnimationFrame(() => revealPoint(routeMiddle(route)));
@@ -885,22 +892,21 @@ export function Canvas({
     const focused = document.activeElement;
     if (probeMode && focused?.closest('[data-hit="component"], [data-hit="junction"]'))
       svgRef.current?.focus({ preventScroll: true });
-    kbAnnounce(
-      t('kbwire.wireSelected', {
-        n: step.n,
-        total: step.total,
-        from: wireEndName(w.from),
-        to: wireEndName(w.to),
-        // The Delete/Escape hint is wrong when nothing can be deleted.
-        hint: readOnly
-          ? ''
-          : t('kbwire.wireSelected.hint', {
-              delete: isolateLtr('Delete'),
-              escape: isolateLtr('Escape'),
-              key: isolateLtr('E'),
-            }),
-      }),
-    );
+    const said = t('kbwire.wireSelected', {
+      n: step.n,
+      total: step.total,
+      from: wireEndName(w.from),
+      to: wireEndName(w.to),
+      // The Delete/Escape hint is wrong when nothing can be deleted.
+      hint: readOnly
+        ? ''
+        : t('kbwire.wireSelected.hint', {
+            delete: isolateLtr('Delete'),
+            escape: isolateLtr('Escape'),
+            key: isolateLtr('E'),
+          }),
+    });
+    kbAnnounce(several ? t('multi.offThen', { said }) : said);
   };
   const kbText = (ev: WireKbEvent): string => {
     switch (ev.kind) {
@@ -1634,7 +1640,15 @@ export function Canvas({
               doc={view}
               component={c}
               selected={selected.components.has(c.id)}
-              pressedState={several ? selected.components.has(c.id) : undefined}
+              severalState={
+                several
+                  ? t(
+                      selected.components.has(c.id)
+                        ? 'multi.part.selected'
+                        : 'multi.part.notSelected',
+                    )
+                  : ''
+              }
               label={t('canvas.componentLabel', {
                 ref: c.id,
                 type: catalogText(state.locale, CATALOG[c.type].nameKey),
@@ -1924,6 +1938,15 @@ export function Canvas({
             aria-pressed={several}
             aria-label={t('multi.tool')}
             title={t('multi.tool')}
+            // Escape leaves the mode from here too, as it does on the drawing.
+            onKeyDown={(e: KeyboardEvent) => {
+              if (e.key !== 'Escape' || !several) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setSeveralOn(false);
+              store.select(emptySelection());
+              kbAnnounce(t('multi.cleared'));
+            }}
             onClick={() => {
               setSeveralOn(!several);
               kbAnnounce(
@@ -2053,7 +2076,7 @@ function ComponentView({
   doc,
   component: c,
   selected,
-  pressedState,
+  severalState,
   label,
   onFocus,
   result,
@@ -2065,8 +2088,8 @@ function ComponentView({
   doc: ProjectDocument;
   component: ComponentInstance;
   selected: boolean;
-  /** Several-selection is on: the part is a toggle button whose state is "selected". */
-  pressedState: boolean | undefined;
+  /** Several-selection is on: "selected" / "not selected", part of the name. Else empty. */
+  severalState: string;
   label: string;
   onFocus(el: SVGGElement): void;
   /** Solved values while a simulation runs; runtime state, never part of the document. */
@@ -2121,8 +2144,7 @@ function ComponentView({
       data-overstressed={overstressed ? 'true' : undefined}
       tabindex={0}
       role="button"
-      aria-pressed={pressedState}
-      aria-label={[label, values, switchState, screen].filter(Boolean).join(', ')}
+      aria-label={[label, values, switchState, screen, severalState].filter(Boolean).join(', ')}
       data-closed={c.type === 'component.toggle_switch' ? String(symbolState.closed) : undefined}
       data-pressed={c.type === 'component.push_button' ? String(symbolState.pressed) : undefined}
       data-energized={c.type === 'component.relay' ? String(!!symbolState.energized) : undefined}

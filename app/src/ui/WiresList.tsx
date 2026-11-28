@@ -9,8 +9,14 @@ import { catalogText, isolateLtr } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
 import { wireListEntries } from './wireKeyboard.js';
 
-export function WiresList() {
-  const { doc, selection, locale } = useAppState();
+export function WiresList({
+  severalOn,
+  onSeveralChange,
+}: {
+  severalOn: boolean;
+  onSeveralChange(on: boolean): void;
+}) {
+  const { doc, selection, locale, readOnly } = useAppState();
   const store = useStore();
   const t = useT();
   // Live region for the selection (WCAG 4.1.3): clear, then set next frame, alternating a trailing
@@ -53,7 +59,11 @@ export function WiresList() {
                 aria-pressed={only === r.id}
                 onClick={() => {
                   store.select({ ...emptySelection(), wires: [r.id] });
-                  announce(t('kbwire.list.selected', { n: r.n }));
+                  const said = t('kbwire.list.selected', { n: r.n });
+                  // The list replaces the selection: several-selection ends, said in one message.
+                  const ends = severalOn && !readOnly;
+                  if (ends) onSeveralChange(false);
+                  announce(ends ? t('multi.offThen', { said }) : said);
                 }}
               >
                 <span class="wires-list-mark" aria-hidden="true">
