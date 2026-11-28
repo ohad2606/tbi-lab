@@ -74,17 +74,20 @@ describe('owner approve of a queued mail held by the pause', () => {
 });
 
 describe('stale tab: a note this client does not know', () => {
-  it('maps to a neutral "changed, reload" text, never "was sent"', () => {
+  it('maps to a neutral "changed, refresh" text, never "was sent"', () => {
     const o = interpretSignup(200, { record: rec({}), note: 'some_future_note' });
     expect(o).toMatchObject({ kind: 'done', note: 'unknown' });
     for (const action of ['approve', 'reject', 'resend'] as const) {
       const v = signupOutcomeView(o, action, NOW);
       expect(v.key).toBe(`console.signups.done.${action}.unknown`);
       const [en, he] = text(v.key);
-      expect(en).toContain('Reload');
-      expect(he).toContain('טענו את הדף מחדש');
+      expect(en).toContain('"Refresh requests"');
+      expect(he).toContain('„רענון הבקשות”');
       for (const t of [en, he]) expect(t).not.toMatch(/MISSING|sent|נשלח/);
     }
+  });
+  it('the notice heading asks for the same refresh', () => {
+    expect(text('console.signups.reloadNeeded')).toEqual(['Refresh needed', 'נדרש רענון']);
   });
   it('no note at all keeps the plain outcome', () => {
     expect(interpretSignup(200, { record: rec({}) })).toMatchObject({ note: null });

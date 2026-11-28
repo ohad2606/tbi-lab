@@ -37,17 +37,22 @@ and the screen says what happened, naming the request ID only.
 
 | Answer (what the screen says) | Meaning |
 |---|---|
-| 200 `{"deleted":true}` ("deleted") | Gone: the record, its notification, web, confirm and resend markers, the address marker, any leftover temporary file and, while email verification is on, the admin's verify state for it (see section 2). One audit line `<time> <id> delete ok` was written (no personal data). |
+| 200 `{"deleted":true}` ("deleted") | Gone: the record, its notification, web, confirm and resend markers, the address marker, any leftover temporary file and, while email verification is on, the admin's verify state for it (see section 2). Before anything was removed the audit log got `<time> <id> delete started`, and only after every step `<time> <id> delete ok` (no personal data). "deleted" is never shown without that `ok` line. |
 | 200 `{"deleted":true,"note":"already_deleted"}` ("already gone") | It was deleted before (the audit log says so). Nothing changed. |
 | 404 `not_found` ("already gone") | No such request (wrong id, or retention already removed it). |
 | 403 ("not deleted") | Not the owner, or the request was not same-origin JSON (reload the admin app and try again). |
 | 429 ("too many requests") | The write limit; wait the time shown, then try again. |
-| 500 `delete_incomplete` ("did not finish") | A file or the verify state could not be removed (EPERM, an unreadable address marker, ...). No `delete ok` is written; the audit log has `<time> <id> delete incomplete` and the server log `signup: delete incomplete (<class>)`. The record may be kept, or already removed with only cleanup left. Refresh the list: if the request is still there, try again. If it is not, ask the operator to check the server log and the store directory permissions; deleting the same id again finishes the cleanup. If it repeats, the operator also checks that `audit.log` is a readable, writable regular file: while it cannot be read, every delete answers this (also for an unknown id), nothing is removed, and the `delete incomplete` audit line may be missing. |
+| 500 `delete_incomplete` ("did not finish") | A file, the verify state or an audit line could not be removed or written (EPERM, an unreadable address marker, a full disk, ...). No `delete ok` is written; the audit log has `<time> <id> delete started` (if it took the line) and `<time> <id> delete incomplete`, and the server log `signup: delete incomplete stage=<step> (<class>)`, where `<step>` is one of `history`, `side`, `web`, `record`, `verify`, `audit` (it never names the id, the address or a file). If `started` could not be written, nothing was removed. The record may be kept, or already removed with only cleanup left. Refresh the list: if the request is still there, try again. If it is not, ask the operator to check the server log and the store directory permissions; deleting the same id again finishes the cleanup (a `started` line without a later `ok` keeps the delete open, so the retry never says "already gone"). If it repeats, the operator also checks that `audit.log` is a readable, writable regular file: while it cannot be read, a request that is still in the list is deleted as usual (only if its lines can be written), but a request that is no longer there answers this (also an unknown id), nothing is removed, and the `delete incomplete` audit line may be missing. |
 | no answer ("the server did not answer") | Unknown whether it was deleted. Check the reloaded list (Refresh requests) and try again if the row is still there. |
 
 The service answers the same 404 `not_found` when the sign-up routes have been switched off, so
 after "already gone" check the reloaded list: if it says the requests are not available, nothing was
 checked. Any other 404 is reported as "service not available".
+
+A sign-up that arrives while a delete runs can leave an empty marker named after the request ID
+(`<id>.rq`, `<id>.vq-<hex>`, `<id>.notified` or `<id>.notifyq`, never after the address): the
+retention sweep removes only the `.rq` and `.vq-` ones, and deleting the same ID again removes all
+four.
 
 **If auto-approve is on**, check Testers after deleting any pending request: it may have been
 approved just before the deletion.
@@ -109,7 +114,17 @@ status for that row; delete that row too. Do not delete or sort response rows wh
 | Mail provider | the confirmation and approval emails that were sent (provider's own retention) | the provider's console, manual |
 | Telegram chat | name and role in the new-request alert (not in summary mode) | step 5, manual |
 | Google Form + response spreadsheet | every answer | step 6, manual |
-| Backups (host and helper backups) | copies of the above | **rotate out on their own schedule; never edited.** A deleted record disappears from backups when the last backup holding it expires. |
+| Backups (host and helper backups) | copies of the above | **rotate out on their own schedule; never edited.** A deleted record disappears from backups when the last backup holding it expires. After a restore, see "After restoring a backup" below. |
+
+**After restoring a backup** of the pending store, a request deleted after that backup was taken
+comes back. Before the admin app is used again, look in the store's `audit.log` for every id that has a
+`delete ok` line and is in the store again, and delete each of those once more
+with step 2 (it answers "deleted" again; the restored record is a real record). The backup itself is
+never altered, and there is no automation for this: it is a manual step after every restore.
+
+**After a deploy of the admin service or the admin app,** reload every open TBI Admin tab before
+acting on a sign-up. A tab loaded before the deploy may not know a new answer of the service and
+then says that the request "changed in a way this page does not know".
 
 Funnel counters (section 3) hold no personal data and need no step.
 

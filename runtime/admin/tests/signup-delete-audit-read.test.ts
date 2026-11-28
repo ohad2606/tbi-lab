@@ -1,6 +1,8 @@
 /**
- * BETA-G1: an audit log that cannot be read is never an empty history. Only ENOENT is; any other
- * read error keeps the delete `incomplete` and removes nothing. Temporary directories only.
+ * BETA-G1: an audit log that cannot be read is never an empty history. Only ENOENT is; for a GONE
+ * record any other read error keeps the delete `incomplete` and removes nothing. A PRESENT record
+ * is deleted without reading the history, but only answers `deleted` once `delete started` and
+ * `delete ok` were appended. Temporary directories only.
  */
 import {
   chmodSync,
@@ -68,8 +70,8 @@ const BROKEN: Record<string, (s: S) => () => void> = {
   },
 };
 
-function expectClassOnly(s: S, code: string, id: string) {
-  expect(s.logs).toContain(`signup: delete incomplete (${code})`);
+function expectClassOnly(s: S, code: string, id: string, stage = 'history') {
+  expect(s.logs).toContain(`signup: delete incomplete stage=${stage} (${code})`);
   for (const l of s.logs)
     for (const secret of [id, 'dana', 'example', s.dir, 'audit.log'])
       expect(l).not.toContain(secret);
@@ -115,18 +117,35 @@ describe('deleteNow: unreadable audit log', () => {
       expectClassOnly(s, code, UNKNOWN);
     });
 
-    it.skipIf(skip)(`${code}: present record: incomplete, record kept, retry deletes`, async () => {
+    it.skipIf(skip)(`${code}: present record: removed only with a durable audit`, async () => {
       const s = await setup();
       const { record: r } = await s.store.createIfNew(INPUT);
       const before = readdirSync(s.dir).sort();
       const restore = breakLog(s);
-      expect(await s.store.deleteNow(r.id)).toBe('incomplete');
+      const out = await s.store.deleteNow(r.id);
       restore();
-      expect(readdirSync(s.dir).filter((f) => f !== 'audit.log')).toEqual(before);
-      // Append-only: only a log that still takes lines records the attempt.
-      if (code === 'EACCES') expect(readFileSync(s.log, 'utf8')).toMatch(/ delete incomplete\n$/);
-      expectClassOnly(s, code, r.id);
-      expect(await s.store.deleteNow(r.id)).toBe('deleted');
+      const text = existsSync(s.log) ? readFileSync(s.log, 'utf8') : '';
+      const lines = text.split('\n').filter(Boolean);
+      if (code === 'EACCES') {
+        // Write-only log: the history is not needed for a present record; the lines still land.
+        expect(out).toBe('deleted');
+        expect(readdirSync(s.dir)).toEqual(['audit.log']);
+        expect(lines.map((l) => l.split(' ').slice(1).join(' '))).toEqual([
+          `${r.id} delete started`,
+          `${r.id} delete ok`,
+        ]);
+        expect(s.logs).toEqual([]);
+        expect(await s.store.deleteNow(r.id)).toBe('already_deleted');
+      } else {
+        // Not even `started` can be written: nothing is removed.
+        expect(out).toBe('incomplete');
+        expect(readdirSync(s.dir).filter((f) => f !== 'audit.log')).toEqual(
+          before.filter((f) => f !== 'audit.log'),
+        );
+        expect(lines).toEqual([]);
+        expectClassOnly(s, code, r.id, 'audit');
+        expect(await s.store.deleteNow(r.id)).toBe('deleted');
+      }
     });
   }
 

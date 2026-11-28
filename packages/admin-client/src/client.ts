@@ -513,6 +513,8 @@ export interface SignupRecord {
   lastError: string | null;
   /** While `email_queued`: when the email may go out (quiet hours end); else null. */
   emailSendAfter: string | null;
+  /** Server-derived, while `email_queued`: the pause holds this mail; absent otherwise. */
+  mailHeld?: true;
   /** When the automatic approver approved this request (BETA-G1); null when a person did or it is undecided. */
   autoApprovedAt: string | null;
   /** BETA-G1: `'owner'` when the owner added the account (then never "approved automatically"); display only. */
@@ -614,6 +616,7 @@ function signupRecord(v: unknown, rowStates = false): SignupRecord | null {
     emailAttempts: typeof v.emailAttempts === 'number' ? v.emailAttempts : 0,
     lastError: typeof v.lastError === 'string' ? v.lastError : null,
     emailSendAfter: typeof v.emailSendAfter === 'string' ? v.emailSendAfter : null,
+    ...(v.mailHeld === true && v.status === 'email_queued' ? { mailHeld: true as const } : {}),
     // With verification on, "approved automatically" also needs an added account and a decided row.
     autoApprovedAt:
       typeof v.autoApprovedAt === 'string' &&

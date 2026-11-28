@@ -65,7 +65,8 @@ describe('PendingStore.deleteNow', () => {
     const left = readdirSync(s.dir).sort();
     expect(left).toEqual(['audit.log', `${keep.id}.json`, mark('keep@example.com')].sort());
     const audit = readFileSync(join(s.dir, 'audit.log'), 'utf8');
-    expect(audit).toBe(`${new Date(T0).toISOString()} ${r.id} delete ok\n`);
+    const at = new Date(T0).toISOString();
+    expect(audit).toBe(`${at} ${r.id} delete started\n${at} ${r.id} delete ok\n`);
     for (const personal of ['dana', 'Dana', 'example.com', 'Teacher'])
       expect(audit).not.toContain(personal);
     await expect(s.store.get(r.id)).rejects.toThrow('not_found');
@@ -74,12 +75,13 @@ describe('PendingStore.deleteNow', () => {
     expect((await s.store.createIfNew(INPUT)).created).toBe(true);
   });
 
-  it('twice is a no-op: already_deleted, no second audit line', async () => {
+  it('twice is a no-op: already_deleted, no new audit line', async () => {
     const s = await setup();
     const r = await s.store.create(INPUT);
     expect(await s.store.deleteNow(r.id)).toBe('deleted');
     expect(await s.store.deleteNow(r.id)).toBe('already_deleted');
-    expect(readFileSync(join(s.dir, 'audit.log'), 'utf8').trim().split('\n')).toHaveLength(1);
+    // `started` + `ok` of the first delete only.
+    expect(readFileSync(join(s.dir, 'audit.log'), 'utf8').trim().split('\n')).toHaveLength(2);
   });
 
   it('an unknown or malformed id is not_found and changes nothing', async () => {
@@ -143,7 +145,9 @@ describe('PendingStore.deleteNow', () => {
     expect(await deleting).toBe('deleted');
     expect(existsSync(join(s.dir, `${r.id}.json`))).toBe(false);
     const audit = readFileSync(join(s.dir, 'audit.log'), 'utf8');
-    expect(audit).toMatch(new RegExp(`${r.id} approve ok\\n.* ${r.id} delete ok\\n$`));
+    expect(audit).toMatch(
+      new RegExp(`${r.id} approve ok\\n.* ${r.id} delete started\\n.* ${r.id} delete ok\\n$`),
+    );
   });
   it('a web record: deleteNow removes <id>.web before the record and frees the web sub-cap', async () => {
     const root = mkdtempSync(join(tmpdir(), 'tbi-signup-delete-'));

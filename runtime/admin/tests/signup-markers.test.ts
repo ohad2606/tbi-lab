@@ -126,7 +126,7 @@ describe('A: a non-regular .mark entry cannot hold an id', () => {
     chmodSync(own, 0o000);
     expect(await s.store.deleteNow(r.id)).toBe('incomplete');
     expect(existsSync(join(s.dir, `${r.id}.json`))).toBe(true);
-    expect(s.logs).toEqual(['signup: delete incomplete (EACCES)']);
+    expect(s.logs).toEqual(['signup: delete incomplete stage=side (EACCES)']);
     chmodSync(own, 0o600);
     expect(await s.store.deleteNow(r.id)).toBe('deleted');
   });
@@ -149,7 +149,7 @@ describe('A: a non-regular .mark entry cannot hold an id', () => {
     const { record: r } = await s.store.createIfNew(person(1));
     expect(await s.store.deleteNow(r.id)).toBe('incomplete');
     expect(s.logs).toHaveLength(1);
-    expect(s.logs[0]).toMatch(/^signup: delete incomplete \([A-Za-z_]+\)$/);
+    expect(s.logs[0]).toMatch(/^signup: delete incomplete stage=verify \([A-Za-z_]+\)$/);
   });
 });
 

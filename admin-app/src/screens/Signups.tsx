@@ -289,6 +289,8 @@ export function Signups() {
   const [messages, setMessages] = useState<Record<string, RowMessage>>({});
   const [announce, setAnnounce] = useState('');
   const [openStale, setOpenStale] = useState(false);
+  // Unknown outcomes of rows that left the list: kept in view until a Refresh loads.
+  const [left, setLeft] = useState<{ id: string; name: string; key: MessageKey }[]>([]);
   // Requests whose outcome is unconfirmed while a problem text stands in place of the list.
   const [lost, setLost] = useState<{ id: string; name: string }[]>([]);
   const focusId = useRef<string | null | undefined>(undefined);
@@ -304,6 +306,10 @@ export function Signups() {
   const listRef = useRef(list);
   listRef.current = list;
   const listTurn = useRef(0);
+  // Action answers, numbered, and the latest one per request: a list asked before an answer is
+  // older than it, and never clears what that answer said.
+  const answers = useRef(0);
+  const answeredAt = useRef(new Map<string, number>());
   const groupOpenRef = useRef(groupOpen);
   groupOpenRef.current = groupOpen;
   const messagesRef = useRef(messages);
@@ -361,6 +367,19 @@ export function Signups() {
     post(said.current);
   };
 
+  /** The open list for load `mine`, asked again while an action answers in the meantime. */
+  const loadCurrent = async (mine: number) => {
+    for (;;) {
+      const asked = answers.current;
+      const v = await loadOpenSignups(api);
+      if (!alive.current || mine !== listTurn.current || asked === answers.current) return v;
+    }
+  };
+
+  /** The row messages that outlive a load: those `keep` names. */
+  const keepMessages = (keep: (id: string, m: RowMessage) => boolean) =>
+    setMessages((m) => Object.fromEntries(Object.entries(m).filter(([id, x]) => keep(id, x))));
+
   /**
    * After a deletion on this screen: a request that is gone leaves the open list at once, then the
    * list is loaded again silently (the deletion's outcome is what gets announced). A passing
@@ -373,9 +392,11 @@ export function Signups() {
       );
       setConfirming((c) => (c === gone ? null : c));
       setLost((l) => l.filter((x) => x.id !== gone));
+      setLeft((l) => l.filter((x) => x.id !== gone));
     }
+    const before = answers.current;
     const mine = ++listTurn.current;
-    const v = await loadOpenSignups(api);
+    const v = await loadCurrent(mine);
     if (!alive.current || mine !== listTurn.current) return;
     if (!v.ok && (v.error === 'network' || v.error === 'rate_limited') && listRef.current?.ok) {
       // Its own live region is inert behind a modal: then the sentence is held like the others.
@@ -385,7 +406,12 @@ export function Signups() {
     setOpenStale(false);
     keepUnconfirmed(v.ok, gone);
     setList(v);
-    setMessages({});
+    // An unknown outcome stays on a row that is still listed: this load was not asked for it.
+    keepMessages(
+      (id, m) =>
+        (answeredAt.current.get(id) ?? 0) > before ||
+        (m.key.endsWith('.unknown') && v.ok && v.value.some((x) => x.id === id)),
+    );
     setConfirming((c) => (v.ok && v.value.some((x) => x.id === c) ? c : null));
   };
 
@@ -416,6 +442,7 @@ export function Signups() {
     let line = t(c.key, { count: c.count });
     const folded = rows.filter(isUnconfirmedRow).length;
     if (folded) line = join(line, t('console.signups.unconfirmed.counted', { count: folded }));
+    if (c.held) line = join(line, t(c.held.key, { count: c.held.count }));
     return c.auto ? join(line, t(c.auto.key, { count: c.auto.count })) : line;
   };
 
@@ -426,6 +453,8 @@ export function Signups() {
     const run = ++reloads.current;
     said.current = '';
     held.current = false;
+    const before = answers.current;
+    const newer = (id: string) => (answeredAt.current.get(id) ?? 0) > before;
     const mine = ++listTurn.current;
     clearTimeout(pendingTimer.current);
     setStatusPending(false);
@@ -445,7 +474,7 @@ export function Signups() {
       }
       return st;
     });
-    const v = await loadOpenSignups(api);
+    const v = await loadCurrent(mine);
     if (!alive.current) return;
     // A quiet reload (after a deletion) may have overtaken this one: its list and count are then
     // dropped, but a status failure is still spoken.
@@ -453,8 +482,9 @@ export function Signups() {
     if (current) {
       setOpenStale(false);
       keepUnconfirmed(v.ok);
+      if (v.ok) setLeft((l) => l.filter((x) => newer(x.id)));
       setList(v);
-      setMessages({});
+      keepMessages(newer);
       setConfirming(null);
     }
     const unavailable = t('console.signups.auto.unavailable');
@@ -602,6 +632,7 @@ export function Signups() {
       }
       setStoredVersion((n) => n + 1);
       if (superseded) return;
+      answeredAt.current.set(r.id, ++answers.current);
       if (o.kind === 'error' && o.error === 'not_found' && !check?.ok) {
         const text = t('console.signups.err.not_found.unconfirmed', { name: isolate(r.name) });
         say(text);
@@ -669,6 +700,12 @@ export function Signups() {
         setAnnounce('');
       } else say(text);
       if (v.removed) {
+        // The row takes its message with it: a warning stays on the page (spoken once, above).
+        if (o.kind === 'done' && !v.ok)
+          setLeft((l) => [
+            ...l.filter((x) => x.id !== r.id),
+            { id: r.id, name: r.name, key: v.key as MessageKey },
+          ]);
         if (follow) focusId.current = focusAfterRemoval(ids, r.id);
         setList((old) =>
           old?.ok ? { ok: true, value: old.value.filter((x) => x.id !== r.id) } : old,
@@ -753,7 +790,7 @@ export function Signups() {
         <div class="muted small">
           {t('console.signups.requested', { time: date(r.createdAt) ?? '' })}
         </div>
-        {kind === 'queued' && r.emailSendAfter && (
+        {kind === 'queued' && r.emailSendAfter && !r.mailHeld && (
           <div class="small" data-testid="signup-send-after">
             {t('console.signups.sendAfter', { time: SLOT })
               .split(SLOT)
@@ -941,6 +978,12 @@ export function Signups() {
           </p>
         )}
       </div>
+      {left.map((l) => (
+        // Not a live region: the same sentence is already spoken above.
+        <p key={l.id} class="result warn reload-notice" data-testid="signups-reload-notice">
+          <strong>{t('console.signups.reloadNeeded')}</strong> {t(l.key, { name: isolate(l.name) })}
+        </p>
+      ))}
       {list &&
         !list.ok &&
         lost.map((l) => (

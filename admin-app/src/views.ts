@@ -366,6 +366,8 @@ export function signupStatusKey(r: SignupRecord, acted = false) {
   if (awaitsAuto(r, acted)) return 'console.signups.status.autoWait' as const;
   const failure = mailFailure(r);
   if (failure) return `console.signups.status.emailFailed.${failure}` as const;
+  // The server says the pause holds it: never "queued", never a send time or promise.
+  if (r.mailHeld) return 'console.signups.status.emailHeld' as const;
   // An auto-approved mail may also be held by the pause: no "sent later" promise for it.
   return kind === 'queued' && r.lastError === 'mail_cap' && !r.autoApprovedAt
     ? 'console.signups.status.emailMailCap'
@@ -501,15 +503,16 @@ export function signupOutcomeView(
 ): { key: string; removed: boolean; ok: boolean; record: SignupRecord | null } {
   switch (o.kind) {
     case 'done': {
+      const said = o.note === 'email_queued' && o.record?.mailHeld ? 'email_held_paused' : o.note;
       // A queued email must never read as "sent", for approve and for resend alike; it speaks
       // of quiet hours only when the record says that is why it waits.
       const note =
-        o.note &&
+        said &&
         (action === 'approve' ||
-          o.note === 'email_queued' ||
-          o.note === 'email_held_paused' ||
-          o.note === 'unknown')
-          ? `.${o.note}${o.note === 'email_queued' ? queuedReason(o.record, nowMs) : ''}`
+          said === 'email_queued' ||
+          said === 'email_held_paused' ||
+          said === 'unknown')
+          ? `.${said}${said === 'email_queued' ? queuedReason(o.record, nowMs) : ''}`
           : '';
       // A request that is still open (its email queued, or a send whose outcome is unknown)
       // keeps its row, updated, so it looks the same as after a reload.
@@ -517,7 +520,8 @@ export function signupOutcomeView(
       return {
         key: `console.signups.done.${action}${note}`,
         removed: !keep,
-        ok: true,
+        // An outcome this page does not know is never shown as a success.
+        ok: said !== 'unknown',
         record: keep ? o.record : null,
       };
     }
@@ -530,10 +534,12 @@ export function signupOutcomeView(
       };
     case 'error': {
       const failure = o.error === 'email_failed' ? mailFailure(o.record) : null;
+      // Over the mail limit and held by the pause: no job will send it, so no "sent later".
+      const held = o.error === 'mail_cap' && o.record?.mailHeld ? '.held' : '';
       return {
         key: failure
           ? `console.signups.err.email_failed.${failure}`
-          : `console.signups.err.${o.error}`,
+          : `console.signups.err.${o.error}${held}`,
         // Unknown id: nothing to act on. A failed email leaves a row that can be resent.
         removed: o.error === 'not_found',
         ok: false,
@@ -599,12 +605,16 @@ export function signupCountView(
     key: 'console.signups.count.auto.one' | 'console.signups.count.auto.other';
     count: number;
   };
+  /** Queued mails the server says the pause holds: never counted as scheduled. */
+  held?: { key: 'console.signups.count.held'; count: number };
 } {
   let action = 0;
   let queued = 0;
   let waits = 0;
+  let held = 0;
   for (const r of rows) {
     if (signupStatusKey(r, acted(r)) === 'console.signups.status.autoWait') waits++;
+    else if (r.mailHeld) held++;
     else if (signupRowKind(r) === 'queued') queued++;
     else action++;
   }
@@ -616,11 +626,15 @@ export function signupCountView(
         },
       }
     : {};
+  const rest = {
+    ...auto,
+    ...(held ? { held: { key: 'console.signups.count.held' as const, count: held } } : {}),
+  };
   if (action === 0 && queued > 0)
-    return { key: 'console.signups.count.queuedOnly', count: queued, ...auto };
-  if (action === 0 && waits > 0)
-    return { key: 'console.signups.count.noAction', count: 0, ...auto };
-  return { key: signupCountKey(action), count: action, ...auto };
+    return { key: 'console.signups.count.queuedOnly', count: queued, ...rest };
+  if (action === 0 && (waits > 0 || held > 0))
+    return { key: 'console.signups.count.noAction', count: 0, ...rest };
+  return { key: signupCountKey(action), count: action, ...rest };
 }
 
 // ---------------------------------------------------------------- stored requests: delete (K12)
@@ -633,8 +647,10 @@ export function filterByEmail(rows: readonly SignupRecord[], query: string): Sig
 
 const STORED_STATUSES = [...OPEN, 'rejected', 'email_sent'];
 /** The label of a stored request's status; an unknown value is never shown raw. */
-export const storedStatusKey = (status: string) =>
-  `console.signups.all.status.${STORED_STATUSES.includes(status) ? status : 'other'}`;
+export const storedStatusKey = (status: string, mailHeld = false) =>
+  mailHeld && status === 'email_queued'
+    ? 'console.signups.all.status.email_held'
+    : `console.signups.all.status.${STORED_STATUSES.includes(status) ? status : 'other'}`;
 
 /**
  * What the delete confirmation warns about: `account`, one was added and stays; `inFlight`, an

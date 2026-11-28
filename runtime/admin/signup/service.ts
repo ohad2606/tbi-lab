@@ -676,6 +676,25 @@ export class SignupApprover {
     return this.d.store.list();
   }
 
+  /**
+   * Marks, in answers to the owner only, each queued mail the pause holds right now (`mailHeld`,
+   * same rule as `queuedNote`: auto-approved, a pause or a failed check). Read only: the mark is
+   * never stored, and a stored key of that name is dropped.
+   */
+  async withMailHeld(records: SignupRecord[]): Promise<(SignupRecord & { mailHeld?: true })[]> {
+    let held: Promise<boolean> | undefined;
+    return Promise.all(
+      records.map(async (stored) => {
+        const r: SignupRecord & { mailHeld?: unknown } = { ...stored };
+        delete r.mailHeld;
+        const rec = r as SignupRecord;
+        if (rec.status !== 'email_queued' || !rec.autoApprovedAt || !this.d.drainHeld) return rec;
+        held ??= this.d.drainHeld().catch(() => true);
+        return (await held) ? { ...rec, mailHeld: true as const } : rec;
+      }),
+    );
+  }
+
   approve(id: string): Promise<ApproveOutcome> {
     return this.serial(id, async () => this.audited(id, 'approve', await this.doApprove(id)));
   }

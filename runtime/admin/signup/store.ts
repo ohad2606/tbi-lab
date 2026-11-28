@@ -7,7 +7,6 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import {
-  appendFile,
   lstat,
   mkdir,
   open,
@@ -150,6 +149,9 @@ export function retentionFromEnv(env: NodeJS.ProcessEnv): Retention {
   return { notApprovedMs, maxMs };
 }
 
+/** BETA-G1: the step of `PendingStore.deleteNow` that failed, as tagged in the server log. */
+export type DeleteStage = 'history' | 'side' | 'web' | 'record' | 'verify' | 'audit';
+
 /** K12: the result of `PendingStore.deleteNow`. */
 export type DeleteOutcome = 'deleted' | 'already_deleted' | 'not_found' | 'incomplete';
 
@@ -169,6 +171,41 @@ const errCode = (e: unknown): string | undefined => (e as { code?: string } | nu
 /** An address marker file name (`<sha256(address)>.mark`). */
 const MARK_RE = /^[0-9a-f]{64}\.mark$/;
 const MARK_READ = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+
+const AUDIT_APPEND =
+  constants.O_WRONLY |
+  constants.O_APPEND |
+  constants.O_CREAT |
+  constants.O_NOFOLLOW |
+  constants.O_NONBLOCK;
+
+/**
+ * Whether the last byte of a non-empty file is a newline. False when it cannot be read (the
+ * writer then adds one: a blank line is skipped by the reader, a glued line is lost).
+ */
+async function endsWithNewline(path: string, size: number): Promise<boolean> {
+  try {
+    const fh = await open(path, MARK_READ);
+    try {
+      const last = Buffer.alloc(1);
+      const { bytesRead } = await fh.read(last, 0, 1, size - 1);
+      return bytesRead === 1 && last[0] === 0x0a;
+    } finally {
+      await fh.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
+async function syncDir(dir: string): Promise<void> {
+  const fh = await open(dir, constants.O_RDONLY);
+  try {
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
+}
 
 /**
  * The text of an address marker, or null when it is absent or not a regular file (a directory,
@@ -451,12 +488,28 @@ export class PendingStore {
 
   /**
    * Append-only audit line: time, id, action, outcome class, and (BETA-G1, only when given) a
-   * fixed actor tag such as `actor=auto`. No personal data.
+   * fixed actor tag such as `actor=auto`. No personal data. After a torn tail (an earlier full
+   * disk or crash) the line starts on a new one. It counts only once fsynced: a throw means "not
+   * appended" for the caller. A symlink or other non-regular file is refused.
    */
   async audit(id: string, action: string, outcome: string, actor?: 'auto'): Promise<void> {
     const tag = actor ? ` actor=${actor}` : '';
     const line = `${new Date(this.now()).toISOString()} ${this.idOnly(id)} ${action} ${outcome}${tag}\n`;
-    await appendFile(join(this.dir, 'audit.log'), line, { mode: 0o600 });
+    const path = join(this.dir, 'audit.log');
+    const fh = await open(path, AUDIT_APPEND, 0o600);
+    let size: number;
+    try {
+      const s = await fh.stat();
+      if (!s.isFile()) throw new Error('audit_not_file');
+      size = s.size;
+      const torn = size > 0 && !(await endsWithNewline(path, size));
+      await fh.writeFile(torn ? `\n${line}` : line, 'utf8');
+      await fh.sync();
+    } finally {
+      await fh.close();
+    }
+    // A log that was empty may be new: its directory entry must be durable too.
+    if (size === 0) await syncDir(this.dir);
   }
 
   private build(input: SignupInput): SignupRecord {
@@ -552,19 +605,22 @@ export class PendingStore {
    * Under the per-id lock shared with the approver and the purge, it removes the `<id>.notified`,
    * `<id>.notifyq` and `<id>.web` (web sub-cap) markers, the address marker (`<sha256>.mark`, the de-duplication lock)
    * that points to this id, any `<id>.*.tmp` left by a crash, the record `<id>.json`, and then
-   * the admin verify state (`onRemoved`). Only when every step succeeded is one audit line
-   * `<time> <id> delete ok` written (no personal data). A record file that cannot be parsed is
-   * deleted too.
+   * the admin verify state (`onRemoved`). A request that exists or has an audited delete first
+   * gets `<time> <id> delete started` (nothing is removed if that line cannot be written); only
+   * when every step succeeded is `<time> <id> delete ok` written (no personal data). A record
+   * file that cannot be parsed is deleted too.
    *
    *   deleted          every file and the verify state are gone (audited `delete ok`)
-   *   already_deleted  no record, and the LAST audited delete of this id is `ok`: no-op
+   *   already_deleted  no record, and the LAST audited delete of this id is `ok`: strays (if any)
+   *                    removed, no new line (a failed removal is audited `incomplete`)
    *   not_found        no record and no earlier delete (unknown id, or removed by retention);
    *                    with no side file either, never audited
-   *   incomplete       a step failed (EPERM, an unreadable address marker, the verify state...):
-   *                    audited `delete incomplete`, never `ok`; a retry finishes the job (it
-   *                    answers `deleted` once the rest is gone). Also when the audit log exists
-   *                    but cannot be read: nothing is removed (audited only if the record is
-   *                    present and the log still takes the line)
+   *   incomplete       a step failed (EPERM, an unreadable address marker, the verify state, an
+   *                    audit line that cannot be written...): never `ok`; the log keeps `started`
+   *                    (and `incomplete` if it still takes lines), so a retry re-runs the removal
+   *                    and answers `deleted`. With the record GONE and an audit log that exists
+   *                    but cannot be read, nothing is removed or audited (the history is unseen).
+   *                    With the record PRESENT the history is not read: it is removed as usual.
    *
    * An account already added for the request is NOT touched (accounts.ts: disable).
    */
@@ -573,6 +629,8 @@ export class PendingStore {
     return serialById(id, async () => {
       // Only a request that exists or existed is ever audited: an unknown id stays unknown.
       let known = false;
+      // Fixed-enum step tag for the server log (never an id, address, hash, file name or text).
+      let stage: DeleteStage = 'record';
       try {
         const existed = await stat(this.path(id)).then(
           () => true,
@@ -583,8 +641,11 @@ export class PendingStore {
         );
         // A record present is known even if the history below cannot be read.
         known = existed;
-        // Only the LAST audited delete outcome counts: a later `incomplete` reopens an older `ok`.
-        const last = await this.lastDeleteOutcome(id);
+        // BETA-G1: a present record is deleted whatever the history says, so its history is not
+        // read (an unreadable log never keeps a record); `deleted` still needs `delete ok` below.
+        // A gone record answers only from a readable history (an unreadable one throws).
+        stage = 'history';
+        const last = existed ? undefined : await this.lastDeleteOutcome(id);
         const deletedBefore = !existed && last === 'ok';
         const unfinished = !existed && last === 'incomplete';
         // The request's own files may remain: the last audited outcome does not say they are gone.
@@ -605,20 +666,33 @@ export class PendingStore {
           });
           return 'not_found';
         }
+        // BETA-G1: an audited request is marked `started` BEFORE anything is removed, so a later
+        // failure (also of the final `ok` line) leaves an open delete that a retry finishes; it
+        // never reads as "no such request". If this line cannot be written, nothing is removed.
+        if (earlier && !deletedBefore) {
+          stage = 'audit';
+          await this.audit(id, 'delete', 'started');
+        }
         // Delete still open and the address unknown: a non-file marker may be its own.
+        stage = 'side';
         await this.removeSideFiles(id, ownMark, open && ownMark === undefined);
+        stage = 'web';
         await this.unlinkGone(`${id}.web`);
+        stage = 'record';
         if (existed) await this.unlinkGone(`${id}.json`);
         // Idempotent; also on a retry whose record is already gone.
+        stage = 'verify';
         await this.opts.onRemoved?.(id);
+        // Already closed with `ok`: strays cleaned, no new line (a failure above reopens it).
         if (deletedBefore) return 'already_deleted';
         // Only leftovers of a record removed by retention: cleaned, still no such request.
         if (!earlier) return 'not_found';
         // `unfinished`: an earlier attempt removed the record but not the rest.
+        stage = 'audit';
         await this.audit(id, 'delete', 'ok');
         return 'deleted';
       } catch (e) {
-        this.opts.log?.(`signup: delete incomplete (${logClass(e)})`);
+        this.opts.log?.(`signup: delete incomplete stage=${stage} (${logClass(e)})`);
         if (known) await this.audit(id, 'delete', 'incomplete').catch(() => undefined);
         return 'incomplete';
       }
@@ -741,7 +815,8 @@ export class PendingStore {
   }
 
   /**
-   * The outcome (`ok` or `incomplete`; any other word is ignored) of the last audit line
+   * The outcome (`ok`, or `incomplete` for `incomplete` and `started`; any other word is
+   * ignored) of the last audit line
    * `<time> <id> delete <outcome>[ actor=...]`, if any. Only a missing log (ENOENT) is an empty
    * history; any other read error throws, so a delete never answers from a history it cannot see.
    */
@@ -753,7 +828,10 @@ export class PendingStore {
     let last: 'ok' | 'incomplete' | undefined;
     for (const l of text.split('\n')) {
       const w = l.split(' ');
-      if (w[1] === id && w[2] === 'delete' && (w[3] === 'ok' || w[3] === 'incomplete')) last = w[3];
+      if (w[1] !== id || w[2] !== 'delete') continue;
+      // `started` without a later `ok` is an open delete, the same as `incomplete`.
+      if (w[3] === 'ok') last = 'ok';
+      else if (w[3] === 'incomplete' || w[3] === 'started') last = 'incomplete';
     }
     return last;
   }

@@ -239,6 +239,50 @@ describe('S5: off', () => {
   });
 });
 
+describe('mailHeld: the server says a queued mail is held by the pause', () => {
+  it('only an auto-approved queued row, only while paused; a stored key is dropped; no write', async () => {
+    const r = await rig();
+    const queue = async (extra: object) => {
+      const id = await r.add();
+      await r.wiring.store.update(id, {
+        status: 'email_queued',
+        accountAdded: true,
+        emailSendAfter: new Date(NOON).toISOString(),
+        mailHeld: true,
+        ...extra,
+      } as never);
+      return id;
+    };
+    const auto = await queue({ autoApprovedAt: new Date(NOON).toISOString() });
+    const mine = await queue({});
+    const held = async (path: string) =>
+      new Map(
+        (await r.get(path)).body.signups.map((x: { id: string; mailHeld?: unknown }) => [
+          x.id,
+          x.mailHeld,
+        ]),
+      );
+    for (const p of ['/signups', '/signups/open']) {
+      expect((await held(p)).get(auto)).toBeUndefined();
+      expect((await held(p)).get(mine)).toBeUndefined();
+    }
+    writeFileSync(join(r.stateDir, AUTO_PAUSE_FILE), '', { mode: 0o600 });
+    const file = join(r.storeDir, `${auto}.json`);
+    const before = readFileSync(file, 'utf8');
+    for (const p of ['/signups', '/signups/open']) {
+      expect((await held(p)).get(auto)).toBe(true);
+      expect((await held(p)).get(mine)).toBeUndefined();
+    }
+    // Marking the lists wrote nothing.
+    expect(readFileSync(file, 'utf8')).toBe(before);
+    // The action answers carry the same mark (the route passes its record through this).
+    const approver = r.wiring.signups.approver(P(OWNER));
+    const out = await approver.resend(auto);
+    expect(out).toMatchObject({ ok: true, note: 'email_held_paused' });
+    expect(await approver.withMailHeld([out.record!])).toMatchObject([{ mailHeld: true }]);
+  });
+});
+
 describe('S5: access', () => {
   it('anonymous 401, non-owner 403, status stays GET only, no-store', async () => {
     const r = await rig();
