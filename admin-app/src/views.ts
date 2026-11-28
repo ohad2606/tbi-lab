@@ -373,16 +373,15 @@ export function signupStatusKey(r: SignupRecord, acted = false) {
 
 /**
  * Why a queued email waits, for the outcome text: the mail limit (`mail_cap`), quiet hours only
- * when the record proves it (owner-queued: not auto-approved, or taken over by the owner, so
- * never night-exempt (service.ts `nightExempt`); no error; a send time still ahead: the queue
- * write of an owner action in quiet hours), else neutral with no promised send time (a pause
- * hold is due at once and waits for the resume; no record, or a time already past).
+ * when the record proves it (never auto-approved; no error; a send time still ahead: the queue
+ * write of an owner action in quiet hours), else neutral with no promised send time. Any record
+ * with `autoApprovedAt`, also one the owner took over, is neutral: the pause still holds its
+ * drain (service.ts `drainEmails`). So is a time already past, or no record.
  */
 function queuedReason(r: SignupRecord | null, nowMs: number): '' | '_cap' | '_wait' {
   if (r?.lastError === 'mail_cap') return '_cap';
   const after = r?.emailSendAfter ? Date.parse(r.emailSendAfter) : NaN;
-  const ownerQueued = r !== null && (!r.autoApprovedAt || r.approvedBy === 'owner');
-  return ownerQueued && r.lastError === null && after > nowMs ? '' : '_wait';
+  return r !== null && !r.autoApprovedAt && r.lastError === null && after > nowMs ? '' : '_wait';
 }
 
 /** What the web form added to a request: the free-text answer (plain text) and the web mark. */

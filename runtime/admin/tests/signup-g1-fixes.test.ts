@@ -496,6 +496,20 @@ describe('fix 5: the unverified purge finishes a web request whose .web marker i
     expect((await r.store.list()).map((x) => x.id)).toEqual([id]);
   });
 
+  it('a non-file own address marker: kept, logged as mark_not_file (class and count only)', async () => {
+    const r = await rig();
+    const id = await webId(r);
+    const mark = readdirSync(r.storeDir).find((f) => f.endsWith('.mark'))!;
+    unlinkSync(join(r.storeDir, mark));
+    mkdirSync(join(r.storeDir, mark));
+    r.clock.t = T0 + 7 * DAY;
+    expect((await r.v.purgeUnverified(7)).purged).toBe(0);
+    expect((await r.store.list()).map((x) => x.id)).toEqual([id]);
+    expect(r.logs.filter((l) => l.includes('purge unverified'))).toEqual([
+      'signup: purge unverified failed (mark_not_file) 1',
+    ]);
+  });
+
   it('purges the orphan; never a verified, approved, account-added or non-web record', async () => {
     const r = await rig();
     const ids: string[] = [];

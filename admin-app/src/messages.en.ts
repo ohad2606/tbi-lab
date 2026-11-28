@@ -235,7 +235,7 @@ export const consoleEn = {
   'console.signups.done.resend.email_queued_cap':
     'The email to {name} waits because of the email limit and is normally sent automatically later.',
   'console.signups.done.resend.email_held_paused':
-    'The email to {name} is held because automatic approval is paused. It is not sent while the pause lasts, and the "Resend email" button does not override the pause.',
+    'The email to {name} is held because automatic approval is paused: nothing was sent. It can be sent only after automatic approval is resumed.',
   'console.signups.done.resend.email_queued_wait':
     'The email to {name} is queued and has not been sent yet.',
   'console.signups.done.reject': 'Rejected the request of {name}. No email was sent.',

@@ -38,8 +38,13 @@ describe('resend of a mail held by the pause', () => {
     expect(v).toMatchObject({ key: 'console.signups.done.resend.email_held_paused', ok: true });
     const [en, he] = text(v.key);
     expect(en).toContain('paused');
-    expect(en).toContain('"Resend email"');
-    expect(he).toContain('"שליחת המייל שוב"');
+    expect(en).toContain('nothing was sent');
+    expect(en).toContain('only after automatic approval is resumed');
+    expect(he).toContain('לא נשלח דבר');
+    expect(he).toContain('רק אחרי שהאישור האוטומטי יחודש');
+    // The queued row has no resend button, so the note names none.
+    expect(en).not.toContain('Resend');
+    expect(he).not.toContain('שליחת המייל שוב');
     for (const t of [en, he]) {
       expect(t).not.toMatch(/will be sent automatically|quiet hours|יישלח אוטומטית|שעות השקט/);
       expect(t).toContain('{name}');
@@ -51,11 +56,14 @@ describe('quiet hours only when the record proves it', () => {
   const view = (o: Partial<SignupRecord>, action: 'approve' | 'resend') =>
     signupOutcomeView(interpretSignup(200, { record: rec(o), note: 'email_queued' }), action, NOW)
       .key;
-  it('owner-queued, no error, send time ahead: quiet hours', () => {
+  it('never auto-approved, no error, send time ahead: quiet hours', () => {
     expect(view({}, 'resend')).toBe('console.signups.done.resend.email_queued');
-    expect(view({ autoApprovedAt: FUTURE, approvedBy: 'owner' }, 'approve')).toBe(
-      'console.signups.done.approve.email_queued',
-    );
+    expect(view({}, 'approve')).toBe('console.signups.done.approve.email_queued');
+  });
+  it('auto-approved and taken over by an owner resend: the pause still holds it, no time', () => {
+    const taken = { autoApprovedAt: '2026-11-01T21:00:00.000Z', approvedBy: 'owner' as const };
+    for (const action of ['approve', 'resend'] as const)
+      expect(view(taken, action)).toBe(`console.signups.done.${action}.email_queued_wait`);
   });
   it('auto-approved (possibly night-exempt) or a pause hold: neutral, no promised send time', () => {
     const auto = { autoApprovedAt: '2026-11-01T21:00:00.000Z', origin: 'web' as const };
@@ -82,7 +90,7 @@ describe('quiet hours only when the record proves it', () => {
     ]) {
       const [en, he] = text(key);
       expect(en).toContain('"Refresh requests"');
-      expect(he).toContain('"רענון הבקשות"');
+      expect(he).toContain('„רענון הבקשות”');
     }
     const [en, he] = text('console.signups.refresh');
     expect([en, he]).toEqual(['Refresh requests', 'רענון הבקשות']);

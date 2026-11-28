@@ -798,7 +798,8 @@ export class SignupApprover {
   /**
    * BETA-G1: the owner's own approver records that it added the account (and, with DEC-39, that it
    * took the request over, see `ownerTakeover`). Read for display and by `nightExempt` (an
-   * owner's request waits for the end of quiet hours); `autoApprovedAt` is left as written.
+   * owner's request waits for the end of quiet hours, and the pause still holds its drain);
+   * `autoApprovedAt` is left as written.
    */
   private ownerMark(): { approvedBy?: 'owner' } {
     return this.d.ownerActions && this.d.actor !== 'auto' ? { approvedBy: 'owner' } : {};
@@ -877,9 +878,10 @@ export class SignupApprover {
   /**
    * Sends the approval email, or, inside quiet hours (unless `nightExempt`), persists
    * `email_queued` with its send time (no attempt is recorded). A mail held by the pause or the
-   * mail limit is also `email_queued`: only an owner-queued record with no error and a send time
-   * ahead waits for quiet hours (admin-app views.ts `queuedReason`). `force` is the drain, which
-   * has already checked the window.
+   * mail limit is also `email_queued`: the admin app names quiet hours only for a record never
+   * auto-approved, with no error and a send time ahead (admin-app views.ts `queuedReason`; the
+   * pause holds the drain of any auto-approved record, also after an owner takeover). `force` is
+   * the drain, which has already checked the window.
    */
   private async send(r: SignupRecord, force = false, explicit = false): Promise<ApproveOutcome> {
     // Every path below writes (queue, attempt, binding): the owner's mark goes first.
