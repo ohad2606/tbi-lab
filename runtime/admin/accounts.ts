@@ -562,8 +562,11 @@ async function routeSignups(
   // BETA-G1 S5: with email verification on, each row carries the admin-derived `verification`
   // and the envelope says so (`rowStates`); off, the answers are unchanged.
   const states = deps.signups!.rowStates;
+  // Queued rows held by the pause carry `mailHeld`, here and in the action answers.
   const listed = async (keep: (r: SignupRecord) => boolean) => ({
-    signups: (await (states ? states() : approver.list())).filter(keep),
+    signups: await approver.withMailHeld(
+      (await (states ? states() : approver.list())).filter(keep),
+    ),
     ...(states ? { rowStates: 1 } : {}),
   });
   if (method === 'GET' && parts.length === 1) return send(res, 200, await listed(() => true));
@@ -600,8 +603,8 @@ async function routeSignups(
           ? await approver.resend(id)
           : null;
   if (!out) throw new AdminError(404, 'not_found');
-  if (out.ok)
-    return send(res, 200, { record: out.record, ...(out.note ? { note: out.note } : {}) });
+  const record = out.record ? (await approver.withMailHeld([out.record]))[0] : undefined;
+  if (out.ok) return send(res, 200, { record, ...(out.note ? { note: out.note } : {}) });
   const status =
     out.code === 'not_found'
       ? 404
@@ -613,5 +616,5 @@ async function routeSignups(
             out.code === 'unbound_state'
           ? 409
           : 502;
-  return send(res, status, { error: out.code, ...(out.record ? { record: out.record } : {}) });
+  return send(res, status, { error: out.code, ...(record ? { record } : {}) });
 }

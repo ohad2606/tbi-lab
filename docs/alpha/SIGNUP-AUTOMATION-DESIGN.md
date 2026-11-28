@@ -190,6 +190,9 @@ JSON, `no-store`. Mutations need `content-type: application/json`, a same-origin
 | `POST /signups/<id>/resend` | 200 only after a failed or interrupted send for an added account; 409 otherwise |
 | `DELETE /signups/<id>` | K12: deletes the request now (record, markers, address marker; audit `<id> delete started`, then `<id> delete ok`). 200 `{deleted:true}`; 200 `{deleted:true,note:"already_deleted"}` when deleted before; 404 unknown. The account is not touched. Runbook: `SIGNUP-DATA-DELETION.md` |
 
+In list and action answers only, an `email_queued` record whose mail the pause holds right now (auto-approved, and
+paused or the pause check failed) carries `mailHeld: true`; it is computed per answer and never stored.
+
 Error answers: `{error: <code>, record?}`. `Record`: `id, name, email, role, lang, status, accountAdded,
 emailAttempts, emailAttemptedAt, lastError, notified, createdAt, updatedAt`. Approve adds the account through the
 existing spool and root helper (the owner's principal is the actor), then sends the mail. One operation per id at a

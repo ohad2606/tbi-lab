@@ -564,6 +564,15 @@ fieldset {
 .result.warn {
   color: var(--warning-ink);
 }
+/* A warning that outlived its row: a dashed box and a worded label, not colour alone. */
+.reload-notice {
+  border: 2px dashed var(--muted);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+}
+.reload-notice strong {
+  display: block;
+}
 
 .problem {
   margin: 0;

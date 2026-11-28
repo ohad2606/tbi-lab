@@ -874,6 +874,7 @@ describe('admin service: sign-up routes (TBI-022), off unless configured', () =>
     const ID = '0123456789ABCDEFGHJKMNPQRS';
     const approver = {
       list: async () => [],
+      withMailHeld: async (records: unknown[]) => records,
       approve: async (id: string) => (calls.push(`approve:${id}`), { ok: true, record: { id } }),
       reject: async () => ({ ok: false, code: 'bad_state' }),
       resend: async () => ({ ok: false, code: 'email_failed' }),

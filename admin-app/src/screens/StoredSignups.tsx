@@ -513,7 +513,9 @@ export function StoredSignups({
                       <bdi dir="ltr" class="code" data-testid="stored-email">
                         {r.email}
                       </bdi>
-                      <span class="badge">{t(storedStatusKey(r.status) as MessageKey)}</span>
+                      <span class="badge">
+                        {t(storedStatusKey(r.status, r.mailHeld) as MessageKey)}
+                      </span>
                       {r.accountAdded && (
                         <span class="badge badge-auto" data-testid="stored-account">
                           {t('console.signups.all.accountAdded')}

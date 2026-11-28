@@ -124,6 +124,7 @@ export const consoleEn = {
   'console.signups.count.one': '1 request waiting for you',
   'console.signups.count.other': '{count} requests waiting for you',
   'console.signups.count.queuedOnly': 'No requests need your action. Scheduled emails: {count}',
+  'console.signups.count.held': 'Held emails: {count}',
   'console.signups.count.noAction': 'No requests need your action',
   'console.signups.count.auto.one': '1 request is waiting for automatic approval',
   'console.signups.count.auto.other': '{count} requests are waiting for automatic approval',
@@ -158,6 +159,8 @@ export const consoleEn = {
     'Approved, but the account is not ready yet. Approve again to finish.',
   'console.signups.status.emailQueued':
     'Account added. The email is queued and has not been sent yet.',
+  'console.signups.status.emailHeld':
+    'Account added. The email is held and has not been sent: automatic approval is paused, or its pause state could not be checked safely.',
   'console.signups.status.emailMailCap':
     'Account added. The email is waiting because of the email limit; it is normally sent automatically later.',
   'console.signups.heardFrom': 'How they heard about us',
@@ -277,10 +280,13 @@ export const consoleEn = {
   'console.signups.err.not_found': 'The request of {name} no longer exists.',
   'console.signups.err.mail_cap':
     'The account for {name} was added. The email is waiting because of the email limit and is normally sent automatically later. If it stays waiting, check the server log. The daily and 30-day counts are under "Email confirmation and mail limits".',
+  'console.signups.err.mail_cap.held':
+    'The account for {name} was added. The email was not sent because of the email limit, and it is now held: automatic approval is paused, or its pause state could not be checked safely. It can be sent only when automatic approval is not paused and the pause check works.',
   'console.signups.err.unbound_state':
     "Warning: {name}'s request is marked as approved, but we have no record that the account was added. No email was sent. Check in Testers whether {name}'s account exists, then try again. If the warning returns, check free tester places and the server log.",
   'console.signups.err.not_found.unconfirmed':
     'Request of {name}: we could not confirm what happened. Sign-up administration may be off or unavailable on the server, so the request may still be stored. Use Refresh requests.',
+  'console.signups.reloadNeeded': 'Reload needed',
   'console.signups.openStale':
     'The open requests could not be reloaded and may be out of date. Use Refresh requests.',
   'console.signups.all.heading': 'Stored requests and deletion',
@@ -301,6 +307,7 @@ export const consoleEn = {
   'console.signups.all.status.approved': 'Approved, not finished',
   'console.signups.all.status.rejected': 'Rejected',
   'console.signups.all.status.email_queued': 'Email scheduled',
+  'console.signups.all.status.email_held': 'Email held',
   'console.signups.all.status.email_sent': 'Email sent',
   'console.signups.all.status.email_failed': 'Email failed',
   'console.signups.all.status.other': 'Unknown status',

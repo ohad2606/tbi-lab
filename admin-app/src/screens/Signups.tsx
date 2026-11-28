@@ -289,6 +289,8 @@ export function Signups() {
   const [messages, setMessages] = useState<Record<string, RowMessage>>({});
   const [announce, setAnnounce] = useState('');
   const [openStale, setOpenStale] = useState(false);
+  // Unknown outcomes of rows that left the list: kept in view until a Refresh loads.
+  const [left, setLeft] = useState<{ id: string; name: string; key: MessageKey }[]>([]);
   // Requests whose outcome is unconfirmed while a problem text stands in place of the list.
   const [lost, setLost] = useState<{ id: string; name: string }[]>([]);
   const focusId = useRef<string | null | undefined>(undefined);
@@ -373,6 +375,7 @@ export function Signups() {
       );
       setConfirming((c) => (c === gone ? null : c));
       setLost((l) => l.filter((x) => x.id !== gone));
+      setLeft((l) => l.filter((x) => x.id !== gone));
     }
     const mine = ++listTurn.current;
     const v = await loadOpenSignups(api);
@@ -416,6 +419,7 @@ export function Signups() {
     let line = t(c.key, { count: c.count });
     const folded = rows.filter(isUnconfirmedRow).length;
     if (folded) line = join(line, t('console.signups.unconfirmed.counted', { count: folded }));
+    if (c.held) line = join(line, t(c.held.key, { count: c.held.count }));
     return c.auto ? join(line, t(c.auto.key, { count: c.auto.count })) : line;
   };
 
@@ -453,6 +457,7 @@ export function Signups() {
     if (current) {
       setOpenStale(false);
       keepUnconfirmed(v.ok);
+      if (v.ok) setLeft([]);
       setList(v);
       setMessages({});
       setConfirming(null);
@@ -669,6 +674,12 @@ export function Signups() {
         setAnnounce('');
       } else say(text);
       if (v.removed) {
+        // The row takes its message with it: a warning stays on the page (spoken once, above).
+        if (o.kind === 'done' && !v.ok)
+          setLeft((l) => [
+            ...l.filter((x) => x.id !== r.id),
+            { id: r.id, name: r.name, key: v.key as MessageKey },
+          ]);
         if (follow) focusId.current = focusAfterRemoval(ids, r.id);
         setList((old) =>
           old?.ok ? { ok: true, value: old.value.filter((x) => x.id !== r.id) } : old,
@@ -753,7 +764,7 @@ export function Signups() {
         <div class="muted small">
           {t('console.signups.requested', { time: date(r.createdAt) ?? '' })}
         </div>
-        {kind === 'queued' && r.emailSendAfter && (
+        {kind === 'queued' && r.emailSendAfter && !r.mailHeld && (
           <div class="small" data-testid="signup-send-after">
             {t('console.signups.sendAfter', { time: SLOT })
               .split(SLOT)
@@ -941,6 +952,12 @@ export function Signups() {
           </p>
         )}
       </div>
+      {left.map((l) => (
+        // Not a live region: the same sentence is already spoken above.
+        <p key={l.id} class="result warn reload-notice" data-testid="signups-reload-notice">
+          <strong>{t('console.signups.reloadNeeded')}</strong> {t(l.key, { name: isolate(l.name) })}
+        </p>
+      ))}
       {list &&
         !list.ok &&
         lost.map((l) => (

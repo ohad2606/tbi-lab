@@ -114,6 +114,80 @@ for (const lang of ['he', 'en'] as const) {
     });
 }
 
+const HELD = {
+  en: { held: 'held', notice: 'Reload needed', no: /queued|scheduled|sent automatically/i },
+  he: { held: 'מוחזק', notice: 'נדרשת טעינה מחדש', no: /בתור|מתוזמן|נשלח אוטומטית/ },
+} as const;
+
+for (const lang of ['he', 'en'] as const) {
+  test(`signup truth (${lang}): a held row is never queued or scheduled; over the limit no "later"`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const queued = {
+      status: 'email_queued',
+      lastError: 'mail_cap',
+      autoApprovedAt: '2026-11-01T09:00:00Z',
+      emailSendAfter: '2099-01-01T10:00:00.000Z',
+      mailHeld: true,
+    };
+    const held = row('v2', queued);
+    await mock(page, [row('v1'), held], {
+      'v1/resend': { status: 409, json: { error: 'mail_cap', record: row('v1', queued) } },
+    });
+    await open(page, context, baseURL!, lang);
+    const v2 = page.locator('[data-signup-id="v2"]');
+    await expect(v2.getByTestId('signup-status')).toContainText(HELD[lang].held);
+    await expect(v2.getByTestId('signup-status')).not.toContainText(HELD[lang].no);
+    await expect(v2.getByTestId('signup-send-after')).toHaveCount(0);
+    const v1 = page.locator('[data-signup-id="v1"]');
+    await v1.getByTestId('signup-resend').click();
+    const message = v1.getByTestId('signup-message');
+    await expect(message).toContainText(HELD[lang].held);
+    await expect(message).not.toContainText(HELD[lang].no);
+    await expect(message).toBeFocused();
+    await expect(v1.getByTestId('signup-send-after')).toHaveCount(0);
+    await expect(page.getByTestId('signups-count')).not.toContainText(HELD[lang].no);
+    // Read on focus only: the live region does not say it a second time.
+    await expect(page.getByTestId('signups-live')).toHaveText('');
+  });
+
+  test(`signup truth (${lang}): an unknown outcome stays in view after its row left, said once`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await mock(page, [row('v1'), row('v2')], {
+      'v1/resend': { status: 200, json: { record: null, note: 'a_newer_note' } },
+    });
+    await open(page, context, baseURL!, lang);
+    await page.locator('[data-signup-id="v1"]').getByTestId('signup-resend').click();
+    await expect(page.locator('[data-signup-id="v1"]')).toHaveCount(0);
+    const notice = page.getByTestId('signups-reload-notice');
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(HELD[lang].notice);
+    await expect(notice).toContainText('Tester v1');
+    await expect(notice).toHaveClass(/\bwarn\b/);
+    await expect(notice).not.toHaveClass(/\bok\b/);
+    await expect(notice).toHaveCSS('border-top-style', 'dashed');
+    // Focus goes to the next row, as for any removed row.
+    await expect(page.locator('[data-signup-id="v2"]').getByTestId('signup-resend')).toBeFocused();
+    // One announcement: the live region has the sentence; the visible notice is not live.
+    await expect(page.getByTestId('signups-live')).toContainText('Tester v1');
+    expect(
+      await notice.evaluate((e) => !!e.closest('[aria-live], [role="status"], [role="alert"]')),
+    ).toBe(false);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+    // A Refresh that loads shows the current state: the notice goes.
+    await page.getByTestId('signups-refresh').click();
+    await expect(notice).toHaveCount(0);
+  });
+}
+
 for (const lang of ['he', 'en'] as const)
   test(`signup mail reasons (${lang}): long status sentences fit 320 px and describe Resend`, async ({
     page,
