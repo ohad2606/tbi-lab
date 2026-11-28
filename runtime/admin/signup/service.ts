@@ -30,6 +30,10 @@ import {
   type TokenFailure,
 } from './web.js';
 
+/** Failed-send classes that may be named in the log (secret file, key, provider answer). */
+const SEND_ERROR_RE =
+  /^(secret_(missing|unreadable|unsafe_mode|not_file)|bad_key|fs_error|network|http_[1-5]\d\d)$/;
+
 export type IntakeOutcome =
   | { status: 202 }
   | { status: 400 | 401 | 413 | 415 | 429 | 503; error: string; retryAfterMs?: number };
@@ -698,7 +702,6 @@ export class SignupApprover {
       if (!r) return { ok: false, code: 'not_found' };
       if (!r.accountAdded || r.status === 'rejected' || r.status === 'pending')
         return { ok: false, code: 'bad_state', record: r };
-      r = await this.ownerTakeover(r);
       const unbound = await this.unboundProgress(r);
       if (unbound) {
         if (!unbound.ok) return unbound;
@@ -744,6 +747,7 @@ export class SignupApprover {
       return { ok: false as const, code: 'unbound_state' as const, record: r };
     };
     if (bound === null) return refuse('state_unreadable');
+    r = await this.ownerTakeover(r);
     const addEmail = r.email;
     const out = await this.d.accounts.add(addEmail, r.name);
     if (out === 'pending') return { ok: false, code: 'account_pending', record: r };
@@ -762,12 +766,15 @@ export class SignupApprover {
 
   /**
    * DEC-39: an owner approve / resend of an auto-claimed request writes `approvedBy: 'owner'`
-   * BEFORE anything else, so whatever it leaves behind (queued, approved, a crash between two
-   * writes) is never exempt from quiet hours. Only with `nightAutoMail`.
+   * right BEFORE the first write the action makes (status change, account request, binding,
+   * queue, send attempt), under the same per-id lock, so whatever it leaves behind (queued,
+   * approved, a crash between two writes) is never exempt from quiet hours. Always, whatever
+   * `nightAutoMail` says now (the option may be turned on later). A click that changes nothing
+   * writes nothing, so "Approved automatically" stays. Only the owner's approver (`ownerMark`);
+   * the auto approver and the drain never write it.
    */
   private async ownerTakeover(r: SignupRecord): Promise<SignupRecord> {
-    if (!this.d.nightAutoMail || !r.autoApprovedAt || r.approvedBy === 'owner') return r;
-    if (r.status === 'email_sent') return r;
+    if (!r.autoApprovedAt || r.approvedBy === 'owner') return r;
     const mark = this.ownerMark();
     return mark.approvedBy ? this.d.store.update(r.id, mark) : r;
   }
@@ -794,7 +801,6 @@ export class SignupApprover {
     let r = await this.load(id);
     if (!r) return { ok: false, code: 'not_found' };
     if (r.status === 'rejected') return { ok: false, code: 'bad_state', record: r };
-    r = await this.ownerTakeover(r);
     const unbound = await this.unboundProgress(r);
     if (unbound) {
       if (!unbound.ok) return unbound;
@@ -805,9 +811,13 @@ export class SignupApprover {
     if (r.status === 'email_queued') return { ok: true, record: r, note: 'email_queued' };
     if (r.status === 'email_failed')
       return { ok: false, code: 'email_failed_use_resend', record: r };
-    if (r.status === 'pending')
+    if (r.status === 'pending') {
+      // The mark first (its own write), then the status change.
+      await this.ownerTakeover(r);
       r = await this.d.store.update(id, { status: 'approved', lastError: null });
+    }
     if (!r.accountAdded) {
+      r = await this.ownerTakeover(r);
       const addEmail = r.email;
       const out = await this.d.accounts.add(addEmail, r.name);
       if (out === 'pending') return { ok: false, code: 'account_pending', record: r };
@@ -853,6 +863,8 @@ export class SignupApprover {
    * (no attempt is recorded). `force` is the drain, which has already checked the window.
    */
   private async send(r: SignupRecord, force = false, explicit = false): Promise<ApproveOutcome> {
+    // Every path below writes (queue, attempt, binding): the owner's mark goes first.
+    if (explicit) r = await this.ownerTakeover(r);
     const nowMs = (this.d.now ?? Date.now)();
     if (!force && isQuiet(nowMs, this.d.quiet ?? null) && !(await this.nightExempt(r))) {
       // BETA-G1: the owner's explicit approve / resend binds and checks BEFORE it queues, so a
@@ -941,6 +953,10 @@ export class SignupApprover {
           : { ok: true, record: r, note: 'email_queued' };
       }
       const code = errorClass(e);
+      // The class from a fixed list and the request id only: never an address, name or key.
+      this.d.log?.(
+        `signup: approval mail send failed (${SEND_ERROR_RE.test(code) ? code : 'error'}) ${r.id}`,
+      );
       r = await this.d.store.update(r.id, { status: 'email_failed', lastError: code });
       return { ok: false, code: 'email_failed', record: r };
     }

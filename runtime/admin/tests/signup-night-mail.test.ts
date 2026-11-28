@@ -537,26 +537,114 @@ describe('DEC-39: owner actions are held until the end of quiet hours', () => {
     expect(r.calls).toHaveLength(1);
   });
 
-  it('option off: an owner action writes no new field', async () => {
+  it('option off: the owner approval of an auto-claimed request is still marked, so a later night drain with the option on sends nothing', async () => {
     const r = await rig();
     const id = await claimed(r, 1);
-    await r.owner(false).approve(id);
-    expect((await r.store.get(id)).approvedBy).toBeUndefined();
+    expect(await r.owner(false).approve(id)).toMatchObject({ ok: true, note: 'email_queued' });
+    expect(await r.store.get(id)).toMatchObject({ approvedBy: 'owner', status: 'email_queued' });
+    r.clock.t = AT_0200;
+    expect(await r.drainer(true).drainEmails()).toBe(0);
+    expect(r.calls).toEqual([]);
+  });
+
+  it('option off: a crash right after the mark write leaves the request marked and non-exempt', async () => {
+    const r = await rig();
+    const id = await claimed(r, 1);
+    const update = r.store.update.bind(r.store);
+    let writes = 0;
+    r.store.update = async (...a: Parameters<typeof update>) => {
+      const out = await update(...a);
+      if (++writes === 1) throw new Error('crash');
+      return out;
+    };
+    await expect(r.owner(false).resend(id)).rejects.toThrow('crash');
+    r.store.update = update;
+    expect(await r.store.get(id)).toMatchObject({ approvedBy: 'owner', status: 'approved' });
+    expect(await r.drainer(true).drainEmails()).toBe(0);
+    expect(r.calls).toEqual([]);
+  });
+
+  for (const night of [false, true])
+    for (const action of ['approve', 'resend'] as const)
+      it(`a no-op owner ${action} on an auto-approved queued mail writes nothing (option ${night})`, async () => {
+        const r = await rig();
+        const id = await r.queued(1, true);
+        const before = readFileSync(join(r.storeDir, `${id}.json`), 'utf8');
+        expect(await r.owner(night)[action](id)).toMatchObject({ ok: true, note: 'email_queued' });
+        expect(readFileSync(join(r.storeDir, `${id}.json`), 'utf8')).toBe(before);
+        expect((await r.store.get(id)).approvedBy).toBeUndefined();
+      });
+
+  for (const action of ['approve', 'resend'] as const)
+    it(`the same ${action} that must bind / add the account writes the mark first`, async () => {
+      const r = await rig();
+      const id = await r.queued(1, true);
+      r.bind.bound.delete(id);
+      const seen: unknown[] = [];
+      const update = r.store.update.bind(r.store);
+      r.store.update = async (...a: Parameters<typeof update>) => {
+        seen.push(a[1]);
+        return update(...a);
+      };
+      const bindApproval = r.bind.b.bindApproval;
+      r.bind.b.bindApproval = async (i, e) => {
+        // The mark is on disk before the binding is written.
+        expect((await r.store.get(i)).approvedBy).toBe('owner');
+        return bindApproval(i, e);
+      };
+      await r.owner(false)[action](id);
+      expect(seen[0]).toEqual({ approvedBy: 'owner' });
+      expect((await r.store.get(id)).approvedBy).toBe('owner');
+    });
+
+  it('the auto approver and the drain never write approvedBy', async () => {
+    const r = await rig();
+    const seen: unknown[] = [];
+    const update = r.store.update.bind(r.store);
+    r.store.update = async (...a: Parameters<typeof update>) => {
+      seen.push(a[1]);
+      return update(...a);
+    };
+    const p = await r.autoPending(1);
+    await r.auto().approve(p);
+    await r.auto(false).approve(await r.autoPending(2));
+    await r.queued(3, true);
+    await r.queued(4, false);
+    await r.drainer().drainEmails();
+    r.clock.t = Date.parse(NEXT_0800);
+    await r.drainer(false).drainEmails();
+    expect(seen.length).toBeGreaterThan(3);
+    expect(seen.some((x) => Object.hasOwn(x as object, 'approvedBy'))).toBe(false);
+    for (const id of (await r.store.list()).map((x) => x.id))
+      expect((await r.store.get(id)).approvedBy).toBeUndefined();
+  });
+
+  it('a forged approvedBy or lastError on the record can never make a mail night-exempt', async () => {
+    const r = await rig();
+    // The intake writes the record: a forged owner mark only makes the request wait.
+    const owned = await r.queued(1, true);
+    await r.store.update(owned, { approvedBy: 'owner' });
+    // A forged error text does not exempt a non-auto request either.
+    const manual = await r.queued(2, false);
+    await r.store.update(manual, { lastError: 'night_exempt' });
+    expect(await r.drainer().drainEmails()).toBe(0);
+    expect(r.calls).toEqual([]);
   });
 });
 
 describe('DEC-39: TBI_SIGNUP_QUIET_AUTO_MAIL wiring', () => {
-  it('=1: the wired owner approver marks its takeover, so the night drain does not send', async () => {
-    for (const [extra, mark] of [
-      [{ TBI_SIGNUP_QUIET_AUTO_MAIL: '1' }, 'owner'],
-      [{}, undefined],
+  it('the wired owner approver: a click that changes nothing writes no mark (=1 or unset)', async () => {
+    for (const [extra, night] of [
+      [{ TBI_SIGNUP_QUIET_AUTO_MAIL: '1' }, true],
+      [{}, false],
     ] as const) {
       const x = await wired(extra);
       const id = await x.autoQueued(1);
       await x.w.signups.approver(OWNER).approve(id);
-      expect((await x.w.store.get(id)).approvedBy).toBe(mark);
+      expect((await x.w.store.get(id)).approvedBy).toBeUndefined();
       await x.drain();
-      expect(x.calls).toEqual([]);
+      // Untouched by the owner, the auto mail goes exactly as it would have without the click.
+      expect(x.calls).toEqual(night ? [id] : []);
     }
   });
 

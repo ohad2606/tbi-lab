@@ -290,7 +290,8 @@ export const isOpenSignup = (r: SignupRecord): boolean => OPEN.includes(r.status
 /**
  * What a row shows and offers: `decide` (Approve + Reject), `retry` (the account step has not
  * finished: Approve again), `resend` (the email failed or its outcome is unknown), `queued` (the
- * email waits for quiet hours to end: a status only, the drain sends it, nothing to press).
+ * email waits: for quiet hours to end, a free slot under the email limit, or the end of a pause;
+ * a status only, the drain sends it, nothing to press).
  */
 export type SignupRowKind = 'decide' | 'retry' | 'resend' | 'queued';
 export function signupRowKind(r: SignupRecord): SignupRowKind {
@@ -323,15 +324,62 @@ const awaitsAuto = (r: SignupRecord, acted: boolean): boolean =>
   AUTO_WAIT.includes(r.verification?.state ?? '');
 
 /**
+ * Why an approval email failed, from a FIXED allow-list of the server's error classes
+ * (runtime/admin/signup: `mail_<check>` from the address binding, else the provider's class).
+ * `lastError` is written by the intake too: only these exact values pick a text, anything else
+ * gets the generic one, and the raw value is never shown.
+ */
+type MailFailure =
+  'addrChanged' | 'unbound' | 'unproven' | 'stateUnsafe' | 'config' | 'refused' | 'temporary';
+const MAIL_FAILURE = new Map<string, MailFailure>([
+  ['mail_addr_changed', 'addrChanged'],
+  ['mail_unbound', 'unbound'],
+  ['mail_unproven', 'unproven'],
+  ['mail_state_unsafe', 'stateUnsafe'],
+  ['secret_missing', 'config'],
+  ['secret_unreadable', 'config'],
+  ['secret_unsafe_mode', 'config'],
+  ['secret_not_file', 'config'],
+  ['bad_key', 'config'],
+  // The provider said no; the status alone does not tell why (key, sender domain, ...).
+  ['http_401', 'refused'],
+  ['http_403', 'refused'],
+  ['network', 'temporary'],
+  ['http_429', 'temporary'],
+  ['http_500', 'temporary'],
+  ['http_502', 'temporary'],
+  ['http_503', 'temporary'],
+  ['http_504', 'temporary'],
+]);
+const mailFailure = (r: SignupRecord | null): MailFailure | null =>
+  r?.status === 'email_failed' && typeof r.lastError === 'string'
+    ? (MAIL_FAILURE.get(r.lastError) ?? null)
+    : null;
+
+/**
  * The row's status text; an email held by the mail limit does not wait for quiet hours. An
- * undecided request is "waiting for you" unless it waits for the automatic approval.
+ * undecided request is "waiting for you" unless it waits for the automatic approval. A failed
+ * email says what the owner can do for the known failure classes (Resend does not always help).
  */
 export function signupStatusKey(r: SignupRecord, acted = false) {
   const kind = signupRowKind(r);
   if (awaitsAuto(r, acted)) return 'console.signups.status.autoWait' as const;
+  const failure = mailFailure(r);
+  if (failure) return `console.signups.status.emailFailed.${failure}` as const;
   return kind === 'queued' && r.lastError === 'mail_cap'
     ? 'console.signups.status.emailMailCap'
     : STATUS_KEY[kind];
+}
+
+/**
+ * Why a queued email waits, for the outcome text: the mail limit (`mail_cap`), quiet hours (no
+ * error and a send time still ahead: the queue write of an owner action in quiet hours), else
+ * neutral (a pause hold is due at once; no record, or a time already past).
+ */
+function queuedReason(r: SignupRecord | null, nowMs: number): '' | '_cap' | '_wait' {
+  if (r?.lastError === 'mail_cap') return '_cap';
+  const after = r?.emailSendAfter ? Date.parse(r.emailSendAfter) : NaN;
+  return r && r.lastError === null && after > nowMs ? '' : '_wait';
 }
 
 /** What the web form added to a request: the free-text answer (plain text) and the web mark. */
@@ -446,12 +494,16 @@ export function autoApproveView(s: AutoApproveStatus): AutoApproveView {
 export function signupOutcomeView(
   o: SignupOutcome,
   action: SignupAction,
+  nowMs: number = Date.now(),
 ): { key: string; removed: boolean; ok: boolean; record: SignupRecord | null } {
   switch (o.kind) {
     case 'done': {
-      // A queued email must never read as "sent", for approve and for resend alike.
+      // A queued email must never read as "sent", for approve and for resend alike; it speaks
+      // of quiet hours only when the record says that is why it waits.
       const note =
-        o.note && (action === 'approve' || o.note === 'email_queued') ? `.${o.note}` : '';
+        o.note && (action === 'approve' || o.note === 'email_queued')
+          ? `.${o.note}${o.note === 'email_queued' ? queuedReason(o.record, nowMs) : ''}`
+          : '';
       // A request that is still open (its email queued, or a send whose outcome is unknown)
       // keeps its row, updated, so it looks the same as after a reload.
       const keep = o.record !== null && isOpenSignup(o.record);
@@ -469,9 +521,12 @@ export function signupOutcomeView(
         ok: false,
         record: null,
       };
-    case 'error':
+    case 'error': {
+      const failure = o.error === 'email_failed' ? mailFailure(o.record) : null;
       return {
-        key: `console.signups.err.${o.error}`,
+        key: failure
+          ? `console.signups.err.email_failed.${failure}`
+          : `console.signups.err.${o.error}`,
         // Unknown id: nothing to act on. A failed email leaves a row that can be resent.
         removed: o.error === 'not_found',
         ok: false,
@@ -482,6 +537,7 @@ export function signupOutcomeView(
             ? o.record
             : null,
       };
+    }
     case 'refused':
       return {
         key: `admin.error.${o.error === 'csrf' ? 'network' : o.error}`,

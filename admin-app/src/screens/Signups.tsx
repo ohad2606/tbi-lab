@@ -716,7 +716,7 @@ export function Signups() {
           <strong>
             <bdi dir="auto">{r.name}</bdi>
           </strong>
-          <span class="badge" data-testid="signup-status">
+          <span class="badge badge-status" id={`signup-status-${r.id}`} data-testid="signup-status">
             {t(
               working
                 ? 'console.signups.status.working'
@@ -850,6 +850,7 @@ export function Signups() {
                 data-act="resend"
                 data-testid="signup-resend"
                 aria-label={t('console.signups.resendFor', { name })}
+                aria-describedby={`signup-status-${r.id}`}
                 aria-disabled={busy ? 'true' : undefined}
                 onClick={() => void act(r, 'resend')}
               >
