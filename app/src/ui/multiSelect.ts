@@ -22,6 +22,27 @@ export function toggleItem(
   return addOnly ? sel : { ...sel, [kind]: sel[kind].filter((x) => x !== id) };
 }
 
+/**
+ * A Wires or Junctions list button while several-selection is on: adds its item or takes it out,
+ * leaving the rest of the selection, and gives the one message that says so with the new count.
+ */
+export function toggleFromList(
+  sel: Selection,
+  kind: SelectionKind,
+  id: string,
+  item: string,
+  t: (key: MessageKey, params?: Record<string, string | number>) => string,
+): { next: Selection; added: boolean; said: string } {
+  const next = toggleItem(sel, kind, id);
+  const added = isSelected(next, kind, id);
+  const count = selectionCountMessage(next);
+  const said = t(added ? 'multi.list.added' : 'multi.list.removed', {
+    item,
+    count: t(count.key, count.params),
+  });
+  return { next, added, said };
+}
+
 export function selectEverything(doc: ProjectDocument): Selection {
   return {
     components: doc.components.map((c) => c.id),

@@ -121,14 +121,13 @@ function WireRouteField({ wire, readOnly }: { wire: Wire; readOnly: boolean }) {
       <dd data-testid="wire-route" data-route={wire.auto ? 'auto' : 'manual'}>
         {wire.auto ? t('wireRoute.auto') : t('wireRoute.manual')}
         {!wire.auto && !readOnly && (
-          <button
-            type="button"
+          <ActionButton
             class="small"
             data-testid="wire-route-auto"
             onClick={() => store.apply(makeWiresAutomatic(doc, [wire.id]))}
           >
             {t('wireRoute.makeAuto')}
-          </button>
+          </ActionButton>
         )}
       </dd>
     </>

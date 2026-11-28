@@ -207,7 +207,7 @@ for (const lang of ['en', 'he'] as const) {
 for (const lang of ['en', 'he'] as const) {
   const text = TEXT[lang];
 
-  test(`a switch keeps its own state in its name; [ ], lists and Escape end it (${lang})`, async ({
+  test(`a switch keeps its own state in its name; [ ] and Escape end it (${lang})`, async ({
     page,
   }) => {
     let doc = partsDoc();
@@ -236,11 +236,6 @@ for (const lang of ['en', 'he'] as const) {
 
     await page.keyboard.press(']');
     await expect(status).toHaveText(text.offThen);
-    await expect(tool).toHaveAttribute('aria-pressed', 'false');
-
-    await tool.click();
-    await page.getByTestId('wires-list').getByRole('button').first().click();
-    await expect(page.getByTestId('wires-list-status')).toHaveText(text.offThen);
     await expect(tool).toHaveAttribute('aria-pressed', 'false');
 
     await tool.focus();
@@ -287,13 +282,11 @@ for (const lang of ['en', 'he'] as const) {
 const MORE = {
   en: {
     part: /^Selecting several items is off\. .*R1.* selected/,
-    junction: /^Selecting several items is off\. Junction /,
     cleared: /^Selection cleared\. Selecting several items is off/,
     stopToEdit: /^Stop the simulation to change the circuit/,
   },
   he: {
     part: /^בחירה של כמה פריטים כבויה\. .*R1.* נבחר/,
-    junction: /^בחירה של כמה פריטים כבויה\. /,
     cleared: /^הבחירה נוקתה/,
     stopToEdit: /^יש לעצור את הסימולציה כדי לשנות את המעגל/,
   },
@@ -368,9 +361,7 @@ for (const lang of ['en', 'he'] as const) {
     await expect(tool).toHaveAttribute('aria-pressed', 'false');
   });
 
-  test(`Connections, Schematic, 3D and Junctions selections end the mode (${lang})`, async ({
-    page,
-  }) => {
+  test(`Connections, Schematic and 3D selections end the mode (${lang})`, async ({ page }) => {
     await page.addInitScript((l) => localStorage.setItem('tbi-lab.locale', l), lang);
     await openImported(page, junctionDoc());
     const tool = page.getByTestId('canvas-several');
@@ -403,11 +394,6 @@ for (const lang of ['en', 'he'] as const) {
     await expect(page.getByTestId('view3d')).toHaveAttribute('data-status', 'ready');
     await page.getByTestId('view3d-host').click({ position: { x: 4, y: 4 } });
     await expect(status).toHaveText(more.cleared);
-    await isOff();
-
-    await turnOn();
-    await page.getByTestId('junctions-list').getByRole('button').first().click();
-    await expect(page.getByTestId('junctions-list-status')).toHaveText(more.junction);
     await isOff();
   });
 
@@ -524,7 +510,8 @@ for (const lang of ['en', 'he'] as const) {
   });
 
   test(`a read-only project has no several-selection toggle (${lang})`, async ({ page }) => {
-    await open(page, lang);
+    await page.addInitScript((l) => localStorage.setItem('tbi-lab.locale', l), lang);
+    await openImported(page, junctionDoc());
     const doc = await waitForStoredProject(page, (d) => d.projectId === 'prj_g3multi', 'stored');
     await page.evaluate(
       ([d, v]) =>
@@ -544,11 +531,332 @@ for (const lang of ['en', 'he'] as const) {
     await expect(page.getByTestId('readonly-banner')).toBeVisible();
     await expect(page.getByTestId('canvas-probe')).toBeVisible();
     await expect(page.getByTestId('canvas-several')).toHaveCount(0);
+    const wires = page.locator('.wires-list-item');
+    await wires.nth(0).click();
+    await wires.nth(1).click();
+    await expect(page.locator('.wires-list-item[aria-pressed="true"]')).toHaveCount(1);
+    await expect(wires.nth(1)).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.list-several-hint')).toHaveCount(0);
     await component(page, 'R1').focus();
     await page.keyboard.press('Shift+Enter');
     expect(await selected(page)).toEqual(['R1']);
     await component(page, 'R2').focus();
     expect(await selected(page)).toEqual(['R2']);
     expect((await pressSelectAll(page)).prevented).toBe(true);
+  });
+}
+
+const LISTS = {
+  en: {
+    added: (item: string, n: string) => `${item} added to the selection. ${n}`,
+    removed: (item: string, n: string) => `${item} removed from the selection. ${n}`,
+    wire: (n: number) => `Wire W${n}`,
+    junction: 'Junction J1',
+    count: (n: number) => (n === 1 ? '1 item selected' : `${n} items selected`),
+    selectedWire: 'Wire W1 selected',
+    selectedJunction: 'Junction J1 selected',
+    hint: /^Selecting several items: a button here/,
+    deleted: /3 selected items removed/,
+    modeOn: 'Selecting several items is on. No items selected',
+    modeOff: 'Selecting several items is off',
+  },
+  he: {
+    added: (item: string, n: string) => `${item} נוסף לבחירה. ${n}`,
+    removed: (item: string, n: string) => `${item} הוסר מהבחירה. ${n}`,
+    wire: (n: number) => `חוט ${n}`,
+    junction: 'צומת J1',
+    count: (n: number) => (n === 1 ? 'נבחר פריט אחד' : `${n} פריטים נבחרו`),
+    selectedWire: 'חוט 1 נבחר',
+    selectedJunction: 'צומת J1 נבחר',
+    hint: /^בחירה של כמה פריטים: כפתור ברשימה/,
+    deleted: /3 פריטים שנבחרו הוסרו/,
+    modeOn: 'בחירה של כמה פריטים פעילה. לא נבחרו פריטים',
+    modeOff: 'בחירה של כמה פריטים כבויה',
+  },
+} as const;
+
+/** A live region's text without the bidi isolates and the re-announcement space. */
+const said = async (page: Page, id: string) =>
+  ((await page.getByTestId(id).textContent()) ?? '').replace(/[\u2066-\u2069]/g, '').trim();
+
+/** junctionDoc plus a second, separate wire that must survive deleting the others. */
+function listsDoc(): ProjectDocument {
+  const r = addWire(
+    junctionDoc(),
+    { kind: 'terminal', component: 'PSU1', terminal: 'negative' },
+    { kind: 'terminal', component: 'GND1', terminal: 'ref' },
+    [],
+  );
+  if (!r.ok) throw new Error('wire');
+  return r.doc;
+}
+
+for (const lang of ['en', 'he'] as const) {
+  const l = LISTS[lang];
+
+  test(`keyboard only: pick particular wires and a junction from the lists (${lang})`, async ({
+    page,
+  }) => {
+    const doc = listsDoc();
+    const last = doc.layout.wires.length;
+    const keptId = doc.layout.wires[last - 1]!.id;
+    const [w1, w2] = [doc.layout.wires[0]!.id, doc.layout.wires[1]!.id];
+    await page.addInitScript((x) => localStorage.setItem('tbi-lab.locale', x), lang);
+    await openImported(page, doc);
+    const before = await waitForStoredProject(page, (d) => d.layout.wires.length === last, 'open');
+    const tool = page.getByTestId('canvas-several');
+    const wire = (id: string) => page.locator(`.wires-list-item[data-wire="${id}"]`);
+    const junction = page.locator('.junctions-list-item[data-junction="J1"]');
+    const pressed = page.locator('.side-column li button[aria-pressed="true"]');
+    await expect(page.locator('.list-several-hint')).toHaveCount(0);
+
+    await tool.focus();
+    await page.keyboard.press('Space');
+    await expect(page.locator('.list-several-hint')).toHaveCount(2);
+    await expect(page.locator('.list-several-hint').first()).toHaveText(l.hint);
+    // The message arrives on the next frame: wait for it, so it cannot land after a list press.
+    await expect.poll(() => said(page, 'kbwire-status')).toBe(l.modeOn);
+    // Records any text the canvas or mode announcer gets from here on.
+    await page.evaluate(() => {
+      const heard: string[] = [];
+      (window as unknown as { heard: string[] }).heard = heard;
+      for (const id of ['kbwire-status', 'several-status']) {
+        const el = document.querySelector(`[data-testid="${id}"]`)!;
+        new MutationObserver(() => {
+          if (el.textContent?.trim()) heard.push(el.textContent);
+        }).observe(el, { childList: true, characterData: true, subtree: true });
+      }
+    });
+
+    await tabTo(page, wire(w1));
+    await page.keyboard.press('Enter');
+    await expect.poll(() => said(page, 'wires-list-status')).toBe(l.added(l.wire(1), l.count(1)));
+    // "No items selected" is no longer true, so it is gone.
+    await expect.poll(() => said(page, 'kbwire-status')).toBe('');
+    await tabTo(page, wire(w2));
+    await page.keyboard.press('Space');
+    await expect.poll(() => said(page, 'wires-list-status')).toBe(l.added(l.wire(2), l.count(2)));
+    await expect(wire(w2)).toBeFocused();
+    await tabTo(page, junction);
+    await page.keyboard.press('Enter');
+    await expect
+      .poll(() => said(page, 'junctions-list-status'))
+      .toBe(l.added(l.junction, l.count(3)));
+    await expect(junction).toBeFocused();
+    await expect(pressed).toHaveCount(3);
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    // One announcement per press: the canvas and mode announcers are empty and said nothing.
+    expect(await said(page, 'kbwire-status')).toBe('');
+    expect(await said(page, 'several-status')).toBe('');
+    expect(await page.evaluate(() => (window as unknown as { heard: string[] }).heard)).toEqual([]);
+
+    // Taking one out and putting it back.
+    await page.keyboard.press('Enter');
+    await expect
+      .poll(() => said(page, 'junctions-list-status'))
+      .toBe(l.removed(l.junction, l.count(2)));
+    await expect(junction).toHaveAttribute('aria-pressed', 'false');
+    await expect(pressed).toHaveCount(2);
+    await page.keyboard.press('Enter');
+    await expect(pressed).toHaveCount(3);
+
+    // Move: the Properties button moves the junction of the mixed selection.
+    await page.getByTestId('move-right').focus();
+    await page.keyboard.press('Enter');
+    const moved = await waitForStoredProject(
+      page,
+      (d) => d.layout.junctions[0]!.x > before.layout.junctions[0]!.x,
+      'move',
+    );
+    expect(moved.layout.components).toEqual(before.layout.components);
+    await expect(pressed).toHaveCount(3);
+    await page.keyboard.press('Control+z');
+    await waitForStoredProject(
+      page,
+      (d) => d.layout.junctions[0]!.x === before.layout.junctions[0]!.x,
+      'undo move',
+    );
+
+    // Delete, from Properties, then undo.
+    await expect(pressed).toHaveCount(3);
+    await page.getByTestId('inspector-delete').focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => said(page, 'inspector-status')).toMatch(l.deleted);
+    await expect(page.locator('#inspector-heading')).toBeFocused();
+    const after = await waitForStoredProject(
+      page,
+      (d) => d.layout.junctions.length === 0,
+      'delete',
+    );
+    expect(after.layout.wires.map((w) => w.id)).toEqual([keptId]);
+    expect(after.components).toHaveLength(before.components.length);
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('Control+z');
+    await waitForStoredProject(page, (d) => d.layout.wires.length === last, 'undo delete');
+
+    // Turning the mode off is still announced.
+    await tool.focus();
+    await page.keyboard.press('Space');
+    await expect(tool).toHaveAttribute('aria-pressed', 'false');
+    await expect.poll(() => said(page, 'kbwire-status')).toBe(l.modeOff);
+  });
+
+  test(`with the mode off a list button still replaces the selection (${lang})`, async ({
+    page,
+  }) => {
+    const doc = listsDoc();
+    await page.addInitScript((x) => localStorage.setItem('tbi-lab.locale', x), lang);
+    await openImported(page, doc);
+    const wires = page.locator('.wires-list-item');
+    const junction = page.locator('.junctions-list-item');
+    const pressed = page.locator('.side-column li button[aria-pressed="true"]');
+    await wires.nth(0).focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => said(page, 'wires-list-status')).toBe(l.selectedWire);
+    await page.keyboard.press('Enter');
+    await expect(wires.nth(0)).toHaveAttribute('aria-pressed', 'true');
+    await junction.focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => said(page, 'junctions-list-status')).toBe(l.selectedJunction);
+    await expect(pressed).toHaveCount(1);
+    await expect(junction).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('canvas-several')).toHaveAttribute('aria-pressed', 'false');
+  });
+}
+
+for (const lang of ['en', 'he'] as const) {
+  const l = LISTS[lang];
+
+  test(`turning the mode on again drops older status text (${lang})`, async ({ page }) => {
+    await page.addInitScript((x) => localStorage.setItem('tbi-lab.locale', x), lang);
+    await openImported(page, listsDoc());
+    const tool = page.getByTestId('canvas-several');
+    const wire = page.locator('.wires-list-item').first();
+    const junction = page.locator('.junctions-list-item');
+    await wire.click();
+    await junction.click();
+    await expect.poll(() => said(page, 'junctions-list-status')).toBe(l.selectedJunction);
+    await tool.click();
+    await expect.poll(() => said(page, 'wires-list-status')).toBe('');
+    await expect.poll(() => said(page, 'junctions-list-status')).toBe('');
+    // A selection elsewhere ends the mode and says so; that goes too.
+    await page.getByTestId('connections-toggle').click();
+    await page.getByTestId('connections-select-R1').click();
+    await expect.poll(() => said(page, 'several-status')).not.toBe('');
+    await tool.click();
+    await expect.poll(() => said(page, 'several-status')).toBe('');
+  });
+
+  test(`Escape on the toggle leaves probe mode first (${lang})`, async ({ page }) => {
+    await open(page, lang);
+    const tool = page.getByTestId('canvas-several');
+    const probe = page.getByTestId('canvas-probe');
+    await tool.click();
+    await probe.click();
+    await expect(probe).toHaveAttribute('aria-pressed', 'true');
+    await tool.focus();
+    await page.keyboard.press('Escape');
+    await expect(probe).toHaveAttribute('aria-pressed', 'false');
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    await expect(tool).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(tool).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test(`Ctrl+A on side-column buttons never selects page text (${lang})`, async ({ page }) => {
+    await page.addInitScript((x) => localStorage.setItem('tbi-lab.locale', x), lang);
+    await openImported(page, listsDoc());
+    await page.locator('.wires-list-item').first().click();
+    for (const target of [
+      page.locator('.wires-list-item').first(),
+      page.getByTestId('inspector-delete'),
+      page.locator('#inspector-heading'),
+    ]) {
+      await target.focus();
+      expect(await pressSelectAll(page)).toEqual({ prevented: true, text: '' });
+    }
+  });
+
+  test(`Route automatically does not drop focus (${lang})`, async ({ page }) => {
+    const doc = structuredClone(listsDoc());
+    const first = doc.layout.wires[0]!;
+    delete first.auto; // a manual route, so the button shows
+    await page.addInitScript((x) => localStorage.setItem('tbi-lab.locale', x), lang);
+    await openImported(page, doc);
+    await page.locator(`.wires-list-item[data-wire="${first.id}"]`).click();
+    const route = page.getByTestId('wire-route-auto');
+    await route.focus();
+    await page.keyboard.press('Enter');
+    await expect(route).toHaveCount(0);
+    await expect(page.locator('#inspector-heading')).toBeFocused();
+  });
+}
+
+for (const lang of ['en', 'he'] as const) {
+  const text = TEXT[lang];
+  const l = LISTS[lang];
+
+  test(`Escape on the toggle ends a wire being drawn before the selection (${lang})`, async ({
+    page,
+  }) => {
+    await open(page, lang);
+    const tool = page.getByTestId('canvas-several');
+    const canvas = page.getByTestId('canvas');
+    await tool.click();
+    await component(page, 'R1').locator('.component-hit').click();
+    await terminal(page, 'R2', 'a').click();
+    await expect(canvas).toHaveClass(/mode-wiring/);
+    await tool.focus();
+    await page.keyboard.press('Escape');
+    await expect(canvas).toHaveClass(/mode-idle/);
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    expect(await selected(page)).toEqual(['R1']);
+    await page.keyboard.press('Escape');
+    await expect(tool).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('kbwire-status')).toHaveText(text.cleared);
+    expect(await selected(page)).toEqual([]);
+  });
+
+  test(`list buttons show membership, describe the mode and drop old status (${lang})`, async ({
+    page,
+  }) => {
+    const doc = listsDoc();
+    await page.addInitScript((x) => localStorage.setItem('tbi-lab.locale', x), lang);
+    await openImported(page, doc);
+    const tool = page.getByTestId('canvas-several');
+    const wire = page.locator('.wires-list-item').first();
+    const junction = page.locator('.junctions-list-item');
+    const buttons = page.locator('.side-column li button');
+    const total = doc.layout.wires.length + doc.layout.junctions.length;
+    await expect(wire).not.toHaveAttribute('aria-describedby');
+
+    // Several items selected is shown as pressed with the mode on and after it is turned off.
+    await page.getByTestId('canvas').focus();
+    await page.keyboard.press('Control+a');
+    const pressed = page.locator('.side-column li button[aria-pressed="true"]');
+    await expect(pressed).toHaveCount(total);
+    await expect(wire).toHaveAccessibleDescription(l.hint);
+    await expect(junction).toHaveAccessibleDescription(l.hint);
+    await tool.click();
+    await expect(pressed).toHaveCount(total);
+    await expect(buttons.filter({ hasText: '✓' })).toHaveCount(total);
+    await expect(wire).not.toHaveAttribute('aria-describedby');
+    await expect(junction).not.toHaveAttribute('aria-describedby');
+
+    // The mode turning off clears a list's status.
+    await tool.click();
+    await wire.click();
+    await expect.poll(() => said(page, 'wires-list-status')).not.toBe('');
+    await tool.click();
+    await expect.poll(() => said(page, 'wires-list-status')).toBe('');
+
+    // So does a selection made elsewhere: the other list, then the drawing.
+    await wire.click();
+    await expect.poll(() => said(page, 'wires-list-status')).toBe(l.selectedWire);
+    await junction.click();
+    await expect.poll(() => said(page, 'junctions-list-status')).toBe(l.selectedJunction);
+    await expect.poll(() => said(page, 'wires-list-status')).toBe('');
+    await component(page, 'R1').focus();
+    await expect.poll(() => said(page, 'junctions-list-status')).toBe('');
   });
 }

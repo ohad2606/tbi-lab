@@ -122,6 +122,8 @@ export interface CanvasApi {
   placeAtCenter(type: ComponentTypeId): void;
   /** Pans so that a point of the drawing is visible (nothing while the view is hidden). */
   reveal(at: Point): void;
+  /** Empties the live region: a list changed the selection, so the old text is no longer true. */
+  clearStatus(): void;
 }
 
 interface Props {
@@ -443,6 +445,9 @@ export function Canvas({
   };
 
   apiRef.current = {
+    clearStatus() {
+      kbAnnounce('');
+    },
     reveal(at) {
       // After the render: the hint (which the point must stay clear of) follows the selection.
       requestAnimationFrame(() => {
@@ -1946,6 +1951,17 @@ export function Canvas({
                 if (e.key !== 'Escape' || !several || placing) return;
                 e.preventDefault();
                 e.stopPropagation();
+                // One level at a time, in the drawing's order: probe mode, (an armed part, above),
+                // an interaction in progress, then the selection and the mode.
+                if (probeMode) {
+                  onProbeModeChange(false);
+                  kbAnnounce(t('probe.kb.off'));
+                  return;
+                }
+                if (mode.kind !== 'idle') {
+                  setMode({ kind: 'idle' });
+                  return;
+                }
                 setSeveralOn(false);
                 store.select(emptySelection());
                 kbAnnounce(t('multi.cleared'));
