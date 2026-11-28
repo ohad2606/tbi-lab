@@ -98,6 +98,7 @@ export const en = {
   'multi.off': 'Selecting several items is off',
   'multi.cleared': 'Selection cleared. Selecting several items is off',
   'multi.offThen': 'Selecting several items is off. {said}',
+  'multi.partChosen': '{ref} selected',
   'multi.part.selected': 'selected',
   'multi.part.notSelected': 'not selected',
   'multi.count.none': 'No items selected',

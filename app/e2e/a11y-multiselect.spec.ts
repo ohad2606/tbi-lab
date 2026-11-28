@@ -4,8 +4,21 @@
  * items" button also gives single clicks (no Shift, no drag).
  */
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { addComponent, addWire, createProject, type ProjectDocument } from '@tbi-lab/domain';
-import { component, openImported, waitForStoredProject } from './helpers.js';
+import {
+  addComponent,
+  addWire,
+  createProject,
+  SCHEMA_VERSION,
+  type ProjectDocument,
+} from '@tbi-lab/domain';
+import {
+  component,
+  openAppMenu,
+  openImported,
+  reopenFromLibrary,
+  terminal,
+  waitForStoredProject,
+} from './helpers.js';
 
 const TEXT = {
   en: {
@@ -268,5 +281,274 @@ for (const lang of ['en', 'he'] as const) {
     expect(await tool.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
     await page.keyboard.press('Tab');
     await expect(zoomIn).toBeFocused();
+  });
+}
+
+const MORE = {
+  en: {
+    part: /^Selecting several items is off\. .*R1.* selected/,
+    junction: /^Selecting several items is off\. Junction /,
+    cleared: /^Selection cleared\. Selecting several items is off/,
+    stopToEdit: /^Stop the simulation to change the circuit/,
+  },
+  he: {
+    part: /^בחירה של כמה פריטים כבויה\. .*R1.* נבחר/,
+    junction: /^בחירה של כמה פריטים כבויה\. /,
+    cleared: /^הבחירה נוקתה/,
+    stopToEdit: /^יש לעצור את הסימולציה כדי לשנות את המעגל/,
+  },
+} as const;
+
+/** R1 and R2 wired, with a junction on that wire. */
+function junctionDoc(): ProjectDocument {
+  const wired = addWire(
+    partsDoc(),
+    { kind: 'terminal', component: 'R1', terminal: 'b' },
+    { kind: 'terminal', component: 'R2', terminal: 'a' },
+    [],
+  );
+  if (!wired.ok) throw new Error('wire');
+  const tee = addWire(
+    wired.doc,
+    { kind: 'terminal', component: 'R1', terminal: 'a' },
+    { kind: 'wire', wire: wired.doc.layout.wires[0]!.id, at: { x: 60, y: -160 } },
+    [],
+  );
+  if (!tee.ok) throw new Error('junction');
+  return tee.doc;
+}
+
+/** A circuit the engine can run: supply, ground and both resistors in series. */
+function runnableDoc(): ProjectDocument {
+  let doc = partsDoc();
+  const pin = (component: string, terminal: string) =>
+    ({ kind: 'terminal', component, terminal }) as const;
+  for (const [from, to] of [
+    [pin('PSU1', 'positive'), pin('R1', 'a')],
+    [pin('R1', 'b'), pin('R2', 'a')],
+    [pin('R2', 'b'), pin('PSU1', 'negative')],
+    [pin('PSU1', 'negative'), pin('GND1', 'ref')],
+  ] as const) {
+    const r = addWire(doc, from, to, []);
+    if (!r.ok) throw new Error('wire');
+    doc = r.doc;
+  }
+  return doc;
+}
+
+/** Whether Ctrl+A was kept from the browser (which would select the page's text). */
+async function pressSelectAll(page: Page): Promise<{ prevented: boolean; text: string }> {
+  await page.evaluate(() => {
+    getSelection()!.removeAllRanges();
+    window.addEventListener('keydown', function seen(e) {
+      if (e.key.toLowerCase() !== 'a') return;
+      window.removeEventListener('keydown', seen);
+      document.body.dataset.prevented = String(e.defaultPrevented);
+    });
+  });
+  await page.keyboard.press('Control+a');
+  return page.evaluate(() => ({
+    prevented: document.body.dataset.prevented === 'true',
+    text: String(getSelection()),
+  }));
+}
+
+for (const lang of ['en', 'he'] as const) {
+  const text = TEXT[lang];
+  const more = MORE[lang];
+
+  test(`opening another project ends the mode (${lang})`, async ({ page }) => {
+    await open(page, lang);
+    await openImported(page, { ...partsDoc(), projectId: 'prj_g3other', name: 'other' });
+    const tool = page.getByTestId('canvas-several');
+    await tool.click();
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    await openAppMenu(page);
+    await page.getByTestId('menu-recent-prj_g3multi').click();
+    await expect(tool).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test(`Connections, Schematic, 3D and Junctions selections end the mode (${lang})`, async ({
+    page,
+  }) => {
+    await page.addInitScript((l) => localStorage.setItem('tbi-lab.locale', l), lang);
+    await openImported(page, junctionDoc());
+    const tool = page.getByTestId('canvas-several');
+    const status = page.getByTestId('several-status');
+    const turnOn = async () => {
+      await page.getByTestId('view-circuit').click();
+      await tool.click();
+      await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    };
+    const isOff = async () => {
+      await page.getByTestId('view-circuit').click();
+      await expect(tool).toHaveAttribute('aria-pressed', 'false');
+    };
+
+    await turnOn();
+    await page.getByTestId('connections-toggle').click();
+    await page.getByTestId('connections-select-R1').click();
+    await expect(status).toHaveText(more.part);
+    await isOff();
+
+    await turnOn();
+    await page.getByTestId('view-schematic').click();
+    await page.locator('[data-part="R1"]').focus();
+    await page.keyboard.press('Enter');
+    await expect(status).toHaveText(more.part);
+    await isOff();
+
+    await turnOn();
+    await page.getByTestId('view-3d').click();
+    await expect(page.getByTestId('view3d')).toHaveAttribute('data-status', 'ready');
+    await page.getByTestId('view3d-host').click({ position: { x: 4, y: 4 } });
+    await expect(status).toHaveText(more.cleared);
+    await isOff();
+
+    await turnOn();
+    await page.getByTestId('junctions-list').getByRole('button').first().click();
+    await expect(page.getByTestId('junctions-list-status')).toHaveText(more.junction);
+    await isOff();
+  });
+
+  test(`Escape on the toggle cancels a pending placement first (${lang})`, async ({ page }) => {
+    await open(page, lang);
+    const tool = page.getByTestId('canvas-several');
+    const tile = page.getByTestId('palette-component.resistor');
+    await tool.click();
+    await tile.click();
+    await expect(tile).toHaveAttribute('aria-pressed', 'true');
+    await tool.focus();
+    await page.keyboard.press('Escape');
+    await expect(tile).toHaveAttribute('aria-pressed', 'false');
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('Escape');
+    await expect(tool).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('kbwire-status')).toHaveText(text.cleared);
+  });
+
+  test(`Escape right as the placement shows armed still cancels it (${lang})`, async ({ page }) => {
+    await open(page, lang);
+    const tool = page.getByTestId('canvas-several');
+    await tool.click();
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    // Before the next frame: no deferred effect may stand between the pressed
+    // state and the Escape that cancels it.
+    const armed = await page.evaluate(async () => {
+      const byId = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
+      const tile = byId('palette-component.resistor');
+      // The observer runs as soon as the pressed state reaches the page.
+      const rendered = new Promise<void>((done) =>
+        new MutationObserver((_, o) => {
+          o.disconnect();
+          done();
+        }).observe(tile, { attributeFilter: ['aria-pressed'] }),
+      );
+      // detail 1: a pointer click arms the placement (0 is the keyboard, which places at once).
+      tile.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+      await rendered;
+      const shown = tile.getAttribute('aria-pressed');
+      byId('canvas-several').dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+      return shown;
+    });
+    expect(armed).toBe('true');
+    await expect(page.getByTestId('palette-component.resistor')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test(`a part can be placed while selecting several; the mode stays (${lang})`, async ({
+    page,
+  }) => {
+    await open(page, lang);
+    const tool = page.getByTestId('canvas-several');
+    await tool.click();
+    await page.getByTestId('palette-component.resistor').click();
+    await page.getByTestId('canvas').click({ position: { x: 200, y: 300 } });
+    await waitForStoredProject(page, (d) => d.components.length === 5, 'placed');
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    expect(await selected(page)).toEqual(['R3']);
+    await component(page, 'R1').focus();
+    await page.keyboard.press('Enter');
+    expect(await selected(page)).toEqual(['R1', 'R3']);
+  });
+
+  test(`while the simulation runs, selecting works and Delete removes nothing (${lang})`, async ({
+    page,
+  }) => {
+    // Wired parts: removing them would change the running circuit, so it is refused.
+    await page.addInitScript((l) => localStorage.setItem('tbi-lab.locale', l), lang);
+    await openImported(page, runnableDoc());
+    await page.getByTestId('sim-run').click();
+    await expect(page.getByTestId('sim-stop')).toBeVisible();
+    await component(page, 'R1').focus();
+    await page.keyboard.press('Shift+Enter');
+    await component(page, 'R2').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('kbwire-status')).toHaveText(text.two);
+    await page.keyboard.press('Delete');
+    await expect(page.getByText(more.stopToEdit)).toBeVisible();
+    expect(await selected(page)).toEqual(['R1', 'R2']);
+    await expect(page.locator('[data-hit="component"]')).toHaveCount(4);
+  });
+
+  test(`Ctrl+A never selects page text from a view, and still works in fields (${lang})`, async ({
+    page,
+  }) => {
+    await open(page, lang);
+    await component(page, 'R1').focus();
+    await page.keyboard.press('w');
+    await expect(terminal(page, 'R1', 'a')).toBeFocused();
+    expect(await pressSelectAll(page)).toEqual({ prevented: true, text: '' });
+    await page.keyboard.press('Escape');
+
+    await page.getByTestId('canvas-probe').focus();
+    expect(await pressSelectAll(page)).toEqual({ prevented: true, text: '' });
+
+    await page.getByTestId('view-schematic').click();
+    for (const target of ['svg.schematic', '[data-part="R1"]']) {
+      await page.locator(target).focus();
+      expect(await pressSelectAll(page)).toEqual({ prevented: true, text: '' });
+    }
+
+    const field = page.getByTestId('inspector').locator('input').first();
+    await field.focus();
+    expect((await pressSelectAll(page)).prevented).toBe(false);
+    expect(
+      await field.evaluate((el: HTMLInputElement) => el.selectionEnd! - el.selectionStart!),
+    ).toBe((await field.inputValue()).length);
+  });
+
+  test(`a read-only project has no several-selection toggle (${lang})`, async ({ page }) => {
+    await open(page, lang);
+    const doc = await waitForStoredProject(page, (d) => d.projectId === 'prj_g3multi', 'stored');
+    await page.evaluate(
+      ([d, v]) =>
+        new Promise<void>((resolve, reject) => {
+          const req = indexedDB.open('tbi-lab');
+          req.onsuccess = () => {
+            const tx = req.result.transaction('projects', 'readwrite');
+            tx.objectStore('projects').put({ ...d, schemaVersion: v });
+            tx.oncomplete = () => (req.result.close(), resolve());
+            tx.onerror = () => reject(tx.error);
+          };
+        }),
+      [doc, SCHEMA_VERSION + 1] as const,
+    );
+    await page.reload();
+    await reopenFromLibrary(page);
+    await expect(page.getByTestId('readonly-banner')).toBeVisible();
+    await expect(page.getByTestId('canvas-probe')).toBeVisible();
+    await expect(page.getByTestId('canvas-several')).toHaveCount(0);
+    await component(page, 'R1').focus();
+    await page.keyboard.press('Shift+Enter');
+    expect(await selected(page)).toEqual(['R1']);
+    await component(page, 'R2').focus();
+    expect(await selected(page)).toEqual(['R2']);
+    expect((await pressSelectAll(page)).prevented).toBe(true);
   });
 }
