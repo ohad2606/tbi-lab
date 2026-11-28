@@ -11,7 +11,7 @@ import { toggleFromList } from './multiSelect.js';
 import { useListStatus } from './useListStatus.js';
 import { wireListEntries } from './wireKeyboard.js';
 
-export function WiresList({ severalOn }: { severalOn: boolean }) {
+export function WiresList({ severalOn, onSelect }: { severalOn: boolean; onSelect(): void }) {
   const { doc, selection, locale, readOnly } = useAppState();
   const store = useStore();
   const t = useT();
@@ -50,6 +50,7 @@ export function WiresList({ severalOn }: { severalOn: boolean }) {
                 aria-pressed={pressed(r.id)}
                 aria-describedby={several ? 'wires-list-hint' : undefined}
                 onClick={() => {
+                  onSelect();
                   if (several) {
                     const name = t('kbwire.list.name', { n: r.n });
                     const r2 = toggleFromList(store.state.selection, 'wires', r.id, name, t);

@@ -122,6 +122,8 @@ export interface CanvasApi {
   placeAtCenter(type: ComponentTypeId): void;
   /** Pans so that a point of the drawing is visible (nothing while the view is hidden). */
   reveal(at: Point): void;
+  /** Empties the live region: a list changed the selection, so the old text is no longer true. */
+  clearStatus(): void;
 }
 
 interface Props {
@@ -443,6 +445,9 @@ export function Canvas({
   };
 
   apiRef.current = {
+    clearStatus() {
+      kbAnnounce('');
+    },
     reveal(at) {
       // After the render: the hint (which the point must stay clear of) follows the selection.
       requestAnimationFrame(() => {

@@ -13,9 +13,12 @@ import { useListStatus } from './useListStatus.js';
 
 export function JunctionsList({
   onReveal,
+  onSelect,
   severalOn,
 }: {
   onReveal(at: Point): void;
+  /** Called before the list changes the selection. */
+  onSelect(): void;
   severalOn: boolean;
 }) {
   const { doc, selection, locale, readOnly } = useAppState();
@@ -58,6 +61,7 @@ export function JunctionsList({
                   aria-pressed={pressed(j.id)}
                   aria-describedby={several ? 'junctions-list-hint' : undefined}
                   onClick={() => {
+                    onSelect();
                     const id = isolateLtr(j.id);
                     if (several) {
                       const name = t('junctions.list.name', { id });

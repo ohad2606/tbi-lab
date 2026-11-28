@@ -557,6 +557,8 @@ const LISTS = {
     selectedJunction: 'Junction J1 selected',
     hint: /^Selecting several items: a button here/,
     deleted: /3 selected items removed/,
+    modeOn: 'Selecting several items is on. No items selected',
+    modeOff: 'Selecting several items is off',
   },
   he: {
     added: (item: string, n: string) => `${item} נוסף לבחירה. ${n}`,
@@ -568,6 +570,8 @@ const LISTS = {
     selectedJunction: 'צומת J1 נבחר',
     hint: /^בחירה של כמה פריטים: כפתור ברשימה/,
     deleted: /3 פריטים שנבחרו הוסרו/,
+    modeOn: 'בחירה של כמה פריטים פעילה. לא נבחרו פריטים',
+    modeOff: 'בחירה של כמה פריטים כבויה',
   },
 } as const;
 
@@ -610,11 +614,25 @@ for (const lang of ['en', 'he'] as const) {
     await page.keyboard.press('Space');
     await expect(page.locator('.list-several-hint')).toHaveCount(2);
     await expect(page.locator('.list-several-hint').first()).toHaveText(l.hint);
-    const canvasSaid = await said(page, 'kbwire-status');
+    // The message arrives on the next frame: wait for it, so it cannot land after a list press.
+    await expect.poll(() => said(page, 'kbwire-status')).toBe(l.modeOn);
+    // Records any text the canvas or mode announcer gets from here on.
+    await page.evaluate(() => {
+      const heard: string[] = [];
+      (window as unknown as { heard: string[] }).heard = heard;
+      for (const id of ['kbwire-status', 'several-status']) {
+        const el = document.querySelector(`[data-testid="${id}"]`)!;
+        new MutationObserver(() => {
+          if (el.textContent?.trim()) heard.push(el.textContent);
+        }).observe(el, { childList: true, characterData: true, subtree: true });
+      }
+    });
 
     await tabTo(page, wire(w1));
     await page.keyboard.press('Enter');
     await expect.poll(() => said(page, 'wires-list-status')).toBe(l.added(l.wire(1), l.count(1)));
+    // "No items selected" is no longer true, so it is gone.
+    await expect.poll(() => said(page, 'kbwire-status')).toBe('');
     await tabTo(page, wire(w2));
     await page.keyboard.press('Space');
     await expect.poll(() => said(page, 'wires-list-status')).toBe(l.added(l.wire(2), l.count(2)));
@@ -627,9 +645,10 @@ for (const lang of ['en', 'he'] as const) {
     await expect(junction).toBeFocused();
     await expect(pressed).toHaveCount(3);
     await expect(tool).toHaveAttribute('aria-pressed', 'true');
-    // One announcement per press: the canvas and mode announcers say nothing new.
-    expect(await said(page, 'kbwire-status')).toBe(canvasSaid);
+    // One announcement per press: the canvas and mode announcers are empty and said nothing.
+    expect(await said(page, 'kbwire-status')).toBe('');
     expect(await said(page, 'several-status')).toBe('');
+    expect(await page.evaluate(() => (window as unknown as { heard: string[] }).heard)).toEqual([]);
 
     // Taking one out and putting it back.
     await page.keyboard.press('Enter');
@@ -674,6 +693,12 @@ for (const lang of ['en', 'he'] as const) {
     await expect(tool).toHaveAttribute('aria-pressed', 'true');
     await page.keyboard.press('Control+z');
     await waitForStoredProject(page, (d) => d.layout.wires.length === last, 'undo delete');
+
+    // Turning the mode off is still announced.
+    await tool.focus();
+    await page.keyboard.press('Space');
+    await expect(tool).toHaveAttribute('aria-pressed', 'false');
+    await expect.poll(() => said(page, 'kbwire-status')).toBe(l.modeOff);
   });
 
   test(`with the mode off a list button still replaces the selection (${lang})`, async ({

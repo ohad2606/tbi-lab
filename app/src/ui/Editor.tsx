@@ -268,8 +268,12 @@ export function Editor() {
             onReveal={(at) => canvasApi.current?.reveal(at)}
           />
           <ConnectionsPanel />
-          <WiresList severalOn={severalOn} />
-          <JunctionsList onReveal={(at) => canvasApi.current?.reveal(at)} severalOn={severalOn} />
+          <WiresList severalOn={severalOn} onSelect={() => canvasApi.current?.clearStatus()} />
+          <JunctionsList
+            onReveal={(at) => canvasApi.current?.reveal(at)}
+            onSelect={() => canvasApi.current?.clearStatus()}
+            severalOn={severalOn}
+          />
           {doc && requiresMcuRuntime(doc) && <McuTerminal />}
         </div>
       </main>
