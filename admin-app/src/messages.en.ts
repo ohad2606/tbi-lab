@@ -169,6 +169,7 @@ export const consoleEn = {
   'console.signups.verify.sent': 'Waiting for email confirmation (sent {time})',
   'console.signups.verify.confirmed_waiting_limit':
     "Email confirmed. Today's automatic approvals have no place left for this request. It can be approved automatically on a later day, or you can approve it now.",
+  'console.signups.verify.confirmed': 'Email confirmed',
   'console.signups.verify.confirmed_queued': 'Email confirmed, waiting for the automatic approval',
   'console.signups.verify.confirmed_review': 'Email confirmed, needs your decision',
   'console.signups.verify.address_changed':

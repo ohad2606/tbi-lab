@@ -165,7 +165,8 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.verify.not_sent': 'לא רשומה שליחה של מייל אימות',
   'console.signups.verify.sent': 'ממתינה לאימות כתובת המייל (מייל האימות נשלח: {time})',
   'console.signups.verify.confirmed_waiting_limit':
-    'כתובת המייל אומתה. במכסת האישורים האוטומטיים של היום לא נשאר מקום לבקשה הזאת. היא יכולה להיות מאושרת אוטומטית ביום אחר, ואפשר גם לאשר אותה עכשיו.',
+    'כתובת המייל אומתה. במכסת האישורים האוטומטיים של היום לא נשאר מקום לבקשה הזאת. אפשר שהיא תאושר אוטומטית באחד הימים הבאים, ואפשר גם לאשר אותה כבר עכשיו.',
+  'console.signups.verify.confirmed': 'כתובת המייל אומתה',
   'console.signups.verify.confirmed_queued': 'כתובת המייל אומתה, ממתינה לאישור האוטומטי',
   'console.signups.verify.confirmed_review': 'כתובת המייל אומתה, ממתינה להחלטה שלך',
   'console.signups.verify.address_changed': 'הכתובת השתנתה ונדרשת בדיקה: הכתובת הנוכחית לא אומתה',

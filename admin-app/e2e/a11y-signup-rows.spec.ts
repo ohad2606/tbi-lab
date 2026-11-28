@@ -60,6 +60,8 @@ const T = {
     unbound: 'Account not confirmed',
     autoWait: 'Waiting for automatic approval',
     own: 'Waiting for your decision',
+    queuedLine: 'Email confirmed, waiting for the automatic approval',
+    confirmedLine: 'Email confirmed',
     counts: {
       loaded: '3 requests waiting for you. 2 requests are waiting for automatic approval',
       failed: '4 requests waiting for you. 1 request is waiting for automatic approval',
@@ -76,6 +78,8 @@ const T = {
     unbound: 'אין אישור שהחשבון נוסף',
     autoWait: 'ממתינה לאישור אוטומטי',
     own: 'ממתינה להחלטה שלך',
+    queuedLine: 'כתובת המייל אומתה, ממתינה לאישור האוטומטי',
+    confirmedLine: 'כתובת המייל אומתה',
     counts: {
       loaded: '3 בקשות ממתינות לך. 2 בקשות ממתינות לאישור אוטומטי',
       failed: '4 בקשות ממתינות לך. בקשה אחת ממתינה לאישור אוטומטי',
@@ -230,10 +234,14 @@ for (const lang of ['he', 'en'] as const) {
     const live = page.getByTestId('signups-live');
     await expect(count).toHaveText(T[lang].counts.loaded);
     await expect(live).toHaveText(T[lang].counts.loaded);
+    const line = (id: string) => row(id).getByTestId('signup-verification');
+    await expect(line('v1')).toHaveText(T[lang].queuedLine);
     // A failed approval is newer than the loaded state: the row needs the owner again.
     await row('v1').getByTestId('signup-approve').click();
     await expect(row('v1').getByTestId('signup-message')).toBeVisible();
     await expect(badge('v1')).toHaveText(T[lang].own);
+    // The line under it no longer names the automatic approval either.
+    await expect(line('v1')).toHaveText(T[lang].confirmedLine);
     await expect(page.getByTestId('signups-live')).toContainText('Tester v1');
     await expect(row('v1').getByTestId('signup-approve')).toBeFocused();
     await expect(count).toHaveText(T[lang].counts.failed);

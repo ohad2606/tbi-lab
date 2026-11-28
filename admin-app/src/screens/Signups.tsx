@@ -700,6 +700,7 @@ export function Signups() {
     const msg = messages[r.id];
     const kind = signupRowKind(r);
     const name = isolate(r.name);
+    const verifyKey = verificationKey(r, working || !!msg);
     const src = signupSource(r);
     const langKey = `console.signups.lang.${r.lang}` as MessageKey;
     return (
@@ -768,9 +769,9 @@ export function Signups() {
               )}
           </div>
         )}
-        {verificationKey(r) && (
+        {verifyKey && (
           <div class="small" data-testid="signup-verification">
-            {t(verificationKey(r) as MessageKey, { time: SLOT })
+            {t(verifyKey as MessageKey, { time: SLOT })
               .split(SLOT)
               .flatMap((part, i) =>
                 i === 0

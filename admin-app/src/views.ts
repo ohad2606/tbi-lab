@@ -311,21 +311,24 @@ const STATUS_KEY = {
 const AUTO_WAIT: readonly string[] = ['confirmed_queued', 'confirmed_waiting_limit'];
 
 /**
+ * The screen may speak of an automatic approval: the loaded state promises one (the server says so
+ * only with a running, unpaused, readable approver) and nothing contradicts it: undecided, no
+ * failure, no earlier claim, and no action on this screen since (`acted`).
+ */
+const awaitsAuto = (r: SignupRecord, acted: boolean): boolean =>
+  !acted &&
+  r.status === 'pending' &&
+  r.lastError === null &&
+  r.autoApprovedAt === null &&
+  AUTO_WAIT.includes(r.verification?.state ?? '');
+
+/**
  * The row's status text; an email held by the mail limit does not wait for quiet hours. An
- * undecided request is "waiting for you" unless the loaded state promises an automatic approval
- * (the server says so only with a running, unpaused, readable approver) and nothing contradicts
- * it: no failure, no earlier claim, and no action answered on this screen since (`acted`).
+ * undecided request is "waiting for you" unless it waits for the automatic approval.
  */
 export function signupStatusKey(r: SignupRecord, acted = false) {
   const kind = signupRowKind(r);
-  if (
-    !acted &&
-    r.status === 'pending' &&
-    r.lastError === null &&
-    r.autoApprovedAt === null &&
-    AUTO_WAIT.includes(r.verification?.state ?? '')
-  )
-    return 'console.signups.status.autoWait' as const;
+  if (awaitsAuto(r, acted)) return 'console.signups.status.autoWait' as const;
   return kind === 'queued' && r.lastError === 'mail_cap'
     ? 'console.signups.status.emailMailCap'
     : STATUS_KEY[kind];
@@ -359,11 +362,18 @@ export const isUnconfirmedRow = (r: SignupRecord): boolean =>
   r.autoApprovedAt === null &&
   (r.verification?.state === 'not_sent' || r.verification?.state === 'sent');
 
-/** The text of a row's confirmation state; null = nothing (feature off, or the badge says it). */
-export const verificationKey = (r: SignupRecord): string | null =>
-  !r.verification || r.verification.state === 'approved_auto'
-    ? null
-    : `console.signups.verify.${r.verification.state}`;
+/**
+ * The text of a row's confirmation state; null = nothing (feature off, or the badge says it). A
+ * state that names the automatic approval is said only while the badge says so too; otherwise
+ * only that the address is confirmed.
+ */
+export function verificationKey(r: SignupRecord, acted = false): string | null {
+  const s = r.verification?.state;
+  if (!s || s === 'approved_auto') return null;
+  return AUTO_WAIT.includes(s) && !awaitsAuto(r, acted)
+    ? 'console.signups.verify.confirmed'
+    : `console.signups.verify.${s}`;
+}
 
 /**
  * Which warning Approve asks with: null = none (confirmed, or verification off). Only an
