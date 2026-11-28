@@ -408,19 +408,19 @@ function ReportDialog({
             data-testid="report-disclosure"
           >
             <h3 id="report-disclosure-heading">{t('report.disclosure.heading')}</h3>
-            <p id="report-disclosure-always">{t('report.disclosure.always')}</p>
-            <ul aria-labelledby="report-disclosure-always">
+            <p>{t('report.disclosure.always')}</p>
+            <ul>
               {DISCLOSURE_ALWAYS.map((k) => (
                 <li key={k}>{t(k)}</li>
               ))}
             </ul>
-            <p id="report-disclosure-server">{t('report.disclosure.server')}</p>
-            <ul aria-labelledby="report-disclosure-server">
+            <p>{t('report.disclosure.context')}</p>
+            <p>{t('report.disclosure.server')}</p>
+            <ul>
               {DISCLOSURE_SERVER.map((k) => (
                 <li key={k}>{t(k)}</li>
               ))}
             </ul>
-            <p>{t('report.disclosure.context')}</p>
             <p>{t('report.disclosure.notSent')}</p>
             <p>{t('report.disclosure.retention')}</p>
           </section>

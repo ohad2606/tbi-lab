@@ -2141,7 +2141,7 @@ export const en = {
   'report.category.legend': 'Area',
   'report.blocking': 'This stops me from continuing',
   'report.disclosure.heading': 'What is sent',
-  'report.disclosure.always': 'Every report sends, when it applies:',
+  'report.disclosure.always': 'Every report includes the following, where relevant:',
   'report.disclosure.item.text':
     'The type of report and your text. For a problem: the area and whether it blocks you. For a [[component]] request: the [[component]] name, if you give one.',
   'report.disclosure.item.app':
