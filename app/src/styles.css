@@ -625,6 +625,17 @@ select {
   font-size: 0.9rem;
   margin: 0 0 0.35rem;
 }
+.move-buttons .icon-button[aria-disabled='true'] {
+  border-style: dashed;
+  color: var(--muted);
+  cursor: default;
+}
+@media (forced-colors: active) {
+  .move-buttons .icon-button[aria-disabled='true'] {
+    border-color: GrayText;
+    color: GrayText;
+  }
+}
 .segment-choice {
   display: flex;
   flex-wrap: wrap;

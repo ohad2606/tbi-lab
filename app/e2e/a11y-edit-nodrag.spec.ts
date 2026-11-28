@@ -15,7 +15,7 @@ import {
   wireRoute,
   type ProjectDocument,
 } from '@tbi-lab/domain';
-import { component, openImported, toScreen, waitForStoredProject } from './helpers.js';
+import { clickWorld, component, openImported, toScreen, waitForStoredProject } from './helpers.js';
 
 const TEXT = {
   en: {
@@ -96,6 +96,42 @@ function wireDoc(name: string): ProjectDocument {
   ).doc;
 }
 
+/** Two wires with no stored bends and no automatic routing. */
+function straightWiresDoc(name: string): ProjectDocument {
+  const pin = (c: string, t: string) => ({ kind: 'terminal', component: c, terminal: t }) as const;
+  const a = must(addWire(partsDoc(name), pin('PSU1', 'positive'), pin('R1', 'a'), []));
+  const b = must(addWire(a.doc, pin('PSU1', 'negative'), pin('GND1', 'ref'), []));
+  for (const w of b.doc.layout.wires) {
+    w.vertices = [];
+    delete w.auto;
+  }
+  return b.doc;
+}
+
+/** R1.b to R2.a and PSU1 to GND1: wires with no stored bends and no automatic routing. */
+function joinedDoc(name: string): ProjectDocument {
+  const pin = (c: string, t: string) => ({ kind: 'terminal', component: c, terminal: t }) as const;
+  const a = must(addWire(partsDoc(name), pin('R1', 'b'), pin('R2', 'a'), []));
+  const { doc } = must(addWire(a.doc, pin('PSU1', 'negative'), pin('GND1', 'ref'), []));
+  for (const w of doc.layout.wires) {
+    w.vertices = [];
+    delete w.auto;
+  }
+  return doc;
+}
+
+/** Adds a wire to the selection: Shift+click in the middle of its longest drawn segment. */
+async function shiftClickWire(page: Page, doc: ProjectDocument, index: number): Promise<void> {
+  const route = wireRoute(doc, doc.layout.wires[index]!)!;
+  const [p, q] = route
+    .slice(1)
+    .map((b, i) => [route[i]!, b] as const)
+    .sort(
+      ([a, b], [c, d]) => Math.hypot(d.x - c.x, d.y - c.y) - Math.hypot(b.x - a.x, b.y - a.y),
+    )[0]!;
+  await clickWorld(page, { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, ['Shift']);
+}
+
 async function open(page: Page, lang: Lang, doc: ProjectDocument): Promise<ProjectDocument> {
   await page.addInitScript((l) => localStorage.setItem('tbi-lab.locale', l), lang);
   await openImported(page, doc);
@@ -122,6 +158,8 @@ async function choose(page: Page, mode: Mode, index: number): Promise<void> {
   if (mode === 'clicks') await select.selectOption(String(index));
   else {
     await select.focus();
+    // After the route changed nothing is chosen: the first arrow key picks the first segment.
+    if ((await select.inputValue()) === '') await page.keyboard.press('ArrowDown');
     for (let k = Number(await select.inputValue()); k !== index; k += Math.sign(index - k))
       await page.keyboard.press(index > k ? 'ArrowDown' : 'ArrowUp');
   }
@@ -439,4 +477,231 @@ for (const lang of ['en', 'he'] as const) {
     await expect(page.getByTestId('move-group')).toHaveCount(0);
     await expect(page.locator('#inspector-heading')).toBeFocused();
   });
+}
+
+for (const lang of ['en', 'he'] as const) {
+  const T = {
+    en: {
+      stale: 'The wire changed. Choose a segment before moving it.',
+      partRemoved: /R1.? removed/,
+      manyRemoved: /^2 selected items removed/,
+      groupName: /^Move .?2.? selected items down$/,
+      groupMoved: /2.? items moved down/,
+      groupRefused: /^The selected items were not moved\. .*would overlap/,
+      unchanged: /^The selected items were not moved\. The selected wires have no bends/,
+      unchangedShown: /The selected wires have no bends of their own to move/,
+      partial: /Some of the selected items moved down/,
+      withWire: /^.?3.? items moved down$/,
+      stretched: /^.?2.? items moved down$/,
+      refusedWhy: /R1.? was not moved\. .*would overlap/,
+    },
+    he: {
+      stale: 'החוט השתנה. בחרו מקטע לפני ההזזה.',
+      partRemoved: /R1.? הוסר/,
+      manyRemoved: /^2 פריטים שנבחרו הוסרו/,
+      groupName: /^הזזת .?2.? הפריטים שנבחרו למטה$/,
+      groupMoved: /2.? פריטים הוזזו למטה/,
+      groupRefused: /^הפריטים שנבחרו לא הוזזו\. /,
+      unchanged: /^הפריטים שנבחרו לא הוזזו\. לחוטים שנבחרו אין כיפופים/,
+      unchangedShown: /לחוטים שנבחרו אין כיפופים משלהם להזזה/,
+      partial: /חלק מהפריטים שנבחרו הוזזו למטה/,
+      withWire: /^.?3.? פריטים הוזזו למטה$/,
+      stretched: /^.?2.? פריטים הוזזו למטה$/,
+      refusedWhy: /R1.? לא הוזז\. /,
+    },
+  }[lang];
+
+  test(`after undo and redo no segment moves until one is chosen again (${lang})`, async ({
+    page,
+  }) => {
+    await open(page, lang, wireDoc(`nodrag-stale-${lang}`));
+    await page.locator('.wires-list-item').click();
+    await choose(page, 'clicks', 0);
+    const up = page.getByTestId('segment-move-up');
+    await up.click();
+    const select = page.getByTestId('segment-select');
+    await expect(select).toHaveValue('1');
+    const moved = await drawing(page);
+
+    await up.focus();
+    await page.keyboard.press('Control+z');
+    await expect(select).toHaveValue('');
+    await expect(page.getByTestId('segment-stale')).toHaveText(T.stale);
+    await expect(page.getByTestId('segment-highlight')).toHaveCount(0);
+    const buttons = page.getByTestId('segment-group').getByRole('button');
+    await expect(buttons).toHaveCount(2);
+    const before = await drawing(page);
+    for (const button of await buttons.all()) {
+      await expect(button).toHaveAttribute('aria-disabled', 'true');
+      await expect(button).toHaveAccessibleDescription(T.stale);
+      await button.focus();
+      await page.keyboard.press('Enter');
+      await expect(button).toBeFocused();
+    }
+    await expect(page.getByTestId('inspector-status')).toContainText(T.stale);
+    expect(await drawing(page)).toEqual(before);
+    // Nothing was applied: redo is still there, and brings back the route the pick was made on.
+    await page.keyboard.press('Control+Shift+Z');
+    await expect.poll(() => drawing(page)).toEqual(moved);
+    await expect(select).toHaveValue('1');
+
+    await page.keyboard.press('Control+z');
+    await choose(page, 'keyboard', 0);
+    await expect(page.getByTestId('segment-stale')).toHaveCount(0);
+    await page.getByTestId('segment-move-up').click();
+    await expect(select).toHaveValue('1');
+  });
+
+  test(`Rotate and Delete keep focus on a sensible element (${lang})`, async ({ page }) => {
+    const before = await open(page, lang, partsDoc(`nodrag-actions-${lang}`));
+    const heading = page.locator('#inspector-heading');
+    for (const id of ['inspector-rotate', 'inspector-delete']) {
+      await page.keyboard.press('Escape');
+      await page.getByTestId('palette-component.resistor').click();
+      const at = await toScreen(page, { x: 60, y: -60 });
+      await page.mouse.click(at.x, at.y);
+      await waitForStoredProject(
+        page,
+        (d) => d.components.length === before.components.length + 1,
+        'placed',
+      );
+      const button = page.getByTestId(id);
+      if (id === 'inspector-rotate') {
+        await button.focus();
+        await page.keyboard.press('Enter');
+        await expect(button).toBeFocused();
+        await page.keyboard.press('Control+z');
+        await expect(button).toBeFocused();
+      }
+      await button.focus();
+      await page.keyboard.press('Control+z');
+      await expect(button).toHaveCount(0);
+      await expect(heading).toBeFocused();
+    }
+  });
+
+  test(`Delete key announces a part and a multi-selection (${lang})`, async ({ page }) => {
+    await open(page, lang, partsDoc(`nodrag-delkey-${lang}`));
+    const status = page.getByTestId('kbwire-status');
+    await component(page, 'R1').locator('.component-hit').click();
+    await page.getByTestId('canvas').focus();
+    await page.keyboard.press('Delete');
+    await expect(status).toContainText(T.partRemoved);
+    await page.keyboard.press('Control+z');
+    await component(page, 'R1').locator('.component-hit').click();
+    await component(page, 'R2')
+      .locator('.component-hit')
+      .click({ modifiers: ['Shift'] });
+    await page.getByTestId('canvas').focus();
+    await page.keyboard.press('Backspace');
+    await expect(status).toContainText(T.manyRemoved);
+    await expect(component(page, 'R2')).toHaveCount(0);
+  });
+
+  test(`a group moves with the Move buttons, one undo per press (${lang})`, async ({ page }) => {
+    const before = await open(page, lang, partsDoc(`nodrag-group-${lang}`));
+    await component(page, 'R1').locator('.component-hit').click();
+    await component(page, 'R2')
+      .locator('.component-hit')
+      .click({ modifiers: ['Shift'] });
+    const down = page.getByTestId('move-down');
+    await expect(down).toHaveAccessibleName(T.groupName);
+    const y = before.layout.components.R1!.y;
+    const at = (d: ProjectDocument) => [d.layout.components.R1!.y, d.layout.components.R2!.y];
+    await activate(page, 'keyboard', down);
+    await waitForStoredProject(page, (d) => at(d).every((v) => v === y + 20), 'one step');
+    await activate(page, 'keyboard', down);
+    await waitForStoredProject(page, (d) => at(d).every((v) => v === y + 40), 'two steps');
+    await expect(down).toBeFocused();
+    await expect(page.getByTestId('inspector-status')).toContainText(T.groupMoved);
+    await page.keyboard.press('Control+z');
+    await waitForStoredProject(page, (d) => at(d).every((v) => v === y + 20), 'one undo');
+    await expect(down).toBeFocused();
+  });
+
+  test(`a refused move is announced once, with the reason (${lang})`, async ({ page }) => {
+    await open(page, lang, partsDoc(`nodrag-once-${lang}`));
+    await component(page, 'R1').locator('.component-hit').click();
+    const status = page.getByTestId('inspector-status');
+    const right = page.getByTestId('move-right');
+    for (let i = 0; i < 8; i++) {
+      await right.click();
+      await expect(status).toContainText(/R1/);
+      if (T.refusedWhy.test((await status.textContent()) ?? '')) break;
+    }
+    await expect(status).toContainText(T.refusedWhy);
+    // The banner is visible, but it is not a second live region.
+    const notice = page.getByTestId('notice');
+    await expect(notice).toBeVisible();
+    await expect(notice).not.toHaveAttribute('role', /.*/);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+  });
+
+  test(`wires with nothing to move: shown with the reason, said once (${lang})`, async ({
+    page,
+  }) => {
+    const opened = await open(page, lang, straightWiresDoc(`nodrag-unchanged-${lang}`));
+    expect(opened.layout.wires.map((w) => [w.vertices, w.auto])).toEqual([
+      [[], undefined],
+      [[], undefined],
+    ]);
+    await page.locator('.wires-list-item').first().click();
+    await shiftClickWire(page, opened, 1);
+    const before = await drawing(page);
+    const down = page.getByTestId('move-down');
+    await expect(down).toHaveAccessibleName(T.groupName);
+    await activate(page, 'keyboard', down);
+    await expect(page.getByTestId('inspector-status')).toHaveText(T.unchanged);
+    const notice = page.getByTestId('notice');
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(T.unchangedShown);
+    // Visible only: the Properties status is the one announcement.
+    await expect(notice).not.toHaveAttribute('role', /.*/);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    expect(await drawing(page)).toEqual(before);
+    await expect(down).toBeFocused();
+  });
+
+  test(`a partly moved selection reports no selected count (${lang})`, async ({ page }) => {
+    const opened = await open(page, lang, straightWiresDoc(`nodrag-partial-${lang}`));
+    // R2 and the wire from PSU1 to GND1, which is not attached to it.
+    await component(page, 'R2').locator('.component-hit').click();
+    await shiftClickWire(page, opened, 1);
+    await expect(page.getByTestId('move-down')).toHaveAccessibleName(T.groupName);
+    await activate(page, 'keyboard', page.getByTestId('move-down'));
+    const y = opened.layout.components.R2!.y;
+    await waitForStoredProject(page, (d) => d.layout.components.R2!.y === y + 20, 'R2 moved');
+    await expect(page.getByTestId('inspector-status')).toHaveText(T.partial);
+  });
+
+  for (const parts of [['R1', 'R2'], ['R2']]) {
+    test(`a straight wire moving with ${parts.join(' and ')} counts as moved (${lang})`, async ({
+      page,
+    }) => {
+      const opened = await open(page, lang, joinedDoc(`nodrag-joined-${parts.length}-${lang}`));
+      // First the wires alone: nothing to move, and the reason is shown.
+      await page.locator('.wires-list-item').first().click();
+      await shiftClickWire(page, opened, 1);
+      const down = page.getByTestId('move-down');
+      await activate(page, 'keyboard', down);
+      const notice = page.getByTestId('notice');
+      await expect(notice).toContainText(T.unchangedShown);
+
+      await page.keyboard.press('Escape');
+      await component(page, parts[0]!).locator('.component-hit').click();
+      for (const id of parts.slice(1))
+        await component(page, id)
+          .locator('.component-hit')
+          .click({ modifiers: ['Shift'] });
+      await shiftClickWire(page, opened, 0);
+      const before = await drawing(page);
+      await activate(page, 'keyboard', down);
+      await expect(page.getByTestId('inspector-status')).toHaveText(
+        parts.length === 2 ? T.withWire : T.stretched,
+      );
+      expect(await drawing(page)).not.toEqual(before);
+      // The earlier warning does not outlive a successful move.
+      await expect(notice).toHaveCount(0);
+    });
+  }
 }

@@ -2,12 +2,31 @@
  * Moving a wire segment without dragging (BETA-G3; WCAG 2.1.1, 2.5.7): the pure choices around the
  * domain edit `moveWireSegment`. A route is orthogonal; segment i joins points i and i + 1.
  */
-import type { Point } from '@tbi-lab/domain';
+import { wireRoute, type Point, type ProjectDocument } from '@tbi-lab/domain';
 
 /** The chosen segment of one wire (view state, never stored in the project). */
 export interface SegmentPick {
   wire: string;
   index: number;
+  /** The route the index was picked on (`routeKey`): the pick is only valid on that route. */
+  route: string;
+}
+
+export const routeKey = (route: readonly Point[]): string =>
+  route.map((p) => `${p.x},${p.y}`).join(' ');
+
+/**
+ * The segment to show and move for one wire: the user's pick, or the middle one when this wire has
+ * none. `null` when the pick was made on another route (undo, redo, re-routing, a drag): the same
+ * index may now be a different segment, so nothing moves until the user picks again.
+ */
+export function pickedSegment(
+  pick: SegmentPick | null,
+  wire: string,
+  route: readonly Point[],
+): number | null {
+  if (pick?.wire !== wire) return clampSegment(undefined, route.length - 1);
+  return pick.route === routeKey(route) ? clampSegment(pick.index, route.length - 1) : null;
 }
 
 export const isHorizontalSegment = (route: readonly Point[], index: number): boolean =>
@@ -47,4 +66,21 @@ export function followSegment(
     if (overlap > bestOverlap) [best, bestOverlap] = [i, overlap];
   }
   return best;
+}
+
+/**
+ * Whether an edit left a wire as it was: both its stored layout and its drawn route (a wire with
+ * no bends of its own still moves on screen when its ends do). `after` is the document as stored,
+ * after routing.
+ */
+export function isWireUnmoved(
+  before: ProjectDocument,
+  after: ProjectDocument,
+  id: string,
+): boolean {
+  const shown = (doc: ProjectDocument) => {
+    const wire = doc.layout.wires.find((w) => w.id === id);
+    return JSON.stringify([wire, wire && wireRoute(doc, wire)]);
+  };
+  return shown(before) === shown(after);
 }

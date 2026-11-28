@@ -111,6 +111,8 @@ export const PREF_ONBOARDING = 'tbi-lab.onboarding.v1';
  * no raw exception text ever reaches the UI.
  */
 export type Notice = {
+  /** Already announced by the control that caused it: no live-region role (see `apply`). */
+  quiet?: boolean;
   key: MessageKey;
   params?: Record<string, string | number>;
   tone?: 'error' | 'warning' | 'info';
@@ -910,16 +912,20 @@ export class AppStore {
        * OS-04 overlap gate does not apply (an undo must always be able to go back).
        */
       restore?: boolean;
+      /** The caller announces a refusal itself: its notice is shown but is not a live region. */
+      quiet?: boolean;
     } = {},
   ): boolean {
     const current = this.stateValue.doc;
     if (this.stateValue.readOnly || !current) return false;
+    const refuse = (notice: Notice) =>
+      this.set({ notice: options.quiet ? { ...notice, quiet: true } : notice });
     if (result.ok && this.deps.simulation?.active) {
       // The running simulation holds an immutable snapshot. A STRUCTURAL edit would change
       // what it depends on and is refused, never applied silently: the user stops first.
       // Layout and live edits (PSU settings, toggle position) are allowed.
       if (classifyEdit(current, result.doc) === 'structural') {
-        this.set({ notice: { key: 'sim.stopToEdit' } });
+        refuse({ key: 'sim.stopToEdit' });
         return false;
       }
     }
@@ -930,9 +936,7 @@ export class AppStore {
         name_empty: 'error.edit.name_empty',
       };
       const key = specific[result.error];
-      this.set({
-        notice: key ? { key } : { key: 'error.edit.generic', params: { code: result.error } },
-      });
+      refuse(key ? { key } : { key: 'error.edit.generic', params: { code: result.error } });
       return false;
     }
     if (
@@ -945,12 +949,10 @@ export class AppStore {
     if (overlap) {
       // Sprint 13 OS-04: a part added, moved or rotated onto another part's body is refused
       // (one rule for the Circuit and 3D views, geometry/overlap.ts); the layout stays as it was.
-      this.set({
-        notice: {
-          key: `edit.overlap.${overlap.in}`,
-          params: { a: isolateLtr(overlap.a), b: isolateLtr(overlap.b) },
-          tone: 'warning',
-        },
+      refuse({
+        key: `edit.overlap.${overlap.in}`,
+        params: { a: isolateLtr(overlap.a), b: isolateLtr(overlap.b) },
+        tone: 'warning',
       });
       return false;
     }

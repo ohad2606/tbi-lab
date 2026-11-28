@@ -1,4 +1,4 @@
-import { Fragment } from 'preact';
+import { Fragment, type JSX } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import {
   CATALOG,
@@ -40,6 +40,8 @@ import { rotateRouted } from './routing.js';
 import { MoveControls, SegmentMoveControls } from './MoveControls.js';
 import type { SegmentPick } from './segments.js';
 import { useAnnounce } from './useAnnounce.js';
+import { useKeepFocus } from './useKeepFocus.js';
+import { removalMessage } from './removal.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
 import { McuPanel } from './McuPanel.js';
 import { isLogicType, LogicStateView } from './LogicStateView.js';
@@ -133,6 +135,12 @@ function WireRouteField({ wire, readOnly }: { wire: Wire; readOnly: boolean }) {
   );
 }
 
+/** A Properties action that hands focus on when the selection it acts on goes away. */
+function ActionButton(props: Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, 'ref'>) {
+  const ref = useKeepFocus<HTMLButtonElement>();
+  return <button {...props} ref={ref} type="button" />;
+}
+
 export function Inspector({
   probes,
   onRemoveProbe,
@@ -173,16 +181,15 @@ export function Inspector({
   const actions = !readOnly && count > 0 && (
     <div class="inspector-actions">
       {selection.components.length > 0 && (
-        <button
-          type="button"
+        <ActionButton
           class="button"
+          data-testid="inspector-rotate"
           onClick={() => store.apply(rotateRouted(doc, selection.components))}
         >
           {t('inspector.rotate')}
-        </button>
+        </ActionButton>
       )}
-      <button
-        type="button"
+      <ActionButton
         class="button button-danger"
         data-testid="inspector-delete"
         disabled={simActive}
@@ -190,14 +197,9 @@ export function Inspector({
           const at = doc.layout.junctions.findIndex((j) => j.id === junction);
           const wireNumber = doc.layout.wires.findIndex((w) => w.id === wire?.id) + 1;
           if (!store.apply(deleteSelection(doc, selection), emptySelection())) return;
+          const removed = removalMessage(selection);
           announce(
-            junction
-              ? t('junctions.removed', { id: isolateLtr(junction) })
-              : single
-                ? t('inspector.partRemoved', { id: isolateLtr(single.id) })
-                : wire
-                  ? t('inspector.wireRemoved', { n: wireNumber })
-                  : t('inspector.selectionRemoved'),
+            wire ? t('inspector.wireRemoved', { n: wireNumber }) : t(removed.key, removed.params),
           );
           // This button goes with the selection: focus moves to the junction now at the deleted
           // one's place in the list, or to the heading.
@@ -212,7 +214,7 @@ export function Inspector({
         }}
       >
         {t('inspector.delete')}
-      </button>
+      </ActionButton>
     </div>
   );
 
@@ -284,8 +286,8 @@ export function Inspector({
           <dd>{t('inspector.junction')}</dd>
         </dl>
       )}
-      {!readOnly && (single || junction) && (
-        <MoveControls id={single?.id ?? junction!} announce={announce} onReveal={onReveal} />
+      {!readOnly && (single || junction || count > 1) && (
+        <MoveControls id={single?.id ?? junction} announce={announce} onReveal={onReveal} />
       )}
       {!readOnly && wire && (
         <SegmentMoveControls
