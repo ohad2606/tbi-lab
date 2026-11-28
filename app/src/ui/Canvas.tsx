@@ -110,6 +110,13 @@ import {
 } from './probes.js';
 import { pickedSegment, type SegmentPick } from './segments.js';
 import { removalMessage } from './removal.js';
+import {
+  isSelected,
+  multiSelectKey,
+  selectEverything,
+  selectionCountMessage,
+  toggleItem,
+} from './multiSelect.js';
 
 export interface CanvasApi {
   placeAtCenter(type: ComponentTypeId): void;
@@ -145,7 +152,7 @@ type Hit =
 
 type Mode =
   | { kind: 'idle' }
-  | { kind: 'press'; client: Point; world: Point; wire?: string }
+  | { kind: 'press'; client: Point; world: Point; wire?: string; remove?: Hit }
   | { kind: 'drag'; world: Point; delta: Point }
   /** Dragging one straight segment of a single selected wire (Sprint 5). */
   | { kind: 'segment'; wire: string; segment: number; world: Point; delta: Point }
@@ -473,16 +480,51 @@ export function Canvas({
   // ---------------------------------------------------------------------------------------------
   // Pointer input
 
+  // Several-selection (WCAG 2.1.1): while on, moving focus keeps the selection, and Enter or a
+  // click adds a part or takes it out. Off in read-only projects, as pointer selection is.
+  const [severalOn, setSeveralOn] = useState(false);
+  const several = severalOn && !readOnly;
+  const countText = (sel: Selection) => {
+    const said = selectionCountMessage(sel);
+    return t(said.key, said.params);
+  };
+  const changeSelection = (next: Selection, turnOn = false) => {
+    store.select(next);
+    if (turnOn) setSeveralOn(true);
+    kbAnnounce(turnOn ? t('multi.on', { selected: countText(next) }) : countText(next));
+  };
+  /** Returns true when the key built the selection. */
+  const onMultiKey = (e: KeyboardEvent): boolean => {
+    if (readOnly || placing || kb.mode !== 'idle' || mode.kind !== 'idle') return false;
+    const action = multiSelectKey(e, several);
+    if (action === 'all') {
+      e.preventDefault();
+      changeSelection(selectEverything(doc), !several);
+      return true;
+    }
+    const part = (e.target as Element | null)?.closest?.(
+      '[data-hit="component"]',
+    ) as SVGElement | null;
+    if (action !== 'toggle' || probeMode || !part?.dataset.id) return false;
+    e.preventDefault();
+    // The first press only keeps the focused part (focus selected it already): never removes.
+    if (!e.repeat)
+      changeSelection(
+        toggleItem(store.state.selection, 'components', part.dataset.id, !several),
+        !several,
+      );
+    return true;
+  };
+
   const toggleOrSelect = (hit: Hit, additive: boolean) => {
     const key =
       hit.kind === 'component' ? 'components' : hit.kind === 'wire' ? 'wires' : 'junctions';
     const id = (hit as { id: string }).id;
     const already = selection[key].includes(id);
     if (additive) {
-      store.select({
-        ...selection,
-        [key]: already ? selection[key].filter((x) => x !== id) : [...selection[key], id],
-      });
+      const next = toggleItem(selection, key, id);
+      if (several) changeSelection(next);
+      else store.select(next);
     } else if (!already) {
       store.select({ ...emptySelection(), [key]: [id] });
     }
@@ -555,7 +597,7 @@ export function Canvas({
       if (c && toggle) {
         // PERSISTENT edit (controls.ts, the action the 3D view uses too): the browser document
         // first (revision, autosave, undo); while running it is mirrored to the session.
-        toggleControl(store, doc, c.id, { select: true });
+        toggleControl(store, doc, c.id, { select: !several });
         return;
       }
       if (c?.type === 'component.push_button' && simRunning) {
@@ -565,7 +607,7 @@ export function Canvas({
         setMode({ kind: 'button', id: c.id });
         return;
       }
-      toggleOrSelect({ kind: 'component', id: hit.id }, e.shiftKey);
+      toggleOrSelect({ kind: 'component', id: hit.id }, e.shiftKey || several);
       return;
     }
     if (placing && simActive) {
@@ -585,7 +627,7 @@ export function Canvas({
     }
     if (hit.kind === 'terminal' && simActive) {
       // While running, wiring is structural and not allowed: a terminal selects its part.
-      toggleOrSelect({ kind: 'component', id: hit.component }, e.shiftKey);
+      toggleOrSelect({ kind: 'component', id: hit.component }, e.shiftKey || several);
       return;
     }
     if (hit.kind === 'terminal' && !simActive) {
@@ -602,18 +644,26 @@ export function Canvas({
       return;
     }
     if (hit.kind === 'empty') {
-      if (!e.shiftKey) store.select(emptySelection());
+      const additive = e.shiftKey || several;
+      if (!additive) store.select(emptySelection());
       svg.setPointerCapture(e.pointerId);
-      setMode({ kind: 'rubber', start: world, current: world, additive: e.shiftKey });
+      setMode({ kind: 'rubber', start: world, current: world, additive });
       return;
     }
-    toggleOrSelect(hit, e.shiftKey);
+    // Several-selection: a click on a selected item takes it out, on release (a drag moves).
+    const remove =
+      several &&
+      !e.shiftKey &&
+      (hit.kind === 'component' || hit.kind === 'wire' || hit.kind === 'junction') &&
+      isSelected(selection, `${hit.kind}s`, hit.id);
+    toggleOrSelect(hit, e.shiftKey || (several && !remove));
     svg.setPointerCapture(e.pointerId);
     setMode({
       kind: 'press',
       client: { x: e.clientX, y: e.clientY },
       world,
       ...(hit.kind === 'wire' && !e.shiftKey ? { wire: hit.id } : {}),
+      ...(remove ? { remove: hit } : {}),
     });
   };
 
@@ -692,7 +742,10 @@ export function Canvas({
         releaseButton();
         break;
       case 'pan':
+        setMode({ kind: 'idle' });
+        break;
       case 'press':
+        if (mode.remove) toggleOrSelect(mode.remove, true);
         setMode({ kind: 'idle' });
         break;
       case 'drag':
@@ -726,11 +779,13 @@ export function Canvas({
         };
         const base = mode.additive ? selection : emptySelection();
         const merge = (a: string[], b: string[]) => [...new Set([...a, ...b])];
-        store.select({
+        const boxed: Selection = {
           components: merge(base.components, picked.components),
           wires: merge(base.wires, picked.wires),
           junctions: merge(base.junctions, picked.junctions),
-        });
+        };
+        if (several) changeSelection(boxed);
+        else store.select(boxed);
         setMode({ kind: 'idle' });
         break;
       }
@@ -1195,7 +1250,7 @@ export function Canvas({
   }, [simActive, probeMode, doc, selection]);
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (onProbeKey(e) || onKbKey(e)) return;
+    if (onMultiKey(e) || onProbeKey(e) || onKbKey(e)) return;
     if (e.key === ' ') {
       e.preventDefault();
       const sw = focusedSwitch(e);
@@ -1222,7 +1277,9 @@ export function Canvas({
       } else if (placing) onPlacingDone();
       else if (mode.kind !== 'idle') setMode({ kind: 'idle' });
       else {
-        if (selection.wires.length) kbAnnounce(t('kbwire.wireCleared'));
+        if (several) kbAnnounce(t('multi.cleared'));
+        else if (selection.wires.length) kbAnnounce(t('kbwire.wireCleared'));
+        setSeveralOn(false);
         store.select(emptySelection());
       }
       return;
@@ -1577,6 +1634,7 @@ export function Canvas({
               doc={view}
               component={c}
               selected={selected.components.has(c.id)}
+              pressedState={several ? selected.components.has(c.id) : undefined}
               label={t('canvas.componentLabel', {
                 ref: c.id,
                 type: catalogText(state.locale, CATALOG[c.type].nameKey),
@@ -1587,7 +1645,7 @@ export function Canvas({
                   requestAnimationFrame(() =>
                     reveal(el.querySelector('.focus-ring')!.getBoundingClientRect()),
                   );
-                if (!pointerDown.current && !selected.components.has(c.id)) {
+                if (!several && !pointerDown.current && !selected.components.has(c.id)) {
                   store.select({ ...emptySelection(), components: [c.id] });
                 }
               }}
@@ -1858,6 +1916,28 @@ export function Canvas({
             <path d="M3 17 L9 11 M9 11 l6 -8 l2 2 l-8 6 z" />
           </svg>
         </button>
+        {!readOnly && (
+          <button
+            type="button"
+            class={several ? 'icon-button several-toggle active' : 'icon-button several-toggle'}
+            data-testid="canvas-several"
+            aria-pressed={several}
+            aria-label={t('multi.tool')}
+            title={t('multi.tool')}
+            onClick={() => {
+              setSeveralOn(!several);
+              kbAnnounce(
+                several
+                  ? t('multi.off')
+                  : t('multi.on', { selected: countText(store.state.selection) }),
+              );
+            }}
+          >
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" class="control-icon">
+              <path d="M3 6V3h3M9 3h2M14 3h3v3M17 9v2M3 9v2M3 14v3h3M9 17h2M6 10l3 3l8-4" />
+            </svg>
+          </button>
+        )}
         <button
           type="button"
           class="icon-button"
@@ -1914,13 +1994,18 @@ export function Canvas({
           onResize={revealFocused}
         >
           {!readOnly &&
-            t(hint, {
-              enter: isolateLtr('Enter'),
-              w: isolateLtr('W'),
-              prev: isolateLtr('['),
-              next: isolateLtr(']'),
-              esc: isolateLtr('Esc'),
-            })}
+            t(
+              several && mode.kind === 'idle' && !placing && !probeMode
+                ? 'canvas.hint.several'
+                : hint,
+              {
+                enter: isolateLtr('Enter'),
+                w: isolateLtr('W'),
+                prev: isolateLtr('['),
+                next: isolateLtr(']'),
+                esc: isolateLtr('Esc'),
+              },
+            )}
           {overlaysLimited && (
             <div class="view-note-warning" role="status" data-testid="canvas-overlay-limit">
               {t('canvas.overlayLimit')}
@@ -1968,6 +2053,7 @@ function ComponentView({
   doc,
   component: c,
   selected,
+  pressedState,
   label,
   onFocus,
   result,
@@ -1979,6 +2065,8 @@ function ComponentView({
   doc: ProjectDocument;
   component: ComponentInstance;
   selected: boolean;
+  /** Several-selection is on: the part is a toggle button whose state is "selected". */
+  pressedState: boolean | undefined;
   label: string;
   onFocus(el: SVGGElement): void;
   /** Solved values while a simulation runs; runtime state, never part of the document. */
@@ -2033,6 +2121,7 @@ function ComponentView({
       data-overstressed={overstressed ? 'true' : undefined}
       tabindex={0}
       role="button"
+      aria-pressed={pressedState}
       aria-label={[label, values, switchState, screen].filter(Boolean).join(', ')}
       data-closed={c.type === 'component.toggle_switch' ? String(symbolState.closed) : undefined}
       data-pressed={c.type === 'component.push_button' ? String(symbolState.pressed) : undefined}

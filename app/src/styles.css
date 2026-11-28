@@ -1196,6 +1196,11 @@ select {
   color: var(--runtime);
 }
 
+/* The state is not colour alone (1.4.1): a heavier border while selecting several items. */
+.icon-button.several-toggle.active {
+  border-width: 3px;
+}
+
 .canvas.mode-probe {
   cursor: crosshair;
 }

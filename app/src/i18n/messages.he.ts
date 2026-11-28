@@ -92,6 +92,14 @@ export const he: Record<MessageKey, string> = {
     'חוט {id}: משורטט במקום שבו הוא עשוי להיראות מחובר; הוא אינו מחובר שם',
   'canvas.routeLimit':
     'הפרויקט גדול מאוד: {count} חוטים משורטטים בצורה פשוטה (הם עשויים לעבור קרוב לפינים או לחוטים אחרים). החיבורים הם בדיוק כפי שהם משורטטים.',
+  'canvas.hint.several':
+    'בחירה של כמה פריטים. {enter} או לחיצה מוסיפים רכיב או מסירים אותו. {esc} מנקה.',
+  'multi.tool': 'בחירה של כמה פריטים',
+  'multi.on': 'בחירה של כמה פריטים פעילה. {selected}',
+  'multi.off': 'בחירה של כמה פריטים כבויה',
+  'multi.cleared': 'הבחירה נוקתה. בחירה של כמה פריטים כבויה',
+  'multi.count.none': 'לא נבחרו פריטים',
+  'multi.count.one': 'נבחר פריט אחד',
   'canvas.hint.idle': 'לחצו על [[terminal]] כדי להתחיל חוט. גררו על שטח ריק כדי לבחור.',
   'canvas.hint.placing': 'לחצו על משטח השרטוט כדי למקם. Esc לביטול.',
   'canvas.hint.wiring':
@@ -2442,6 +2450,11 @@ export const he: Record<MessageKey, string> = {
   'shortcut.escStep.when': 'תצוגת המעגל',
   'shortcut.delete.action': 'מחיקת הרכיבים, החוטים או הצמתים הנבחרים',
   'shortcut.delete.when': 'יש בחירה; לא בדוגמה לקריאה בלבד',
+  'shortcut.selectToggle.action':
+    'הוספת הרכיב שבמיקוד לבחירה, או הסרתו (הלחיצה הראשונה מפעילה בחירה של כמה פריטים; אחריה גם Enter פועל)',
+  'shortcut.selectToggle.when': 'רכיב במיקוד; לא לקריאה בלבד',
+  'shortcut.selectAll.action': 'בחירת כל הרכיבים, החוטים והצמתים',
+  'shortcut.selectAll.when': 'תצוגת המעגל במיקוד; לא לקריאה בלבד',
   'shortcut.rotate.action': 'סיבוב הרכיבים הנבחרים',
   'shortcut.rotate.when': 'יש רכיבים נבחרים; לא לקריאה בלבד',
   'shortcut.moveSelection.action': 'הזזת הבחירה צעד רשת אחד (עם Shift, חמישה צעדים)',
