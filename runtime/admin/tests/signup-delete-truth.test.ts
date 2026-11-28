@@ -185,6 +185,27 @@ describe('deleteNow: record unreadable or gone, a non-file .mark (ownMark unknow
     expect(lstatSync(foreign).isDirectory()).toBe(true);
   });
 
+  for (const history of ['ok', 'incomplete then ok'] as const) {
+    it(`after an audited delete (${history}), an unrelated non-file .mark: already_deleted`, async () => {
+      const s = await setup();
+      const { record: r } = await s.store.createIfNew(INPUT);
+      if (history === 'incomplete then ok') {
+        const { path } = replaceOwnMark(s.root, s.dir, 'directory');
+        expect(await s.store.deleteNow(r.id)).toBe('incomplete');
+        rmSync(path, { recursive: true, force: true });
+      }
+      expect(await s.store.deleteNow(r.id)).toBe('deleted');
+      const before = audit(s.dir);
+      const foreign = join(s.dir, mark('other@example.com'));
+      mkdirSync(foreign, { mode: 0o700 });
+
+      expect(await s.store.deleteNow(r.id)).toBe('already_deleted');
+      expect(audit(s.dir)).toBe(before);
+      expect(s.logs.length).toBe(history === 'ok' ? 0 : 1);
+      expect(lstatSync(foreign).isDirectory()).toBe(true);
+    });
+  }
+
   it('leftovers only (no record, no delete audited) with a directory .mark: not_found, never deleted', async () => {
     const s = await setup();
     const { record: r } = await s.store.createIfNew(INPUT);

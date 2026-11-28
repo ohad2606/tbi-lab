@@ -581,6 +581,8 @@ export class PendingStore {
         );
         const deletedBefore = !existed && (await this.auditHas(id, 'delete', 'ok'));
         const unfinished = !existed && (await this.auditHas(id, 'delete', 'incomplete'));
+        // The request's own files may remain: no audited `ok` says they are gone.
+        const open = existed || (unfinished && !deletedBefore);
         const earlier = existed || deletedBefore || unfinished;
         known = earlier || (await readdir(this.dir)).some((f) => f.startsWith(`${id}.`));
         // Derived from the record, as createIfNew names it; unknown when it cannot be read.
@@ -597,8 +599,8 @@ export class PendingStore {
           });
           return 'not_found';
         }
-        // Record exists or existed but its address is unknown: a non-file marker may be its own.
-        await this.removeSideFiles(id, ownMark, earlier && ownMark === undefined);
+        // Delete still open and the address unknown: a non-file marker may be its own.
+        await this.removeSideFiles(id, ownMark, open && ownMark === undefined);
         await this.unlinkGone(`${id}.web`);
         if (existed) await this.unlinkGone(`${id}.json`);
         // Idempotent; also on a retry whose record is already gone.
@@ -635,7 +637,7 @@ export class PendingStore {
    * regular file is skipped, except `ownMark` (throws `mark_not_file`: the delete or purge stays
    * unfinished and keeps the record). An unreadable regular marker is a failure when it may be this
    * request's: it is `ownMark`, or `ownMark` is unknown (record gone or unreadable).
-   * `unknownOwn`: the request exists or existed but `ownMark` is unknown; then ANY non-file
+   * `unknownOwn`: the delete is still open but `ownMark` is unknown; then ANY non-file
    * `.mark` entry may be its own and also throws `mark_not_file` (never followed or removed).
    */
   private async removeSideFiles(

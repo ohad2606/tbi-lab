@@ -43,10 +43,13 @@ describe('resend of a mail held by the pause', () => {
     // Pause file, failed pause check or unsafe state dir: no claim that a pause file exists.
     expect(en).toContain('could not be checked safely');
     expect(he).toContain('לא ניתן היה לבדוק בבטחה');
-    expect(en).toContain('only after automatic approval is resumed');
+    // Resuming alone does not release a mail held by an unsafe state dir or a failed check.
+    expect(en).toContain('only when automatic approval is not paused and the pause check works');
+    expect(en).not.toContain('resumed');
     expect(he).toContain('עדיין לא נשלח');
     expect(he).not.toContain('לא נשלח דבר');
-    expect(he).toContain('רק אחרי שהאישור האוטומטי יחודש');
+    expect(he).toContain('רק כשהאישור האוטומטי אינו מושהה ובדיקת מצב ההשהיה פועלת');
+    expect(he).not.toContain('יחודש');
     // The queued row has no resend button, so the note names none.
     expect(en).not.toContain('Resend');
     expect(he).not.toContain('שליחת המייל שוב');
