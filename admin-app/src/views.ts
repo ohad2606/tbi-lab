@@ -505,22 +505,48 @@ export function signupCountKey(
 }
 
 /**
- * The count line of the sign-up list: only rows that need the owner (decide, retry, resend). A
- * queued row (its email waits for quiet hours) needs nothing, so it is not counted; when only
- * queued rows are open, a neutral sentence names them instead of "waiting for you".
+ * The count line of the sign-up list: `count` is only rows that need the owner (decide, retry,
+ * resend). A queued row (its email waits for quiet hours) needs nothing, and neither does a row
+ * whose badge says it waits for the automatic approval (same predicate as the badge, with the
+ * rows `acted` on here): those are named separately in `auto`. With no row for the owner, a
+ * neutral sentence says so instead of "waiting for you".
  */
-export function signupCountView(rows: readonly SignupRecord[]): {
+export function signupCountView(
+  rows: readonly SignupRecord[],
+  acted: (r: SignupRecord) => boolean = () => false,
+): {
   key:
     | 'console.signups.count.one'
     | 'console.signups.count.other'
-    | 'console.signups.count.queuedOnly';
+    | 'console.signups.count.queuedOnly'
+    | 'console.signups.count.noAction';
   count: number;
+  auto?: {
+    key: 'console.signups.count.auto.one' | 'console.signups.count.auto.other';
+    count: number;
+  };
 } {
-  const kinds = rows.map(signupRowKind);
-  const action = kinds.filter((k) => k !== 'queued').length;
-  const queued = kinds.length - action;
-  if (action === 0 && queued > 0) return { key: 'console.signups.count.queuedOnly', count: queued };
-  return { key: signupCountKey(action), count: action };
+  let action = 0;
+  let queued = 0;
+  let waits = 0;
+  for (const r of rows) {
+    if (signupStatusKey(r, acted(r)) === 'console.signups.status.autoWait') waits++;
+    else if (signupRowKind(r) === 'queued') queued++;
+    else action++;
+  }
+  const auto: { auto?: NonNullable<ReturnType<typeof signupCountView>['auto']> } = waits
+    ? {
+        auto: {
+          key: waits === 1 ? 'console.signups.count.auto.one' : 'console.signups.count.auto.other',
+          count: waits,
+        },
+      }
+    : {};
+  if (action === 0 && queued > 0)
+    return { key: 'console.signups.count.queuedOnly', count: queued, ...auto };
+  if (action === 0 && waits > 0)
+    return { key: 'console.signups.count.noAction', count: 0, ...auto };
+  return { key: signupCountKey(action), count: action, ...auto };
 }
 
 // ---------------------------------------------------------------- stored requests: delete (K12)

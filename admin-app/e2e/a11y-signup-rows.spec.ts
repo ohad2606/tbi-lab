@@ -60,6 +60,14 @@ const T = {
     unbound: 'Account not confirmed',
     autoWait: 'Waiting for automatic approval',
     own: 'Waiting for your decision',
+    counts: {
+      loaded: '3 requests waiting for you. 2 requests are waiting for automatic approval',
+      failed: '4 requests waiting for you. 1 request is waiting for automatic approval',
+      onlyAuto: 'No requests need your action. 1 request is waiting for automatic approval',
+      withQueued:
+        'No requests need your action. Scheduled emails: 1. 2 requests are waiting for automatic approval',
+      oneEach: '1 request waiting for you. 1 request is waiting for automatic approval',
+    },
     capStatus: 'Account added. The email is waiting because of the email limit',
     capHelp: 'If it stays waiting, check the server log',
     quiet: 'quiet hours',
@@ -68,6 +76,13 @@ const T = {
     unbound: 'אין אישור שהחשבון נוסף',
     autoWait: 'ממתינה לאישור אוטומטי',
     own: 'ממתינה להחלטה שלך',
+    counts: {
+      loaded: '3 בקשות ממתינות לך. 2 בקשות ממתינות לאישור אוטומטי',
+      failed: '4 בקשות ממתינות לך. בקשה אחת ממתינה לאישור אוטומטי',
+      onlyAuto: 'אין בקשות שדורשות פעולה ממך. בקשה אחת ממתינה לאישור אוטומטי',
+      withQueued: 'אין בקשות שדורשות פעולה ממך. מיילים מתוזמנים: 1. 2 בקשות ממתינות לאישור אוטומטי',
+      oneEach: 'בקשה אחת ממתינה לך. בקשה אחת ממתינה לאישור אוטומטי',
+    },
     capStatus: 'החשבון נוסף. המייל ממתין בגלל מגבלת המיילים',
     capHelp: 'אם הוא נשאר ממתין',
     quiet: 'שעות השקט',
@@ -187,7 +202,7 @@ for (const lang of ['he', 'en'] as const) {
     context,
     baseURL,
   }) => {
-    await mock(
+    const list = await mock(
       page,
       [
         web('v1', 'confirmed_queued', 1),
@@ -210,12 +225,40 @@ for (const lang of ['he', 'en'] as const) {
     }
     for (const id of ['v3', 'v4', 'v5']) await expect(badge(id)).toHaveText(T[lang].own);
     await expect(page.getByTestId('signup-auto-approved')).toHaveCount(0);
+    // The count agrees with the badges, and the announcement is the visible line.
+    const count = page.getByTestId('signups-count');
+    const live = page.getByTestId('signups-live');
+    await expect(count).toHaveText(T[lang].counts.loaded);
+    await expect(live).toHaveText(T[lang].counts.loaded);
     // A failed approval is newer than the loaded state: the row needs the owner again.
     await row('v1').getByTestId('signup-approve').click();
     await expect(row('v1').getByTestId('signup-message')).toBeVisible();
     await expect(badge('v1')).toHaveText(T[lang].own);
     await expect(page.getByTestId('signups-live')).toContainText('Tester v1');
     await expect(row('v1').getByTestId('signup-approve')).toBeFocused();
+    await expect(count).toHaveText(T[lang].counts.failed);
+    // Only automatic waits, with a scheduled email, and one of each: said as shown after Refresh.
+    const queued = web('q1', 'confirmed_review', 4, {
+      status: 'email_queued',
+      accountAdded: true,
+      emailSendAfter: '2026-11-28T10:00:00.000Z',
+    });
+    for (const [rows, text] of [
+      [[web('v1', 'confirmed_queued', 1)], T[lang].counts.onlyAuto],
+      [
+        [web('v1', 'confirmed_queued', 1), web('v2', 'confirmed_waiting_limit', 2), queued],
+        T[lang].counts.withQueued,
+      ],
+      [
+        [web('v1', 'confirmed_queued', 1), web('v3', 'confirmed_review', 3)],
+        T[lang].counts.oneEach,
+      ],
+    ] as const) {
+      list.rows = [...rows];
+      await page.getByTestId('signups-refresh').click();
+      await expect(count).toHaveText(text);
+      await expect(live).toHaveText(text);
+    }
   });
 
   test(`signup rows (${lang}): with verification off a claimed row is not called approved`, async ({
