@@ -562,7 +562,9 @@ export class PendingStore {
    *                    with no side file either, never audited
    *   incomplete       a step failed (EPERM, an unreadable address marker, the verify state...):
    *                    audited `delete incomplete`, never `ok`; a retry finishes the job (it
-   *                    answers `deleted` once the rest is gone)
+   *                    answers `deleted` once the rest is gone). Also when the audit log exists
+   *                    but cannot be read: nothing is removed (audited only if the record is
+   *                    present and the log still takes the line)
    *
    * An account already added for the request is NOT touched (accounts.ts: disable).
    */
@@ -579,6 +581,8 @@ export class PendingStore {
             throw e;
           },
         );
+        // A record present is known even if the history below cannot be read.
+        known = existed;
         // Only the LAST audited delete outcome counts: a later `incomplete` reopens an older `ok`.
         const last = await this.lastDeleteOutcome(id);
         const deletedBefore = !existed && last === 'ok';
@@ -738,10 +742,14 @@ export class PendingStore {
 
   /**
    * The outcome (`ok` or `incomplete`; any other word is ignored) of the last audit line
-   * `<time> <id> delete <outcome>[ actor=...]`, if any.
+   * `<time> <id> delete <outcome>[ actor=...]`, if any. Only a missing log (ENOENT) is an empty
+   * history; any other read error throws, so a delete never answers from a history it cannot see.
    */
   private async lastDeleteOutcome(id: string): Promise<'ok' | 'incomplete' | undefined> {
-    const text = await readFile(join(this.dir, 'audit.log'), 'utf8').catch(() => '');
+    const text = await readFile(join(this.dir, 'audit.log'), 'utf8').catch((e: unknown) => {
+      if (errCode(e) === 'ENOENT') return '';
+      throw e;
+    });
     let last: 'ok' | 'incomplete' | undefined;
     for (const l of text.split('\n')) {
       const w = l.split(' ');
