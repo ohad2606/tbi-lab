@@ -9,7 +9,7 @@
 
 import { isolateLtr } from '../i18n/i18n.js';
 import { ScrollNote } from './scrollNote.js';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { viewerPan } from '../views/scene3d/camera.js';
 import { PanButtons, SHORT_VIEW_PX } from './PanButtons.js';
 import { emptySelection } from '@tbi-lab/domain';
@@ -31,6 +31,7 @@ import {
   type LayerVisibility,
 } from '../views/scene3d/layers.js';
 import { useAppState, useStore, useT } from './context.js';
+import { EndSeveralContext } from './selectionKeys.js';
 
 type Status = 'loading' | 'ready' | 'unavailable' | 'failed';
 
@@ -57,6 +58,7 @@ export function ThreeView() {
   const { doc, locale, sim, selection } = useAppState();
   const store = useStore();
   const t = useT();
+  const endSeveral = useContext(EndSeveralContext);
   const host = useRef<HTMLDivElement>(null);
   const viewer = useRef<Viewer | null>(null);
   const [status, setStatus] = useState<Status>('loading');
@@ -298,6 +300,13 @@ export function ThreeView() {
         ? { ...emptySelection(), [hit.kind === 'component' ? 'components' : 'wires']: [hit.id] }
         : emptySelection(),
     );
+    if (!hit) endSeveral(null);
+    else if (hit.kind === 'component')
+      endSeveral(t('multi.partChosen', { ref: isolateLtr(hit.id) }));
+    else {
+      const n = doc.layout.wires.findIndex((w) => w.id === hit.id) + 1;
+      endSeveral(t('kbwire.list.selected', { n }));
+    }
   };
 
   // While running: what the simulation reports, shown live (liveLevels.ts). Off when stopped.
