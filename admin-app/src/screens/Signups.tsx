@@ -280,6 +280,8 @@ export function Signups() {
   const [statusPending, setStatusPending] = useState(false);
   const pendingTimer = useRef<ReturnType<typeof setTimeout>>();
   const [busy, setBusy] = useState<string | null>(null);
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
   const [confirming, setConfirming] = useState<string | null>(null);
   const [confirmAct, setConfirmAct] = useState<'approve' | 'reject'>('reject');
   // The "not confirmed yet" group (in memory only), closed until the owner opens it.
@@ -405,12 +407,16 @@ export function Signups() {
     );
   };
 
-  /** The count line, followed by how many of the rows sit in the "not confirmed yet" group. */
-  const countText = (rows: SignupRecord[]) => {
-    const c = signupCountView(rows);
-    const line = t(c.key, { count: c.count });
+  /**
+   * The count line, followed by how many of the rows sit in the "not confirmed yet" group and how
+   * many wait for the automatic approval. A row `acted` on here no longer shows that badge.
+   */
+  const countText = (rows: SignupRecord[], acted: (r: SignupRecord) => boolean) => {
+    const c = signupCountView(rows, acted);
+    let line = t(c.key, { count: c.count });
     const folded = rows.filter(isUnconfirmedRow).length;
-    return folded ? join(line, t('console.signups.unconfirmed.counted', { count: folded })) : line;
+    if (folded) line = join(line, t('console.signups.unconfirmed.counted', { count: folded }));
+    return c.auto ? join(line, t(c.auto.key, { count: c.auto.count })) : line;
   };
 
   const reload = async () => {
@@ -456,7 +462,8 @@ export function Signups() {
     /** What was spoken last when the count went out; unset: no count was spoken. */
     let counted: number | undefined;
     if (current && v.ok) {
-      const count = countText(v.value);
+      // The loaded list drops every row message; only a row still being worked on differs.
+      const count = countText(v.value, (r) => busyRef.current === r.id);
       // One announcement for both: a failed status is added to the count (a hung one is not waited for).
       const st = await Promise.race([
         status,
@@ -693,6 +700,7 @@ export function Signups() {
     const msg = messages[r.id];
     const kind = signupRowKind(r);
     const name = isolate(r.name);
+    const verifyKey = verificationKey(r, working || !!msg);
     const src = signupSource(r);
     const langKey = `console.signups.lang.${r.lang}` as MessageKey;
     return (
@@ -712,7 +720,7 @@ export function Signups() {
             {t(
               working
                 ? 'console.signups.status.working'
-                : (signupBadgeOverride(msg?.key) ?? signupStatusKey(r)),
+                : (signupBadgeOverride(msg?.key) ?? signupStatusKey(r, !!msg)),
             )}
           </span>
           {src.web && (
@@ -761,9 +769,9 @@ export function Signups() {
               )}
           </div>
         )}
-        {verificationKey(r) && (
+        {verifyKey && (
           <div class="small" data-testid="signup-verification">
-            {t(verificationKey(r) as MessageKey, { time: SLOT })
+            {t(verifyKey as MessageKey, { time: SLOT })
               .split(SLOT)
               .flatMap((part, i) =>
                 i === 0
@@ -955,7 +963,7 @@ export function Signups() {
       ) : (
         <>
           <p class="muted small" data-testid="signups-count">
-            {countText(list.value)}
+            {countText(list.value, (r) => !!messages[r.id] || busy === r.id)}
           </p>
           {main.length > 0 && (
             <>

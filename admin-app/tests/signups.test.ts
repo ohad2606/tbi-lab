@@ -22,6 +22,7 @@ import {
   signupRowKind,
   signupCountKey,
   signupCountView,
+  signupStatusKey,
   parseRoute,
   section,
   signupBadgeOverride,
@@ -101,6 +102,7 @@ describe('sign-up requests view logic', () => {
         'console.signups.status.emailFailed',
         'console.signups.status.emailQueued',
         'console.signups.status.accountUnconfirmed',
+        'console.signups.status.autoWait',
         'console.signups.err.unbound_state',
         'console.signups.sendAfter',
       ])
@@ -181,6 +183,80 @@ describe('sign-up requests view logic', () => {
     );
     expect(m('he')['console.signups.count.queuedOnly']).toBe(
       'אין בקשות שדורשות פעולה ממך. מיילים מתוזמנים: {count}',
+    );
+  });
+  const autoRow = (id: string, state = 'confirmed_queued', extra: object = {}): SignupRecord => ({
+    ...rec('pending'),
+    id,
+    lastError: null,
+    autoApprovedAt: null,
+    verification: { state } as SignupRecord['verification'],
+    ...extra,
+  });
+  const auto = (count: number) => ({
+    key: `console.signups.count.auto.${count === 1 ? 'one' : 'other'}`,
+    count,
+  });
+  it('rows that wait for the automatic approval are not "waiting for you", but are named', () => {
+    const a = autoRow('a');
+    const b = autoRow('b', 'confirmed_waiting_limit');
+    const decide = autoRow('c', 'confirmed_review');
+    const queued = rec('email_queued', true);
+    expect(signupCountView([a, decide])).toEqual({
+      key: 'console.signups.count.one',
+      count: 1,
+      auto: auto(1),
+    });
+    expect(signupCountView([a, b, decide, rec('approved'), queued])).toEqual({
+      key: 'console.signups.count.other',
+      count: 2,
+      auto: auto(2),
+    });
+    expect(signupCountView([a])).toEqual({
+      key: 'console.signups.count.noAction',
+      count: 0,
+      auto: auto(1),
+    });
+    expect(signupCountView([a, b, queued])).toEqual({
+      key: 'console.signups.count.queuedOnly',
+      count: 1,
+      auto: auto(2),
+    });
+  });
+  it('the count excludes exactly the rows whose badge says automatic, answered ones included', () => {
+    const rows = [
+      autoRow('a'),
+      autoRow('b', 'confirmed_waiting_limit'),
+      autoRow('c', 'confirmed_queued', { lastError: 'account_error' }),
+      autoRow('d', 'confirmed_queued', { autoApprovedAt: '2026-11-23T10:00:00.000Z' }),
+      autoRow('e', 'unknown'),
+    ];
+    for (const answered of [new Set<string>(), new Set(['a']), new Set(['a', 'b'])]) {
+      const waits = rows.filter(
+        (r) => signupStatusKey(r, answered.has(r.id)) === 'console.signups.status.autoWait',
+      ).length;
+      const v = signupCountView(rows, (r) => answered.has(r.id));
+      expect(v.count).toBe(rows.length - waits);
+      expect(v.auto?.count ?? 0).toBe(waits);
+    }
+    expect(signupCountView(rows, () => true)).toEqual({
+      key: 'console.signups.count.other',
+      count: 5,
+    });
+  });
+  it('exact HE/EN strings: automatic wait count, singular and plural', () => {
+    const m = (c: string) => LOCALES.find((l) => l.code === c)!.messages as Record<string, string>;
+    expect(m('en')['console.signups.count.noAction']).toBe('No requests need your action');
+    expect(m('en')['console.signups.count.auto.one']).toBe(
+      '1 request is waiting for automatic approval',
+    );
+    expect(m('en')['console.signups.count.auto.other']).toBe(
+      '{count} requests are waiting for automatic approval',
+    );
+    expect(m('he')['console.signups.count.noAction']).toBe('אין בקשות שדורשות פעולה ממך');
+    expect(m('he')['console.signups.count.auto.one']).toBe('בקשה אחת ממתינה לאישור אוטומטי');
+    expect(m('he')['console.signups.count.auto.other']).toBe(
+      '{count} בקשות ממתינות לאישור אוטומטי',
     );
   });
   it('focus after removal: next row, else previous, else none', () => {

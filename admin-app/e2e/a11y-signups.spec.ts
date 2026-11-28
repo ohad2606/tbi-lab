@@ -696,10 +696,11 @@ for (const lang of ['he', 'en'] as const) {
 const V = {
   en: {
     group: 'Not confirmed yet: 2',
-    count: '4 requests waiting for you. Listed under "Not confirmed yet": 2',
+    count:
+      '3 requests waiting for you. Listed under "Not confirmed yet": 2. 1 request is waiting for automatic approval',
     sent: 'Waiting for email confirmation (sent ',
     notSent: 'No confirmation email is recorded as sent',
-    limit: "Email confirmed, waiting for today's limit",
+    limit: "Email confirmed. Today's automatic approvals have no place left for this request.",
     unknown: 'Email confirmation state is unknown',
     warn: 'The email address has not been confirmed.',
     guard: 'Email confirmation and mail limits',
@@ -709,10 +710,11 @@ const V = {
   },
   he: {
     group: 'כתובת המייל טרם אומתה: 2',
-    count: '4 בקשות',
+    count:
+      '3 בקשות ממתינות לך. מופיעות תחת "כתובת המייל טרם אומתה": 2. בקשה אחת ממתינה לאישור אוטומטי',
     sent: 'ממתינה לאימות כתובת המייל (מייל האימות נשלח: ',
     notSent: 'לא רשומה שליחה של מייל אימות',
-    limit: 'כתובת המייל אומתה, ממתינה למכסה היומית',
+    limit: 'כתובת המייל אומתה. במכסת האישורים האוטומטיים של היום לא נשאר מקום לבקשה הזאת.',
     unknown: 'מצב אימות כתובת המייל לא ידוע',
     warn: 'כתובת המייל טרם אומתה.',
     guard: 'אימות כתובות מייל ומגבלות דיוור',
@@ -776,9 +778,8 @@ for (const lang of ['he', 'en'] as const) {
     await expect(page.getByRole('heading', { level: 2, name: t.group })).toBeVisible();
     // Unknown and confirmed rows stay in the main list; the count includes the folded ones.
     await expect(page.getByTestId('signup-row').filter({ visible: true })).toHaveCount(2);
-    await expect(page.getByTestId('signups-count')).toContainText(t.count);
-    await expect(page.getByTestId('signups-count')).toContainText(t.group.split(':')[0]!);
-    await expect(page.getByTestId('signups-live')).toContainText(t.group.split(':')[0]!);
+    await expect(page.getByTestId('signups-count')).toHaveText(t.count);
+    await expect(page.getByTestId('signups-live')).toHaveText(t.count);
     const main = page.getByTestId('signups-list');
     await expect(main).toContainText(t.limit);
     await expect(main).toContainText(t.unknown);

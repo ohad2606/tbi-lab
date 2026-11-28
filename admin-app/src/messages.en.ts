@@ -124,6 +124,9 @@ export const consoleEn = {
   'console.signups.count.one': '1 request waiting for you',
   'console.signups.count.other': '{count} requests waiting for you',
   'console.signups.count.queuedOnly': 'No requests need your action. Scheduled emails: {count}',
+  'console.signups.count.noAction': 'No requests need your action',
+  'console.signups.count.auto.one': '1 request is waiting for automatic approval',
+  'console.signups.count.auto.other': '{count} requests are waiting for automatic approval',
   'console.signups.empty': 'No open sign-up requests.',
   'console.signups.unavailable': 'Sign-up requests are not available right now.',
   'console.signups.refresh': 'Refresh requests',
@@ -135,6 +138,7 @@ export const consoleEn = {
   'console.signups.lang.other': 'Other',
   'console.signups.status.accountUnconfirmed': 'Account not confirmed',
   'console.signups.status.pending': 'Waiting for your decision',
+  'console.signups.status.autoWait': 'Waiting for automatic approval',
   'console.signups.status.emailFailed': 'Account added, but the email was not sent. Use Resend.',
   'console.signups.status.accountPending':
     'Approved, but the account is not ready yet. Approve again to finish.',
@@ -163,7 +167,9 @@ export const consoleEn = {
   'console.signups.auto.value.unknown': 'unknown',
   'console.signups.verify.not_sent': 'No confirmation email is recorded as sent',
   'console.signups.verify.sent': 'Waiting for email confirmation (sent {time})',
-  'console.signups.verify.confirmed_waiting_limit': "Email confirmed, waiting for today's limit",
+  'console.signups.verify.confirmed_waiting_limit':
+    "Email confirmed. Today's automatic approvals have no place left for this request. It can be approved automatically on a later day, or you can approve it now.",
+  'console.signups.verify.confirmed': 'Email confirmed',
   'console.signups.verify.confirmed_queued': 'Email confirmed, waiting for the automatic approval',
   'console.signups.verify.confirmed_review': 'Email confirmed, needs your decision',
   'console.signups.verify.address_changed':

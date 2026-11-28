@@ -7,10 +7,17 @@ import {
   parseAutoApproveStatus,
   type SignupRecord,
 } from '@tbi-lab/admin-client';
-import { isMessageKey } from '../src/i18n.js';
-import { approveWarningKey, isUnconfirmedRow, verificationKey } from '../src/views.js';
+import { LOCALES, isMessageKey } from '../src/i18n.js';
+import {
+  approveWarningKey,
+  isAutoApproved,
+  isUnconfirmedRow,
+  signupStatusKey,
+  verificationKey,
+} from '../src/views.js';
 
 const AT = '2026-11-23T10:00:00.000Z';
+const m = (c: string) => LOCALES.find((l) => l.code === c)!.messages as Record<string, string>;
 const wire = (extra: object = {}) => ({
   id: 'a1',
   name: 'Dana Example',
@@ -120,6 +127,91 @@ describe('row verification', () => {
       if (warn) expect(isMessageKey(warn)).toBe(true);
     }
     expect(approveWarningKey(await parse(wire()))).toBeNull();
+  });
+});
+
+describe('row status badge', () => {
+  const AUTO = 'console.signups.status.autoWait';
+  const OWN = 'console.signups.status.pending';
+  const row = (state: string, extra: object = {}, envelope?: object) =>
+    parse(wire({ verification: { state, sentAt: AT }, ...extra }), envelope);
+
+  it('says "waiting for automatic approval" only for the two states that promise it', async () => {
+    const auto = ['confirmed_queued', 'confirmed_waiting_limit'];
+    for (const state of [...VERIFICATION_STATES, 'not_a_state'])
+      expect(signupStatusKey(await row(state)), state).toBe(auto.includes(state) ? AUTO : OWN);
+    expect(signupStatusKey(await parse(wire()))).toBe(OWN);
+    expect(signupStatusKey(await row('confirmed_queued', {}, {}))).toBe(OWN);
+    expect(isMessageKey(AUTO)).toBe(true);
+  });
+
+  it('keeps the owner on a failed, claimed, unknown-status or acted-on row', async () => {
+    for (const state of ['confirmed_queued', 'confirmed_waiting_limit']) {
+      expect(signupStatusKey(await row(state, { lastError: 'account_error' }))).toBe(OWN);
+      expect(signupStatusKey(await row(state, { status: 'something_new' }))).toBe(OWN);
+      const r = await row(state);
+      expect(signupStatusKey({ ...r, autoApprovedAt: AT })).toBe(OWN);
+      // An action's answer on this screen is newer than the loaded state.
+      expect(signupStatusKey(r, true)).toBe(OWN);
+      expect(signupStatusKey(await row(state, { status: 'email_failed' }))).toBe(
+        'console.signups.status.emailFailed',
+      );
+    }
+  });
+
+  it('"approved automatically" needs an added account and a decided row, also with verification off', async () => {
+    for (const envelope of [{}, { rowStates: 1 }]) {
+      const mark = async (extra: object) =>
+        isAutoApproved(await parse(wire({ autoApprovedAt: AT, ...extra }), envelope));
+      expect(await mark({})).toBe(false);
+      expect(await mark({ accountAdded: true })).toBe(false);
+      expect(await mark({ status: 'approved' })).toBe(false);
+      for (const status of ['approved', 'email_queued', 'email_failed'])
+        expect(await mark({ status, accountAdded: true }), status).toBe(true);
+    }
+  });
+});
+
+describe('row verification line', () => {
+  const CONFIRMED = 'console.signups.verify.confirmed';
+  const PROMISES = ['confirmed_queued', 'confirmed_waiting_limit'];
+  const row = (state: string) => parse(wire({ verification: { state, sentAt: AT } }));
+
+  it('names the automatic approval only while the badge does', async () => {
+    for (const state of PROMISES) {
+      const r = await row(state);
+      expect(verificationKey(r)).toBe(`console.signups.verify.${state}`);
+      for (const [rec, acted] of [
+        [r, true],
+        [{ ...r, lastError: 'account_error' }, false],
+        [{ ...r, autoApprovedAt: AT }, false],
+        [{ ...r, status: 'approved', accountAdded: true }, false],
+        [{ ...r, status: 'email_failed', accountAdded: true }, false],
+        [{ ...r, status: 'email_queued', accountAdded: true }, false],
+        [{ ...r, status: 'something_new' }, false],
+      ] as const) {
+        const label = `${state} ${JSON.stringify([rec.status, rec.lastError, acted])}`;
+        expect(signupStatusKey(rec, acted), label).not.toBe('console.signups.status.autoWait');
+        expect(verificationKey(rec, acted), label).toBe(CONFIRMED);
+      }
+    }
+    expect(isMessageKey(CONFIRMED)).toBe(true);
+    expect(m('en')[CONFIRMED]).toBe('Email confirmed');
+    expect(m('he')[CONFIRMED]).toBe('כתובת המייל אומתה');
+  });
+
+  it('keeps the other states after an action', async () => {
+    for (const state of VERIFICATION_STATES.filter((s) => !PROMISES.includes(s))) {
+      const r = await row(state);
+      expect(verificationKey({ ...r, lastError: 'account_error' }, true)).toBe(verificationKey(r));
+    }
+    expect(verificationKey(await parse(wire()), true)).toBeNull();
+  });
+
+  it('says in Hebrew that a later automatic approval is possible, not promised', () => {
+    expect(m('he')['console.signups.verify.confirmed_waiting_limit']).toBe(
+      'כתובת המייל אומתה. במכסת האישורים האוטומטיים של היום לא נשאר מקום לבקשה הזאת. אפשר שהיא תאושר אוטומטית באחד הימים הבאים, ואפשר גם לאשר אותה כבר עכשיו.',
+    );
   });
 });
 
