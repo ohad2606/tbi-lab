@@ -305,6 +305,8 @@ export async function wireSignupAdmin(
         `signup: purge removed ${removed.length}` +
           (store.corruptPurged ? ` and ${store.corruptPurged} unreadable file(s)` : ''),
       );
+      if (store.purgeIncomplete)
+        io.log(`signup: purge incomplete ${store.purgeIncomplete} (kept for the next run)`);
     } catch (e) {
       io.log(`signup: purge failed (${errorClass(e)})`);
     }

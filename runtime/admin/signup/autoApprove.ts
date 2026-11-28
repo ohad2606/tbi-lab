@@ -94,7 +94,7 @@ import { randomBytes } from 'node:crypto';
 import { errorClass } from './errors.js';
 import { serialById } from './locks.js';
 import type { SignupApprover } from './service.js';
-import type { PendingStore, SignupRecord } from './store.js';
+import { StoreError, type PendingStore, type SignupRecord } from './store.js';
 import { replaceJson } from './summary.js';
 
 export const AUTO_PAUSE_FILE = 'auto-approve.paused';
@@ -1074,12 +1074,24 @@ export class AutoApprover {
       const s = await this.readState(this.today());
       const keep: Record<string, Claim> = {};
       let dropped = false;
-      const fresh = (id: string) => this.d.store.get(id).catch(() => undefined);
+      // Absent or corrupt = undefined; unreadable (EACCES, EIO, ...) = 'unreadable': kept.
+      const fresh = (id: string) =>
+        this.d.store
+          .get(id)
+          .catch((err: unknown) =>
+            err instanceof StoreError && (err.code === 'not_found' || err.code === 'corrupt')
+              ? undefined
+              : ('unreadable' as const),
+          );
       for (const [id, e] of Object.entries(s.claims)) {
         // Not in this sweep's listing (claimed meanwhile, or purged): drop only when it is gone.
         let r = records.get(id) ?? (await fresh(id));
         // The listing may predate a claim made since: re-read before calling it an orphan.
-        if (r?.status === 'pending' && !r.autoApprovedAt) r = await fresh(id);
+        if (r !== 'unreadable' && r?.status === 'pending' && !r.autoApprovedAt) r = await fresh(id);
+        if (r === 'unreadable') {
+          keep[id] = e;
+          continue;
+        }
         const open =
           r !== undefined &&
           !r.emailAttemptedAt &&

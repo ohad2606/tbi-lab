@@ -393,10 +393,14 @@ export function approveWarningKey(r: SignupRecord): string | null {
 
 /**
  * "Approved automatically" (BETA-G1). The approver marks a request before it approves it, so the
- * mark counts only with an added account on a decided request, with verification on or off.
+ * mark counts only with an added account on a decided request, with verification on or off,
+ * and never once the owner's own approval added the account (`approvedBy`).
  */
 export const isAutoApproved = (r: SignupRecord): boolean =>
-  r.autoApprovedAt !== null && r.accountAdded && r.status !== 'pending';
+  r.autoApprovedAt !== null &&
+  r.accountAdded &&
+  r.status !== 'pending' &&
+  r.approvedBy !== 'owner';
 
 /** What the auto-approve block shows (BETA-G1). "off" is a single line; "unknown" means enabled is unreadable. */
 export type AutoApproveState = 'running' | 'paused' | 'notRunning' | 'unknown';

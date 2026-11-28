@@ -729,10 +729,18 @@ export class SignupApprover {
       return refuse(`bind_${errorClass(e)}`);
     }
     if (r.accountAdded) return { ok: true, record: r };
-    const rec = await this.d.store.update(r.id, { accountAdded: true });
+    const rec = await this.d.store.update(r.id, { accountAdded: true, ...this.ownerMark() });
     // Counted exactly once per request, as in doApprove: `accountAdded` was not set before.
     count(this.d.counters, 'signup_approved');
     return { ok: true, record: rec };
+  }
+
+  /**
+   * BETA-G1: the owner's own approver records that it added the account (display only, never
+   * read for a decision); `autoApprovedAt` is left as written.
+   */
+  private ownerMark(): { approvedBy?: 'owner' } {
+    return this.d.ownerActions && this.d.actor !== 'auto' ? { approvedBy: 'owner' } : {};
   }
 
   private async load(id: string): Promise<SignupRecord | null> {
@@ -777,7 +785,7 @@ export class SignupApprover {
         await this.d.mailBinding.bindApproval(id, addEmail).catch((e: unknown) => {
           this.d.log?.(`signup: approval mail binding not written (${errorClass(e)})`);
         });
-      r = await this.d.store.update(id, { accountAdded: true });
+      r = await this.d.store.update(id, { accountAdded: true, ...this.ownerMark() });
       // Counted exactly once per request: `accountAdded` is set once and never cleared.
       count(this.d.counters, 'signup_approved');
     }

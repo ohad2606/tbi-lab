@@ -515,6 +515,8 @@ export interface SignupRecord {
   emailSendAfter: string | null;
   /** When the automatic approver approved this request (BETA-G1); null when a person did or it is undecided. */
   autoApprovedAt: string | null;
+  /** BETA-G1: `'owner'` when the owner added the account (then never "approved automatically"); display only. */
+  approvedBy?: 'owner';
   /** BETA-G1: how the person heard about us (free text, <= 80 chars, shown as plain text only); null when absent. */
   heardFrom: string | null;
   /** BETA-G1: 'web' when the request came from the public web form; null otherwise. */
@@ -609,6 +611,8 @@ function signupRecord(v: unknown, rowStates = false): SignupRecord | null {
       (!rowStates || (v.accountAdded === true && v.status !== 'pending'))
         ? v.autoApprovedAt
         : null,
+    // Tolerant: only the exact tag counts; anything else is ignored.
+    ...(v.approvedBy === 'owner' ? { approvedBy: 'owner' as const } : {}),
     heardFrom:
       typeof v.heardFrom === 'string' &&
       v.heardFrom.trim() !== '' &&
