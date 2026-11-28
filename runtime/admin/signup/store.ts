@@ -7,7 +7,6 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import {
-  appendFile,
   lstat,
   mkdir,
   open,
@@ -172,6 +171,41 @@ const errCode = (e: unknown): string | undefined => (e as { code?: string } | nu
 /** An address marker file name (`<sha256(address)>.mark`). */
 const MARK_RE = /^[0-9a-f]{64}\.mark$/;
 const MARK_READ = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+
+const AUDIT_APPEND =
+  constants.O_WRONLY |
+  constants.O_APPEND |
+  constants.O_CREAT |
+  constants.O_NOFOLLOW |
+  constants.O_NONBLOCK;
+
+/**
+ * Whether the last byte of a non-empty file is a newline. False when it cannot be read (the
+ * writer then adds one: a blank line is skipped by the reader, a glued line is lost).
+ */
+async function endsWithNewline(path: string, size: number): Promise<boolean> {
+  try {
+    const fh = await open(path, MARK_READ);
+    try {
+      const last = Buffer.alloc(1);
+      const { bytesRead } = await fh.read(last, 0, 1, size - 1);
+      return bytesRead === 1 && last[0] === 0x0a;
+    } finally {
+      await fh.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
+async function syncDir(dir: string): Promise<void> {
+  const fh = await open(dir, constants.O_RDONLY);
+  try {
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
+}
 
 /**
  * The text of an address marker, or null when it is absent or not a regular file (a directory,
@@ -454,12 +488,28 @@ export class PendingStore {
 
   /**
    * Append-only audit line: time, id, action, outcome class, and (BETA-G1, only when given) a
-   * fixed actor tag such as `actor=auto`. No personal data.
+   * fixed actor tag such as `actor=auto`. No personal data. After a torn tail (an earlier full
+   * disk or crash) the line starts on a new one. It counts only once fsynced: a throw means "not
+   * appended" for the caller. A symlink or other non-regular file is refused.
    */
   async audit(id: string, action: string, outcome: string, actor?: 'auto'): Promise<void> {
     const tag = actor ? ` actor=${actor}` : '';
     const line = `${new Date(this.now()).toISOString()} ${this.idOnly(id)} ${action} ${outcome}${tag}\n`;
-    await appendFile(join(this.dir, 'audit.log'), line, { mode: 0o600 });
+    const path = join(this.dir, 'audit.log');
+    const fh = await open(path, AUDIT_APPEND, 0o600);
+    let size: number;
+    try {
+      const s = await fh.stat();
+      if (!s.isFile()) throw new Error('audit_not_file');
+      size = s.size;
+      const torn = size > 0 && !(await endsWithNewline(path, size));
+      await fh.writeFile(torn ? `\n${line}` : line, 'utf8');
+      await fh.sync();
+    } finally {
+      await fh.close();
+    }
+    // A log that was empty may be new: its directory entry must be durable too.
+    if (size === 0) await syncDir(this.dir);
   }
 
   private build(input: SignupInput): SignupRecord {
