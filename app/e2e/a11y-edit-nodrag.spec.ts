@@ -15,7 +15,7 @@ import {
   wireRoute,
   type ProjectDocument,
 } from '@tbi-lab/domain';
-import { component, openImported, toScreen, waitForStoredProject } from './helpers.js';
+import { clickWorld, component, openImported, toScreen, waitForStoredProject } from './helpers.js';
 
 const TEXT = {
   en: {
@@ -94,6 +94,30 @@ function wireDoc(name: string): ProjectDocument {
       { x: -60, y: to.y },
     ]),
   ).doc;
+}
+
+/** Two wires with no stored bends and no automatic routing. */
+function straightWiresDoc(name: string): ProjectDocument {
+  const pin = (c: string, t: string) => ({ kind: 'terminal', component: c, terminal: t }) as const;
+  const a = must(addWire(partsDoc(name), pin('PSU1', 'positive'), pin('R1', 'a'), []));
+  const b = must(addWire(a.doc, pin('PSU1', 'negative'), pin('GND1', 'ref'), []));
+  for (const w of b.doc.layout.wires) {
+    w.vertices = [];
+    delete w.auto;
+  }
+  return b.doc;
+}
+
+/** Adds a wire to the selection: Shift+click in the middle of its longest drawn segment. */
+async function shiftClickWire(page: Page, doc: ProjectDocument, index: number): Promise<void> {
+  const route = wireRoute(doc, doc.layout.wires[index]!)!;
+  const [p, q] = route
+    .slice(1)
+    .map((b, i) => [route[i]!, b] as const)
+    .sort(
+      ([a, b], [c, d]) => Math.hypot(d.x - c.x, d.y - c.y) - Math.hypot(b.x - a.x, b.y - a.y),
+    )[0]!;
+  await clickWorld(page, { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, ['Shift']);
 }
 
 async function open(page: Page, lang: Lang, doc: ProjectDocument): Promise<ProjectDocument> {
@@ -452,6 +476,9 @@ for (const lang of ['en', 'he'] as const) {
       groupName: /^Move .?2.? selected items down$/,
       groupMoved: /2.? items moved down/,
       groupRefused: /^The selected items were not moved\. .*would overlap/,
+      unchanged: /^The selected items were not moved\. The selected wires have no bends/,
+      unchangedShown: /The selected wires have no bends of their own to move/,
+      partial: /Some of the selected items moved down/,
       refusedWhy: /R1.? was not moved\. .*would overlap/,
     },
     he: {
@@ -461,6 +488,9 @@ for (const lang of ['en', 'he'] as const) {
       groupName: /^הזזת .?2.? הפריטים שנבחרו למטה$/,
       groupMoved: /2.? פריטים הוזזו למטה/,
       groupRefused: /^הפריטים שנבחרו לא הוזזו\. /,
+      unchanged: /^הפריטים שנבחרו לא הוזזו\. לחוטים שנבחרו אין כיפופים/,
+      unchangedShown: /לחוטים שנבחרו אין כיפופים משלהם להזזה/,
+      partial: /חלק מהפריטים שנבחרו הוזזו למטה/,
       refusedWhy: /R1.? לא הוזז\. /,
     },
   }[lang];
@@ -589,5 +619,42 @@ for (const lang of ['en', 'he'] as const) {
     await expect(notice).toBeVisible();
     await expect(notice).not.toHaveAttribute('role', /.*/);
     await expect(page.getByRole('alert')).toHaveCount(0);
+  });
+
+  test(`wires with nothing to move: shown with the reason, said once (${lang})`, async ({
+    page,
+  }) => {
+    const opened = await open(page, lang, straightWiresDoc(`nodrag-unchanged-${lang}`));
+    expect(opened.layout.wires.map((w) => [w.vertices, w.auto])).toEqual([
+      [[], undefined],
+      [[], undefined],
+    ]);
+    await page.locator('.wires-list-item').first().click();
+    await shiftClickWire(page, opened, 1);
+    const before = await drawing(page);
+    const down = page.getByTestId('move-down');
+    await expect(down).toHaveAccessibleName(T.groupName);
+    await activate(page, 'keyboard', down);
+    await expect(page.getByTestId('inspector-status')).toHaveText(T.unchanged);
+    const notice = page.getByTestId('notice');
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(T.unchangedShown);
+    // Visible only: the Properties status is the one announcement.
+    await expect(notice).not.toHaveAttribute('role', /.*/);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    expect(await drawing(page)).toEqual(before);
+    await expect(down).toBeFocused();
+  });
+
+  test(`a partly moved selection reports no selected count (${lang})`, async ({ page }) => {
+    const opened = await open(page, lang, straightWiresDoc(`nodrag-partial-${lang}`));
+    // R2 and the wire from PSU1 to GND1, which is not attached to it.
+    await component(page, 'R2').locator('.component-hit').click();
+    await shiftClickWire(page, opened, 1);
+    await expect(page.getByTestId('move-down')).toHaveAccessibleName(T.groupName);
+    await activate(page, 'keyboard', page.getByTestId('move-down'));
+    const y = opened.layout.components.R2!.y;
+    await waitForStoredProject(page, (d) => d.layout.components.R2!.y === y + 20, 'R2 moved');
+    await expect(page.getByTestId('inspector-status')).toHaveText(T.partial);
   });
 }

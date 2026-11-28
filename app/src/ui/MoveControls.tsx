@@ -3,7 +3,14 @@
  * that make the same edit as the arrow keys. Directions are physical (screen terms) and are
  * never mirrored in RTL.
  */
-import { GRID, moveWireSegment, wireRoute, type Point, type Wire } from '@tbi-lab/domain';
+import {
+  GRID,
+  moveWireSegment,
+  wireRoute,
+  type Point,
+  type ProjectDocument,
+  type Wire,
+} from '@tbi-lab/domain';
 import { isolateLtr } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
 import { moveRouted } from './routing.js';
@@ -70,6 +77,9 @@ function useRefusal(announce: (text: string) => void) {
   };
 }
 
+const wireLayout = (doc: ProjectDocument, id: string) =>
+  JSON.stringify(doc.layout.wires.find((w) => w.id === id));
+
 /** One grid step for the selected part or junction (`id`), or for the whole multi-selection. */
 export function MoveControls({
   id,
@@ -111,7 +121,11 @@ export function MoveControls({
               const r = moveRouted(doc, selection, { x: b.dx * GRID, y: b.dy * GRID });
               // Wires alone may have nothing of their own to move: no empty undo step.
               const unchanged = r.ok && JSON.stringify(r.doc.layout) === JSON.stringify(doc.layout);
-              if (unchanged) return announce(t(`${scope}.refused`, params));
+              if (unchanged) {
+                // Only wires can be unchanged: shown with the reason, said once by the status.
+                store.notify({ key: 'move.group.unchanged', tone: 'warning', quiet: true });
+                return refuse(t(`${scope}.refused`, params));
+              }
               if (!store.apply(r, undefined, { quiet: true }) || !r.ok)
                 return refuse(t(`${scope}.refused`, params));
               // The moved item furthest in the direction of the move.
@@ -122,7 +136,12 @@ export function MoveControls({
               const along = (p: Point) => p.x * b.dx + p.y * b.dy;
               const at = moved.sort((p, q) => along(q) - along(p))[0];
               if (at) onReveal(at);
-              announce(t(`${scope}.done.${b.id}`, params));
+              // A selected wire with nothing of its own to move is not reported as moved.
+              const still = selection.wires.some(
+                (w) => wireLayout(r.doc, w) === wireLayout(doc, w),
+              );
+              const done = still && !id ? 'move.group.partial' : (`${scope}.done` as const);
+              announce(t(`${done}.${b.id}`, params));
             }}
           />
         ))}

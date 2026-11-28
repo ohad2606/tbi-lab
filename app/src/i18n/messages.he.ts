@@ -772,6 +772,12 @@ export const he: Record<MessageKey, string> = {
   'move.group.done.up': '{count} פריטים הוזזו למעלה',
   'move.group.done.down': '{count} פריטים הוזזו למטה',
   'move.group.refused': 'הפריטים שנבחרו לא הוזזו',
+  'move.group.unchanged':
+    'לחוטים שנבחרו אין כיפופים משלהם להזזה. בחרו גם את הרכיבים או הצמתים שלהם.',
+  'move.group.partial.left': 'חלק מהפריטים שנבחרו הוזזו שמאלה',
+  'move.group.partial.right': 'חלק מהפריטים שנבחרו הוזזו ימינה',
+  'move.group.partial.up': 'חלק מהפריטים שנבחרו הוזזו למעלה',
+  'move.group.partial.down': 'חלק מהפריטים שנבחרו הוזזו למטה',
   'junctions.list.title': 'צמתים',
   'junctions.list.item': 'צומת {id}: חוטים {wires}',
   'junctions.list.wire': '{n}',
@@ -793,7 +799,7 @@ export const he: Record<MessageKey, string> = {
   'segment.done.down': 'המקטע הוזז למטה. כעת מקטע {n} מתוך {m}.',
   'segment.refused': 'המקטע לא הוזז',
   'inspector.shortcuts':
-    'מקלדת, כשתצוגת המעגל במיקוד: החצים מזיזים, R מסובב, Delete מוחק, Esc מבטל. בלי גרירה: בוחרים רכיב אחד, או צומת אחד ברשימת הצמתים, ומשתמשים בכפתורי ההזזה.',
+    'מקלדת, כשתצוגת המעגל במיקוד: החצים מזיזים, R מסובב, Delete מוחק, Esc מבטל. בלי גרירה: בוחרים רכיב אחד, או צומת אחד ברשימת הצמתים, ומשתמשים בכפתורי ההזזה. הכפתורים מזיזים יחד גם כמה רכיבים וצמתים שנבחרו (בחירה של כמה פריטים דורשת עכבר).',
   'inspector.partRemoved': '{id} הוסר',
   'inspector.wireRemoved': 'חוט {n} הוסר',
   'inspector.selectionRemoved': '{count} פריטים שנבחרו הוסרו',

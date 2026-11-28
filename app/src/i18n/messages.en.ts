@@ -781,6 +781,12 @@ export const en = {
   'move.group.done.up': '{count} items moved up',
   'move.group.done.down': '{count} items moved down',
   'move.group.refused': 'The selected items were not moved',
+  'move.group.unchanged':
+    'The selected wires have no bends of their own to move. Select their parts or junctions too.',
+  'move.group.partial.left': 'Some of the selected items moved left',
+  'move.group.partial.right': 'Some of the selected items moved right',
+  'move.group.partial.up': 'Some of the selected items moved up',
+  'move.group.partial.down': 'Some of the selected items moved down',
   'junctions.list.title': 'Junctions',
   'junctions.list.item': '{id}: wires {wires}',
   'junctions.list.wire': 'W{n}',
@@ -802,7 +808,7 @@ export const en = {
   'segment.done.down': 'Segment moved down. Now segment {n} of {m}.',
   'segment.refused': 'The segment was not moved',
   'inspector.shortcuts':
-    'Keyboard, while the circuit view has focus: arrows move, R rotates, Delete removes, Esc cancels. Without dragging: select one part, or one junction in the Junctions list, and use the Move buttons.',
+    'Keyboard, while the circuit view has focus: arrows move, R rotates, Delete removes, Esc cancels. Without dragging: select one part, or one junction in the Junctions list, and use the Move buttons. The buttons also move several selected parts and junctions together (selecting several needs a mouse).',
   'inspector.partRemoved': '{id} removed',
   'inspector.wireRemoved': 'Wire {n} removed',
   'inspector.selectionRemoved': '{count} selected items removed',
