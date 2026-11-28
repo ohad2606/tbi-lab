@@ -123,6 +123,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.count.one': 'בקשה אחת ממתינה לך',
   'console.signups.count.other': '{count} בקשות ממתינות לך',
   'console.signups.count.queuedOnly': 'אין בקשות שדורשות פעולה ממך. מיילים מתוזמנים: {count}',
+  'console.signups.count.held': 'מיילים מוחזקים: {count}',
   'console.signups.count.noAction': 'אין בקשות שדורשות פעולה ממך',
   'console.signups.count.auto.one': 'בקשה אחת ממתינה לאישור אוטומטי',
   'console.signups.count.auto.other': '{count} בקשות ממתינות לאישור אוטומטי',
@@ -155,6 +156,8 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
     'החשבון נוסף, אבל שליחת המייל לא אושרה: ייתכן ששירות המייל אינו זמין זמנית. נסו שוב מאוחר יותר באמצעות „שליחת המייל שוב”.',
   'console.signups.status.accountPending': 'אושרה, אבל החשבון עדיין לא מוכן. אשרו שוב כדי להשלים.',
   'console.signups.status.emailQueued': 'החשבון נוסף. המייל בתור ועדיין לא נשלח.',
+  'console.signups.status.emailHeld':
+    'החשבון נוסף. המייל מוחזק ולא נשלח: האישור האוטומטי מושהה, או שלא ניתן היה לבדוק בבטחה את מצב ההשהיה.',
   'console.signups.status.emailMailCap':
     'החשבון נוסף. המייל ממתין בגלל מגבלת המיילים; בדרך כלל הוא נשלח אוטומטית בהמשך.',
   'console.signups.heardFrom': 'איך שמעו עלינו',
@@ -266,10 +269,13 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.err.not_found': 'הבקשה של {name} כבר לא קיימת.',
   'console.signups.err.mail_cap':
     'החשבון של {name} נוסף. המייל ממתין בגלל מגבלת המיילים, ובדרך כלל הוא נשלח אוטומטית בהמשך. אם הוא נשאר ממתין, בדקו את יומן השרת. המונים ליום ול-30 יום מופיעים תחת „אימות כתובות מייל ומגבלות דיוור”.',
+  'console.signups.err.mail_cap.held':
+    'החשבון של {name} נוסף. המייל לא נשלח בגלל מגבלת המיילים, והוא מוחזק כעת: האישור האוטומטי מושהה, או שלא ניתן היה לבדוק בבטחה את מצב ההשהיה. אפשר יהיה לשלוח אותו רק כשהאישור האוטומטי אינו מושהה ובדיקת מצב ההשהיה פועלת.',
   'console.signups.err.unbound_state':
     'אזהרה: הבקשה של {name} מסומנת כמאושרת, אבל אין ברישומים שלנו אישור שהחשבון נוסף. לא נשלח מייל. בדקו במסך „בודקים” אם החשבון של {name} קיים, ורק אז נסו שוב. אם האזהרה חוזרת, בדקו אם יש מקום פנוי לבודקים ועיינו ביומן השרת.',
   'console.signups.err.not_found.unconfirmed':
     'הבקשה של {name}: לא הצלחנו לאשר מה קרה. ניהול ההרשמה אולי כבוי או לא זמין בשרת, וייתכן שהבקשה עדיין שמורה. אפשר ללחוץ על רענון הבקשות.',
+  'console.signups.reloadNeeded': 'נדרשת טעינה מחדש',
   'console.signups.openStale':
     'טעינת הבקשות הפתוחות מחדש נכשלה וייתכן שהרשימה לא מעודכנת. אפשר ללחוץ על רענון הבקשות.',
   'console.signups.all.heading': 'בקשות שמורות ומחיקה',
@@ -290,6 +296,7 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.all.status.approved': 'אושרה, טרם הושלמה',
   'console.signups.all.status.rejected': 'נדחתה',
   'console.signups.all.status.email_queued': 'המייל מתוזמן',
+  'console.signups.all.status.email_held': 'המייל מוחזק',
   'console.signups.all.status.email_sent': 'המייל נשלח',
   'console.signups.all.status.email_failed': 'שליחת המייל נכשלה',
   'console.signups.all.status.other': 'סטטוס לא ידוע',

@@ -874,6 +874,7 @@ describe('admin service: sign-up routes (TBI-022), off unless configured', () =>
     const ID = '0123456789ABCDEFGHJKMNPQRS';
     const approver = {
       list: async () => [],
+      withMailHeld: async (records: unknown[]) => records,
       approve: async (id: string) => (calls.push(`approve:${id}`), { ok: true, record: { id } }),
       reject: async () => ({ ok: false, code: 'bad_state' }),
       resend: async () => ({ ok: false, code: 'email_failed' }),
@@ -1137,7 +1138,10 @@ describe('admin service: DELETE /signups/<id> (K12), owner only', () => {
     expect(again.status).toBe(200);
     expect(again.body).toEqual({ deleted: true, note: 'already_deleted' });
     const audit = readFileSync(join(root, 'p', 'audit.log'), 'utf8');
-    expect(audit.trim().split('\n')).toEqual([expect.stringMatching(` ${rec.id} delete ok$`)]);
+    expect(audit.trim().split('\n')).toEqual([
+      expect.stringMatching(` ${rec.id} delete started$`),
+      expect.stringMatching(` ${rec.id} delete ok$`),
+    ]);
     expect(audit).not.toContain('dana');
 
     expect(
