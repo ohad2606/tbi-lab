@@ -128,7 +128,9 @@ approved automatically.
 
 Quiet hours: confirmation mails are sent at any hour. The **approval** mail is held during the admin unit's quiet
 hours (`TBI_SIGNUP_QUIET`, default 23:00-08:00 Israel time) and sent when they end. `TBI_SIGNUP_QUIET=off` on the
-admin unit sends it at once; it does not change the intake's own quiet hours.
+admin unit sends it at once; it does not change the intake's own quiet hours. With the opt-in
+`TBI_SIGNUP_QUIET_AUTO_MAIL=1` (DEC-39, off by default, see "Night approval mail" below) the approval mail of an
+automatically approved, confirmed web request is sent in quiet hours too; every other approval mail still waits.
 
 ### More preconditions
 
@@ -404,6 +406,34 @@ cannot trust its state in `/var/lib/<N>-admin-auto` and sends nothing:
 | admin | `TBI_SIGNUP_AUTO_CUTOFF_KEEP_S` | `0`..`3600` seconds; unset or `0` = off. Bad value, or no separate `TBI_SIGNUP_AUTO_STATE_DIR`: sign-up admin routes disabled | **Value not approved (owner decision DEC-38 open).** A restart whose first approving sweep comes within this many seconds of the last one keeps the cut-off. Sweeps run every 60 s, so a value near or below 60 mostly resets. |
 
 - In email-verified mode, put the admin settings of this table in `signup-verify.conf`.
+
+## Night approval mail (DEC-39, off when unset)
+
+| Unit | Setting | Values | Effect |
+|---|---|---|---|
+| admin | `TBI_SIGNUP_QUIET_AUTO_MAIL` | `1`; unset or empty = off. Another value: off, `night approval mail off (config: TBI_SIGNUP_QUIET_AUTO_MAIL must be 1 or unset)` | In the admin unit's quiet hours, only the approval mail of an automatically approved request may be sent at once. |
+
+- Honoured only together with the three mail caps, `TBI_SIGNUP_AUTO_STATE_DIR`, `TBI_SIGNUP_VERIFY=1` with valid
+  settings and `TBI_SIGNUP_AUTO_WEB=verified`. Without one of them it is off, with the log line
+  `night approval mail off (config: TBI_SIGNUP_QUIET_AUTO_MAIL needs the mail caps, TBI_SIGNUP_AUTO_STATE_DIR and TBI_SIGNUP_AUTO_WEB=verified with verification)`.
+  When it is on, each start logs `night approval mail on (auto-approved, verified)`.
+- Sent at night (allow-list): a web request claimed by auto-approve, with its account added, not approved or
+  resent by you, with no recorded mail attempt, and whose current address is bound to the added account AND carries
+  the recorded confirmation in the admin state. Anything that cannot be checked (state unreadable or unsafe) waits.
+- Still held until quiet hours end: your own approve and resend (queued as before), mail queued by you, manual
+  requests, requests not from the web page, unconfirmed requests, any mail that already has a recorded attempt, and
+  mail queued before the setting was on (each keeps its send time).
+- With the setting on, your approve or resend of an automatically claimed request records `approvedBy: owner` first,
+  also when it changes nothing else. The request then no longer shows or counts as approved automatically.
+- Every night mail takes a mail slot first. Over a cap, or when the mail-gate state is unreadable, the mail stays
+  `email_queued` with the earliest retry time (never failed), and the drain stops at the first cap. A mail that hit a
+  cap is not sent in quiet hours, even if its retry time falls in them (also an automatic one, by day or night): the
+  record cannot tell it apart from your own capped mail, so it goes after quiet hours end. The pause file
+  (a failed check counts as paused) holds night mail too, before the attempt and again before the send; after the
+  resume the drain sends the held mails within the caps, also at night.
+- No alert per mail at night. The sent mails show only as counts in `auto-summary.json` (mail budget, automatic
+  approvals). The log carries counts and class codes only.
+- Turning it off: remove the setting and restart (RED zone step). Mails then queue for the end of quiet hours again.
 - **Before using `summary`:** enable the admin setting first and check that `auto-summary.json` appears. The file is
   0600 and owned by the admin service user, so the intake can read it only when **both services run as the same
   user**. The store already needs that today (0700 directory, 0600 records written by both sides). With another user
@@ -513,7 +543,8 @@ sign-up admin routes are on, **with or without** an auto-approve drop-in or the 
 - The check runs before an attempt is recorded or a mail slot is reserved, and again right before the send.
 - A held mail stays `email_queued`: it is not marked failed or sent, no attempt is counted and no mail slot stays
   used. The account is created as usual. The admin app shows it as queued, with a send time that is already past;
-  "resend" does not force it. The drain sends it within about a minute after the resume (after quiet hours).
+  "resend" does not force it. The drain sends it within about a minute after the resume (after quiet hours; with
+  `TBI_SIGNUP_QUIET_AUTO_MAIL=1` an allowed night mail also inside them).
 - The directory must be absolute, pass the same safety checks as for auto-approve (owner, mode, no symlink, parents)
   and be neither the sign-up store nor inside it. Otherwise these mails wait until it is fixed.
 - The pause file is read only from that directory. A file in the store directory has no effect while the setting is

@@ -611,8 +611,32 @@ export class SignupApprover {
        * owner's queued mails go.
        */
       paused?: () => Promise<boolean>;
+      /**
+       * DEC-39 (TBI_SIGNUP_QUIET_AUTO_MAIL=1; admin-wiring.ts sets it only with the mail gate, the
+       * pause check and verified mode): for the auto approver and the drain see `nightExempt`; on
+       * the owner's approver it never exempts and only turns on `ownerTakeover`. Unset = quiet
+       * hours hold every approval mail, as before.
+       */
+      nightAutoMail?: boolean;
     },
   ) {}
+
+  /**
+   * DEC-39 allow-list: the one approval mail that may go out in quiet hours. All of: the option,
+   * never the owner's approver, a pause check and a binding (verified mode); the record is a web
+   * request claimed by auto-approve, not taken over by the owner, with its account added and no
+   * attempt recorded or counted; and the admin state binds its current address AND holds the
+   * recorded confirmation. Any error = not exempt (it waits). Called under the per-id lock.
+   * A recorded attempt (`emailAttemptedAt`) outlives a mail-cap refusal, whoever made it, so
+   * every capped mail (also the auto approver's own) waits for the end of quiet hours.
+   */
+  private async nightExempt(r: SignupRecord): Promise<boolean> {
+    const b = this.d.mailBinding;
+    if (!this.d.nightAutoMail || this.d.ownerActions || !this.d.paused || !b) return false;
+    if (!r.autoApprovedAt || r.origin !== 'web' || r.approvedBy === 'owner') return false;
+    if (!r.accountAdded || r.emailAttemptedAt || r.emailAttempts !== 0) return false;
+    return (await b.checkApproval(r.id, r.email, true).catch(() => 'unbound')) === 'ok';
+  }
 
   /** Append-only audit line (id, action, outcome class); a failing audit write is logged, never silent. */
   private async audited(id: string, action: string, out: ApproveOutcome): Promise<ApproveOutcome> {
@@ -674,6 +698,7 @@ export class SignupApprover {
       if (!r) return { ok: false, code: 'not_found' };
       if (!r.accountAdded || r.status === 'rejected' || r.status === 'pending')
         return { ok: false, code: 'bad_state', record: r };
+      r = await this.ownerTakeover(r);
       const unbound = await this.unboundProgress(r);
       if (unbound) {
         if (!unbound.ok) return unbound;
@@ -736,8 +761,21 @@ export class SignupApprover {
   }
 
   /**
-   * BETA-G1: the owner's own approver records that it added the account (display only, never
-   * read for a decision); `autoApprovedAt` is left as written.
+   * DEC-39: an owner approve / resend of an auto-claimed request writes `approvedBy: 'owner'`
+   * BEFORE anything else, so whatever it leaves behind (queued, approved, a crash between two
+   * writes) is never exempt from quiet hours. Only with `nightAutoMail`.
+   */
+  private async ownerTakeover(r: SignupRecord): Promise<SignupRecord> {
+    if (!this.d.nightAutoMail || !r.autoApprovedAt || r.approvedBy === 'owner') return r;
+    if (r.status === 'email_sent') return r;
+    const mark = this.ownerMark();
+    return mark.approvedBy ? this.d.store.update(r.id, mark) : r;
+  }
+
+  /**
+   * BETA-G1: the owner's own approver records that it added the account (and, with DEC-39, that it
+   * took the request over, see `ownerTakeover`). Read for display and by `nightExempt` (an
+   * owner's request waits for the end of quiet hours); `autoApprovedAt` is left as written.
    */
   private ownerMark(): { approvedBy?: 'owner' } {
     return this.d.ownerActions && this.d.actor !== 'auto' ? { approvedBy: 'owner' } : {};
@@ -756,6 +794,7 @@ export class SignupApprover {
     let r = await this.load(id);
     if (!r) return { ok: false, code: 'not_found' };
     if (r.status === 'rejected') return { ok: false, code: 'bad_state', record: r };
+    r = await this.ownerTakeover(r);
     const unbound = await this.unboundProgress(r);
     if (unbound) {
       if (!unbound.ok) return unbound;
@@ -815,7 +854,7 @@ export class SignupApprover {
    */
   private async send(r: SignupRecord, force = false, explicit = false): Promise<ApproveOutcome> {
     const nowMs = (this.d.now ?? Date.now)();
-    if (!force && isQuiet(nowMs, this.d.quiet ?? null)) {
+    if (!force && isQuiet(nowMs, this.d.quiet ?? null) && !(await this.nightExempt(r))) {
       // BETA-G1: the owner's explicit approve / resend binds and checks BEFORE it queues, so a
       // failed bind is refused now (never ok / queued). The drain (`force`) and the auto
       // approver never bind.
@@ -919,11 +958,13 @@ export class SignupApprover {
    * Sends the approval emails whose quiet hours are over. Each record is re-read under the per-id
    * lock and sent only if it is still `email_queued` and due, so a drain and an owner action (or
    * two drains) never double-send; a failed send ends as `email_failed` (owner resends), as before.
-   * Returns the number of sends attempted.
+   * Returns the number of sends attempted. DEC-39: inside quiet hours only with `nightAutoMail`,
+   * and then only records `nightExempt` allows (checked under the lock); the rest keep waiting.
    */
   async drainEmails(): Promise<number> {
     const nowMs = (this.d.now ?? Date.now)();
-    if (isQuiet(nowMs, this.d.quiet ?? null)) return 0;
+    const quiet = isQuiet(nowMs, this.d.quiet ?? null);
+    if (quiet && !this.d.nightAutoMail) return 0;
     let n = 0;
     // The kill switch holds auto-approved mails (checked per record; an error = paused).
     const paused = async () => (this.d.paused ? this.d.paused().catch(() => true) : false);
@@ -932,6 +973,7 @@ export class SignupApprover {
       const sent = await this.serial(c.id, async () => {
         const r = await this.load(c.id);
         if (!r || r.status !== 'email_queued' || !r.accountAdded) return false;
+        if (quiet && !(await this.nightExempt(r))) return false;
         if (r.autoApprovedAt && (await paused())) return false;
         if (r.emailSendAfter && Date.parse(r.emailSendAfter) > (this.d.now ?? Date.now)())
           return false;
