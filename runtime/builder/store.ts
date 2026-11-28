@@ -66,6 +66,7 @@ export class ArtifactStore {
 
   private pinsOverCapLogged = false;
   private pinCheckFailureLogged = false;
+  private evictCallbackFailureLogged = false;
 
   constructor(private readonly opts: StoreOptions) {
     this.now = opts.now ?? Date.now;
@@ -215,16 +216,31 @@ export class ArtifactStore {
     warn(JSON.stringify(event));
   }
 
-  /** `unknown`: the check failed (logged once per process); never fails a publish. */
+  /** `unknown`: the check failed (cause logged once per process); never fails a publish. */
   private pinState(sha: string): 'pinned' | 'free' | 'unknown' {
     try {
       return this.opts.isPinned?.(sha) ? 'pinned' : 'free';
-    } catch {
+    } catch (e) {
       if (!this.pinCheckFailureLogged) {
         this.pinCheckFailureLogged = true;
-        this.warn({ event: 'artifact_pin_check_failed' });
+        this.warn({ event: 'artifact_pin_check_failed', ...errorCause(e) });
       }
       return 'unknown';
+    }
+  }
+
+  /**
+   * The blob is already gone: a failing callback (cause logged once per process) never fails the
+   * publish. A grant it left behind is dropped when it is next looked up or leased.
+   */
+  private evicted(sha: string): void {
+    try {
+      this.opts.onEvicted?.(sha);
+    } catch (e) {
+      if (!this.evictCallbackFailureLogged) {
+        this.evictCallbackFailureLogged = true;
+        this.warn({ event: 'artifact_evict_callback_failed', ...errorCause(e) });
+      }
     }
   }
 
@@ -251,12 +267,26 @@ export class ArtifactStore {
       await rm(join(this.opts.dir, `${m.sha256}.json`), { force: true });
       await rm(this.binPath(m.sha256), { force: true });
       this.forget(m.sha256);
-      this.opts.onEvicted?.(m.sha256);
+      this.evicted(m.sha256);
       total -= m.bytes;
       removed.push(m.sha256);
     }
     return removed;
   }
+}
+
+/**
+ * What failed, for the operator log: identifiers only. Never the message, which can quote stored
+ * data (a record's parse error quotes the record).
+ */
+function errorCause(e: unknown): { error?: string; code?: string; errcode?: number } {
+  const { name, code, errcode } = (e ?? {}) as Record<string, unknown>;
+  const id = (v: unknown) => typeof v === 'string' && /^[A-Za-z0-9_]{1,64}$/.test(v);
+  return {
+    ...(id(name) ? { error: name as string } : {}),
+    ...(id(code) ? { code: code as string } : {}),
+    ...(Number.isInteger(errcode) ? { errcode: errcode as number } : {}),
+  };
 }
 
 /** Copy the R1 reference images into a store directory (provisioning helper). */

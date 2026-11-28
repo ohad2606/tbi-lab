@@ -109,8 +109,8 @@ export class BuildService {
   private readonly active = new Set<BuildRecord>();
   private readonly idle = new Set<() => void>();
   /**
-   * Capacity A4: consecutive failed prewarm builds per curated source key (this process), and the
-   * passes still to skip before the next attempt.
+   * Capacity A4: failed prewarm builds per curated source key since its last successful build, by
+   * anyone (this process), and the passes still to skip before the next attempt.
    */
   private readonly prewarmFailures = new Map<string, { count: number; skip: number }>();
   /** Capacity A4: rebuilds spent on a missing core seed since a seed was last seen. */
@@ -452,9 +452,9 @@ export class BuildService {
       if (seedRebuild) this.seedRebuilds++;
       if (record.result?.ok) {
         built++;
-        this.prewarmFailures.delete(key);
       } else {
-        const count = (failed?.count ?? 0) + 1;
+        // Read again: a successful build may have cleared it while this pass waited.
+        const count = (this.prewarmFailures.get(key)?.count ?? 0) + 1;
         this.prewarmFailures.set(key, { count, skip: 2 ** (count - 1) - 1 });
       }
     }
@@ -598,6 +598,8 @@ export class BuildService {
     }
     next.state = next.result.ok ? 'succeeded' : 'failed';
     next.finishedAt = Date.now();
+    // Capacity A4: published and recorded, whoever asked: the source's prewarm backoff is over.
+    if (next.result.ok) this.prewarmFailures.delete(next.key);
     // Failed builds count toward the submitter's cool-down; they hold no capacity afterwards.
     // (Bookkeeping must never take the pump down: a failure here is logged, the queue goes on.)
     try {
