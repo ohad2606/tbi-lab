@@ -1142,6 +1142,25 @@ describe('slice 2: resend markers and empty confirm markers (admin side)', () =>
     expect(readFileSync(join(r.storeDir, `${other}.json`), 'utf8')).toContain('"pending"');
   });
 
+  it.skipIf(process.getuid?.() === 0)(
+    'an unreadable record keeps its .rq; the resend is sent once it is readable',
+    async () => {
+      const r = await rig();
+      const id = await webRecord(r);
+      await r.w.verifier!.sweep();
+      r.clock.t += 11 * 60_000;
+      rq(r, id);
+      chmodSync(join(r.storeDir, `${id}.json`), 0o000);
+      await r.w.verifier!.sweep();
+      expect(r.sent).toHaveLength(1);
+      expect(rqs(r)).toEqual([`${id}.rq`]);
+      chmodSync(join(r.storeDir, `${id}.json`), 0o600);
+      await r.w.verifier!.sweep();
+      expect(r.sent).toHaveLength(2);
+      expect(rqs(r)).toEqual([]);
+    },
+  );
+
   it('an EMPTY confirm marker (the intake form) verifies by hash prefix; a wrong prefix does not', async () => {
     const r = await rig();
     const id = await webRecord(r);

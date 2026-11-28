@@ -569,7 +569,12 @@ export class Verifier {
     return serialById(id, async () => {
       if (this.d.mailsHeld) return 'caps_missing';
       if (await this.paused()) return 'paused';
-      const r = await this.d.store.get(id).catch(() => null);
+      // Unreadable is not "gone": nothing is decided (the sweep keeps its `.rq` marker).
+      const r = await this.d.store.get(id).catch((e: unknown) => {
+        if (e instanceof StoreError && e.code === 'unreadable') return 'unreadable' as const;
+        return null;
+      });
+      if (r === 'unreadable') return 'state_unreadable';
       if (!r || r.status !== 'pending' || (resend && r.origin !== 'web')) return 'not_pending';
       const since = await this.cutoff().catch(() => null);
       if (since === null) return 'state_unreadable';

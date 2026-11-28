@@ -269,7 +269,11 @@ for (const lang of ['he', 'en'] as const) {
   });
 
   for (const [what, answer, text] of [
-    ['500', { status: 500, json: { error: 'internal' } }, word(/is kept/, /הרשומה נשמרה/)],
+    [
+      '500',
+      { status: 500, json: { error: 'internal' } },
+      word(/did not finish/, /המחיקה לא הושלמה/),
+    ],
     [
       '429',
       { status: 429, json: { error: 'rate_limited', retryAfterS: 42 } },

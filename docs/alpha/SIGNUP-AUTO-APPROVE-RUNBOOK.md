@@ -210,6 +210,7 @@ the morning drain sends nothing for it.
 A request whose automatic account add failed and that you then approve yourself is shown as approved by you, not
 "approved automatically", and is not counted as automatic in the daily summary. Its automatic mark stays on the
 record, so it is never claimed again and still counts against the daily cap; a pause still holds its mail.
+With all automation flags off, an owner approval also writes `approvedBy: 'owner'` on the record (display only).
 
 Resend (or approve) on a request with no binding runs the account add again. This can **re-create an account you
 removed**, and the answer `exists` also covers a **disabled** tester. Check Testers first.
