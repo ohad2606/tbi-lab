@@ -4,9 +4,9 @@
 # Privacy Notice — TBI Lab public site and Alpha application
 
 ## 1. Status of this text
-This draft describes the data handling of the public site, sign-up and the invite-only Alpha. The descriptions were checked against the development code on 26 November 2026, not against the running service. Three states are used:
+This draft describes the data handling of the public site, sign-up and the invite-only Alpha. The descriptions were checked against the development code on 26 November 2026 (the email-confirmation parts on 28 November 2026), not against the running service. Three states are used:
 - **In use:** part of today's public site or invite-only Alpha. Today you apply through a form on Google Forms.
-- **Built, switched off:** in the code but not offered or not enabled by default. This includes our own sign-up page, automatic approval, usage-plan simulation limits, the idle timeout, the daily counters and the AI assistant.
+- **Built, switched off:** in the code but not offered or not enabled by default. This includes our own sign-up page, email confirmation of sign-ups, automatic approval, usage-plan simulation limits, the idle timeout, the daily counters and the AI assistant.
 - **To be confirmed:** depends on how the service is deployed, which the code alone does not show.
 
 Existing Alpha testers are not migrated into the application database. **[PROPOSED]**
@@ -30,13 +30,27 @@ Existing Alpha testers are not migrated into the application database. **[PROPOS
 
 We need the email only to approve you and add you to the access list.
 
-**[לבדיקת עו"ד / FOR LAWYER REVIEW: the code also uses the email address to detect duplicate requests (a hash of it), sends it to Resend with the approval email, keeps it in the tester account record, and writes it to the sign-in log (sections 3.2, 6 and 8).]**
+**[לבדיקת עו"ד / FOR LAWYER REVIEW: the code also uses the email address to detect duplicate requests (a hash of it), sends it to Resend with the approval email, keeps it in the tester account record, and writes it to the sign-in log (sections 3.2, 6 and 8). With email confirmation (below, built, switched off), it also sends a confirmation email to the address and keeps further hashes of it.]**
 
 The page also asks you to confirm that you are 18 or older, or that a parent approved your sign-up. This answer is checked in the browser and is not stored.
 
 **Processing of sign-up requests on our server (built; whether it is running is to be confirmed):** for each request we store the details received, a request number, its status (pending, approved, rejected, approval email queued, sent or failed), times, the number of email attempts, an error type if something failed, and whether it came from our own page. We also keep a one-way fingerprint (hash) of the email address to detect duplicates, and a log of actions on requests (time, request number, action, result). The server code can also accept requests forwarded from the Google Form (name, email, role, language, consent).
 
 To limit abuse, our sign-up service briefly uses your network address to count requests. It keeps that count in memory and does not store it with your request.
+
+**Email confirmation of sign-ups (built, switched off).** With it switched on, our sign-up page and server also do the following:
+- The form asks for the email address of your Google account. The sign-up code checks the form of the address, not that it belongs to a Google account.
+- For a new request from our page we send a confirmation email through Resend. It has a general greeting, fixed text and a link, with no name or other detail from the form. The link works for 24 hours.
+- The link carries a signed code made of the request number, a link number, an expiry time, a random value and a signature. It does not contain your email address. The code is in the part of the link after `#`, which the browser does not send to the server when it opens the page.
+- The confirmation page removes the code from the address bar and sends it to our server only when you press the confirm button. If the request is still waiting for confirmation, the sign-up server then stores an empty marker file named with the request number and part of the code's hash, until it is processed.
+- If you ask for a new link, the page sends the email address you type. A new link is considered only if a request from our page with that address is waiting for confirmation; the answer on screen is the same for every address. Sending the sign-up form again for such a request has the same effect.
+- In a folder separate from the sign-up store, used by the administration service, we keep for each request: hashes of the link codes (not the codes), link numbers, expiry and sending times, an identifier of the signing key, the number of links, the time of confirmation, and one-way fingerprints (SHA-256 hashes) of the address each link was sent to, of the confirmed address and of the address an access account was added for. The request itself also records when a link was sent and when the address was confirmed.
+- A confirmation counts only while the address in the request matches the confirmed one.
+- To limit sending (by default in the code: 50 confirmation emails a day; for one address 3 in 7 days, at least 10 minutes apart; 5 per request, of which at most 3 unexpired), we keep a daily count and, per address hash, the sending times. Entries older than 7 days are removed only when a later confirmation email is prepared or the clean-up of unconfirmed requests runs, so they can stay longer. Where limits on all applicant emails are configured, we also keep sending times, without addresses; times older than 30 days are dropped when that record is next updated.
+- As described above, the sign-up server briefly uses your network address, in memory, to limit confirmation and new-link requests.
+- If automatic approval of confirmed requests is also switched on, a request from our page is approved automatically only after its address is confirmed. We can still approve a request manually.
+
+**[לבדיקת עו"ד / FOR LAWYER REVIEW: an unconfirmed request is deleted early only if a separate setting is configured (`TBI_SIGNUP_RETENTION_UNVERIFIED_DAYS`, 1 to 90 days). The code has no default for it; the project runbook gives 7 days as an example. When set, it covers requests from our page created after the confirmation start time, counted from creation, checked about hourly (a request can be deleted up to an hour early); it does not run while confirmation emails are held because the email limits are missing, and it keeps a request whose confirmation state cannot be read. When not set, an unconfirmed request follows the 90-day limit in section 7. [TBD] Confirm the value to be used.]**
 
 **[לבדיקת עו"ד / FOR LAWYER REVIEW: the code stores consent only as a yes value, with no version or hash of the notice and no separate consent time (only the time the request was created); an earlier draft listed "records of the policy versions you agreed to, and when".]**
 
@@ -83,12 +97,12 @@ If it is ever switched on, using it would send data about your open project to a
 
 **[LAWYER]** Legal basis for each purpose (consent, contract, legitimate interest), and whether product-update messages will be sent. No outgoing email is planned in the first phase; the status is shown on a status page after sign-in. **[PROPOSED]**
 
-**[לבדיקת עו"ד / FOR LAWYER REVIEW: in the sign-up code, an approval email is sent to you when your request is approved, and there is no status page.]**
+**[לבדיקת עו"ד / FOR LAWYER REVIEW: in the sign-up code, an approval email is sent to you when your request is approved, and there is no status page. With email confirmation (section 3.1, built, switched off), a confirmation email is also sent before that.]**
 
 ## 6. Who sees it and who we share it with
 - Google, for the application form used today and for sign-in to the Lab. Google's own terms and privacy policy apply to those parts.
-- Resend, an email delivery service, in our sign-up processing: it receives your email address and the approval email, which may greet you by first name.
-- Telegram, a messaging service, for notices to ourselves. A new sign-up notice contains your name and role, not your email address. The project documentation also describes notices about account changes (with a partly hidden email address) and about new problem reports (report number and category details, without your text). **[TBD]** Confirm which notices are active.
+- Resend, an email delivery service, in our sign-up processing: it receives your email address and the approval email, which may greet you by first name. With email confirmation (built, switched off), it also receives the confirmation email with its link; where confirmation is required for automatic approval, the approval email has a general greeting without your name.
+- Telegram, a messaging service, for notices to ourselves. A new sign-up notice contains your name and role, not your email address. An optional summary mode (built, switched off) replaces these per-request notices with daily summaries and alerts made of counts and fixed text. The project documentation also describes notices about account changes (with a partly hidden email address) and about new problem reports (report number and category details, without your text). **[TBD]** Confirm which notices are active.
 - Hosting and infrastructure providers **[HOSTING PROVIDER AND LOCATION TBD]**.
 - The program owner reviews applications. Access to application data is limited to the owner. **[PROPOSED]**
 - We do not sell your data and do not share it for advertising.
@@ -109,9 +123,9 @@ If it is ever switched on, using it would send data about your open project to a
 
 You can withdraw your application and delete your application data at any time with a button on the status page. After deletion, your identity record is reduced to a marker with no personal details. **[PROPOSED]**
 
-**[לבדיקת עו"ד / FOR LAWYER REVIEW: there is no status page and no self-service withdraw or delete button. Deletion is on request: where sign-up administration is switched on, the administration screen can delete a stored sign-up request, which removes the request and its email fingerprint and leaves a log line with the request number only. It does not remove a tester account (disabling keeps the record), the Google Form answers, the Telegram notice or other copies; those need separate manual steps.]**
+**[לבדיקת עו"ד / FOR LAWYER REVIEW: there is no status page and no self-service withdraw or delete button. Deletion is on request: where sign-up administration is switched on, the administration screen can delete a stored sign-up request, which removes the request and its email fingerprint and leaves a log line with the request number only. While email confirmation is switched on, deletion also removes the request's confirmation state (section 3.1); if it has been switched off again, that state is not removed by this action. The address hashes in the sending-limit counts are not removed by it. It does not remove a tester account (disabling keeps the record), the Google Form answers, the Telegram notice or other copies; those need separate manual steps.]**
 
-**[לבדיקת עו"ד / FOR LAWYER REVIEW: the sign-up store deletes pending and rejected requests within 90 days of creation, and all other requests within 365 days of creation (both configurable to shorter periods). It has no withdrawn, expired or waitlisted status, so a request waiting for a place is deleted after 90 days, while the table says 12 months. An approved request is deleted within 365 days even if the account continues. It keeps no separate consent record, and the code never deletes the request action log. The table says otherwise on these points. A 365-day audit log and nightly backups could not be confirmed from the code; retention of backups and access logs: [TBD]. Google Form answers are not deleted by this code.]**
+**[לבדיקת עו"ד / FOR LAWYER REVIEW: the sign-up store deletes pending and rejected requests within 90 days of creation, and all other requests within 365 days of creation (both configurable to shorter periods). It has no withdrawn, expired or waitlisted status, so a request waiting for a place is deleted after 90 days, while the table says 12 months. An approved request is deleted within 365 days even if the account continues. It keeps no separate consent record, and the code never deletes the request action log. The table says otherwise on these points. A 365-day audit log and nightly backups could not be confirmed from the code; retention of backups and access logs: [TBD]. Google Form answers are not deleted by this code. With email confirmation, a request's confirmation state is removed with the request while confirmation is switched on, and unconfirmed requests may have a shorter period (section 3.1).]**
 
 ## 8. Logs
 - The sign-in component writes an authentication log that **contains your email address** when you sign in. These logs are kept for 30 days. **[LAWYER]** Whether this is acceptable or the log format should drop the email (an engineering alternative under consideration).
