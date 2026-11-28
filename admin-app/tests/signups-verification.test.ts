@@ -168,6 +168,12 @@ describe('row status badge', () => {
       expect(await mark({ status: 'approved' })).toBe(false);
       for (const status of ['approved', 'email_queued', 'email_failed'])
         expect(await mark({ status, accountAdded: true }), status).toBe(true);
+      // BETA-G1: the owner added the account after a failed automatic attempt: never automatic.
+      for (const status of ['approved', 'email_queued', 'email_sent'])
+        expect(await mark({ status, accountAdded: true, approvedBy: 'owner' }), status).toBe(false);
+      // Tolerant parse: only the exact tag counts.
+      for (const approvedBy of ['Owner', 'auto', 1, null, ''])
+        expect(await mark({ status: 'approved', accountAdded: true, approvedBy })).toBe(true);
     }
   });
 });
