@@ -3,14 +3,7 @@
  * that make the same edit as the arrow keys. Directions are physical (screen terms) and are
  * never mirrored in RTL.
  */
-import {
-  GRID,
-  moveWireSegment,
-  wireRoute,
-  type Point,
-  type ProjectDocument,
-  type Wire,
-} from '@tbi-lab/domain';
+import { GRID, moveWireSegment, wireRoute, type Point, type Wire } from '@tbi-lab/domain';
 import { isolateLtr } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
 import { moveRouted } from './routing.js';
@@ -18,6 +11,7 @@ import {
   clampSegment,
   followSegment,
   isHorizontalSegment,
+  isWireUnmoved,
   pickedSegment,
   routeKey,
   segmentDirections,
@@ -77,9 +71,6 @@ function useRefusal(announce: (text: string) => void) {
   };
 }
 
-const wireLayout = (doc: ProjectDocument, id: string) =>
-  JSON.stringify(doc.layout.wires.find((w) => w.id === id));
-
 /** One grid step for the selected part or junction (`id`), or for the whole multi-selection. */
 export function MoveControls({
   id,
@@ -136,10 +127,9 @@ export function MoveControls({
               const along = (p: Point) => p.x * b.dx + p.y * b.dy;
               const at = moved.sort((p, q) => along(q) - along(p))[0];
               if (at) onReveal(at);
-              // A selected wire with nothing of its own to move is not reported as moved.
-              const still = selection.wires.some(
-                (w) => wireLayout(r.doc, w) === wireLayout(doc, w),
-              );
+              // A selected wire that looks the same as before is not reported as moved
+              // (compared with the document as stored, after the store's routing).
+              const still = selection.wires.some((w) => isWireUnmoved(doc, store.state.doc!, w));
               const done = still && !id ? 'move.group.partial' : (`${scope}.done` as const);
               announce(t(`${done}.${b.id}`, params));
             }}

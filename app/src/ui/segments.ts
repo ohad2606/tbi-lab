@@ -2,7 +2,7 @@
  * Moving a wire segment without dragging (BETA-G3; WCAG 2.1.1, 2.5.7): the pure choices around the
  * domain edit `moveWireSegment`. A route is orthogonal; segment i joins points i and i + 1.
  */
-import type { Point } from '@tbi-lab/domain';
+import { wireRoute, type Point, type ProjectDocument } from '@tbi-lab/domain';
 
 /** The chosen segment of one wire (view state, never stored in the project). */
 export interface SegmentPick {
@@ -66,4 +66,21 @@ export function followSegment(
     if (overlap > bestOverlap) [best, bestOverlap] = [i, overlap];
   }
   return best;
+}
+
+/**
+ * Whether an edit left a wire as it was: both its stored layout and its drawn route (a wire with
+ * no bends of its own still moves on screen when its ends do). `after` is the document as stored,
+ * after routing.
+ */
+export function isWireUnmoved(
+  before: ProjectDocument,
+  after: ProjectDocument,
+  id: string,
+): boolean {
+  const shown = (doc: ProjectDocument) => {
+    const wire = doc.layout.wires.find((w) => w.id === id);
+    return JSON.stringify([wire, wire && wireRoute(doc, wire)]);
+  };
+  return shown(before) === shown(after);
 }

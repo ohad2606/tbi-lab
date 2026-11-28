@@ -1,9 +1,12 @@
 /** BETA-G3: the pure logic of the Inspector's segment move (orientation, choice, following). */
+import { addComponent, addWire, createProject, wireRoute } from '@tbi-lab/domain';
 import { describe, expect, it } from 'vitest';
+import { moveRouted } from '../src/ui/routing.js';
 import {
   clampSegment,
   followSegment,
   isHorizontalSegment,
+  isWireUnmoved,
   segmentDirections,
 } from '../src/ui/segments.js';
 
@@ -50,5 +53,46 @@ describe('followSegment', () => {
   });
   it('falls back to a clamped index when nothing lies on the moved line', () => {
     expect(followSegment(route, 2, p(0, 20), [p(0, 0), p(10, 0)])).toBe(0);
+  });
+});
+
+describe('isWireUnmoved', () => {
+  const must = <T extends { ok: boolean }>(r: T): Extract<T, { ok: true }> => {
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    return r as Extract<T, { ok: true }>;
+  };
+  // R1.b to R2.a: a straight wire with no stored bends and no automatic routing.
+  const base = createProject({
+    projectId: 'prj_g3unmoved',
+    deviceId: 'device-test',
+    name: 'unmoved',
+    appVersion: '0.1.0',
+    clock: { now: () => new Date('2026-11-27T00:00:00.000Z') },
+  });
+  const r1 = must(addComponent(base, 'component.resistor', p(0, -160))).doc;
+  const r2 = must(addComponent(r1, 'component.resistor', p(140, -160))).doc;
+  const pin = (component: string, terminal: string) =>
+    ({ kind: 'terminal', component, terminal }) as const;
+  const doc = must(addWire(r2, pin('R1', 'b'), pin('R2', 'a'), [])).doc;
+  const wire = doc.layout.wires[0]!;
+  wire.vertices = [];
+  delete wire.auto;
+  const move = (components: string[]) =>
+    must(moveRouted(doc, { components, wires: [wire.id], junctions: [] }, p(0, 20))).doc;
+
+  it.each([[['R1', 'R2']], [['R2']]])('is false when %j carry or stretch the wire', (parts) => {
+    const after = move(parts);
+    // The stored wire is the same; only the drawn route shows the move.
+    expect(after.layout.wires[0]).toEqual(wire);
+    expect(wireRoute(after, wire)).not.toEqual(wireRoute(doc, wire));
+    expect(isWireUnmoved(doc, after, wire.id)).toBe(false);
+  });
+  it('is true for a wire alone, which has nothing of its own to move', () => {
+    expect(isWireUnmoved(doc, move([]), wire.id)).toBe(true);
+  });
+  it('is false when only the stored bends changed', () => {
+    const after = structuredClone(doc);
+    after.layout.wires[0]!.vertices = [p(70, -160)];
+    expect(isWireUnmoved(doc, after, wire.id)).toBe(false);
   });
 });

@@ -108,6 +108,18 @@ function straightWiresDoc(name: string): ProjectDocument {
   return b.doc;
 }
 
+/** R1.b to R2.a and PSU1 to GND1: wires with no stored bends and no automatic routing. */
+function joinedDoc(name: string): ProjectDocument {
+  const pin = (c: string, t: string) => ({ kind: 'terminal', component: c, terminal: t }) as const;
+  const a = must(addWire(partsDoc(name), pin('R1', 'b'), pin('R2', 'a'), []));
+  const { doc } = must(addWire(a.doc, pin('PSU1', 'negative'), pin('GND1', 'ref'), []));
+  for (const w of doc.layout.wires) {
+    w.vertices = [];
+    delete w.auto;
+  }
+  return doc;
+}
+
 /** Adds a wire to the selection: Shift+click in the middle of its longest drawn segment. */
 async function shiftClickWire(page: Page, doc: ProjectDocument, index: number): Promise<void> {
   const route = wireRoute(doc, doc.layout.wires[index]!)!;
@@ -479,6 +491,8 @@ for (const lang of ['en', 'he'] as const) {
       unchanged: /^The selected items were not moved\. The selected wires have no bends/,
       unchangedShown: /The selected wires have no bends of their own to move/,
       partial: /Some of the selected items moved down/,
+      withWire: /^.?3.? items moved down$/,
+      stretched: /^.?2.? items moved down$/,
       refusedWhy: /R1.? was not moved\. .*would overlap/,
     },
     he: {
@@ -491,6 +505,8 @@ for (const lang of ['en', 'he'] as const) {
       unchanged: /^הפריטים שנבחרו לא הוזזו\. לחוטים שנבחרו אין כיפופים/,
       unchangedShown: /לחוטים שנבחרו אין כיפופים משלהם להזזה/,
       partial: /חלק מהפריטים שנבחרו הוזזו למטה/,
+      withWire: /^.?3.? פריטים הוזזו למטה$/,
+      stretched: /^.?2.? פריטים הוזזו למטה$/,
       refusedWhy: /R1.? לא הוזז\. /,
     },
   }[lang];
@@ -657,4 +673,35 @@ for (const lang of ['en', 'he'] as const) {
     await waitForStoredProject(page, (d) => d.layout.components.R2!.y === y + 20, 'R2 moved');
     await expect(page.getByTestId('inspector-status')).toHaveText(T.partial);
   });
+
+  for (const parts of [['R1', 'R2'], ['R2']]) {
+    test(`a straight wire moving with ${parts.join(' and ')} counts as moved (${lang})`, async ({
+      page,
+    }) => {
+      const opened = await open(page, lang, joinedDoc(`nodrag-joined-${parts.length}-${lang}`));
+      // First the wires alone: nothing to move, and the reason is shown.
+      await page.locator('.wires-list-item').first().click();
+      await shiftClickWire(page, opened, 1);
+      const down = page.getByTestId('move-down');
+      await activate(page, 'keyboard', down);
+      const notice = page.getByTestId('notice');
+      await expect(notice).toContainText(T.unchangedShown);
+
+      await page.keyboard.press('Escape');
+      await component(page, parts[0]!).locator('.component-hit').click();
+      for (const id of parts.slice(1))
+        await component(page, id)
+          .locator('.component-hit')
+          .click({ modifiers: ['Shift'] });
+      await shiftClickWire(page, opened, 0);
+      const before = await drawing(page);
+      await activate(page, 'keyboard', down);
+      await expect(page.getByTestId('inspector-status')).toHaveText(
+        parts.length === 2 ? T.withWire : T.stretched,
+      );
+      expect(await drawing(page)).not.toEqual(before);
+      // The earlier warning does not outlive a successful move.
+      await expect(notice).toHaveCount(0);
+    });
+  }
 }
