@@ -60,7 +60,8 @@ jobs:
   browser:
     name: Browser acceptance (Chromium)
     runs-on: ubuntu-latest
-    # The browser suites took 24m41s on co/main (2026-11-26); at 25 the job was cancelled mid-suite.
+    # Two browser jobs run in parallel (2026-11-28: one job reached 37m29s of 40). This one is the
+    # product app only; it took 22-25 minutes. The other suites are in browser-site-admin.
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -70,11 +71,31 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      # Landing site (static build + a11y/layout e2e); fixed port 4391, runs alone.
-      - run: npm run site:test:e2e
       # Product: editor, persistence incl. full browser restart, localization, keyboard.
       - run: npm run test:e2e
-      # Accessibility gate: app/e2e/a11y-*.spec.ts (above) plus the admin app's
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-test-results
+          path: test-results/
+          retention-days: 7
+
+  browser-site-admin:
+    name: Browser acceptance, site and admin (Chromium)
+    runs-on: ubuntu-latest
+    # These suites took about 11-12 minutes together (2026-11-28).
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Landing site (static build + a11y/layout e2e); fixed port 4391.
+      - run: npm run site:test:e2e
+      # Accessibility gate: app/e2e/a11y-*.spec.ts (job browser) plus the admin app's
       # a11y-001-focus-admin, a11y-signups and admin-app specs (focus, names, reflow).
       - run: npm run test:e2e:admin
       # Sprint 0 browser proofs (Worker bit-identity, Gate D restart) stay green.
@@ -82,6 +103,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: browser-test-results
+          name: browser-test-results-site-admin
           path: test-results/
           retention-days: 7
