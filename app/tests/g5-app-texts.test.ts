@@ -7,7 +7,10 @@ describe('app texts', () => {
   it('Hebrew messages name the Run button as it is shown', () => {
     const english = Object.entries(he).filter(([, v]) => /\bRun\b/.test(v));
     expect(english.map(([k]) => k)).toEqual([]);
-    expect(he['sim.error.runtime.commands_rate_limited']).toContain(`לחצו על ${he['sim.run']} `);
+    expect(he['sim.error.runtime.commands_rate_limited']).toContain(`לחצו על „${he['sim.run']}” `);
+    // Every "press Run" sentence quotes the button name.
+    const unquoted = Object.entries(he).filter(([, v]) => v.includes(`לחצו על ${he['sim.run']}`));
+    expect(unquoted.map(([k]) => k)).toEqual([]);
   });
 
   it('the report disclosure says whose run and what is included in plain words', () => {
