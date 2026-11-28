@@ -30,6 +30,10 @@ import {
   type TokenFailure,
 } from './web.js';
 
+/** Failed-send classes that may be named in the log (secret file, key, provider answer). */
+const SEND_ERROR_RE =
+  /^(secret_(missing|unreadable|unsafe_mode|not_file)|bad_key|fs_error|network|http_[1-5]\d\d)$/;
+
 export type IntakeOutcome =
   | { status: 202 }
   | { status: 400 | 401 | 413 | 415 | 429 | 503; error: string; retryAfterMs?: number };
@@ -949,6 +953,10 @@ export class SignupApprover {
           : { ok: true, record: r, note: 'email_queued' };
       }
       const code = errorClass(e);
+      // The class from a fixed list and the request id only: never an address, name or key.
+      this.d.log?.(
+        `signup: approval mail send failed (${SEND_ERROR_RE.test(code) ? code : 'error'}) ${r.id}`,
+      );
       r = await this.d.store.update(r.id, { status: 'email_failed', lastError: code });
       return { ok: false, code: 'email_failed', record: r };
     }

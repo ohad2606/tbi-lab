@@ -149,9 +149,11 @@ export const consoleEn = {
   'console.signups.status.emailFailed.stateUnsafe':
     'Account added, but the email was held: the sign-up state folder on the server is unsafe. Resend will fail until it is fixed. Check the server log, fix the folder, then use Resend email.',
   'console.signups.status.emailFailed.config':
-    'Account added, but the email service is not set up correctly on the server (its key is missing or refused). Resend will fail until it is fixed. Check the server log, then use Resend email.',
+    'Account added, but the email was not sent: the email service is not set up correctly on the server (its key is missing or cannot be used). Resend will fail until it is fixed. Check the server log, then use Resend email.',
+  'console.signups.status.emailFailed.refused':
+    'Account added, but the mail service refused the request. Check the mail settings and the server log, then use Resend email.',
   'console.signups.status.emailFailed.temporary':
-    'Account added, but the email service did not answer. Use Resend email in a few minutes.',
+    'Account added, but sending the email was not confirmed: the mail service may be temporarily unavailable. Try again later with Resend email.',
   'console.signups.status.accountPending':
     'Approved, but the account is not ready yet. Approve again to finish.',
   'console.signups.status.emailQueued':
@@ -252,13 +254,15 @@ export const consoleEn = {
   'console.signups.err.email_failed.unbound':
     'The account for {name} was added, but the email was held: we have no record of the account for this address. Use Resend email again; if it fails again, check the server log.',
   'console.signups.err.email_failed.unproven':
-    'The email to {name} was held: the address confirmation was not found. Use Resend email to send it on your approval.',
+    'The email to {name} was held: the address confirmation was not found. If you approve this person, use Resend email to send it on your approval.',
   'console.signups.err.email_failed.stateUnsafe':
     'The email to {name} was held: the sign-up state folder on the server is unsafe. Resend will fail until it is fixed. Check the server log.',
   'console.signups.err.email_failed.config':
     'The email to {name} was not sent: the email service is not set up correctly on the server. Resend will fail until it is fixed. Check the server log.',
+  'console.signups.err.email_failed.refused':
+    'The mail service refused the request to email {name}. Check the mail settings and the server log, then use Resend email.',
   'console.signups.err.email_failed.temporary':
-    'The email to {name} was not sent: the email service did not answer. Use Resend email in a few minutes.',
+    'Sending the email to {name} was not confirmed: the mail service may be temporarily unavailable. Try again later with Resend email.',
   'console.signups.err.not_found': 'The request of {name} no longer exists.',
   'console.signups.err.mail_cap':
     'The account for {name} was added. The email is waiting because of the email limit and is normally sent automatically later. If it stays waiting, check the server log. The daily and 30-day counts are under "Email confirmation and mail limits".',

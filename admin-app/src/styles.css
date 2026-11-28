@@ -509,6 +509,13 @@ fieldset {
   background: var(--panel-alt);
   border: 1px solid var(--border);
 }
+/* A sentence, not a short tag: it wraps on narrow screens, so no pill radius. */
+.badge-status {
+  border-radius: 10px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .badge-authorized {
   color: var(--ok);
   border-color: var(--ok);

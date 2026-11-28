@@ -365,7 +365,10 @@ describe('sign-up requests view logic', () => {
       ['mail_state_unsafe', 'stateUnsafe'],
       ['secret_missing', 'config'],
       ['bad_key', 'config'],
-      ['http_403', 'config'],
+      ['http_401', 'refused'],
+      ['http_403', 'refused'],
+      ['secret_unsafe_mode', 'config'],
+      ['secret_not_file', 'config'],
       ['network', 'temporary'],
       ['http_503', 'temporary'],
     ];

@@ -1239,36 +1239,78 @@ describe('slice 2: resend markers and empty confirm markers (admin side)', () =>
     expect(rqs(r)).toEqual([]);
   });
 
-  it('send_failed: the .rq marker is kept and retried until the address limit, at most 3 sends per 7 days', async () => {
+  /** A request whose first mail went out more than a week ago, then a resend marker. */
+  const oldRequest = async () => {
     const r = await rig();
     const id = await webRecord(r);
+    await r.w.verifier!.sweep();
+    r.clock.t += 8 * 86_400_000;
+    r.sent.length = 0;
+    rq(r, id);
+    return { r, id };
+  };
+  /** Sweeps once a minute for `minutes`. */
+  const run = async (r: Rig, minutes: number) => {
+    for (let i = 0; i < minutes; i++) {
+      await r.w.verifier!.sweep();
+      r.clock.t += 60_000;
+    }
+  };
+
+  it('send_failed, 25 minute outage: one retry after 60 min sends once; a weekly slot is left', async () => {
+    const { r, id } = await oldRequest();
+    const up = r.sendVerify;
     let tries = 0;
     r.sendVerify = async () => {
       tries++;
       throw new Error('network');
     };
-    await r.w.verifier!.sweep(); // the first mail fails (no marker involved)
-    r.clock.t += 11 * 60_000;
-    rq(r, id);
-    await r.w.verifier!.sweep();
-    expect(tries).toBe(2);
+    await run(r, 25);
+    expect(tries).toBe(1);
+    r.sendVerify = up;
+    await run(r, 35); // up to minute 59
+    expect(r.sent).toHaveLength(0);
     expect(rqs(r)).toEqual([`${id}.rq`]);
-    // Inside the 10 min gap the retry waits (kept), it is not dropped.
-    await r.w.verifier!.sweep();
-    expect(tries).toBe(2);
-    expect(rqs(r)).toEqual([`${id}.rq`]);
-    for (let i = 0; i < 6; i++) {
-      r.clock.t += 11 * 60_000;
-      await r.w.verifier!.sweep();
-    }
-    expect(tries).toBe(3);
+    await run(r, 120);
+    expect(r.sent).toHaveLength(1);
     expect(rqs(r)).toEqual([]);
-    // No refund: a fresh request in the same week sends nothing more.
-    r.sendVerify = async (to) => void r.sent.push(to);
-    r.clock.t += 11 * 60_000;
+    // The user asks again: the third weekly slot is still there.
     rq(r, id);
     await r.w.verifier!.sweep();
-    expect(tries + r.sent.length).toBe(3);
+    expect(r.sent).toHaveLength(2);
+  });
+
+  it('send_failed for good: exactly 2 attempts, then the marker is removed', async () => {
+    const { r } = await oldRequest();
+    let tries = 0;
+    r.sendVerify = async () => {
+      tries++;
+      throw new Error('http_503');
+    };
+    await run(r, 60);
+    expect(tries).toBe(1);
+    await run(r, 1);
+    expect(tries).toBe(2);
+    expect(rqs(r)).toEqual([]);
+    await run(r, 180);
+    expect(tries).toBe(2);
+  });
+
+  it('send_failed then paused: nothing is sent while paused, the retry goes out after resume', async () => {
+    const { r, id } = await oldRequest();
+    const up = r.sendVerify;
+    r.sendVerify = async () => {
+      throw new Error('network');
+    };
+    await r.w.verifier!.sweep();
+    r.sendVerify = up;
+    writeFileSync(join(r.stateDir, AUTO_PAUSE_FILE), '');
+    await run(r, 180);
+    expect(r.sent).toHaveLength(0);
+    expect(rqs(r)).toEqual([`${id}.rq`]);
+    rmSync(join(r.stateDir, AUTO_PAUSE_FILE));
+    await run(r, 2);
+    expect(r.sent).toHaveLength(1);
     expect(rqs(r)).toEqual([]);
   });
 

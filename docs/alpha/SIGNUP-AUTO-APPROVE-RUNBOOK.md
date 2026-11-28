@@ -140,8 +140,8 @@ All of "Before enabling" above, and:
    (`PrivateNetwork=yes`, `RestrictAddressFamilies=AF_UNIX`, `IPAddressDeny=any`), and its writable paths do not
    include the sign-up store. Mail egress, store access, the mail key and the other sign-up settings are not in the
    template; they must come from the deployment and be reviewed there. Check that an approval mail sent from the admin
-   app arrives. **A failed confirmation mail is not retried:** it still uses a slot, and the person has to ask for a
-   new link.
+   app arrives. **A failed first confirmation mail is not retried:** it still uses a slot, and the person has to ask for a
+   new link. A requested new link that fails to send is retried once, at least 60 minutes later.
 2. **The published site has the confirmation view.** Today `node site/build.mjs <dir>` does not include it; only the
    preview option `--signup-verify` does. Without it the link in the mail opens the ordinary sign-up page and nothing
    can be confirmed. Enabling it in a published build needs a reviewed change.
@@ -337,9 +337,9 @@ Deleting one person by hand: `docs/alpha/SIGNUP-DATA-DELETION.md`.
 | Key missing or bad | `verify key unusable (<class>); verification off`: nothing is sent or confirmed, and the unconfirmed purge does not run |
 | State directory unsafe | `verify state dir unsafe (<reason>); verification off` |
 | Cut-off file unreadable | `verify cut-off unreadable; nothing minted or verified` |
-| Confirmation mail fails | `verify send failed (<class>)`; not retried, the slot stays used |
+| Confirmation mail fails | `verify send failed (<class>)`; the slot stays used. A first mail is not retried; a requested new link is retried once after 60 minutes or more |
 | Mail cap or provider limit | `mail cap reached (...)`; mails wait |
-| Approval mail fails | the request shows a failed mail; resend it from the admin app |
+| Approval mail fails | `approval mail send failed (<class>) <request id>`; the request shows a failed mail; resend it from the admin app |
 
 Limits fixed in the code: 3 confirmation mails per address in 7 days, at least 10 minutes apart, 5 per request, at
 most 3 unexpired links. A request for a new link that meets one of these limits, or the daily verify cap, is dropped;

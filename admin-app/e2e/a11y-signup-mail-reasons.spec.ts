@@ -113,3 +113,43 @@ for (const lang of ['he', 'en'] as const) {
       await expect(message).toBeFocused();
     });
 }
+
+for (const lang of ['he', 'en'] as const)
+  test(`signup mail reasons (${lang}): long status sentences fit 320 px and describe Resend`, async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    const errors = [
+      'mail_addr_changed',
+      'mail_unbound',
+      'mail_unproven',
+      'mail_state_unsafe',
+      'secret_not_file',
+      'http_403',
+      'network',
+    ];
+    await mock(
+      page,
+      errors.map((lastError, i) => row(`v${i}`, { lastError })),
+    );
+    await open(page, context, baseURL!, lang);
+    await expect(page.getByTestId('signup-status')).toHaveCount(errors.length);
+    const overflow = await page.evaluate(() => {
+      const bad = [...document.querySelectorAll<HTMLElement>('[data-testid="signup-status"]')]
+        .filter((el) => {
+          const box = el.getBoundingClientRect();
+          return box.left < 0 || box.right > 320 || el.scrollWidth > el.clientWidth + 1;
+        })
+        .map((el) => el.id);
+      return { bad, page: document.documentElement.scrollWidth - window.innerWidth };
+    });
+    expect(overflow.bad).toEqual([]);
+    expect(overflow.page).toBeLessThanOrEqual(0);
+    await expect(page.getByTestId('signup-status').first()).toHaveCSS('border-radius', '10px');
+    const first = page.locator('[data-signup-id="v0"]');
+    await expect(first.getByTestId('signup-resend')).toHaveAccessibleDescription(
+      (await first.getByTestId('signup-status').textContent())!,
+    );
+  });

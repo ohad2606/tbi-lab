@@ -329,7 +329,8 @@ const awaitsAuto = (r: SignupRecord, acted: boolean): boolean =>
  * `lastError` is written by the intake too: only these exact values pick a text, anything else
  * gets the generic one, and the raw value is never shown.
  */
-type MailFailure = 'addrChanged' | 'unbound' | 'unproven' | 'stateUnsafe' | 'config' | 'temporary';
+type MailFailure =
+  'addrChanged' | 'unbound' | 'unproven' | 'stateUnsafe' | 'config' | 'refused' | 'temporary';
 const MAIL_FAILURE = new Map<string, MailFailure>([
   ['mail_addr_changed', 'addrChanged'],
   ['mail_unbound', 'unbound'],
@@ -337,9 +338,12 @@ const MAIL_FAILURE = new Map<string, MailFailure>([
   ['mail_state_unsafe', 'stateUnsafe'],
   ['secret_missing', 'config'],
   ['secret_unreadable', 'config'],
+  ['secret_unsafe_mode', 'config'],
+  ['secret_not_file', 'config'],
   ['bad_key', 'config'],
-  ['http_401', 'config'],
-  ['http_403', 'config'],
+  // The provider said no; the status alone does not tell why (key, sender domain, ...).
+  ['http_401', 'refused'],
+  ['http_403', 'refused'],
   ['network', 'temporary'],
   ['http_429', 'temporary'],
   ['http_500', 'temporary'],

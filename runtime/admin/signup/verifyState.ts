@@ -76,6 +76,8 @@ export const VERIFY_PER_ADDRESS = 3;
 export const VERIFY_ADDRESS_WINDOW_MS = 7 * 86_400_000;
 export const VERIFY_ADDRESS_GAP_MS = 10 * 60_000;
 export const VERIFY_PER_RECORD = 5;
+/** `.rq` after a failed send: the least wait before its one automatic retry. */
+export const RESEND_RETRY_MS = 60 * 60_000;
 export const VERIFY_LIVE_GENS = 3;
 export const VERIFY_MARKERS_PER_SWEEP = 200;
 export const VERIFY_MARKER_MAX_BYTES = 1024;
@@ -896,8 +898,12 @@ export class Verifier {
   private sweeping = false;
   /** `.rq` round robin: the last marker name handled (in memory; a restart starts at the top). */
   private rqCursor: string | undefined;
-  /** Ids whose resend failed or was paused: their marker waits out the address gap. */
-  private readonly rqRetry = new Set<string>();
+  /**
+   * Kept `.rq` markers to retry: the time the resend failed, or null (only paused so far). Such a
+   * marker waits out the address gap; after a failed send it also waits RESEND_RETRY_MS and gets
+   * one retry only.
+   */
+  private readonly rqRetry = new Map<string, number | null>();
 
   /** One pass: orphan state, first mails, then confirm markers. Never throws for a single item. */
   async sweep(opts: VerifySweepOptions = {}): Promise<VerifySweepResult> {
@@ -991,8 +997,9 @@ export class Verifier {
     // applies every mail limit under the per-id lock; the marker is removed once the outcome is
     // persisted, also when a limit blocks (so repeated requests never queue up mails). Kept for a
     // later sweep: unreadable state or counters (nothing was decided), over the mail cap (minted
-    // when a slot frees), paused (nothing sent; the loop stops, no marker can go out), and a failed
-    // send (retried; every retry takes a per-address slot, so the 3-per-address limit ends it).
+    // when a slot frees), paused (nothing sent; the loop stops, no marker can go out), and the
+    // first failed send (one retry, at least RESEND_RETRY_MS later; it takes a per-address slot).
+    // The retry state is in memory only: after a restart a kept marker is a new request.
     // The markers are visited in name order from where the last sweep stopped, so kept markers
     // can never hold the per-sweep cap against the others.
     // A directory can never be a marker (nor be unlinked): skipped, it takes no slot.
@@ -1003,23 +1010,33 @@ export class Verifier {
     const start = this.rqCursor === undefined ? 0 : rqNames.findIndex((n) => n > this.rqCursor!);
     const ordered = start <= 0 ? rqNames : [...rqNames.slice(start), ...rqNames.slice(0, start)];
     const present = new Set(rqNames.map((n) => n.slice(0, -3)));
-    for (const id of [...this.rqRetry]) if (!present.has(id)) this.rqRetry.delete(id);
+    for (const id of [...this.rqRetry.keys()]) if (!present.has(id)) this.rqRetry.delete(id);
     let rqSeen = 0;
     for (const f of ordered) {
       if (stop() || held) break;
       const m = RESEND_MARKER_RE.exec(f)!;
+      const id = m[1]!;
+      // Backing off after a failed send: not visited, so it takes no slot of the per-sweep cap.
+      const failedAt = this.rqRetry.get(id) ?? null;
+      if (failedAt !== null && this.now() - failedAt < RESEND_RETRY_MS) continue;
       if (++rqSeen > VERIFY_MARKERS_PER_SWEEP) break;
       this.rqCursor = f;
-      const id = m[1]!;
       const o: string = rqFile.get(f)
         ? await this.mint(id, keys, true).catch(() => 'state_unreadable')
         : 'bad_marker';
       if (o === 'sent') out.sent++;
       else if (o !== 'skip' && o !== 'not_pending') bump(`resend not sent (${o})`);
-      // A failed or paused send is retried; a paused one at the send already took its slot.
-      if (o === 'send_failed' || o === 'paused') this.rqRetry.add(id);
-      if (o === 'paused') break;
-      if (o === 'send_failed') continue;
+      // A paused send is retried after the resume (one paused at the send already took its slot).
+      if (o === 'paused') {
+        this.rqRetry.set(id, failedAt);
+        break;
+      }
+      // The first failed send is retried once, later; a failed retry removes the marker, so an
+      // outage cannot use up the address limit and a new request for a link still has a slot.
+      if (o === 'send_failed' && failedAt === null) {
+        this.rqRetry.set(id, this.now());
+        continue;
+      }
       // A retry waits out the address gap instead of being dropped by it.
       if (o === 'limit_gap' && this.rqRetry.has(id)) continue;
       if (o === 'state_unreadable' || o === 'limit_unreadable' || o === 'limit_mail') continue;
