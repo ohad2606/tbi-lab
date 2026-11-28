@@ -32,7 +32,7 @@ Hebrew and English drafts with the same structure (same numbered headings). Tech
 9. Use of the Lab (accounts, usage figures, builds, simulations, reports) is now described factually in the Privacy Notice, sections 3.2 to 3.6; its legal basis, purposes, retention and placement are not drafted.
 
 ## Accuracy notes
-- The data and behaviour descriptions in the Privacy Notice and the related notes in the Terms were checked on 2026-11-26 against the development code and project documentation, not against the running service. Items marked [TBD] depend on deployment. Our own sign-up page is built but switched off.
+- The data and behaviour descriptions in the Privacy Notice and the related notes in the Terms were checked on 2026-11-26 (the sign-up email-confirmation parts on 2026-11-28) against the development code and project documentation, not against the running service. Items marked [TBD] depend on deployment. Our own sign-up page and its email confirmation are built but switched off.
 - The data fields, the retention table, the no-pixel rule and the 30-day sign-in log are proposals from earlier planning; the code does not set the 30-day limit.
 - Access-log and backup retention: [TBD].
 - The accessibility statement lists known limits from an internal review, updated on 2026-11-26 against the current development code and its tests (automated tests were read, not a new manual or screen-reader review). It makes no conformance claim and its date fields are still [TBD]. The listed limits must be re-checked against the published product at publication time.
