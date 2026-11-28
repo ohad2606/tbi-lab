@@ -47,6 +47,7 @@ import {
   Verifier,
 } from '../signup/verifyState.js';
 import { PendingStore, StoreError } from '../signup/store.js';
+import { MailPausedError } from '../signup/mailGate.js';
 import type { AdminSpool } from '../accounts.js';
 import type { Principal } from '../../identity/principal.js';
 
@@ -1193,6 +1194,118 @@ describe('slice 2: resend markers and empty confirm markers (admin side)', () =>
     await r.w.verifier!.sweep();
     expect(r.sent.map((m) => m.id)).toEqual([fresh, fresh]);
     expect(rqs(r)).toEqual([]);
+  });
+
+  it('paused: the .rq marker is kept and nothing is sent; after resume it is sent once', async () => {
+    const r = await rig();
+    const id = await webRecord(r);
+    await r.w.verifier!.sweep();
+    r.clock.t += 11 * 60_000;
+    rq(r, id);
+    writeFileSync(join(r.stateDir, AUTO_PAUSE_FILE), '');
+    await r.w.verifier!.sweep();
+    await r.w.verifier!.sweep();
+    expect(r.sent).toHaveLength(1);
+    expect(rqs(r)).toEqual([`${id}.rq`]);
+    rmSync(join(r.stateDir, AUTO_PAUSE_FILE));
+    await r.w.verifier!.sweep();
+    expect(r.sent).toHaveLength(2);
+    expect(rqs(r)).toEqual([]);
+    await r.w.verifier!.sweep();
+    expect(r.sent).toHaveLength(2);
+  });
+
+  it('paused at the send (MailPausedError): marker kept, the new generation revoked', async () => {
+    const r = await rig();
+    const id = await webRecord(r);
+    await r.w.verifier!.sweep();
+    const gens = vstate(r, id).gens.map((g) => g.gen);
+    r.clock.t += 11 * 60_000;
+    rq(r, id);
+    r.sendVerify = async () => {
+      throw new MailPausedError();
+    };
+    await r.w.verifier!.sweep();
+    expect(vstate(r, id).gens.map((g) => g.gen)).toEqual(gens);
+    expect(rqs(r)).toEqual([`${id}.rq`]);
+    r.sendVerify = async (to) => void r.sent.push(to);
+    // The paused attempt kept its address slot: the retry waits out the gap (marker kept).
+    await r.w.verifier!.sweep();
+    expect(r.sent).toHaveLength(1);
+    expect(rqs(r)).toEqual([`${id}.rq`]);
+    r.clock.t += 11 * 60_000;
+    await r.w.verifier!.sweep();
+    expect(r.sent).toHaveLength(2);
+    expect(rqs(r)).toEqual([]);
+  });
+
+  it('send_failed: the .rq marker is kept and retried until the address limit, at most 3 sends per 7 days', async () => {
+    const r = await rig();
+    const id = await webRecord(r);
+    let tries = 0;
+    r.sendVerify = async () => {
+      tries++;
+      throw new Error('network');
+    };
+    await r.w.verifier!.sweep(); // the first mail fails (no marker involved)
+    r.clock.t += 11 * 60_000;
+    rq(r, id);
+    await r.w.verifier!.sweep();
+    expect(tries).toBe(2);
+    expect(rqs(r)).toEqual([`${id}.rq`]);
+    // Inside the 10 min gap the retry waits (kept), it is not dropped.
+    await r.w.verifier!.sweep();
+    expect(tries).toBe(2);
+    expect(rqs(r)).toEqual([`${id}.rq`]);
+    for (let i = 0; i < 6; i++) {
+      r.clock.t += 11 * 60_000;
+      await r.w.verifier!.sweep();
+    }
+    expect(tries).toBe(3);
+    expect(rqs(r)).toEqual([]);
+    // No refund: a fresh request in the same week sends nothing more.
+    r.sendVerify = async (to) => void r.sent.push(to);
+    r.clock.t += 11 * 60_000;
+    rq(r, id);
+    await r.w.verifier!.sweep();
+    expect(tries + r.sent.length).toBe(3);
+    expect(rqs(r)).toEqual([]);
+  });
+
+  it('more kept .rq markers than the per-sweep cap: the cap holds and the others are reached next sweep', async () => {
+    const r = await rig();
+    const real = await webRecord(r);
+    await r.w.verifier!.sweep();
+    r.clock.t += 11 * 60_000;
+    const A = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+    const stuck = new Set<string>();
+    for (let i = 0; i < VERIFY_MARKERS_PER_SWEEP + 5; i++) {
+      const id = `01JA${A[(i >> 5) & 31]}${A[i & 31]}${'A'.repeat(20)}`;
+      stuck.add(id);
+      rq(r, id);
+    }
+    rq(r, real);
+    expect([...stuck].every((x) => x < real)).toBe(true);
+    const get = r.w.store.get.bind(r.w.store);
+    r.w.store.get = async (id: string) => {
+      if (stuck.has(id)) throw new StoreError('unreadable');
+      return get(id);
+    };
+    const v = r.w.verifier!;
+    const mint = v.mint.bind(v);
+    let mints = 0;
+    v.mint = (...a: Parameters<typeof mint>) => {
+      if (a[2]) mints++;
+      return mint(...a);
+    };
+    await v.sweep();
+    expect(mints).toBe(VERIFY_MARKERS_PER_SWEEP);
+    expect(r.sent).toHaveLength(1);
+    mints = 0;
+    await v.sweep();
+    expect(mints).toBeLessThanOrEqual(VERIFY_MARKERS_PER_SWEEP);
+    expect(r.sent.map((m) => m.id)).toEqual([real, real]);
+    expect(rqs(r)).toHaveLength(stuck.size);
   });
 
   it('delete and purge remove the .rq marker', async () => {

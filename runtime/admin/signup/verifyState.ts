@@ -894,6 +894,10 @@ export class Verifier {
 
   private lastPurge: number | undefined;
   private sweeping = false;
+  /** `.rq` round robin: the last marker name handled (in memory; a restart starts at the top). */
+  private rqCursor: string | undefined;
+  /** Ids whose resend failed or was paused: their marker waits out the address gap. */
+  private readonly rqRetry = new Set<string>();
 
   /** One pass: orphan state, first mails, then confirm markers. Never throws for a single item. */
   async sweep(opts: VerifySweepOptions = {}): Promise<VerifySweepResult> {
@@ -985,22 +989,41 @@ export class Verifier {
     }
     // Resend requests (`<id>.rq`, intake: /signup/resend or a duplicate web sign-up). `mint`
     // applies every mail limit under the per-id lock; the marker is removed once the outcome is
-    // persisted, also when a limit blocks (so repeated requests never queue up mails).
+    // persisted, also when a limit blocks (so repeated requests never queue up mails). Kept for a
+    // later sweep: unreadable state or counters (nothing was decided), over the mail cap (minted
+    // when a slot frees), paused (nothing sent; the loop stops, no marker can go out), and a failed
+    // send (retried; every retry takes a per-address slot, so the 3-per-address limit ends it).
+    // The markers are visited in name order from where the last sweep stopped, so kept markers
+    // can never hold the per-sweep cap against the others.
+    // A directory can never be a marker (nor be unlinked): skipped, it takes no slot.
+    const rqFile = new Map<string, boolean>();
+    for (const e of await readdir(this.d.storeDir, { withFileTypes: true }))
+      if (RESEND_MARKER_RE.test(e.name) && !e.isDirectory()) rqFile.set(e.name, e.isFile());
+    const rqNames = [...rqFile.keys()].sort();
+    const start = this.rqCursor === undefined ? 0 : rqNames.findIndex((n) => n > this.rqCursor!);
+    const ordered = start <= 0 ? rqNames : [...rqNames.slice(start), ...rqNames.slice(0, start)];
+    const present = new Set(rqNames.map((n) => n.slice(0, -3)));
+    for (const id of [...this.rqRetry]) if (!present.has(id)) this.rqRetry.delete(id);
     let rqSeen = 0;
-    for (const e of await readdir(this.d.storeDir, { withFileTypes: true })) {
+    for (const f of ordered) {
       if (stop() || held) break;
-      const f = e.name;
-      const m = RESEND_MARKER_RE.exec(f);
-      if (!m || e.isDirectory()) continue;
+      const m = RESEND_MARKER_RE.exec(f)!;
       if (++rqSeen > VERIFY_MARKERS_PER_SWEEP) break;
-      const o: string = e.isFile()
-        ? await this.mint(m[1]!, keys, true).catch(() => 'state_unreadable')
+      this.rqCursor = f;
+      const id = m[1]!;
+      const o: string = rqFile.get(f)
+        ? await this.mint(id, keys, true).catch(() => 'state_unreadable')
         : 'bad_marker';
       if (o === 'sent') out.sent++;
       else if (o !== 'skip' && o !== 'not_pending') bump(`resend not sent (${o})`);
-      // Unreadable state or counters: kept for the next sweep (nothing was decided).
-      // Over the mail cap: kept too, the new link is minted when a slot frees.
+      // A failed or paused send is retried; a paused one at the send already took its slot.
+      if (o === 'send_failed' || o === 'paused') this.rqRetry.add(id);
+      if (o === 'paused') break;
+      if (o === 'send_failed') continue;
+      // A retry waits out the address gap instead of being dropped by it.
+      if (o === 'limit_gap' && this.rqRetry.has(id)) continue;
       if (o === 'state_unreadable' || o === 'limit_unreadable' || o === 'limit_mail') continue;
+      this.rqRetry.delete(id);
       await unlink(join(this.d.storeDir, f)).catch((e: NodeJS.ErrnoException) => {
         if (e.code !== 'ENOENT') bump(`marker not removed (${errorClass(e)})`);
       });
