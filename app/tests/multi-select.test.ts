@@ -7,8 +7,10 @@ import {
   multiSelectKey,
   selectEverything,
   selectionCountMessage,
+  toggleFromList,
   toggleItem,
 } from '../src/ui/multiSelect.js';
+import { getLocale, isolateLtr, translate, type MessageKey } from '../src/i18n/i18n.js';
 
 const key = (k: string, code: string, mods: Partial<Record<string, boolean>> = {}) => ({
   key: k,
@@ -105,5 +107,54 @@ describe('multiSelectKey', () => {
     expect(multiSelectKey(key('A', 'KeyA', { ctrlKey: true, shiftKey: true }), true)).toBeNull();
     expect(multiSelectKey(key('Enter', 'Enter', { ctrlKey: true }), true)).toBeNull();
     expect(multiSelectKey(key(' ', 'Space', { shiftKey: true }), true)).toBeNull();
+  });
+});
+
+describe('toggleFromList (Wires and Junctions lists while selecting several)', () => {
+  const start = { ...emptySelection(), components: ['R1'], wires: ['w1'] };
+  const run = (code: 'en' | 'he') => {
+    const t = (k: MessageKey, p?: Record<string, string | number>) =>
+      translate(getLocale(code), k, p);
+    const wire = t('kbwire.list.name', { n: 2 });
+    const added = toggleFromList(start, 'wires', 'w2', wire, t);
+    const junction = t('junctions.list.name', { id: isolateLtr('J1') });
+    const both = toggleFromList(added.next, 'junctions', 'J1', junction, t);
+    const removed = toggleFromList(both.next, 'wires', 'w2', wire, t);
+    const only = { ...emptySelection(), junctions: ['J1'] };
+    const none = toggleFromList(only, 'junctions', 'J1', junction, t);
+    return { added, both, removed, none, wire, junction };
+  };
+
+  it('adds and removes one item, leaving the rest of the selection', () => {
+    const r = run('en');
+    expect(r.added).toMatchObject({ added: true, next: { components: ['R1'] } });
+    expect(r.both.next).toEqual({ components: ['R1'], wires: ['w1', 'w2'], junctions: ['J1'] });
+    expect(r.removed).toMatchObject({ added: false });
+    expect(r.removed.next).toEqual({ components: ['R1'], wires: ['w1'], junctions: ['J1'] });
+    expect(r.none.next).toEqual(emptySelection());
+    expect(start.wires).toEqual(['w1']);
+  });
+
+  it('says what changed and the new count (en)', () => {
+    const r = run('en');
+    expect(r.added.said).toBe('Wire W2 added to the selection. 3 items selected');
+    expect(r.both.said).toBe(`${r.junction} added to the selection. 4 items selected`);
+    expect(r.removed.said).toBe('Wire W2 removed from the selection. 3 items selected');
+    expect(r.none.said).toBe(`${r.junction} removed from the selection. No items selected`);
+    expect(r.junction).toContain(isolateLtr('J1'));
+  });
+
+  it('says what changed and the new count (he)', () => {
+    const r = run('he');
+    expect(r.added.said).toBe('חוט 2 נוסף לבחירה. 3 פריטים נבחרו');
+    expect(r.removed.said).toBe('חוט 2 הוסר מהבחירה. 3 פריטים נבחרו');
+    expect(r.none.said).toBe(`${r.junction} הוסר מהבחירה. לא נבחרו פריטים`);
+    expect(r.junction).toContain(isolateLtr('J1'));
+  });
+
+  it('no help text still says selecting several needs a mouse', () => {
+    expect(en['inspector.shortcuts']).not.toMatch(/needs a mouse/);
+    expect(he['inspector.shortcuts']).not.toContain('עכבר');
+    for (const m of [en, he] as Record<string, string>[]) expect(m['multi.list.hint']).toBeTruthy();
   });
 });

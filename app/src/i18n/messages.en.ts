@@ -99,6 +99,9 @@ export const en = {
   'multi.cleared': 'Selection cleared. Selecting several items is off',
   'multi.offThen': 'Selecting several items is off. {said}',
   'multi.partChosen': '{ref} selected',
+  'multi.list.hint': 'Selecting several items: a button here adds its item or takes it out.',
+  'multi.list.added': '{item} added to the selection. {count}',
+  'multi.list.removed': '{item} removed from the selection. {count}',
   'multi.part.selected': 'selected',
   'multi.part.notSelected': 'not selected',
   'multi.count.none': 'No items selected',
@@ -803,6 +806,7 @@ export const en = {
   'junctions.list.item': '{id}: wires {wires}',
   'junctions.list.wire': 'W{n}',
   'junctions.list.selected': 'Junction {id} selected',
+  'junctions.list.name': 'Junction {id}',
   'junctions.removed': 'Junction {id} and its wires removed',
   'segment.title': 'Move a segment (one grid step)',
   'segment.choose': 'Segment',
@@ -820,7 +824,7 @@ export const en = {
   'segment.done.down': 'Segment moved down. Now segment {n} of {m}.',
   'segment.refused': 'The segment was not moved',
   'inspector.shortcuts':
-    'Keyboard, while the circuit view has focus: arrows move, R rotates, Delete removes, Esc cancels. Without dragging: select one part, or one junction in the Junctions list, and use the Move buttons. The buttons also move several selected parts and junctions together (selecting several needs a mouse).',
+    'Keyboard, while the circuit view has focus: arrows move, R rotates, Delete removes, Esc cancels. Without dragging: select a part, or a junction in the Junctions list, and use the Move buttons. To select several, turn on “Select several items”: then Enter on a focused part, or a button in the Wires or Junctions list, adds it to the selection or takes it out. The Move buttons move the selected parts and junctions together.',
   'inspector.partRemoved': '{id} removed',
   'inspector.wireRemoved': 'Wire {n} removed',
   'inspector.selectionRemoved': '{count} selected items removed',
@@ -2471,6 +2475,7 @@ export const en = {
   'kbwire.list.empty': 'No wires yet. Connect two pins to add one.',
   'kbwire.list.item': 'W{n}: {from} to {to}',
   'kbwire.list.selected': 'Wire W{n} selected',
+  'kbwire.list.name': 'Wire W{n}',
 
   // TBI-005: what MicroPython code the Lab supports, generated from runtime/builder/pyContract.ts.
   // Each `mpy.contract.<id>.note` is that entry's note (EN equals the contract text exactly; a

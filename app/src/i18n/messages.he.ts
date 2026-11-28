@@ -100,6 +100,9 @@ export const he: Record<MessageKey, string> = {
   'multi.cleared': 'הבחירה נוקתה. בחירה של כמה פריטים כבויה',
   'multi.offThen': 'בחירה של כמה פריטים כבויה. {said}',
   'multi.partChosen': '{ref} נבחר',
+  'multi.list.hint': 'בחירה של כמה פריטים: כפתור ברשימה מוסיף את הפריט שלו לבחירה או מסיר אותו.',
+  'multi.list.added': '{item} נוסף לבחירה. {count}',
+  'multi.list.removed': '{item} הוסר מהבחירה. {count}',
   'multi.part.selected': 'נבחר',
   'multi.part.notSelected': 'לא נבחר',
   'multi.count.none': 'לא נבחרו פריטים',
@@ -794,6 +797,7 @@ export const he: Record<MessageKey, string> = {
   'junctions.list.item': 'צומת {id}: חוטים {wires}',
   'junctions.list.wire': '{n}',
   'junctions.list.selected': 'צומת {id} נבחר',
+  'junctions.list.name': 'צומת {id}',
   'junctions.removed': 'צומת {id} והחוטים שלו הוסרו',
   'segment.title': 'הזזת מקטע (צעד רשת אחד)',
   'segment.choose': 'מקטע',
@@ -811,7 +815,7 @@ export const he: Record<MessageKey, string> = {
   'segment.done.down': 'המקטע הוזז למטה. כעת מקטע {n} מתוך {m}.',
   'segment.refused': 'המקטע לא הוזז',
   'inspector.shortcuts':
-    'מקלדת, כשתצוגת המעגל במיקוד: החצים מזיזים, R מסובב, Delete מוחק, Esc מבטל. בלי גרירה: בוחרים רכיב אחד, או צומת אחד ברשימת הצמתים, ומשתמשים בכפתורי ההזזה. הכפתורים מזיזים יחד גם כמה רכיבים וצמתים שנבחרו (בחירה של כמה פריטים דורשת עכבר).',
+    'מקלדת, כשתצוגת המעגל במיקוד: החצים מזיזים, R מסובב, Delete מוחק, Esc מבטל. בלי גרירה: בוחרים רכיב, או צומת ברשימת הצמתים, ומשתמשים בכפתורי ההזזה. כדי לבחור כמה פריטים מפעילים את "בחירה של כמה פריטים": אז Enter על רכיב במיקוד, או כפתור ברשימת החוטים או הצמתים, מוסיף את הפריט לבחירה או מסיר אותו. כפתורי ההזזה מזיזים יחד את הרכיבים והצמתים שנבחרו.',
   'inspector.partRemoved': '{id} הוסר',
   'inspector.wireRemoved': 'חוט {n} הוסר',
   'inspector.selectionRemoved': '{count} פריטים שנבחרו הוסרו',
@@ -2345,6 +2349,7 @@ export const he: Record<MessageKey, string> = {
   'kbwire.list.empty': 'עדיין אין חוטים. חברו שני פינים כדי להוסיף חוט.',
   'kbwire.list.item': 'חוט {n}: {from} אל {to}',
   'kbwire.list.selected': 'חוט {n} נבחר',
+  'kbwire.list.name': 'חוט {n}',
 
   // TBI-005: מה קוד MicroPython נתמך (נוצר מ־runtime/builder/pyContract.ts).
   'mpy.support.button': 'תמיכה ב־MicroPython',

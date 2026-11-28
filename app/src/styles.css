@@ -5409,6 +5409,12 @@ select {
   outline-offset: 2px;
 }
 
+/* Shown in both lists while their buttons add to the selection (BETA-G3). */
+.list-several-hint {
+  margin: 0 0 6px;
+  font-size: 0.875rem;
+}
+
 /* TBI-020 slice 2: keyboard shortcuts dialog and its top-bar button. */
 .shortcuts-open {
   /* Compact (24px target, WCAG 2.5.8) so the top bar still fits at 1024px. */

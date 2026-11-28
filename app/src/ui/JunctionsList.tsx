@@ -2,21 +2,21 @@
  * Junctions list (BETA-G3; WCAG 2.1.1): the keyboard and single-click way to select an existing
  * junction. Selecting goes through the normal `store.select`, so the Inspector's Move and Delete
  * work on it; the Circuit view is panned to show it. Nothing is shown when there are no junctions.
+ * While several-selection is on a button adds its junction to the selection or takes it out.
  * Wires are named by their number in the Wires list.
  */
 import { emptySelection, type Point } from '@tbi-lab/domain';
 import { isolateLtr } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
+import { toggleFromList } from './multiSelect.js';
 import { useAnnounce } from './useAnnounce.js';
 
 export function JunctionsList({
   onReveal,
   severalOn,
-  onSeveralChange,
 }: {
   onReveal(at: Point): void;
   severalOn: boolean;
-  onSeveralChange(on: boolean): void;
 }) {
   const { doc, selection, locale, readOnly } = useAppState();
   const store = useStore();
@@ -27,6 +27,8 @@ export function JunctionsList({
     selection.junctions.length === 1 && !selection.components.length && !selection.wires.length
       ? selection.junctions[0]
       : undefined;
+  const several = severalOn && !readOnly;
+  const pressed = (id: string) => (several ? selection.junctions.includes(id) : only === id);
   const wiresOf = (id: string) =>
     doc.layout.wires
       .flatMap((w, i) =>
@@ -44,6 +46,7 @@ export function JunctionsList({
           data-testid="junctions-list"
         >
           <h2 id="junctions-list-heading">{t('junctions.list.title')}</h2>
+          {several && <p class="list-several-hint">{t('multi.list.hint')}</p>}
           <ul>
             {doc.layout.junctions.map((j) => (
               <li key={j.id}>
@@ -51,18 +54,23 @@ export function JunctionsList({
                   type="button"
                   class="junctions-list-item"
                   data-junction={j.id}
-                  aria-pressed={only === j.id}
+                  aria-pressed={pressed(j.id)}
                   onClick={() => {
+                    const id = isolateLtr(j.id);
+                    if (several) {
+                      const name = t('junctions.list.name', { id });
+                      const r = toggleFromList(store.state.selection, 'junctions', j.id, name, t);
+                      store.select(r.next);
+                      if (r.added) onReveal(j);
+                      announce(r.said);
+                      return;
+                    }
                     store.select({ ...emptySelection(), junctions: [j.id] });
                     onReveal(j);
-                    const said = t('junctions.list.selected', { id: isolateLtr(j.id) });
-                    // The list replaces the selection: several-selection ends, in one message.
-                    const ends = severalOn && !readOnly;
-                    if (ends) onSeveralChange(false);
-                    announce(ends ? t('multi.offThen', { said }) : said);
+                    announce(t('junctions.list.selected', { id }));
                   }}
                 >
-                  <span aria-hidden="true">{only === j.id ? '✓ ' : ''}</span>
+                  <span aria-hidden="true">{pressed(j.id) ? '✓ ' : ''}</span>
                   {t('junctions.list.item', { id: isolateLtr(j.id), wires: wiresOf(j.id) })}
                 </button>
               </li>
