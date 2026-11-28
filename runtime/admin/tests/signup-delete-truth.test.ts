@@ -219,6 +219,83 @@ describe('deleteNow: record unreadable or gone, a non-file .mark (ownMark unknow
   });
 });
 
+describe('deleteNow: the LAST audited delete outcome decides (ok then incomplete reopens)', () => {
+  const lines = (dir: string) => audit(dir).split('\n').filter(Boolean);
+  const outcomes = (dir: string) => lines(dir).map((l) => l.split(' ').slice(2).join(' '));
+
+  it('A: ok, record restored with a directory own .mark: incomplete, then gone record still incomplete', async () => {
+    const s = await setup();
+    const { record: r } = await s.store.createIfNew(INPUT);
+    const json = readFileSync(join(s.dir, `${r.id}.json`));
+    expect(await s.store.deleteNow(r.id)).toBe('deleted');
+    // The record comes back (restore); its own address marker is a directory.
+    writeFileSync(join(s.dir, `${r.id}.json`), json, { mode: 0o600 });
+    const own = join(s.dir, mark(INPUT.email));
+    mkdirSync(own, { mode: 0o700 });
+    expect(await s.store.deleteNow(r.id)).toBe('incomplete');
+    expect(existsSync(join(s.dir, `${r.id}.json`))).toBe(true);
+    unlinkSync(join(s.dir, `${r.id}.json`));
+    // The last outcome is incomplete and the address unknown: never already_deleted.
+    expect(await s.store.deleteNow(r.id)).toBe('incomplete');
+    expect(lstatSync(own).isDirectory()).toBe(true);
+    expect(outcomes(s.dir)).toEqual(['delete ok', 'delete incomplete', 'delete incomplete']);
+    rmSync(own, { recursive: true, force: true });
+    expect(await s.store.deleteNow(r.id)).toBe('deleted');
+    expect(await s.store.deleteNow(r.id)).toBe('already_deleted');
+    expect(outcomes(s.dir)).toEqual([
+      'delete ok',
+      'delete incomplete',
+      'delete incomplete',
+      'delete ok',
+    ]);
+    for (const l of s.logs)
+      for (const secret of [r.id, 'dana', 'example', mark(INPUT.email).slice(0, 16), s.dir])
+        expect(l).not.toContain(secret);
+  });
+
+  it('B: ok, repeat delete incomplete (verify state), then a non-file .mark keeps it incomplete; finishing audits ok', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tbi-signup-delete-truth-'));
+    roots.push(root);
+    const dir = join(root, 'p');
+    const logs: string[] = [];
+    let fail = false;
+    const store = new PendingStore(dir, {
+      now: () => T0,
+      log: (l) => logs.push(l),
+      onRemoved: async () => {
+        if (fail) throw new Error('verify state busy');
+      },
+    });
+    await store.init();
+    const { record: r } = await store.createIfNew(INPUT);
+    expect(await store.deleteNow(r.id)).toBe('deleted');
+    fail = true;
+    expect(await store.deleteNow(r.id)).toBe('incomplete');
+    fail = false;
+    const foreign = join(dir, mark('other@example.com'));
+    mkdirSync(foreign, { mode: 0o700 });
+    expect(await store.deleteNow(r.id)).toBe('incomplete');
+    expect(lstatSync(foreign).isDirectory()).toBe(true);
+    expect(outcomes(dir)).toEqual(['delete ok', 'delete incomplete', 'delete incomplete']);
+    rmSync(foreign, { recursive: true, force: true });
+    // The retry actually finishes the open delete: audited ok, so the id does not stay open.
+    expect(await store.deleteNow(r.id)).toBe('deleted');
+    expect(outcomes(dir)).toEqual([
+      'delete ok',
+      'delete incomplete',
+      'delete incomplete',
+      'delete ok',
+    ]);
+    // After the last ok, a foreign non-file .mark: already_deleted, nothing appended.
+    mkdirSync(foreign, { mode: 0o700 });
+    const before = audit(dir);
+    expect(await store.deleteNow(r.id)).toBe('already_deleted');
+    expect(audit(dir)).toBe(before);
+    expect(lstatSync(foreign).isDirectory()).toBe(true);
+    for (const l of logs) expect(l).not.toContain(r.id);
+  });
+});
+
 describe('deleteNow: unknown id cleanup errors', () => {
   it('an EACCES marker during an unknown-id cleanup: not_found, class-only log, no audit line', async () => {
     const s = await setup();
