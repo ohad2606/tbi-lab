@@ -11,6 +11,7 @@ import {
   g2FailedReport,
   g2FreeUsers,
   g2Report,
+  g2ReportWriter,
   pollUntil,
   G2_FREE_LIVE,
   G2_PAID_DRILL,
@@ -192,6 +193,42 @@ describe('g2-deployed drill helpers', () => {
       );
     const codes = ['load_above_2x_cpus', 'sampler_blind'];
     expect(g2FailedReport({ ...p, failures: codes }).failures).toEqual(codes);
+  });
+
+  it('a PASSED report that throws still leaves a FAILED one, never a PASSED one', () => {
+    const p = {
+      instance: 'tbi-s8',
+      phase: 'clean-up',
+      seconds: 1,
+      admitted: [],
+      builds: [],
+      promotedPositions: [],
+      samples: [],
+      metrics: {}, // no build counts: PASSED cannot be built
+    };
+    const written = [];
+    const write = g2ReportWriter(p, (result, report) => written.push([result, report.result]));
+    expect(() => write('PASSED')).toThrow('build counts');
+    // Written by the writer itself, before any test hook runs.
+    expect(written).toEqual([['FAILED', 'FAILED']]);
+    write('FAILED'); // the test hook afterwards: no second report
+    write('PASSED');
+    expect(written).toEqual([['FAILED', 'FAILED']]);
+  });
+
+  it('a report that could not be recorded does not count as written', () => {
+    const p = { phase: 'idle', admitted: [], builds: [], promotedPositions: [], samples: [] };
+    const written = [];
+    let broken = true;
+    const write = g2ReportWriter(p, (result) => {
+      if (broken) throw new Error('disk');
+      written.push(result);
+    });
+    expect(() => write('FAILED')).toThrow('disk');
+    broken = false;
+    write('FAILED');
+    write('FAILED');
+    expect(written).toEqual(['FAILED']);
   });
 
   it('report keeps only allowlisted numbers and codes', () => {

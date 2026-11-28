@@ -169,6 +169,28 @@ export function g2Report(p: G2Progress, result: 'PASSED' | 'FAILED') {
 }
 export const g2FailedReport = (p: G2Progress) => g2Report(p, 'FAILED');
 
+/**
+ * Writes one report per run. A report counts as written only once `record` returned. A PASSED report
+ * that cannot be built or written leaves a FAILED one, and the error is still thrown.
+ */
+export function g2ReportWriter(
+  p: G2Progress,
+  record: (result: 'PASSED' | 'FAILED', report: ReturnType<typeof g2Report>) => void,
+) {
+  let written = false;
+  const write = (result: 'PASSED' | 'FAILED'): void => {
+    if (written) return;
+    try {
+      record(result, g2Report(p, result));
+      written = true;
+    } catch (e) {
+      if (result === 'PASSED') write('FAILED');
+      throw e;
+    }
+  };
+  return write;
+}
+
 export type G2Decision =
   | { kind: 'off' }
   | { kind: 'refused'; reason: string }

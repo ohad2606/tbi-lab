@@ -79,7 +79,7 @@ import { PROTOCOL } from '../host/protocol.js';
 import { mutationAllowed, pipelineLockStatus } from './mutation-gate.js';
 import {
   g2Decision,
-  g2Report,
+  g2ReportWriter,
   g2FreeUsers,
   pollUntil,
   G2_ENV,
@@ -427,20 +427,17 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         if (metrics.secretLeaks) fail('secret_in_journal');
       }
 
-      let written = false;
+      const record = g2ReportWriter(progress, (result, report) =>
+        recordEvidence(`g2-deployed-${RUN}${result === 'FAILED' ? '-FAILED' : ''}`, report),
+      );
       const writeReport = (result: 'PASSED' | 'FAILED') => {
-        if (written) return;
-        written = true;
         progress.seconds = Math.round((performance.now() - t00) / 1000);
         try {
           progress.a1 = a1?.report();
         } catch {
           console.warn('g2-deployed: the A1 report could not be built'); // keep the run report
         }
-        recordEvidence(
-          `g2-deployed-${RUN}${result === 'FAILED' ? '-FAILED' : ''}`,
-          g2Report(progress, result),
-        );
+        record(result);
       };
       const bail = async (why: string) => {
         abort.abort(new Error(why));
@@ -559,7 +556,7 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
           });
           return { status: s.status, sha, ms, outcome };
         };
-        const buildsDeadline = performance.now() + L.G2_BUDGET_S.builds * 1000;
+        const buildsDeadline = performance.now() + L.g2BuildsBudgetS(paying.length) * 1000;
         const unique = await Promise.all([
           buildFor(everyone[0]!, sketch(`${RUN}-a`)),
           buildFor(everyone[1]!, sketch(`${RUN}-b`)),
@@ -1165,7 +1162,10 @@ describe('G2 deployed: queue, idle and builds under load on staging', () => {
         process.removeListener('SIGHUP', onSignal);
       }
     },
-    L.g2TimeoutMs(decision.kind === 'run' ? SECONDS : 0) + (A1 ? M.G2_A1_BUDGET_S * 1000 : 0),
+    L.g2TimeoutMs(
+      decision.kind === 'run' ? SECONDS : 0,
+      decision.kind === 'run' ? decision.payingUsers.length : 0,
+    ) + (A1 ? M.G2_A1_BUDGET_S * 1000 : 0),
   );
 
   // After the drills above (same file, in order): passed only if they ran and passed this one.

@@ -91,6 +91,11 @@ describe('queue_full at maxLength with paid waiters (real host)', () => {
       const noPoll = async () => {};
       for (const u of [...LIVE_FREE, ...LIVE_PAID]) expect((await join(u)).status).toBe(201);
 
+      // why the two preview identities of a run cannot be used: they hold seats and never wait.
+      // Asked while the queue is empty: with a full queue no join could ever answer 202.
+      expect(await join(LIVE_PAID[0]!)).toMatchObject({ status: 429, error: 'session_quota' });
+      expect(adapter.waiting).toBe(0);
+
       const free = await g2FillQueue(FREE, join, noPoll);
       expect(free.accepted).toHaveLength(PLANS.queue.maxFree);
       expect(free.refused).toEqual({ status: 429, error: 'queue_full' });
@@ -98,10 +103,6 @@ describe('queue_full at maxLength with paid waiters (real host)', () => {
       const paid = await g2FillQueue(PAID, join, noPoll);
       expect(paid.accepted).toHaveLength(PLANS.queue.maxLength - PLANS.queue.maxFree);
       expect(paid.refused).toEqual({ status: 429, error: 'queue_full' });
-      expect(adapter.waiting).toBe(PLANS.queue.maxLength);
-
-      // why the two preview identities of a run cannot be used: they hold seats and never wait
-      expect(await join(LIVE_PAID[0]!)).not.toMatchObject({ status: 202 });
       expect(adapter.waiting).toBe(PLANS.queue.maxLength);
     } finally {
       for (const g of gates.values()) g.close();

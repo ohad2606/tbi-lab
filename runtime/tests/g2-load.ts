@@ -86,8 +86,20 @@ export const G2_BUDGET_S = {
   hold: 700,
   cleanUp: 180,
 };
-export const g2TimeoutMs = (drainS: number): number =>
-  (Object.values(G2_BUDGET_S).reduce((a, b) => a + b, drainS) + 300) * 1000;
+/**
+ * Build-phase allowance per extra paying identity (each builds once, in sequence). Not measured: the
+ * share one sequential build has in `builds`, (2700 - 610 s for the concurrent pair) / 22, 22 being
+ * the 24 identities of a default run without the two that build together.
+ */
+export const G2_EXTRA_BUILD_S = 95;
+/** build phase budget with `extra` paying identities */
+export const g2BuildsBudgetS = (extra: number): number =>
+  G2_BUDGET_S.builds + Math.min(extra, G2_IDENTITY_BUDGET) * G2_EXTRA_BUILD_S;
+export const g2TimeoutMs = (drainS: number, extra = 0): number =>
+  (Object.values(G2_BUDGET_S).reduce((a, b) => a + b, drainS) +
+    (g2BuildsBudgetS(extra) - G2_BUDGET_S.builds) +
+    300) *
+  1000;
 
 // ---- sampling (read-only commands, fixed argv, run as `sudo -n`, no shell)
 export interface G2UnitMemory {

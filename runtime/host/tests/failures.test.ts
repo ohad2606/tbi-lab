@@ -279,22 +279,19 @@ describe('leases, limits and shutdown', () => {
 
   it('retention follows the monotonic clock: a wall-clock step neither drops nor pins a session', async () => {
     const real = Date.now.bind(Date);
-    // stepped forward: an ended session must still be there inside its retention time
-    const long = start('normal', { retainEndedMs: 60_000, housekeepingMs: 20 });
-    const kept = created(long.host, long.art.sha256);
-    await kept.terminate('terminated');
-    // stepped back: it must still leave after its retention time
-    const short = start('normal', { retainEndedMs: 200, housekeepingMs: 20 });
-    const gone = created(short.host, short.art.sha256);
-    await gone.terminate('terminated');
-    for (const [step, w, s, there] of [
-      [3_600_000, long, kept, true],
-      [-3_600_000, short, gone, false],
+    for (const [step, retainEndedMs, there] of [
+      [3_600_000, 60_000, true], // forward: still there inside its retention time
+      [-3_600_000, 200, false], // back: still leaves after its retention time
     ] as const) {
+      const { host, art } = start('normal', { retainEndedMs, housekeepingMs: 20 });
+      const s = created(host, art.sha256);
+      // ended just before its own step, so no earlier wait or step can have decided the outcome
+      await s.terminate('terminated');
       const spy = vi.spyOn(Date, 'now').mockImplementation(() => real() + step);
       try {
+        expect(host.get(s.id, s.token, principalFor()).ok, `step ${step}: before`).toBe(true);
         await new Promise((r) => setTimeout(r, 600));
-        expect(w.host.get(s.id, s.token, principalFor()).ok, `step ${step}`).toBe(there);
+        expect(host.get(s.id, s.token, principalFor()).ok, `step ${step}`).toBe(there);
       } finally {
         spy.mockRestore();
       }

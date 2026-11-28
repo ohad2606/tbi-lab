@@ -556,6 +556,26 @@ describe('G7 counts', () => {
   it('counts leaked secrets without returning them', () => {
     expect(L.g2Leaks(['x tok1 y', 'z'], ['tok1', 'tok2', ''])).toBe(1);
   });
+  it('every extra paying identity adds its build to the phase budget and the test timeout', () => {
+    const { needed } = L.g2PaidPlan(DEFAULT_CONFIG.queue, 0);
+    expect(needed).toBe(5);
+    const extraS = needed * L.G2_EXTRA_BUILD_S;
+    expect(L.g2BuildsBudgetS(0)).toBe(L.G2_BUDGET_S.builds);
+    expect(L.g2BuildsBudgetS(needed)).toBe(L.G2_BUDGET_S.builds + extraS);
+    expect(L.g2TimeoutMs(1500, needed) - L.g2TimeoutMs(1500)).toBe(extraS * 1000);
+    // the allowance is the default run's own share per sequential build
+    const sequential = L.g2IdentityPlan(DEFAULT_CONFIG.queue.maxFree).free + 2 - 2;
+    expect(L.G2_EXTRA_BUILD_S).toBe(
+      Math.ceil((L.G2_BUDGET_S.builds - L.G2_BUILD_CAP_MS / 1000) / sequential),
+    );
+    expect(L.g2BuildsBudgetS(1000)).toBe(L.g2BuildsBudgetS(L.G2_IDENTITY_BUDGET));
+    const harness = readFileSync(
+      new URL('../../runtime/tests/g2-deployed.runtime.test.ts', import.meta.url),
+      'utf8',
+    );
+    expect(harness).toContain('L.g2BuildsBudgetS(paying.length) * 1000');
+    expect(harness).toMatch(/L\.g2TimeoutMs\([^;]*decision\.payingUsers\.length/);
+  });
   it('the test timeout covers every phase budget', () => {
     const sum = Object.values(L.G2_BUDGET_S).reduce((x, y) => x + y, 0);
     expect(L.g2TimeoutMs(1500)).toBeGreaterThan((sum + 1500) * 1000);
