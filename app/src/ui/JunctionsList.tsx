@@ -5,6 +5,7 @@
  * While several-selection is on a button adds its junction to the selection or takes it out.
  * Wires are named by their number in the Wires list.
  */
+import { useLayoutEffect } from 'preact/hooks';
 import { emptySelection, type Point } from '@tbi-lab/domain';
 import { isolateLtr } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
@@ -21,7 +22,11 @@ export function JunctionsList({
   const { doc, selection, locale, readOnly } = useAppState();
   const store = useStore();
   const t = useT();
-  const [msg, announce] = useAnnounce();
+  const [msg, announce, clear] = useAnnounce();
+  // A message from before the mode was turned on again describes an older selection.
+  useLayoutEffect(() => {
+    if (severalOn) clear();
+  }, [severalOn]);
   if (!doc) return null;
   const only =
     selection.junctions.length === 1 && !selection.components.length && !selection.wires.length

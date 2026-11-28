@@ -133,6 +133,10 @@ export function Editor() {
     setSeveralOn(false);
     clearSeveralMsg();
   }, [doc?.projectId]);
+  // "Selecting several items is off" is no longer true once the mode is on again.
+  useLayoutEffect(() => {
+    if (severalOn) clearSeveralMsg();
+  }, [severalOn]);
   const endSeveral = (said: string | null) => {
     if (!severalOn || readOnly) return;
     setSeveralOn(false);
@@ -254,7 +258,7 @@ export function Editor() {
           </div>
         </div>
         {/* The side column: properties, and under them the ESP32 terminal for ESP32 projects. */}
-        <div class="side-column">
+        <div class="side-column" onKeyDown={keepPageUnselected}>
           <Inspector
             probes={live}
             onRemoveProbe={(id) => setProbes(live.filter((p) => p.id !== id))}

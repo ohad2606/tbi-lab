@@ -1946,6 +1946,12 @@ export function Canvas({
                 if (e.key !== 'Escape' || !several || placing) return;
                 e.preventDefault();
                 e.stopPropagation();
+                // One level at a time, as on the drawing: probe mode first.
+                if (probeMode) {
+                  onProbeModeChange(false);
+                  kbAnnounce(t('probe.kb.off'));
+                  return;
+                }
                 setSeveralOn(false);
                 store.select(emptySelection());
                 kbAnnounce(t('multi.cleared'));

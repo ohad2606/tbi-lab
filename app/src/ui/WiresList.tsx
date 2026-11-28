@@ -4,6 +4,7 @@
  * as for a pointer selection. While several-selection is on (BETA-G3) a button adds its wire to
  * the selection or takes it out. It never moves focus by itself.
  */
+import { useLayoutEffect } from 'preact/hooks';
 import { CATALOG, emptySelection, type Wire } from '@tbi-lab/domain';
 import { catalogText, isolateLtr } from '../i18n/i18n.js';
 import { useAppState, useStore, useT } from './context.js';
@@ -16,7 +17,11 @@ export function WiresList({ severalOn }: { severalOn: boolean }) {
   const store = useStore();
   const t = useT();
   // Live region for the selection (WCAG 4.1.3).
-  const [msg, announce] = useAnnounce();
+  const [msg, announce, clear] = useAnnounce();
+  // A message from before the mode was turned on again describes an older selection.
+  useLayoutEffect(() => {
+    if (severalOn) clear();
+  }, [severalOn]);
   if (!doc) return null;
   const endName = (end: Wire['from']) => {
     if (end.kind !== 'terminal') return t('kbwire.endJunction', { id: isolateLtr(end.junction) });

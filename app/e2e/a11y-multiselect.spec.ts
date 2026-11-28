@@ -698,3 +698,71 @@ for (const lang of ['en', 'he'] as const) {
     await expect(page.getByTestId('canvas-several')).toHaveAttribute('aria-pressed', 'false');
   });
 }
+
+for (const lang of ['en', 'he'] as const) {
+  const l = LISTS[lang];
+
+  test(`turning the mode on again drops older status text (${lang})`, async ({ page }) => {
+    await page.addInitScript((x) => localStorage.setItem('tbi-lab.locale', x), lang);
+    await openImported(page, listsDoc());
+    const tool = page.getByTestId('canvas-several');
+    const wire = page.locator('.wires-list-item').first();
+    const junction = page.locator('.junctions-list-item');
+    await wire.click();
+    await junction.click();
+    await expect.poll(() => said(page, 'junctions-list-status')).toBe(l.selectedJunction);
+    await tool.click();
+    await expect.poll(() => said(page, 'wires-list-status')).toBe('');
+    await expect.poll(() => said(page, 'junctions-list-status')).toBe('');
+    // A selection elsewhere ends the mode and says so; that goes too.
+    await page.getByTestId('connections-toggle').click();
+    await page.getByTestId('connections-select-R1').click();
+    await expect.poll(() => said(page, 'several-status')).not.toBe('');
+    await tool.click();
+    await expect.poll(() => said(page, 'several-status')).toBe('');
+  });
+
+  test(`Escape on the toggle leaves probe mode first (${lang})`, async ({ page }) => {
+    await open(page, lang);
+    const tool = page.getByTestId('canvas-several');
+    const probe = page.getByTestId('canvas-probe');
+    await tool.click();
+    await probe.click();
+    await expect(probe).toHaveAttribute('aria-pressed', 'true');
+    await tool.focus();
+    await page.keyboard.press('Escape');
+    await expect(probe).toHaveAttribute('aria-pressed', 'false');
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    await expect(tool).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(tool).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test(`Ctrl+A on side-column buttons never selects page text (${lang})`, async ({ page }) => {
+    await page.addInitScript((x) => localStorage.setItem('tbi-lab.locale', x), lang);
+    await openImported(page, listsDoc());
+    await page.locator('.wires-list-item').first().click();
+    for (const target of [
+      page.locator('.wires-list-item').first(),
+      page.getByTestId('inspector-delete'),
+      page.locator('#inspector-heading'),
+    ]) {
+      await target.focus();
+      expect(await pressSelectAll(page)).toEqual({ prevented: true, text: '' });
+    }
+  });
+
+  test(`Route automatically does not drop focus (${lang})`, async ({ page }) => {
+    const doc = structuredClone(listsDoc());
+    const first = doc.layout.wires[0]!;
+    delete first.auto; // a manual route, so the button shows
+    await page.addInitScript((x) => localStorage.setItem('tbi-lab.locale', x), lang);
+    await openImported(page, doc);
+    await page.locator(`.wires-list-item[data-wire="${first.id}"]`).click();
+    const route = page.getByTestId('wire-route-auto');
+    await route.focus();
+    await page.keyboard.press('Enter');
+    await expect(route).toHaveCount(0);
+    await expect(page.locator('#inspector-heading')).toBeFocused();
+  });
+}
