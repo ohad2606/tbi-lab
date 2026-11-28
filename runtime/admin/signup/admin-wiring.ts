@@ -260,10 +260,11 @@ export async function wireSignupAdmin(
   },
 ): Promise<SignupAdminWiring> {
   let verifier: Verifier | null = null;
-  const store = new PendingStore(
-    c.dir,
-    c.verify ? { now: io.now, onRemoved: (id) => verifier!.remove(id) } : { now: io.now },
-  );
+  const store = new PendingStore(c.dir, {
+    now: io.now,
+    log: io.log,
+    ...(c.verify ? { onRemoved: (id: string) => verifier!.remove(id) } : {}),
+  });
   await store.init();
   // The key is read at send time only (never held here); a missing file fails the send, not
   // startup. It is checked once now so a deploy mistake shows in the log before the first approval.
@@ -305,6 +306,8 @@ export async function wireSignupAdmin(
         `signup: purge removed ${removed.length}` +
           (store.corruptPurged ? ` and ${store.corruptPurged} unreadable file(s)` : ''),
       );
+      if (store.purgeIncomplete)
+        io.log(`signup: purge incomplete ${store.purgeIncomplete} (kept for the next run)`);
     } catch (e) {
       io.log(`signup: purge failed (${errorClass(e)})`);
     }

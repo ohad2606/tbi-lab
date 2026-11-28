@@ -281,7 +281,7 @@ export const consoleEn = {
   'console.signups.delete.rateLimitedFor':
     'Request {id}: not deleted. Too many requests; try again later. Seconds to wait: {seconds}.',
   'console.signups.delete.failed.server':
-    'Request {id}: the deletion did not finish. The record is kept; try again.',
+    'Request {id}: the deletion did not finish. Refresh the list; if the request is still there, try again. If not, ask the operator to check the server log.',
   'console.signups.delete.failed.network':
     'Request {id}: the server did not answer, so it may or may not be deleted. Check the list and try again.',
   'console.signups.delete.failed.csrf':

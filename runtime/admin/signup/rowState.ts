@@ -205,7 +205,8 @@ export function ownerView(d: OwnerViewDeps): {
         r.status !== 'pending' &&
         r.accountAdded === true &&
         typeof r.autoApprovedAt === 'string' &&
-        r.autoApprovedAt
+        r.autoApprovedAt &&
+        r.approvedBy !== 'owner'
           ? { state: 'approved_auto' }
           : (states.get(r.id) ??
             (failed && r.status === 'pending' && r.origin === 'web'

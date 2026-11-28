@@ -575,11 +575,13 @@ async function routeSignups(
     return send(res, 200, await listed((r) => OPEN_STATUSES.includes(r.status)));
   // K12: delete one request now (owner only, CSRF and write limit already applied). No body is
   // read. 200 deleted; 200 with `already_deleted` when the audit log shows an earlier delete
-  // (no-op); 404 unknown. The account, if one was added, is not touched.
+  // (no-op); 404 unknown; 500 `delete_incomplete` when a step failed (nothing reported deleted). The account, if one was added, is not touched.
   if (method === 'DELETE' && parts.length === 2 && id && REQUEST_ID_RE.test(id)) {
     req.resume();
     const out = await approver.remove(id);
     if (out === 'not_found') throw new AdminError(404, 'not_found');
+    // Part of the request is still stored: never a success; a retry finishes the job.
+    if (out === 'incomplete') throw new AdminError(500, 'delete_incomplete');
     return send(res, 200, {
       deleted: true,
       ...(out === 'already_deleted' ? { note: 'already_deleted' } : {}),

@@ -8,6 +8,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import {
   appendFile,
+  lstat,
   mkdir,
   open,
   readdir,
@@ -17,8 +18,10 @@ import {
   unlink,
   writeFile,
 } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { join } from 'node:path';
 import { newRequestId, REQUEST_ID_RE } from '../common.js';
+import { errorClass } from './errors.js';
 import { serialById } from './locks.js';
 import type { SignupInput } from './validate.js';
 
@@ -68,6 +71,13 @@ export interface SignupRecord extends SignupInput {
    * cap. Absent on every record while auto-approve is off (records are then unchanged).
    */
   autoApprovedAt?: string;
+  /**
+   * BETA-G1: `'owner'` when the owner's own approver added the account (e.g. after a failed
+   * automatic attempt). Display only: the row is shown as approved automatically only without
+   * it. Never read for a decision (pause hold, cap, cut-off, eligibility); the record is
+   * intake-writable, so a forged value changes the label only. Additive, no schema bump.
+   */
+  approvedBy?: 'owner';
   /**
    * BETA-G1 s8: `'web'` on a request that came through the browser route (`POST /signup/web`);
    * absent on every `/signup` (Apps Script) request. Additive, no schema bump (`v` stays 1).
@@ -140,13 +150,47 @@ export function retentionFromEnv(env: NodeJS.ProcessEnv): Retention {
 }
 
 /** K12: the result of `PendingStore.deleteNow`. */
-export type DeleteOutcome = 'deleted' | 'already_deleted' | 'not_found';
+export type DeleteOutcome = 'deleted' | 'already_deleted' | 'not_found' | 'incomplete';
 
+/**
+ * `not_found`: no such record (ENOENT / ENOTDIR, or a malformed id). `unreadable`: the record
+ * file exists but could not be read (EACCES, EIO, ...): never "gone", so callers keep every
+ * marker, claim and verify state of it.
+ */
 export class StoreError extends Error {
-  constructor(readonly code: 'unsafe_dir' | 'not_found' | 'corrupt' | 'full') {
+  constructor(readonly code: 'unsafe_dir' | 'not_found' | 'unreadable' | 'corrupt' | 'full') {
     super(code);
   }
 }
+
+const errCode = (e: unknown): string | undefined => (e as { code?: string } | null)?.code;
+
+/** An address marker file name (`<sha256(address)>.mark`). */
+const MARK_RE = /^[0-9a-f]{64}\.mark$/;
+const MARK_READ = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+
+/**
+ * The text of an address marker, or null when it is absent or not a regular file (a directory,
+ * symlink or FIFO cannot hold an id: never followed or read). Throws when it cannot be examined
+ * or read. The open flags cover an entry swapped between the two calls.
+ */
+async function readMark(path: string): Promise<string | null> {
+  try {
+    if (!(await lstat(path)).isFile()) return null;
+    return (await readFile(path, { encoding: 'utf8', flag: MARK_READ })).trim();
+  } catch (e) {
+    if (errCode(e) === 'ENOENT') return null;
+    throw e;
+  }
+}
+
+/** `readMark` for callers that treat an unreadable marker as holding nothing. */
+const markText = async (path: string): Promise<string> =>
+  (await readMark(path).catch(() => null)) ?? '';
+
+/** Whether an error from `PendingStore.get` means the record is absent (or unusable garbage). */
+const goneOrCorrupt = (e: unknown): boolean =>
+  e instanceof StoreError && (e.code === 'not_found' || e.code === 'corrupt');
 
 export class PendingStore {
   constructor(
@@ -165,6 +209,8 @@ export class PendingStore {
        * sweep also removes orphan state).
        */
       onRemoved?: (id: string) => Promise<void>;
+      /** Fixed class lines only (never an id, path or address). */
+      log?: (line: string) => void;
     } = {},
   ) {}
 
@@ -246,7 +292,7 @@ export class PendingStore {
   /** A web, pending, not (mirror-)verified record, else null; never throws for a missing one. */
   private async markerTarget(id: string): Promise<SignupRecord | null> {
     if (!REQUEST_ID_RE.test(id)) return null;
-    const r = await this.get(id).catch(() => null);
+    const r = await this.getOrNull(id);
     return r && r.origin === 'web' && r.status === 'pending' && !r.verifiedAt ? r : null;
   }
 
@@ -293,7 +339,7 @@ export class PendingStore {
 
   /** Resend by address: the address marker's holder (sha256 key), then as `writeResendMarker`. */
   async writeResendMarkerFor(email: string): Promise<MarkerOutcome> {
-    const holder = (await readFile(this.markPath(email), 'utf8').catch(() => '')).trim();
+    const holder = await markText(this.markPath(email));
     return REQUEST_ID_RE.test(holder) ? this.writeResendMarker(holder) : 'skip';
   }
 
@@ -339,17 +385,17 @@ export class PendingStore {
         }
       };
       // Dedupe first: at the cap a repeat of a live request is still answered (not 'full').
-      const existing = (await readFile(mark, 'utf8').catch(() => '')).trim();
+      const existing = await markText(mark);
       if (REQUEST_ID_RE.test(existing)) {
-        const cur = await this.get(existing).catch(() => null);
+        const cur = await this.getOrNull(existing);
         if (cur && cur.status !== 'rejected') return { created: false, record: cur };
       }
       if (!web && (await capped())) throw new StoreError('full');
       const rec = this.build(input);
       if (web) rec.origin = 'web';
       if (!(await claim(rec.id))) {
-        const holder = (await readFile(mark, 'utf8').catch(() => '')).trim();
-        const cur = REQUEST_ID_RE.test(holder) ? await this.get(holder).catch(() => null) : null;
+        const holder = await markText(mark);
+        const cur = REQUEST_ID_RE.test(holder) ? await this.getOrNull(holder) : null;
         if (cur && cur.status !== 'rejected') return { created: false, record: cur };
         await unlink(mark).catch(() => undefined); // stale: take over
         if (!(await claim(rec.id))) throw new StoreError('corrupt');
@@ -429,7 +475,8 @@ export class PendingStore {
       text = await readFile(this.path(id), 'utf8');
     } catch (e) {
       if (e instanceof StoreError) throw e;
-      throw new StoreError('not_found');
+      const code = errCode(e);
+      throw new StoreError(code === 'ENOENT' || code === 'ENOTDIR' ? 'not_found' : 'unreadable');
     }
     try {
       const r = JSON.parse(text) as SignupRecord;
@@ -447,6 +494,14 @@ export class PendingStore {
     } catch {
       throw new StoreError('corrupt');
     }
+  }
+
+  /** The record, or null when it is absent or corrupt; an unreadable record throws. */
+  private getOrNull(id: string): Promise<SignupRecord | null> {
+    return this.get(id).catch((e: unknown) => {
+      if (goneOrCorrupt(e)) return null;
+      throw e;
+    });
   }
 
   /** Read-modify-write of one record. Callers serialise per id (see SignupService). */
@@ -479,73 +534,118 @@ export class PendingStore {
    * K12: the owner deletes one request now (a person asked to be forgotten), whatever its status.
    * Under the per-id lock shared with the approver and the purge, it removes the `<id>.notified`,
    * `<id>.notifyq` and `<id>.web` (web sub-cap) markers, the address marker (`<sha256>.mark`, the de-duplication lock)
-   * that points to this id, any `<id>.*.tmp` left by a crash, and LAST the record `<id>.json`
-   * (a crash part-way leaves the record, so a retry finishes the job). Then one audit line
-   * `<time> <id> delete ok` (no personal data). A record file that cannot be parsed is deleted too.
+   * that points to this id, any `<id>.*.tmp` left by a crash, the record `<id>.json`, and then
+   * the admin verify state (`onRemoved`). Only when every step succeeded is one audit line
+   * `<time> <id> delete ok` written (no personal data). A record file that cannot be parsed is
+   * deleted too.
    *
-   *   deleted          the record existed and is gone (audited)
+   *   deleted          every file and the verify state are gone (audited `delete ok`)
    *   already_deleted  no record, but the audit log shows an earlier `delete ok` for this id: no-op
-   *   not_found        no record and no earlier delete (unknown id, or removed by retention)
+   *   not_found        no record and no earlier delete (unknown id, or removed by retention);
+   *                    with no side file either, never audited
+   *   incomplete       a step failed (EPERM, an unreadable address marker, the verify state...):
+   *                    audited `delete incomplete`, never `ok`; a retry finishes the job (it
+   *                    answers `deleted` once the rest is gone)
    *
    * An account already added for the request is NOT touched (accounts.ts: disable).
    */
   deleteNow(id: string): Promise<DeleteOutcome> {
     if (!REQUEST_ID_RE.test(id)) return Promise.resolve('not_found');
     return serialById(id, async () => {
-      const existed = await stat(this.path(id)).then(
-        () => true,
-        (e: unknown) => {
-          if ((e as { code?: string }).code === 'ENOENT') return false;
-          throw e;
-        },
-      );
-      const gone = async (name: string) => {
-        try {
-          await unlink(join(this.dir, name));
-        } catch (e) {
-          if ((e as { code?: string }).code !== 'ENOENT') throw e;
+      // Only a request that exists or existed is ever audited: an unknown id stays unknown.
+      let known = false;
+      try {
+        const existed = await stat(this.path(id)).then(
+          () => true,
+          (e: unknown) => {
+            if (errCode(e) === 'ENOENT') return false;
+            throw e;
+          },
+        );
+        const deletedBefore = !existed && (await this.auditHas(id, 'delete', 'ok'));
+        const unfinished = !existed && (await this.auditHas(id, 'delete', 'incomplete'));
+        const earlier = existed || deletedBefore || unfinished;
+        known = earlier || (await readdir(this.dir)).some((f) => f.startsWith(`${id}.`));
+        // Derived from the record, as createIfNew names it; unknown when it cannot be read.
+        const email: unknown = existed ? (await this.get(id).catch(() => null))?.email : undefined;
+        const ownMark = typeof email === 'string' ? this.markPath(email) : undefined;
+        if (!known) {
+          // Best effort for strays (a marker or verify state naming this id); never audited.
+          await this.removeSideFiles(id, ownMark).catch(() => undefined);
+          await this.opts.onRemoved?.(id).catch(() => undefined);
+          return 'not_found';
         }
-      };
-      await this.removeSideFiles(id);
-      await gone(`${id}.web`);
-      if (!existed)
-        return (await this.auditHas(id, 'delete', 'ok')) ? 'already_deleted' : 'not_found';
-      await gone(`${id}.json`);
-      await this.removed(id);
-      await this.audit(id, 'delete', 'ok');
-      return 'deleted';
+        await this.removeSideFiles(id, ownMark);
+        await this.unlinkGone(`${id}.web`);
+        if (existed) await this.unlinkGone(`${id}.json`);
+        // Idempotent; also on a retry whose record is already gone.
+        await this.opts.onRemoved?.(id);
+        if (deletedBefore) return 'already_deleted';
+        // Only leftovers of a record removed by retention: cleaned, still no such request.
+        if (!earlier) return 'not_found';
+        // `unfinished`: an earlier attempt removed the record but not the rest.
+        await this.audit(id, 'delete', 'ok');
+        return 'deleted';
+      } catch (e) {
+        const code = errCode(e);
+        const cls =
+          typeof code === 'string' && /^E[A-Z0-9]{1,30}$/.test(code) ? code : errorClass(e);
+        this.opts.log?.(`signup: delete incomplete (${cls})`);
+        if (known) await this.audit(id, 'delete', 'incomplete').catch(() => undefined);
+        return 'incomplete';
+      }
     });
+  }
+
+  /** Unlink one file of the store dir; only ENOENT counts as already gone. */
+  private async unlinkGone(name: string): Promise<void> {
+    try {
+      await unlink(join(this.dir, name));
+    } catch (e) {
+      if (errCode(e) !== 'ENOENT') throw e;
+    }
   }
 
   /**
    * Every file of `id` but the record and `.web` (the caller holds the per-id lock): `.notified`,
    * `.notifyq`, `.rq`, every `.vq-*`, `<id>.*.tmp`, and the address marker this id holds. The
    * caller removes `.web` after this, just before the record (the unverified purge selects on it).
+   * Throws on any failure (the caller keeps the record and retries). A directory under a
+   * `.vq-*`, `.rq` or `.tmp` name is nothing we wrote: left alone. A `.mark` entry that is not a
+   * regular file is skipped. An unreadable regular marker is a failure when it may be this
+   * request's: it is `ownMark`, or `ownMark` is unknown (record gone or unreadable).
    */
-  private async removeSideFiles(id: string): Promise<void> {
-    const gone = async (name: string) => {
-      try {
-        await unlink(join(this.dir, name));
-      } catch (e) {
-        if ((e as { code?: string }).code !== 'ENOENT') throw e;
-      }
-    };
-    await gone(`${id}.notified`);
-    await gone(`${id}.notifyq`);
+  private async removeSideFiles(id: string, ownMark: string | undefined): Promise<void> {
+    await this.unlinkGone(`${id}.notified`);
+    await this.unlinkGone(`${id}.notifyq`);
+    let skipped = false;
     for (const f of await readdir(this.dir)) {
-      if (
-        f.startsWith(`${id}.`) &&
-        (f.endsWith('.tmp') || f.startsWith(`${id}.vq-`) || f === `${id}.rq`)
-      )
-        // Intake-made names: a directory under such a name is left alone (never EISDIR here).
-        await gone(f).catch((e: unknown) => {
-          const code = (e as { code?: string }).code;
-          if (code !== 'EISDIR' && code !== 'EPERM') throw e;
-        });
-      else if (/^[0-9a-f]{64}\.mark$/.test(f)) {
-        const holder = (await readFile(join(this.dir, f), 'utf8').catch(() => '')).trim();
-        if (holder === id) await gone(f);
+      if (f.startsWith(`${id}.vq-`) || f === `${id}.rq`) await this.unlinkFile(f);
+      else if (f.startsWith(`${id}.`) && f.endsWith('.tmp')) await this.unlinkFile(f);
+      else if (MARK_RE.test(f)) {
+        const path = join(this.dir, f);
+        let holder: string | null;
+        try {
+          holder = await readMark(path);
+        } catch (e) {
+          if (ownMark === undefined || path === ownMark) throw e;
+          skipped = true;
+          continue;
+        }
+        if (holder === id) await this.unlinkGone(f);
       }
+    }
+    if (skipped) this.opts.log?.('signup: foreign marker skipped (unreadable)');
+  }
+
+  /** `unlinkGone`, tolerating an entry that is confirmed to be a directory. */
+  private async unlinkFile(name: string): Promise<void> {
+    try {
+      await this.unlinkGone(name);
+    } catch (e) {
+      const code = errCode(e);
+      if (code !== 'EISDIR' && code !== 'EPERM') throw e;
+      if (!(await lstat(join(this.dir, name))).isDirectory()) throw e;
     }
   }
 
@@ -562,6 +662,7 @@ export class PendingStore {
   ): Promise<boolean> {
     if (!REQUEST_ID_RE.test(id)) return Promise.resolve(false);
     return serialById(id, async () => {
+      // Absent, corrupt or unreadable: nothing is removed here.
       const cur = await this.get(id).catch(() => null);
       if (!cur || cur.origin !== 'web') return false;
       const web = await stat(join(this.dir, `${id}.web`)).then(
@@ -579,7 +680,10 @@ export class PendingStore {
         !cur.accountAdded &&
         !cur.autoApprovedAt;
       if ((web !== 'file' && !orphan) || !(await judge(cur))) return false;
-      await this.removeSideFiles(id);
+      await this.removeSideFiles(
+        id,
+        typeof cur.email === 'string' ? this.markPath(cur.email) : undefined,
+      );
       await beforeRecord();
       await unlink(join(this.dir, `${id}.web`)).catch((e: NodeJS.ErrnoException) => {
         if (!orphan || e.code !== 'ENOENT') throw e;
@@ -589,8 +693,11 @@ export class PendingStore {
     });
   }
 
+  /** Purge only: the record is gone; a failure is counted (`purgeIncomplete`), never silent. */
   private async removed(id: string): Promise<void> {
-    await this.opts.onRemoved?.(id).catch(() => undefined);
+    await this.opts.onRemoved?.(id).catch(() => {
+      this.purgeIncomplete++;
+    });
   }
 
   /** Whether the audit log has a line `<time> <id> <action> <outcome>[ actor=...]`. */
@@ -613,6 +720,12 @@ export class PendingStore {
    */
   /** Unparseable record files removed by the last purge run. */
   corruptPurged = 0;
+  /**
+   * Requests of the last purge run whose removal failed (the record could not be unlinked: kept,
+   * with its verify state, for the next run; or its verify state could not be removed). The
+   * caller logs the count; the next run retries.
+   */
+  purgeIncomplete = 0;
 
   async purge(retention: Retention = DEFAULT_RETENTION, horizonMs = 0): Promise<string[]> {
     const t = this.now();
@@ -626,13 +739,24 @@ export class PendingStore {
       return t + horizonMs - created >= limit;
     };
     const removed: string[] = [];
+    this.purgeIncomplete = 0;
+    /** The record first, strictly: a failure keeps everything else for the next run. */
+    const dropRecord = async (id: string): Promise<boolean> => {
+      try {
+        await this.unlinkGone(`${id}.json`);
+        return true;
+      } catch {
+        this.purgeIncomplete++;
+        return false;
+      }
+    };
     for (const candidate of await this.list()) {
       if (!expired(candidate)) continue;
       const id = candidate.id;
       const gone = await serialById(id, async () => {
         const cur = await this.get(id).catch(() => null);
         if (!cur || !expired(cur)) return false;
-        await unlink(this.path(id)).catch(() => undefined);
+        if (!(await dropRecord(id))) return false;
         await unlink(join(this.dir, `${id}.notified`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.notifyq`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.web`)).catch(() => undefined);
@@ -658,7 +782,7 @@ export class PendingStore {
         if (ok) return false;
         const s = await stat(this.path(id)).catch(() => null);
         if (!s || t + horizonMs - s.mtimeMs < notApproved) return false;
-        await unlink(this.path(id)).catch(() => undefined);
+        if (!(await dropRecord(id))) return false;
         await unlink(join(this.dir, `${id}.notified`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.notifyq`)).catch(() => undefined);
         await unlink(join(this.dir, `${id}.web`)).catch(() => undefined);
@@ -671,15 +795,18 @@ export class PendingStore {
     // Address markers whose record is gone, and orphaned temp files from a crash.
     for (const f of await readdir(this.dir)) {
       if (f.endsWith('.mark')) {
-        const id = (await readFile(join(this.dir, f), 'utf8').catch(() => '')).trim();
-        const s = await stat(join(this.dir, f)).catch(() => null);
+        const s = await lstat(join(this.dir, f)).catch(() => null);
+        // Not a regular file: not a marker of ours; neither followed nor removed.
+        if (!s?.isFile()) continue;
+        const id = await markText(join(this.dir, f));
         const live =
           REQUEST_ID_RE.test(id) &&
+          // Unreadable (not absent) keeps its marker.
           (await this.get(id).then(
             () => true,
-            () => false,
+            (e: unknown) => !goneOrCorrupt(e),
           ));
-        if (!live && s && t - s.mtimeMs > 3600_000)
+        if (!live && t - s.mtimeMs > 3600_000)
           await unlink(join(this.dir, f)).catch(() => undefined);
         continue;
       }
@@ -689,7 +816,7 @@ export class PendingStore {
         if (
           !(await stat(this.path(vq[1]!)).then(
             () => true,
-            () => false,
+            (e: unknown) => errCode(e) !== 'ENOENT',
           ))
         )
           await unlink(join(this.dir, f)).catch(() => undefined);
@@ -700,7 +827,7 @@ export class PendingStore {
       if (wm) {
         const gone = await stat(this.path(wm[1]!)).then(
           () => false,
-          () => true,
+          (e: unknown) => errCode(e) === 'ENOENT',
         );
         const s = await stat(join(this.dir, f)).catch(() => null);
         if (gone && s && t - s.mtimeMs > 3600_000)

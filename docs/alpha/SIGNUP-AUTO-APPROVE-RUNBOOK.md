@@ -202,7 +202,15 @@ binding gets the account request and the binding too, sends **no** mail and answ
 requests whose mail was already sent show "already approved" with no account request. If the account request or the
 binding fails, or the verify state cannot be read, the owner sees a warning (`unbound_state`: "is marked as
 approved, but we have no record that the account was added ..."), nothing is sent, and the log has
-`unbound record state refused (<class>)`. Check the person under Testers before you try again.
+`unbound record state refused (<class>)`. Check the person under Testers before you try again. During quiet hours
+your approve or resend binds and checks the address **before** the mail is queued: if that fails you get the same
+`unbound_state` warning at once (log: `approval mail refused before queueing (<class>)`) and nothing is queued, so
+the morning drain sends nothing for it.
+
+A request whose automatic account add failed and that you then approve yourself is shown as approved by you, not
+"approved automatically", and is not counted as automatic in the daily summary. Its automatic mark stays on the
+record, so it is never claimed again and still counts against the daily cap; a pause still holds its mail.
+With all automation flags off, an owner approval also writes `approvedBy: 'owner'` on the record (display only).
 
 Resend (or approve) on a request with no binding runs the account add again. This can **re-create an account you
 removed**, and the answer `exists` also covers a **disabled** tester. Check Testers first.

@@ -107,11 +107,11 @@ describe('PendingStore.deleteNow', () => {
     expect(existsSync(join(s.dir, `${b.id}.json`))).toBe(false);
   });
 
-  it('a failing unlink is an error (nothing audited, the record stays for a retry)', async () => {
+  it('a failing unlink is incomplete (no delete ok, the record stays for a retry)', async () => {
     const s = await setup();
     const r = await s.store.create(INPUT);
     chmodSync(s.dir, 0o500);
-    await expect(s.store.deleteNow(r.id)).rejects.toMatchObject({ code: 'EACCES' });
+    expect(await s.store.deleteNow(r.id)).toBe('incomplete');
     chmodSync(s.dir, 0o700);
     expect(existsSync(join(s.dir, `${r.id}.json`))).toBe(true);
     expect(existsSync(join(s.dir, 'audit.log'))).toBe(false);

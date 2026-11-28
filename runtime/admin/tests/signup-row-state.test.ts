@@ -445,6 +445,9 @@ describe('S5: row states', () => {
     expect(stateOf(await r.rows(), id)?.state).not.toBe('approved_auto');
     await r.wiring.store.update(id, { status: 'approved', accountAdded: true });
     expect(stateOf(await r.rows(), id)).toEqual({ state: 'approved_auto' });
+    // BETA-G1: the owner's approver added the account (a failed automatic add before it).
+    await r.wiring.store.update(id, { approvedBy: 'owner' });
+    expect(stateOf(await r.rows(), id)?.state).not.toBe('approved_auto');
   });
 
   it('unreadable or unsafe state is unknown; list and actions still work; no secrets', async () => {

@@ -42,7 +42,7 @@ and the screen says what happened, naming the request ID only.
 | 404 `not_found` ("already gone") | No such request (wrong id, or retention already removed it). |
 | 403 ("not deleted") | Not the owner, or the request was not same-origin JSON (reload the admin app and try again). |
 | 429 ("too many requests") | The write limit; wait the time shown, then try again. |
-| 500 ("did not finish; the record is kept") | A file could not be removed (the record is kept so a retry can finish; the log has the error class only). Try again; if it repeats, the operator checks the store directory permissions. |
+| 500 `delete_incomplete` ("did not finish") | A file or the verify state could not be removed (EPERM, an unreadable address marker, ...). No `delete ok` is written; the audit log has `<time> <id> delete incomplete` and the server log `signup: delete incomplete (<class>)`. The record may be kept, or already removed with only cleanup left. Refresh the list: if the request is still there, try again. If it is not, ask the operator to check the server log and the store directory permissions; deleting the same id again finishes the cleanup. |
 | no answer ("the server did not answer") | Unknown whether it was deleted. Check the reloaded list (Refresh requests) and try again if the row is still there. |
 
 The service answers the same 404 `not_found` when the sign-up routes have been switched off, so

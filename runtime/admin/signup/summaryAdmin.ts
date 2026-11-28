@@ -57,7 +57,11 @@ function dayCounts(
     // Approved only: a `pending` or `rejected` record can carry the mark without being approved.
     autoApproved: records.filter(
       (r) =>
-        r.accountAdded && r.status !== 'pending' && r.status !== 'rejected' && on(r.autoApprovedAt),
+        r.accountAdded &&
+        r.status !== 'pending' &&
+        r.status !== 'rejected' &&
+        r.approvedBy !== 'owner' &&
+        on(r.autoApprovedAt),
     ).length,
   };
 }
