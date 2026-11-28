@@ -232,6 +232,16 @@ describe('signupVerify copy: success and no-answer texts', () => {
       expect(v.resendNetwork).toBeTruthy();
     }
   });
+  it('the texts for an unclear answer never claim the request was not sent or received', () => {
+    for (const l of ['he', 'en']) {
+      const { signup, signupVerify: v } = content[l];
+      const texts = [signup.summaryUnknownH, signup.msgUnknown, v.resultUnknownH];
+      for (const text of [...texts, v.resultUnknownP, v.resendUnknown]) {
+        expect(text).toBeTruthy();
+        expect(text).not.toMatch(/not (sent|received)|could not|לא (נשלח|התקבלה (הבקשה|האישור))/i);
+      }
+    }
+  });
   it('the sign-up form heading for no answer does not say the request was not sent', () => {
     expect(content.en.signup.summaryNetworkH).toBe('No answer from the server');
     expect(content.he.signup.summaryNetworkH).toBe('אין תשובה מהשרת');

@@ -63,6 +63,7 @@ export const MSG = {
   forbidden: 'msgForbidden',
   generic: 'msgGeneric',
   session: 'msgSession',
+  unknown: 'msgUnknown',
 };
 
 function msgForStatus(status) {
@@ -225,6 +226,12 @@ export function createSubmitter({
       tokens.invalidate();
       return { ok: true };
     }
+    // A gateway error, or a 200 whose body is missing or unreadable: the request may have arrived (the server
+    // answers a repeated one like a new one, so sending again is safe).
+    if (r.status === 502 || r.status === 504 || r.status === 200) {
+      tokens.invalidate();
+      return { ok: false, msg: MSG.unknown };
+    }
     if (r.status === 400) {
       // too_fast keeps the token (the minimum fill time passes by itself); anything else may have consumed it
       if (isTooFast(r)) return { ok: false, msg: MSG.tooFast };
@@ -322,6 +329,9 @@ export function initSignup(doc = document, fetchFn = (...a) => fetch(...a)) {
     summaryList.replaceChildren();
     summaryMsg.textContent = failMsg;
     summaryMsg.hidden = !failMsg;
+    // Described by the failure message only while it is shown (a hidden target would still be read).
+    if (failMsg) summary.setAttribute('aria-describedby', summaryMsg.id);
+    else summary.removeAttribute('aria-describedby');
     summaryList.hidden = fieldKeys.length === 0;
     summaryH.textContent = msg(failMsg ? failHead : 'summaryFieldsH');
     for (const k of fieldKeys) {
@@ -391,8 +401,10 @@ export function initSignup(doc = document, fetchFn = (...a) => fetch(...a)) {
     setBusy(false);
     if (r.ignored) return;
     if (r.ok) return success();
-    // No answer: the request may have arrived, so the heading must not say it was not sent.
-    const failHead = r.msg === MSG.network ? 'summaryNetworkH' : 'summaryFailH';
+    // No answer or an unclear one: the request may have arrived, so the heading must not say it was not sent.
+    const failHead =
+      { [MSG.network]: 'summaryNetworkH', [MSG.unknown]: 'summaryUnknownH' }[r.msg] ??
+      'summaryFailH';
     showSummary({ failMsg: msg(r.msg), failHead });
   });
 

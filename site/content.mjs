@@ -169,6 +169,7 @@ const en = {
     summaryFieldsH: 'Please fix these before sending:',
     summaryFailH: 'We could not send your request',
     summaryNetworkH: 'No answer from the server',
+    summaryUnknownH: 'No clear answer from the server',
     statusSending: 'Sending your request…',
     statusErrors: 'Your request was not sent. Some fields need attention.',
     msgInvalid: 'Some of the details were not accepted. Please check the fields and send again.',
@@ -184,6 +185,8 @@ const en = {
     msgGeneric:
       'Something went wrong and your request was not sent. Please try again in a little while.',
     msgSession: 'The form session was renewed. Please send again.',
+    msgUnknown:
+      'We do not know whether your request arrived. You can send it again. Nothing you typed was lost.',
     successH: 'Thank you. We received your request.',
     successP: [
       'Places in the Alpha are limited, so we approve requests gradually. When we approve yours, we will email you the link to the lab.',
@@ -230,6 +233,9 @@ const en = {
       'There have been too many requests from your connection. Please wait a few minutes and press the confirm button again.',
     resultNetworkH: 'We did not get an answer from the server',
     resultNetworkP: 'Check your connection and press the confirm button again.',
+    resultUnknownH: 'No clear answer from the server',
+    resultUnknownP:
+      'We do not know whether your confirmation arrived. You can press the confirm button again.',
     resultUnavailableH: 'We could not confirm your address right now',
     resultUnavailableP:
       'Please press the confirm button again in a little while. If it keeps happening, write to us at support@tbi-tech.net.',
@@ -245,6 +251,7 @@ const en = {
     resendInvalid:
       'Your request for a new link was not accepted. Check the email address and ask again.',
     resendNetwork: 'Check your connection and ask for a new link again.',
+    resendUnknown: 'We do not know whether your request arrived. You can ask for a new link again.',
     /**
      * Changes to the other public pages, by page and section id (build.mjs, verifySections): the fields given replace
      * that section's own, `next` adds sections after it and `false` drops it. The privacy page is not here: it changes
@@ -661,6 +668,7 @@ const he = {
     summaryFieldsH: 'יש לתקן לפני השליחה:',
     summaryFailH: 'לא הצלחנו לשלוח את הבקשה',
     summaryNetworkH: 'אין תשובה מהשרת',
+    summaryUnknownH: 'לא התקבלה תשובה ברורה מהשרת',
     statusSending: 'שולחים את הבקשה…',
     statusErrors: 'הבקשה לא נשלחה. יש שדות שדורשים תיקון.',
     msgInvalid: 'חלק מהפרטים לא התקבלו. בדקו את השדות ושלחו שוב.',
@@ -671,6 +679,7 @@ const he = {
     msgForbidden: 'לא הצלחנו לקבל את הבקשה מהדף הזה. טענו את הדף מחדש ונסו שוב.',
     msgGeneric: 'משהו השתבש והבקשה לא נשלחה. נסו שוב בעוד זמן קצר.',
     msgSession: 'חיבור הטופס חודש. שלחו שוב.',
+    msgUnknown: 'לא ידוע לנו אם הבקשה הגיעה. אפשר לשלוח שוב. מה שהקלדתם לא אבד.',
     successH: 'תודה. קיבלנו את הבקשה.',
     successP: [
       'מספר המקומות באלפא מוגבל, ולכן אנחנו מאשרים בקשות בהדרגה. כשנאשר את הבקשה שלכם, נשלח אליכם במייל את הקישור למעבדה.',
@@ -711,6 +720,8 @@ const he = {
     resultRateP: 'היו יותר מדי בקשות מהחיבור שלכם. המתינו כמה דקות ולחצו שוב על כפתור האישור.',
     resultNetworkH: 'לא קיבלנו תשובה מהשרת',
     resultNetworkP: 'בדקו את החיבור ולחצו שוב על כפתור האישור.',
+    resultUnknownH: 'לא התקבלה תשובה ברורה מהשרת',
+    resultUnknownP: 'לא ידוע לנו אם האישור הגיע. אפשר ללחוץ שוב על כפתור האישור.',
     resultUnavailableH: 'לא הצלחנו לאשר את הכתובת כרגע',
     resultUnavailableP:
       'לחצו שוב על כפתור האישור בעוד זמן קצר. אם זה חוזר, כתבו לנו ל-support@tbi-tech.net.',
@@ -724,6 +735,7 @@ const he = {
     resendUnavailable: 'אי אפשר לשלוח קישור חדש כרגע. הבקשה לא נשלחה. נסו שוב בעוד זמן קצר.',
     resendInvalid: 'הבקשה לקישור חדש לא התקבלה. בדקו את כתובת המייל ובקשו שוב.',
     resendNetwork: 'בדקו את החיבור ובקשו שוב קישור חדש.',
+    resendUnknown: 'לא ידוע לנו אם הבקשה הגיעה. אפשר לבקש שוב קישור חדש.',
     pages: {
       home: {
         status: {

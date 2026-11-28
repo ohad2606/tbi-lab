@@ -315,6 +315,45 @@ for (const { lang, dir } of [
       }
     });
 
+    test('502 and 504 on confirm and resend: unknown outcome, never "not sent"', async ({
+      page,
+    }) => {
+      await stub(page, {
+        verify: [
+          [502, {}],
+          [504, {}],
+          [410, {}],
+        ],
+        resend: [
+          [502, {}],
+          [504, {}],
+        ],
+      });
+      await page.goto(url);
+      const box = page.locator('#vf-result');
+      const heading = page.locator('#vf-result-h');
+      const text = page.locator('#vf-result-p');
+      for (let n = 0; n < 2; n++) {
+        await page.locator('#vf-button').click();
+        await expect(heading).toHaveText((await msg(page, 'resultUnknownH'))!);
+        await expect(text).toHaveText((await msg(page, 'resultUnknownP'))!);
+        await expect(box).toBeFocused();
+        await expect(page.locator('#vf-button')).toHaveAttribute('aria-disabled', 'false');
+        await expect(page.locator('#vf-progress')).toHaveText('');
+      }
+      await page.locator('#vf-button').click();
+      await expect(heading).toHaveText((await msg(page, 'resultExpiredH'))!);
+      await page.locator('#vf-email').fill('dana@example.com');
+      for (let n = 0; n < 2; n++) {
+        await page.locator('#vf-resend-button').click();
+        await expect(heading).toHaveText((await msg(page, 'resultUnknownH'))!);
+        await expect(text).toHaveText((await msg(page, 'resendUnknown'))!);
+        await expect(box).toBeFocused();
+        await expect(page.locator('#vf-email')).toHaveValue('dana@example.com');
+      }
+      expect(await axe(page)).toEqual([]);
+    });
+
     test('without JavaScript the page says how to confirm', async ({ browser }) => {
       const context = await browser.newContext({ javaScriptEnabled: false, baseURL: ORIGIN });
       const page = await context.newPage();

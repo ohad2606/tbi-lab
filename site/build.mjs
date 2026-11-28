@@ -116,7 +116,16 @@ const OG_LOCALE = { he: 'he_IL', en: 'en_US' };
  * form has no `action` and no `data-api`: the publish gate allows only the sign-up form's.
  */
 function renderVerifyView(lang, f, v) {
-  const results = ['Received', 'Expired', 'Invalid', 'Rate', 'Network', 'Unavailable', 'Sent'];
+  const results = [
+    'Received',
+    'Expired',
+    'Invalid',
+    'Rate',
+    'Network',
+    'Unknown',
+    'Unavailable',
+    'Sent',
+  ];
   const texts = [
     ['confirmTitle', esc(v.confirmTitle)],
     ['confirmH', esc(v.confirmH)],
@@ -130,6 +139,7 @@ function renderVerifyView(lang, f, v) {
     ['resendUnavailable', esc(v.resendUnavailable)],
     ['resendInvalid', esc(v.resendInvalid)],
     ['resendNetwork', esc(v.resendNetwork)],
+    ['resendUnknown', esc(v.resendUnknown)],
   ]
     .map(([k, html]) => `<span data-vf="${k}">${html}</span>`)
     .join('\n');
@@ -206,9 +216,11 @@ ${errP(key)}
     'msgForbidden',
     'msgGeneric',
     'msgSession',
+    'msgUnknown',
     'summaryFieldsH',
     'summaryFailH',
     'summaryNetworkH',
+    'summaryUnknownH',
     'statusErrors',
     'statusSending',
   ];
