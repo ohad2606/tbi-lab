@@ -109,7 +109,17 @@ status for that row; delete that row too. Do not delete or sort response rows wh
 | Mail provider | the confirmation and approval emails that were sent (provider's own retention) | the provider's console, manual |
 | Telegram chat | name and role in the new-request alert (not in summary mode) | step 5, manual |
 | Google Form + response spreadsheet | every answer | step 6, manual |
-| Backups (host and helper backups) | copies of the above | **rotate out on their own schedule; never edited.** A deleted record disappears from backups when the last backup holding it expires. |
+| Backups (host and helper backups) | copies of the above | **rotate out on their own schedule; never edited.** A deleted record disappears from backups when the last backup holding it expires. After a restore, see "After restoring a backup" below. |
+
+**After restoring a backup** of the pending store, a request deleted after that backup was taken
+comes back. Before the admin app is used again, look in the store's `audit.log` for every id that has a
+`delete ok` line and is in the store again, and delete each of those once more
+with step 2 (it answers "deleted" again; the restored record is a real record). The backup itself is
+never altered, and there is no automation for this: it is a manual step after every restore.
+
+**After a deploy of the admin service or the admin app,** reload every open TBI Admin tab before
+acting on a sign-up. A tab loaded before the deploy may not know a new answer of the service and
+then says that the request "changed in a way this page does not know".
 
 Funnel counters (section 3) hold no personal data and need no step.
 
