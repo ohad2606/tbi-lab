@@ -23,7 +23,7 @@ import { AUTO_PAUSE_FILE, approvalHold } from '../signup/autoApprove.js';
 import type { EmailSender } from '../signup/email.js';
 import { GATE_FILE, gateCount, MailGate, type MailLimits } from '../signup/mailGate.js';
 import type { FetchLike } from '../signup/notify.js';
-import { parseQuiet } from '../signup/quietHours.js';
+import { isQuiet, parseQuiet } from '../signup/quietHours.js';
 import { SignupApprover, type ApprovalMailBinding } from '../signup/service.js';
 import { PendingStore } from '../signup/store.js';
 import { addressHash, VERIFY_DIR } from '../signup/verifyState.js';
@@ -438,7 +438,128 @@ async function wired(extra: Record<string, string>, drop: string[] = []) {
   return { w, logs, calls, autoQueued, drain };
 }
 
+describe('DEC-39: owner actions are held until the end of quiet hours', () => {
+  const AT_2230 = Date.parse('2026-11-23T20:30:00Z'); // not quiet; the hour slot frees at 23:30
+  const ONE: MailLimits = { perHour: 1, perDay: 95, per30d: 2700 };
+
+  /** An auto-claimed, confirmed, bound request with its account added and no mail attempt. */
+  async function claimed(r: Awaited<ReturnType<typeof rig>>, i: number) {
+    const id = await r.autoPending(i);
+    await r.store.update(id, { status: 'approved', accountAdded: true });
+    r.bind.bound.set(id, person(i).email);
+    return id;
+  }
+
+  for (const action of ['approve', 'resend'] as const)
+    for (const night of [false, true])
+      it(`daytime owner ${action}, cap hit, retry in quiet hours: not sent at night (option ${night})`, async () => {
+        const r = await rig({ limits: ONE });
+        r.clock.t = AT_2230;
+        const filler = await r.queued(1, false);
+        expect(await r.drainer().drainEmails()).toBe(1);
+        const id = await claimed(r, 2);
+        const out = await r.owner(night)[action](id);
+        expect(out).toMatchObject({ ok: false, code: 'mail_cap' });
+        const q = await r.store.get(id);
+        expect(q.status).toBe('email_queued');
+        expect(isQuiet(Date.parse(q.emailSendAfter!), QUIET)).toBe(true);
+        r.clock.t = AT_0200;
+        expect(await r.drainer().drainEmails()).toBe(0);
+        expect(r.calls).toEqual([filler]);
+        r.clock.t = Date.parse(NEXT_0800);
+        expect(await r.drainer().drainEmails()).toBe(1);
+        expect(r.calls).toEqual([filler, id]);
+      });
+
+  it('owner-queued at night, morning drain missed or paused: the next night does not send', async () => {
+    for (const action of ['approve', 'resend'] as const) {
+      const r = await rig();
+      const id = await claimed(r, 1);
+      expect(await r.owner(true)[action](id)).toMatchObject({ ok: true, note: 'email_queued' });
+      expect(await r.store.get(id)).toMatchObject({ approvedBy: 'owner' });
+      r.clock.t = AT_0200 + 24 * 3_600_000;
+      expect(await r.drainer().drainEmails()).toBe(0);
+      expect(r.calls).toEqual([]);
+    }
+  });
+
+  it('the owner mark is written first: a crash before the queue write leaves it held', async () => {
+    const r = await rig();
+    const id = await r.autoPending(1);
+    const update = r.store.update.bind(r.store);
+    let writes = 0;
+    r.store.update = async (...a: Parameters<typeof update>) => {
+      if (++writes > 1) throw new Error('crash');
+      return update(...a);
+    };
+    await expect(r.owner(true).approve(id)).rejects.toThrow('crash');
+    r.store.update = update;
+    expect(await r.store.get(id)).toMatchObject({ approvedBy: 'owner' });
+  });
+
+  it('owner approve / resend on a queued record (binding it at night) holds it', async () => {
+    for (const action of ['approve', 'resend'] as const) {
+      const r = await rig();
+      const id = await r.queued(1, true);
+      r.bind.bound.delete(id);
+      expect(await r.owner(true)[action](id)).toMatchObject({ ok: true, note: 'email_queued' });
+      expect(await r.drainer().drainEmails()).toBe(0);
+      expect(r.calls).toEqual([]);
+    }
+  });
+
+  it('an auto mail that hit a cap has an attempt on record and waits for the morning', async () => {
+    const r = await rig({ limits: ONE });
+    await r.queued(1, true);
+    expect(await r.drainer().drainEmails()).toBe(1);
+    const id = await r.autoPending(2);
+    await r.auto().approve(id);
+    r.clock.t = AT_0200;
+    expect(await r.drainer().drainEmails()).toBe(0);
+    expect(r.calls).toHaveLength(1);
+  });
+
+  it('a pause hold of an owner-capped mail keeps the attempt mark', async () => {
+    const r = await rig({ limits: ONE });
+    r.clock.t = AT_2230;
+    await r.queued(1, false);
+    await r.drainer().drainEmails();
+    const id = await claimed(r, 2);
+    await r.owner().approve(id);
+    const before = await r.store.get(id);
+    writeFileSync(r.pause, '');
+    r.clock.t = Date.parse(NEXT_0800);
+    expect(await r.drainer().drainEmails()).toBe(0);
+    expect((await r.store.get(id)).emailAttemptedAt).toBe(before.emailAttemptedAt);
+    unlinkSync(r.pause);
+    r.clock.t = AT_0200 + 24 * 3_600_000;
+    expect(await r.drainer().drainEmails()).toBe(0);
+    expect(r.calls).toHaveLength(1);
+  });
+
+  it('option off: an owner action writes no new field', async () => {
+    const r = await rig();
+    const id = await claimed(r, 1);
+    await r.owner(false).approve(id);
+    expect((await r.store.get(id)).approvedBy).toBeUndefined();
+  });
+});
+
 describe('DEC-39: TBI_SIGNUP_QUIET_AUTO_MAIL wiring', () => {
+  it('=1: the wired owner approver marks its takeover, so the night drain does not send', async () => {
+    for (const [extra, mark] of [
+      [{ TBI_SIGNUP_QUIET_AUTO_MAIL: '1' }, 'owner'],
+      [{}, undefined],
+    ] as const) {
+      const x = await wired(extra);
+      const id = await x.autoQueued(1);
+      await x.w.signups.approver(OWNER).approve(id);
+      expect((await x.w.store.get(id)).approvedBy).toBe(mark);
+      await x.drain();
+      expect(x.calls).toEqual([]);
+    }
+  });
+
   it('=1 with caps, state dir and verified mode: the night drain sends the exempt mail', async () => {
     const x = await wired({ TBI_SIGNUP_QUIET_AUTO_MAIL: '1' });
     const id = await x.autoQueued(1);

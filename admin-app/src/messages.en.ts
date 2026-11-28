@@ -143,7 +143,7 @@ export const consoleEn = {
   'console.signups.status.accountPending':
     'Approved, but the account is not ready yet. Approve again to finish.',
   'console.signups.status.emailQueued':
-    'Account added. The email is scheduled and will be sent when quiet hours end.',
+    'Account added. The email is queued; it is sent automatically.',
   'console.signups.status.emailMailCap':
     'Account added. The email is waiting because of the email limit; it is normally sent automatically later.',
   'console.signups.heardFrom': 'How they heard about us',

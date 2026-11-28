@@ -417,14 +417,18 @@ cannot trust its state in `/var/lib/<N>-admin-auto` and sends nothing:
   settings and `TBI_SIGNUP_AUTO_WEB=verified`. Without one of them it is off, with the log line
   `night approval mail off (config: TBI_SIGNUP_QUIET_AUTO_MAIL needs the mail caps, TBI_SIGNUP_AUTO_STATE_DIR and TBI_SIGNUP_AUTO_WEB=verified with verification)`.
   When it is on, each start logs `night approval mail on (auto-approved, verified)`.
-- Sent at night (allow-list): a web request claimed by auto-approve, with its account added, not later approved by
-  you, with no counted mail attempt, and whose current address is bound to the added account AND carries the
-  recorded confirmation in the admin state. Anything that cannot be checked (state unreadable or unsafe) waits.
+- Sent at night (allow-list): a web request claimed by auto-approve, with its account added, not approved or
+  resent by you, with no recorded mail attempt, and whose current address is bound to the added account AND carries
+  the recorded confirmation in the admin state. Anything that cannot be checked (state unreadable or unsafe) waits.
 - Still held until quiet hours end: your own approve and resend (queued as before), mail queued by you, manual
-  requests, requests not from the web page, unconfirmed requests, and mail queued before the setting was on (each
-  keeps its send time).
+  requests, requests not from the web page, unconfirmed requests, any mail that already has a recorded attempt, and
+  mail queued before the setting was on (each keeps its send time).
+- With the setting on, your approve or resend of an automatically claimed request records `approvedBy: owner` first,
+  also when it changes nothing else. The request then no longer shows or counts as approved automatically.
 - Every night mail takes a mail slot first. Over a cap, or when the mail-gate state is unreadable, the mail stays
-  `email_queued` with the earliest retry time (never failed), and the drain stops at the first cap. The pause file
+  `email_queued` with the earliest retry time (never failed), and the drain stops at the first cap. A mail that hit a
+  cap is not sent in quiet hours, even if its retry time falls in them (also an automatic one, by day or night): the
+  record cannot tell it apart from your own capped mail, so it goes after quiet hours end. The pause file
   (a failed check counts as paused) holds night mail too, before the attempt and again before the send; after the
   resume the drain sends the held mails within the caps, also at night.
 - No alert per mail at night. The sent mails show only as counts in `auto-summary.json` (mail budget, automatic

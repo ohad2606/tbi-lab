@@ -613,8 +613,9 @@ export class SignupApprover {
       paused?: () => Promise<boolean>;
       /**
        * DEC-39 (TBI_SIGNUP_QUIET_AUTO_MAIL=1; admin-wiring.ts sets it only with the mail gate, the
-       * pause check and verified mode, and only for the auto approver and the drain): see
-       * `nightExempt`. Unset = quiet hours hold every approval mail, as before.
+       * pause check and verified mode): for the auto approver and the drain see `nightExempt`; on
+       * the owner's approver it never exempts and only turns on `ownerTakeover`. Unset = quiet
+       * hours hold every approval mail, as before.
        */
       nightAutoMail?: boolean;
     },
@@ -624,15 +625,16 @@ export class SignupApprover {
    * DEC-39 allow-list: the one approval mail that may go out in quiet hours. All of: the option,
    * never the owner's approver, a pause check and a binding (verified mode); the record is a web
    * request claimed by auto-approve, not taken over by the owner, with its account added and no
-   * attempt counted (an owner resend always follows a counted attempt); and the admin state binds
-   * its current address AND holds the recorded confirmation. Any error = not exempt (it waits).
-   * Called under the per-id lock.
+   * attempt recorded or counted; and the admin state binds its current address AND holds the
+   * recorded confirmation. Any error = not exempt (it waits). Called under the per-id lock.
+   * A recorded attempt (`emailAttemptedAt`) outlives a mail-cap refusal, whoever made it, so
+   * every capped mail (also the auto approver's own) waits for the end of quiet hours.
    */
   private async nightExempt(r: SignupRecord): Promise<boolean> {
     const b = this.d.mailBinding;
     if (!this.d.nightAutoMail || this.d.ownerActions || !this.d.paused || !b) return false;
     if (!r.autoApprovedAt || r.origin !== 'web' || r.approvedBy === 'owner') return false;
-    if (!r.accountAdded || r.emailAttempts !== 0) return false;
+    if (!r.accountAdded || r.emailAttemptedAt || r.emailAttempts !== 0) return false;
     return (await b.checkApproval(r.id, r.email, true).catch(() => 'unbound')) === 'ok';
   }
 
@@ -696,6 +698,7 @@ export class SignupApprover {
       if (!r) return { ok: false, code: 'not_found' };
       if (!r.accountAdded || r.status === 'rejected' || r.status === 'pending')
         return { ok: false, code: 'bad_state', record: r };
+      r = await this.ownerTakeover(r);
       const unbound = await this.unboundProgress(r);
       if (unbound) {
         if (!unbound.ok) return unbound;
@@ -758,8 +761,21 @@ export class SignupApprover {
   }
 
   /**
-   * BETA-G1: the owner's own approver records that it added the account (display only, never
-   * read for a decision); `autoApprovedAt` is left as written.
+   * DEC-39: an owner approve / resend of an auto-claimed request writes `approvedBy: 'owner'`
+   * BEFORE anything else, so whatever it leaves behind (queued, approved, a crash between two
+   * writes) is never exempt from quiet hours. Only with `nightAutoMail`.
+   */
+  private async ownerTakeover(r: SignupRecord): Promise<SignupRecord> {
+    if (!this.d.nightAutoMail || !r.autoApprovedAt || r.approvedBy === 'owner') return r;
+    if (r.status === 'email_sent') return r;
+    const mark = this.ownerMark();
+    return mark.approvedBy ? this.d.store.update(r.id, mark) : r;
+  }
+
+  /**
+   * BETA-G1: the owner's own approver records that it added the account (and, with DEC-39, that it
+   * took the request over, see `ownerTakeover`). Read for display and by `nightExempt` (an
+   * owner's request waits for the end of quiet hours); `autoApprovedAt` is left as written.
    */
   private ownerMark(): { approvedBy?: 'owner' } {
     return this.d.ownerActions && this.d.actor !== 'auto' ? { approvedBy: 'owner' } : {};
@@ -778,6 +794,7 @@ export class SignupApprover {
     let r = await this.load(id);
     if (!r) return { ok: false, code: 'not_found' };
     if (r.status === 'rejected') return { ok: false, code: 'bad_state', record: r };
+    r = await this.ownerTakeover(r);
     const unbound = await this.unboundProgress(r);
     if (unbound) {
       if (!unbound.ok) return unbound;

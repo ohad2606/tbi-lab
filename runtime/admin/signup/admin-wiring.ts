@@ -359,7 +359,8 @@ export async function wireSignupAdmin(
     holdDir === undefined
       ? undefined
       : approvalHold({ stateDir: holdDir, storeDir: c.dir, now: io.now, log: io.log });
-  // DEC-39: only for the drain and the auto approver, never for the owner's approver.
+  // DEC-39: exempts only the drain's and the auto approver's mail; on the owner's approver it
+  // never exempts, it makes the owner's takeover of a request be recorded (service.ts).
   const night =
     c.quietAutoMail && gate && hold && verifier && verifiedMode ? { nightAutoMail: true } : {};
   // No state dir: unchanged (with auto-approve on, the drain reads the store dir's pause file).
@@ -575,6 +576,7 @@ export async function wireSignupAdmin(
           log: io.log,
           counters: io.counters ?? null,
           ...mailBinding,
+          ...night,
           ownerActions: true,
         }),
     },

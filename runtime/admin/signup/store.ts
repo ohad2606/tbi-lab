@@ -73,9 +73,10 @@ export interface SignupRecord extends SignupInput {
   autoApprovedAt?: string;
   /**
    * BETA-G1: `'owner'` when the owner's own approver added the account (e.g. after a failed
-   * automatic attempt). Display only: the row is shown as approved automatically only without
-   * it. Never read for a decision (pause hold, cap, cut-off, eligibility); the record is
-   * intake-writable, so a forged value changes the label only. Additive, no schema bump.
+   * automatic attempt) or, with DEC-39, took an auto-claimed request over. Display (the row is
+   * shown as approved automatically only without it) and one decision: with it the approval mail
+   * is never exempt from quiet hours (DEC-39). Not read for pause hold, cap, cut-off or
+   * eligibility. The record is intake-writable. Additive, no schema bump.
    */
   approvedBy?: 'owner';
   /**
