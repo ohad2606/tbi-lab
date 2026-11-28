@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentTypeId } from '@tbi-lab/domain';
 import { Canvas, type CanvasApi } from './Canvas.js';
 import { useAppState, useStore, useT } from './context.js';
@@ -100,7 +100,9 @@ export function Editor() {
   // placement wherever the focus is (after a click the focus stays on the palette tile, where the
   // canvas's own Escape never arrives), and a starting simulation disarms it (the palette is
   // disabled while running; nothing could be placed).
-  useEffect(() => {
+  // A layout effect: the listener is there as soon as the armed state shows, so an Escape that
+  // follows before the next frame is not lost.
+  useLayoutEffect(() => {
     if (!placing) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;

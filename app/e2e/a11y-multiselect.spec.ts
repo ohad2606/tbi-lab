@@ -427,6 +427,40 @@ for (const lang of ['en', 'he'] as const) {
     await expect(page.getByTestId('kbwire-status')).toHaveText(text.cleared);
   });
 
+  test(`Escape right as the placement shows armed still cancels it (${lang})`, async ({ page }) => {
+    await open(page, lang);
+    const tool = page.getByTestId('canvas-several');
+    await tool.click();
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    // Before the next frame: no deferred effect may stand between the pressed
+    // state and the Escape that cancels it.
+    const armed = await page.evaluate(async () => {
+      const byId = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
+      const tile = byId('palette-component.resistor');
+      // The observer runs as soon as the pressed state reaches the page.
+      const rendered = new Promise<void>((done) =>
+        new MutationObserver((_, o) => {
+          o.disconnect();
+          done();
+        }).observe(tile, { attributeFilter: ['aria-pressed'] }),
+      );
+      // detail 1: a pointer click arms the placement (0 is the keyboard, which places at once).
+      tile.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+      await rendered;
+      const shown = tile.getAttribute('aria-pressed');
+      byId('canvas-several').dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+      return shown;
+    });
+    expect(armed).toBe('true');
+    await expect(page.getByTestId('palette-component.resistor')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+  });
+
   test(`a part can be placed while selecting several; the mode stays (${lang})`, async ({
     page,
   }) => {
