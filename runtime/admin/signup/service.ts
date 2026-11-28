@@ -722,9 +722,7 @@ export class SignupApprover {
         // counts as paused): it is NOT sent automatically, and this resend does not bypass the
         // pause either (that would need an owner decision). Say so instead of "queued".
         const held =
-          r.autoApprovedAt && this.d.drainHeld
-            ? await this.d.drainHeld().catch(() => true)
-            : false;
+          r.autoApprovedAt && this.d.drainHeld ? await this.d.drainHeld().catch(() => true) : false;
         return { ok: true, record: r, note: held ? 'email_held_paused' : 'email_queued' };
       }
       return this.send(r, false, true);
