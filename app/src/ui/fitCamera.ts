@@ -2,8 +2,9 @@
  * "Fit" for the 2D views (BETA-G3; WCAG 2.4.11): the whole drawing, with nothing under the view
  * controls or the message along the bottom. Items are world boxes; overlays are screen pixels
  * relative to the view. A large view, where nothing meets an overlay, is fitted as if there
- * were none. `extent` is what is centred and framed (default: the box around the items); it may
- * be wider than the items, for example to hold labels.
+ * were none. `extent` is what is centred and framed there (default: the box around the items); it
+ * may be wider than the items (room for labels) or narrower (labels that only have to stay clear:
+ * when room is made for the overlays, everything is kept in view).
  */
 import type { Box } from './revealDelta.js';
 
@@ -42,6 +43,29 @@ function insetFor(o: Box, size: { w: number; h: number }): Partial<Insets> {
   return { [side]: share * (side === 'left' || side === 'right' ? size.w : size.h) + GAP };
 }
 
+/** The box around some boxes (at least one). */
+export function boundsOf(boxes: readonly Box[]): Box {
+  return {
+    left: Math.min(...boxes.map((b) => b.left)),
+    right: Math.max(...boxes.map((b) => b.right)),
+    top: Math.min(...boxes.map((b) => b.top)),
+    bottom: Math.max(...boxes.map((b) => b.bottom)),
+  };
+}
+
+/**
+ * The world boxes of drawn elements (labels, net marks), which only the browser can measure. For
+ * elements with no transform between them and the drawing; empty (hidden) ones are left out.
+ */
+export function drawnBoxes(svg: Element, selector: string): Box[] {
+  return [...svg.querySelectorAll<SVGGraphicsElement>(selector)].flatMap((el) => {
+    const r = el.getBBox();
+    return r.width && r.height
+      ? [{ left: r.x, right: r.x + r.width, top: r.y, bottom: r.y + r.height }]
+      : [];
+  });
+}
+
 export function fitCamera(
   items: readonly Box[],
   size: { w: number; h: number },
@@ -50,14 +74,12 @@ export function fitCamera(
   extent?: Box,
 ): Camera2d {
   if (!items.length) return { x: -size.w / 2, y: -size.h / 2, scale: 1 };
-  const { left, right, top, bottom } = extent ?? {
-    left: Math.min(...items.map((b) => b.left)),
-    right: Math.max(...items.map((b) => b.right)),
-    top: Math.min(...items.map((b) => b.top)),
-    bottom: Math.max(...items.map((b) => b.bottom)),
-  };
+  const frame = extent ?? boundsOf(items);
+  const { left, right, top, bottom } = frame;
   const cx = (left + right) / 2;
   const cy = (top + bottom) / 2;
+  // What must stay in view when room is made: the frame, and any item reaching beyond it.
+  const all = boundsOf([frame, ...items]);
   const base = clamp(
     Math.min(size.w / (right - left + 2 * marginX), size.h / (bottom - top + 2 * marginY)),
     min,
@@ -79,11 +101,9 @@ export function fitCamera(
   const within = (insets: Insets): Camera2d => {
     const w = Math.max(1, size.w - insets.left - insets.right);
     const h = Math.max(1, size.h - insets.top - insets.bottom);
-    const scale = clamp(
-      Math.min(base, w / (right - left + 2 * pad), h / (bottom - top + 2 * pad)),
-      min,
-      max,
-    );
+    const width = all.right - all.left;
+    const height = all.bottom - all.top;
+    const scale = clamp(Math.min(base, w / (width + 2 * pad), h / (height + 2 * pad)), min, max);
     // Screen position of the drawing's centre along one axis.
     const place = (view: number, lo: number, room: number, span: number) => {
       const half = (span / 2 + pad) * scale;
@@ -91,8 +111,8 @@ export function fitCamera(
     };
     return {
       scale,
-      x: cx - place(size.w, insets.left, w, right - left) / scale,
-      y: cy - place(size.h, insets.top, h, bottom - top) / scale,
+      x: (all.left + all.right) / 2 - place(size.w, insets.left, w, width) / scale,
+      y: (all.top + all.bottom) / 2 - place(size.h, insets.top, h, height) / scale,
     };
   };
 

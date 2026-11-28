@@ -1,8 +1,10 @@
 /**
  * BETA-G3 (WCAG 2.2 2.4.11): in a small desktop window every shipped example opens, and
- * "Fit" shows it, with no connection point or part under the view controls or the hint, in the
- * Circuit view (every example, English and Hebrew) and in the Schematic view. Also: a wire
- * stepped to with [ ] is panned into view, and the drawing's status stays with its project.
+ * "Fit" shows it, with no connection point, part or label under the view controls or the hint,
+ * in the Circuit and Schematic views (every example, English and Hebrew). Also: a wire
+ * stepped to with [ ] is panned into view, and the drawing's status stays with its project. A
+ * resize fits again only while the user has not panned or zoomed; a list button leaves the
+ * instruction of keyboard wiring in place.
  */
 import { expect, test, type Page } from '@playwright/test';
 import { EXAMPLES } from '../src/examples/catalog.js';
@@ -30,9 +32,9 @@ const covered = (page: Page, wrapSelector: string, items: string) =>
       const bad: string[] = found.length ? [] : ['no items'];
       for (const el of found) {
         const r = el.getBoundingClientRect();
-        const owner = el.closest('[data-component], [data-id], [data-part]') as SVGElement;
-        const d = owner.dataset;
-        const name = `${d.component ?? d.id ?? d.part}.${d.terminal ?? ''}`;
+        const owner = el.closest('[data-component], [data-id], [data-part]') as SVGElement | null;
+        const d = owner?.dataset ?? {};
+        const name = `${d.component ?? d.id ?? d.part ?? ''}.${d.terminal ?? el.textContent}`;
         if (
           r.left < view.left - 0.5 ||
           r.top < view.top - 0.5 ||
@@ -54,7 +56,11 @@ const covered = (page: Page, wrapSelector: string, items: string) =>
     [wrapSelector, items],
   );
 
-const CIRCUIT = '[data-hit="terminal"] .terminal-hit, [data-hit="component"] .focus-ring';
+const CIRCUIT =
+  '[data-hit="terminal"] .terminal-hit, [data-hit="component"] .focus-ring, ' +
+  '[data-hit="component"] > text, .probe-label';
+/** Parts, their labels, and the supply, ground and net marks. */
+const SCHEMATIC = '.sch-hit, .sch-module > rect, .sch-part text, .sch-marks > *';
 const circuit = (page: Page) => covered(page, '.canvas-wrap', CIRCUIT);
 
 async function start(page: Page, lang: 'en' | 'he') {
@@ -71,12 +77,12 @@ async function openExample(page: Page, id: string) {
   await expect(page.locator('[data-hit="component"]').first()).toBeVisible();
 }
 /** The fit follows the layout, so wait for two equal readings of the camera. */
-async function settled(page: Page) {
+async function settled(page: Page, view = '[data-testid="canvas"]') {
   let last = '';
   await expect
     .poll(
       async () => {
-        const now = `${await page.getByTestId('canvas').getAttribute('viewBox')}`;
+        const now = `${await page.locator(view).getAttribute('viewBox')}`;
         const same = now === last;
         last = now;
         return same;
@@ -90,35 +96,23 @@ for (const lang of ['en', 'he'] as const) {
   test(`${lang}: every example opens and fits with nothing covered at 800x600`, async ({
     page,
   }) => {
-    test.setTimeout(480_000);
+    test.setTimeout(900_000);
     await start(page, lang);
     const failures: Record<string, string[]> = {};
     for (const { id } of EXAMPLES) {
       await openExample(page, id);
       await settled(page);
-      const onLoad = await circuit(page);
+      const bad = await circuit(page);
       // Fit again, from a moved camera: the same promise.
       await page.getByTestId('canvas-pan-left').click();
       await page.getByTestId('canvas-fit').click();
       await settled(page);
-      const onFit = (await circuit(page)).map((s) => `fit: ${s}`);
-      if (onLoad.length || onFit.length) failures[id] = [...onLoad, ...onFit];
-    }
-    expect(failures).toEqual({});
-  });
-
-  test(`${lang}: the Schematic view fits with no part covered at 800x600`, async ({ page }) => {
-    await start(page, lang);
-    const failures: Record<string, string[]> = {};
-    for (const id of ['voltage-divider', 'logic-half-adder', 'logic-full-adder', 'rgb-mixer']) {
-      await openExample(page, id);
+      bad.push(...(await circuit(page)).map((s) => `fit: ${s}`));
+      // The generated view of the same project: as it opens (it is fitted until moved).
       await page.getByTestId('view-schematic').click();
       await expect(page.getByTestId('schematic-view')).toBeVisible();
-      const check = () => covered(page, '.schematic-wrap', '.sch-hit, .sch-module > rect');
-      await page.waitForTimeout(200);
-      const bad = await check();
-      await page.getByTestId('schematic-fit').click();
-      bad.push(...(await check()));
+      await settled(page, '.schematic-wrap > svg');
+      bad.push(...(await covered(page, '.schematic-wrap', SCHEMATIC)).map((s) => `sch: ${s}`));
       if (bad.length) failures[id] = bad;
       await page.getByTestId('view-circuit').click();
     }
@@ -177,6 +171,82 @@ for (const lang of ['en', 'he'] as const) {
     await page.getByTestId(`menu-recent-${first}`).click();
     await expect(page.locator('[data-hit="component"][data-id="R2"]')).toBeVisible();
     await expect(status).toHaveText('');
+  });
+}
+
+test('a resize fits the drawing again only until the user pans or zooms', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 860 });
+  await start(page, 'en');
+  await openExample(page, 'rc-fade');
+  await settled(page);
+  const camera = async () => {
+    await settled(page);
+    const box = await page
+      .getByTestId('canvas')
+      .evaluate((svg: SVGSVGElement) => [
+        svg.viewBox.baseVal.x,
+        svg.viewBox.baseVal.y,
+        svg.clientWidth / svg.viewBox.baseVal.width,
+      ]);
+    return box.map((n) => n.toFixed(3)).join(' ');
+  };
+  const width = () => page.getByTestId('canvas').evaluate((svg) => svg.clientWidth);
+  const resize = async (w: number, h: number) => {
+    const before = await width();
+    await page.setViewportSize({ width: w, height: h });
+    await expect.poll(width).not.toBe(before);
+  };
+  // Untouched: the new size gets a new fit, with nothing covered.
+  const large = await camera();
+  await resize(800, 600);
+  await expect.poll(camera).not.toBe(large);
+  await expect.poll(() => circuit(page)).toEqual([]);
+  // Another tab and back is no resize, and no reason to move.
+  const small = await camera();
+  await page.getByTestId('view-schematic').click();
+  await page.getByTestId('view-circuit').click();
+  expect(await camera()).toBe(small);
+  // Panned by the user: a resize keeps their view (its corner and its zoom).
+  await page.getByTestId('canvas-pan-left').click();
+  const moved = await camera();
+  await resize(1400, 860);
+  expect(await camera()).toBe(moved);
+  // "Fit" hands the view back: it follows the size again.
+  await page.getByTestId('canvas-fit').click();
+  const fitted = await camera();
+  await resize(800, 600);
+  await expect.poll(camera).not.toBe(fitted);
+  await expect.poll(() => circuit(page)).toEqual([]);
+  // The keyboard zoom counts as the user's view too.
+  await page.getByTestId('canvas').focus();
+  await page.keyboard.press('+');
+  const zoomed = await camera();
+  await resize(1400, 860);
+  expect(await camera()).toBe(zoomed);
+});
+
+for (const lang of ['en', 'he'] as const) {
+  test(`${lang}: a list button leaves the keyboard wiring instruction in place`, async ({
+    page,
+  }) => {
+    await start(page, lang);
+    await openExample(page, 'voltage-divider');
+    await settled(page);
+    const status = page.getByTestId('kbwire-status');
+    await page.locator('[data-hit="component"][data-id="R1"]').focus();
+    await page.keyboard.press('w');
+    await page.keyboard.press('Enter');
+    await expect(status).not.toHaveText('');
+    const said = (await status.textContent())!.trim();
+    // Activated without taking focus from the drawing, as some assistive technology does.
+    for (const list of ['.wires-list-item', '[data-testid="junctions-list"] button']) {
+      const button = page.locator(list).first();
+      if (!(await button.count())) continue;
+      await button.dispatchEvent('click');
+      await expect(page.locator('.wires-list-item[aria-pressed="true"]')).toHaveCount(1);
+      await page.waitForTimeout(100);
+      expect((await status.textContent())!.trim()).toBe(said);
+    }
   });
 }
 

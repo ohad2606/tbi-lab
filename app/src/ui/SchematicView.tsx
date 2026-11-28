@@ -29,7 +29,7 @@ import {
   type SchPart,
   type SchematicLayout,
 } from '../views/schematic/layout.js';
-import { fitCamera, overlayBoxes } from './fitCamera.js';
+import { drawnBoxes, fitCamera, overlayBoxes } from './fitCamera.js';
 import { revealDelta, type Box } from './revealDelta.js';
 import { SCHEMATIC_SYMBOLS, type SchematicSymbolKey } from '../views/schematic/symbols.js';
 
@@ -71,12 +71,20 @@ export function SchematicView() {
 
   // The controls and the note, measured after each render: a fitted drawing stays clear of them.
   const [overlays, setOverlays] = useState<Box[]>([]);
+  const [labels, setLabels] = useState<Box[]>([]);
   useLayoutEffect(() => {
     const svg = wrap.current?.querySelector(':scope > svg');
     if (!svg) return;
     const next = overlayBoxes(svg, [controls.current, note.current]);
     setOverlays((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next));
   });
+  // The same for the labels and the supply, ground and net marks, as drawn. Not after every
+  // render: text measures differently at each zoom, so measuring after the fit it caused can
+  // repeat for ever. Only a new drawing, language or view size measures again.
+  useLayoutEffect(() => {
+    const svg = wrap.current?.querySelector(':scope > svg');
+    if (svg) setLabels(drawnBoxes(svg, '.sch-part > text, .sch-marks > g'));
+  }, [layout, locale, size.w, size.h]);
 
   const fitted = (): Camera | null => {
     if (!layout) return null;
@@ -97,6 +105,7 @@ export function SchematicView() {
       ...layout.wires.flatMap((w) =>
         w.points.slice(1).map((p, i) => around(w.points[i]!.x, w.points[i]!.y, p.x, p.y)),
       ),
+      ...labels,
     ];
     const b = layout.bounds;
     return fitCamera(

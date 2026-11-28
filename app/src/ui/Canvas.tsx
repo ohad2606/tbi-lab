@@ -8,7 +8,7 @@
  */
 
 import type { MutableRef } from 'preact/hooks';
-import { fitCamera, overlayBoxes } from './fitCamera.js';
+import { boundsOf, drawnBoxes, fitCamera, overlayBoxes } from './fitCamera.js';
 import { PanButtons, SHORT_VIEW_PX } from './PanButtons.js';
 import { revealDelta, type Box } from './revealDelta.js';
 import { ScrollNote } from './scrollNote.js';
@@ -182,6 +182,8 @@ const DRAG_THRESHOLD_PX = 4;
 const KB_TARGET_MARGIN = 40;
 /** World units a pin's hit target and a part's focus ring reach beyond the part's box. */
 const FIT_REACH = 10;
+/** How long after a project's opening fit its example probes may still arrive. */
+const PROBES_ARRIVE_MS = 1000;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -347,6 +349,10 @@ export function Canvas({
   const heldByKey = useRef<string | null>(null);
   const pointerDown = useRef(false);
   const fitted = useRef<string | null>(null);
+  const fittedSize = useRef('');
+  // The camera the last "Fit" chose: while it is still in place, nobody has panned or zoomed.
+  const fitChoice = useRef<Camera | null>(null);
+  const openedAt = useRef(0);
   // Obstacles for routing a NEW wire: existing wire segments, terminals and junctions, and the
   // component bodies. The preview and the committed wire use the same route.
   const routeObs = useMemo(() => routeObstacles(doc, componentBoxes(doc)), [doc]);
@@ -372,7 +378,7 @@ export function Canvas({
     };
   };
 
-  /** What "Fit" must show: each part (with its pins) and each straight piece of each wire. */
+  /** What "Fit" must frame: each part (with its pins) and each straight piece of each wire. */
   const contentBoxes = (): Box[] => {
     const grow = (a: Point, b: Point): Box => ({
       left: Math.min(a.x, b.x) - FIT_REACH,
@@ -395,30 +401,47 @@ export function Canvas({
   const fit = () => {
     const svg = svgRef.current!;
     const overlay = (name: string) => svg.parentElement!.querySelector(`:scope > .${name}`);
-    setCamera(
-      fitCamera(
-        contentBoxes(),
-        size,
-        overlayBoxes(svg, [overlay('canvas-controls'), overlay('canvas-hint')]),
-        // Room for labels, which sit outside the parts' boxes (upright parts label to the side).
-        {
-          marginX: 150 - FIT_REACH,
-          marginY: 90 - FIT_REACH,
-          pad: 16,
-          min: MIN_SCALE,
-          max: 1.5,
-        },
-      ),
+    const content = contentBoxes();
+    const next = fitCamera(
+      // The labels, as drawn, must stay clear of the overlays too.
+      [...content, ...drawnBoxes(svg, '.component > text, .probe-label')],
+      size,
+      overlayBoxes(svg, [overlay('canvas-controls'), overlay('canvas-hint')]),
+      // Room for labels, which sit outside the parts' boxes (upright parts label to the side).
+      {
+        marginX: 150 - FIT_REACH,
+        marginY: 90 - FIT_REACH,
+        pad: 16,
+        min: MIN_SCALE,
+        max: 1.5,
+      },
+      content.length ? boundsOf(content) : undefined,
     );
+    fitChoice.current = next;
+    fittedSize.current = `${size.w}x${size.h}`;
+    setCamera(next);
   };
 
-  // Fit once per opened project, after the element has its real size.
+  // Fit each opened project once the element has its real size, and again when the view changes
+  // size, as long as the user has not panned or zoomed since (and is not in mid-interaction).
   useEffect(() => {
-    if (fitted.current !== doc.projectId && size.w > 1) {
-      fitted.current = doc.projectId;
-      fit();
-    }
+    // A hidden view (another tab is shown) has no size; coming back to the same size is no change.
+    if (size.w <= 1) return;
+    if (fitted.current === doc.projectId) {
+      if (fittedSize.current === `${size.w}x${size.h}` || camera !== fitChoice.current) return;
+      if (mode.kind !== 'idle' || kb.mode !== 'idle') return;
+    } else openedAt.current = performance.now();
+    fitted.current = doc.projectId;
+    fit();
   }, [doc.projectId, size.w, size.h]);
+
+  // An example's probes arrive after the opening fit: their labels belong to it. A probe the
+  // user adds later does not move the view.
+  const probeIds = probes.map((p) => p.id).join();
+  useEffect(() => {
+    if (!probeIds || performance.now() - openedAt.current > PROBES_ARRIVE_MS) return;
+    if (fitted.current === doc.projectId && camera === fitChoice.current) fit();
+  }, [probeIds]);
 
   const zoomAt = (factor: number, sx = size.w / 2, sy = size.h / 2) => {
     setCamera((c) => {
@@ -449,7 +472,8 @@ export function Canvas({
 
   apiRef.current = {
     clearStatus() {
-      kbAnnounce('');
+      // While wiring from the keyboard, the status is the current instruction: it stays.
+      if (kb.mode === 'idle') kbAnnounce('');
     },
     reveal(at) {
       // After the render: the hint (which the point must stay clear of) follows the selection.
