@@ -209,6 +209,8 @@ describe('g2-deployed drill helpers', () => {
     const written = [];
     const write = g2ReportWriter(p, (result, report) => written.push([result, report.result]));
     expect(() => write('PASSED')).toThrow('build counts');
+    // Written by the writer itself, before any test hook runs.
+    expect(written).toEqual([['FAILED', 'FAILED']]);
     write('FAILED'); // the test hook afterwards: no second report
     write('PASSED');
     expect(written).toEqual([['FAILED', 'FAILED']]);
