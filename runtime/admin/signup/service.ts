@@ -568,7 +568,11 @@ export interface ApprovalMailBinding {
 }
 
 export type ApproveOutcome =
-  | { ok: true; record: SignupRecord; note?: 'already_done' | 'email_not_resent' | 'email_queued' }
+  | {
+      ok: true;
+      record: SignupRecord;
+      note?: 'already_done' | 'email_not_resent' | 'email_queued' | 'email_held_paused';
+    }
   | {
       ok: false;
       code:
@@ -622,6 +626,11 @@ export class SignupApprover {
        * hours hold every approval mail, as before.
        */
       nightAutoMail?: boolean;
+      /**
+       * The owner's approver only: the drain's own pause check (`auto-approve.paused`), read so a
+       * resend of a queued auto-approved mail can say it is held. Never holds or sends anything.
+       */
+      drainHeld?: () => Promise<boolean>;
     },
   ) {}
 
@@ -708,7 +717,14 @@ export class SignupApprover {
         r = unbound.record;
       }
       if (r.status === 'email_sent') return { ok: true, record: r, note: 'already_done' };
-      if (r.status === 'email_queued') return { ok: true, record: r, note: 'email_queued' };
+      if (r.status === 'email_queued') {
+        // The drain holds a queued mail of an auto-approved request while paused (an error
+        // counts as paused): it is NOT sent automatically, and this resend does not bypass the
+        // pause either (that would need an owner decision). Say so instead of "queued".
+        const held =
+          r.autoApprovedAt && this.d.drainHeld ? await this.d.drainHeld().catch(() => true) : false;
+        return { ok: true, record: r, note: held ? 'email_held_paused' : 'email_queued' };
+      }
       return this.send(r, false, true);
     }
   }
@@ -782,7 +798,8 @@ export class SignupApprover {
   /**
    * BETA-G1: the owner's own approver records that it added the account (and, with DEC-39, that it
    * took the request over, see `ownerTakeover`). Read for display and by `nightExempt` (an
-   * owner's request waits for the end of quiet hours); `autoApprovedAt` is left as written.
+   * owner's request waits for the end of quiet hours, and the pause still holds its drain);
+   * `autoApprovedAt` is left as written.
    */
   private ownerMark(): { approvedBy?: 'owner' } {
     return this.d.ownerActions && this.d.actor !== 'auto' ? { approvedBy: 'owner' } : {};
@@ -859,8 +876,12 @@ export class SignupApprover {
   }
 
   /**
-   * Sends the approval email, or, inside quiet hours, persists `email_queued` with its send time
-   * (no attempt is recorded). `force` is the drain, which has already checked the window.
+   * Sends the approval email, or, inside quiet hours (unless `nightExempt`), persists
+   * `email_queued` with its send time (no attempt is recorded). A mail held by the pause or the
+   * mail limit is also `email_queued`: the admin app names quiet hours only for a record never
+   * auto-approved, with no error and a send time ahead (admin-app views.ts `queuedReason`; the
+   * pause holds the drain of any auto-approved record, also after an owner takeover). `force` is
+   * the drain, which has already checked the window.
    */
   private async send(r: SignupRecord, force = false, explicit = false): Promise<ApproveOutcome> {
     // Every path below writes (queue, attempt, binding): the owner's mark goes first.

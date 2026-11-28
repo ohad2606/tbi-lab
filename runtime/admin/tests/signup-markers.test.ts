@@ -94,7 +94,9 @@ describe('A: a non-regular .mark entry cannot hold an id', () => {
       if (kind === 'directory')
         await expect(s.store.createIfNew(person(1))).rejects.toMatchObject({ code: 'corrupt' });
       else expect((await s.store.createIfNew(person(1))).created).toBe(true);
-      expect(await s.store.deleteNow(r.id)).toBe('deleted');
+      // BETA-G1 delete truth: a directory still wedges the address, so the delete is not done.
+      // A symlink or FIFO was replaced by the new request's regular marker above (not wedged).
+      expect(await s.store.deleteNow(r.id)).toBe(kind === 'directory' ? 'incomplete' : 'deleted');
     }, 10_000);
   }
 

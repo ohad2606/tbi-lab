@@ -982,7 +982,9 @@ test('signups: an email_queued outcome is announced in the live region', async (
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('signups-live')).toContainText(/Dana Levi/);
   // No record says why it waits: neutral wording, never "quiet hours" (BETA-G1).
-  await expect(page.getByTestId('signups-live')).toContainText(/will be sent automatically/);
+  await expect(page.getByTestId('signups-live')).toContainText(
+    /is queued and has not been sent yet/,
+  );
   await expect(page.getByTestId('signups-live')).not.toContainText(/quiet hours/i);
 });
 

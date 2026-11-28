@@ -47,7 +47,7 @@ const T = {
     mismatchMsg: 'Resend will not help',
     generic: 'Account added, but the email was not sent. Use Resend.',
     quiet: /quiet hours/,
-    waitMsg: 'is queued and will be sent automatically.',
+    waitMsg: 'is queued and has not been sent yet.',
     capMsg: 'waits because of the email limit',
   },
   he: {
@@ -55,7 +55,7 @@ const T = {
     mismatchMsg: 'שליחה חוזרת לא תעזור',
     generic: 'החשבון נוסף, אבל המייל לא נשלח. אפשר לשלוח שוב.',
     quiet: /שעות השקט/,
-    waitMsg: 'בתור ויישלח אוטומטית.',
+    waitMsg: 'בתור ועדיין לא נשלח.',
     capMsg: 'ממתין בגלל מגבלת המיילים',
   },
 } as const;

@@ -185,6 +185,22 @@ async function readMark(path: string): Promise<string | null> {
   }
 }
 
+/** Whether `path` exists and is not a regular file (lstat: a symlink is never followed). */
+async function notRegularFile(path: string): Promise<boolean> {
+  try {
+    return !(await lstat(path)).isFile();
+  } catch (e) {
+    if (errCode(e) === 'ENOENT') return false;
+    throw e;
+  }
+}
+
+/** A log-safe class of an error: its E-code, else `errorClass` (never a message or path). */
+function logClass(e: unknown): string {
+  const code = errCode(e);
+  return typeof code === 'string' && /^E[A-Z0-9]{1,30}$/.test(code) ? code : errorClass(e);
+}
+
 /** `readMark` for callers that treat an unreadable marker as holding nothing. */
 const markText = async (path: string): Promise<string> =>
   (await readMark(path).catch(() => null)) ?? '';
@@ -571,9 +587,14 @@ export class PendingStore {
         const email: unknown = existed ? (await this.get(id).catch(() => null))?.email : undefined;
         const ownMark = typeof email === 'string' ? this.markPath(email) : undefined;
         if (!known) {
-          // Best effort for strays (a marker or verify state naming this id); never audited.
-          await this.removeSideFiles(id, ownMark).catch(() => undefined);
-          await this.opts.onRemoved?.(id).catch(() => undefined);
+          // Best effort for strays (a marker or verify state naming this id); never audited, but
+          // a failure is logged by class only (no id, address, hash or path).
+          await this.removeSideFiles(id, ownMark).catch((e: unknown) => {
+            this.opts.log?.(`signup: unknown-id cleanup failed (${logClass(e)})`);
+          });
+          await this.opts.onRemoved?.(id).catch((e: unknown) => {
+            this.opts.log?.(`signup: unknown-id verify cleanup failed (${logClass(e)})`);
+          });
           return 'not_found';
         }
         await this.removeSideFiles(id, ownMark);
@@ -588,10 +609,7 @@ export class PendingStore {
         await this.audit(id, 'delete', 'ok');
         return 'deleted';
       } catch (e) {
-        const code = errCode(e);
-        const cls =
-          typeof code === 'string' && /^E[A-Z0-9]{1,30}$/.test(code) ? code : errorClass(e);
-        this.opts.log?.(`signup: delete incomplete (${cls})`);
+        this.opts.log?.(`signup: delete incomplete (${logClass(e)})`);
         if (known) await this.audit(id, 'delete', 'incomplete').catch(() => undefined);
         return 'incomplete';
       }
@@ -613,7 +631,8 @@ export class PendingStore {
    * caller removes `.web` after this, just before the record (the unverified purge selects on it).
    * Throws on any failure (the caller keeps the record and retries). A directory under a
    * `.vq-*`, `.rq` or `.tmp` name is nothing we wrote: left alone. A `.mark` entry that is not a
-   * regular file is skipped. An unreadable regular marker is a failure when it may be this
+   * regular file is skipped, except `ownMark` (throws `mark_not_file`: the delete or purge stays
+   * unfinished and keeps the record). An unreadable regular marker is a failure when it may be this
    * request's: it is `ownMark`, or `ownMark` is unknown (record gone or unreadable).
    */
   private async removeSideFiles(id: string, ownMark: string | undefined): Promise<void> {
@@ -625,6 +644,10 @@ export class PendingStore {
       else if (f.startsWith(`${id}.`) && f.endsWith('.tmp')) await this.unlinkFile(f);
       else if (MARK_RE.test(f)) {
         const path = join(this.dir, f);
+        // This request's own marker that is not a regular file (directory, symlink, FIFO): it
+        // still wedges the address, so the delete is not finished. Never followed, opened or
+        // removed here (no recursive removal); a non-file foreign marker stays skipped.
+        if (path === ownMark && (await notRegularFile(path))) throw new Error('mark_not_file');
         let holder: string | null;
         try {
           holder = await readMark(path);

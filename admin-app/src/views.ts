@@ -372,14 +372,16 @@ export function signupStatusKey(r: SignupRecord, acted = false) {
 }
 
 /**
- * Why a queued email waits, for the outcome text: the mail limit (`mail_cap`), quiet hours (no
- * error and a send time still ahead: the queue write of an owner action in quiet hours), else
- * neutral (a pause hold is due at once; no record, or a time already past).
+ * Why a queued email waits, for the outcome text: the mail limit (`mail_cap`), quiet hours only
+ * when the record proves it (never auto-approved; no error; a send time still ahead: the queue
+ * write of an owner action in quiet hours), else neutral with no promised send time. Any record
+ * with `autoApprovedAt`, also one the owner took over, is neutral: the pause still holds its
+ * drain (service.ts `drainEmails`). So is a time already past, or no record.
  */
 function queuedReason(r: SignupRecord | null, nowMs: number): '' | '_cap' | '_wait' {
   if (r?.lastError === 'mail_cap') return '_cap';
   const after = r?.emailSendAfter ? Date.parse(r.emailSendAfter) : NaN;
-  return r && r.lastError === null && after > nowMs ? '' : '_wait';
+  return r !== null && !r.autoApprovedAt && r.lastError === null && after > nowMs ? '' : '_wait';
 }
 
 /** What the web form added to a request: the free-text answer (plain text) and the web mark. */
@@ -501,7 +503,8 @@ export function signupOutcomeView(
       // A queued email must never read as "sent", for approve and for resend alike; it speaks
       // of quiet hours only when the record says that is why it waits.
       const note =
-        o.note && (action === 'approve' || o.note === 'email_queued')
+        o.note &&
+        (action === 'approve' || o.note === 'email_queued' || o.note === 'email_held_paused')
           ? `.${o.note}${o.note === 'email_queued' ? queuedReason(o.record, nowMs) : ''}`
           : '';
       // A request that is still open (its email queued, or a send whose outcome is unknown)
@@ -573,7 +576,7 @@ export function signupCountKey(
 
 /**
  * The count line of the sign-up list: `count` is only rows that need the owner (decide, retry,
- * resend). A queued row (its email waits for quiet hours) needs nothing, and neither does a row
+ * resend). A queued row (its email waits: quiet hours, the mail limit or a pause) needs nothing, and neither does a row
  * whose badge says it waits for the automatic approval (same predicate as the badge, with the
  * rows `acted` on here): those are named separately in `auto`. With no row for the owner, a
  * neutral sentence says so instead of "waiting for you".
