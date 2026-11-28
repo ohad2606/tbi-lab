@@ -25,7 +25,7 @@ import {
   signupBadgeOverride,
   signupOutcomeView,
   signupRowKind,
-  type SignupRowKind,
+  signupStatusKey,
 } from '../views.js';
 import { StoredSignups } from './StoredSignups.js';
 
@@ -40,12 +40,13 @@ interface RowMessage {
   ok: boolean;
 }
 
-const STATUS_KEY: Record<SignupRowKind, MessageKey> = {
-  decide: 'console.signups.status.pending',
-  retry: 'console.signups.status.accountPending',
-  resend: 'console.signups.status.emailFailed',
-  queued: 'console.signups.status.emailQueued',
-};
+/** The row control that holds focus now, so a reload can give focus back to it. */
+function focusedInRow(): { id: string; act: string | undefined } | null {
+  if (typeof document === 'undefined') return null;
+  const at = document.activeElement as HTMLElement | null;
+  const id = at?.closest<HTMLElement>('[data-testid="signup-row"]')?.dataset.signupId;
+  return id ? { id, act: at!.dataset.act } : null;
+}
 
 /** The button that opens and closes the "not confirmed yet" group. */
 const groupToggle = () =>
@@ -495,9 +496,34 @@ export function Signups() {
     };
   }, []);
 
-  // A reload may move the focused row into the closed group: the group then opens.
+  // Read while rendering, before the list in the page changes.
+  const heldInRow = useRef<ReturnType<typeof focusedInRow>>(null);
+  heldInRow.current = focusedInRow();
+
+  // A reload may move the focused row between the two lists (its element is then a new one, and
+  // focus drops to the page) or remove it. Focus returns to the same control of that row, else to
+  // the row's primary one; a row now in the closed group opens it. A removed row: Refresh.
   useLayoutEffect(() => {
-    if (document.activeElement?.closest('#signups-unconfirmed-rows[hidden]')) setGroupOpen(true);
+    const was = heldInRow.current;
+    const at = document.activeElement;
+    if (at?.closest('#signups-unconfirmed-rows[hidden]')) return setGroupOpen(true);
+    // An action's own focus rules (below) win.
+    if (!was || (at && at !== document.body)) return;
+    if (focusId.current !== undefined || keptId.current !== null) return;
+    const row = document.querySelector<HTMLElement>(`[data-signup-id="${CSS.escape(was.id)}"]`);
+    if (!row) return refreshBtn.current?.focus();
+    if (row.closest('[hidden]')) setGroupOpen(true);
+    // After the group has opened: a hidden element cannot take focus.
+    requestAnimationFrame(() => {
+      const now = document.activeElement;
+      if (now && now !== document.body) return;
+      const same = was.act
+        ? document.querySelector<HTMLElement>(
+            `[data-signup-id="${CSS.escape(was.id)}"] [data-act="${was.act}"]`,
+          )
+        : null;
+      (same ?? rowFocus(was.id) ?? refreshBtn.current)?.focus();
+    });
   }, [list]);
 
   // After a row left the list, focus goes to the next row's first action, else the previous
@@ -686,7 +712,7 @@ export function Signups() {
             {t(
               working
                 ? 'console.signups.status.working'
-                : (signupBadgeOverride(msg?.key) ?? STATUS_KEY[kind]),
+                : (signupBadgeOverride(msg?.key) ?? signupStatusKey(r)),
             )}
           </span>
           {src.web && (

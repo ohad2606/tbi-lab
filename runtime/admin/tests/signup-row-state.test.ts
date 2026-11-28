@@ -335,6 +335,36 @@ describe('S5: row states', () => {
     await stop();
   });
 
+  it('only as many rows are "queued" as today has free slots, oldest first', async () => {
+    const r = await rig({ verify: true, caps: true, auto: 3 });
+    const stop = r.wiring.startAutoApprove();
+    cleanup.push(stop);
+    await expect.poll(() => r.logs.some((l) => l.includes('cut-off recorded'))).toBe(true);
+    const ids: string[] = [];
+    for (let i = 1; i <= 3; i++) {
+      r.clock.t += 1000;
+      const id = await r.add();
+      await r.mint(id);
+      r.confirm(id, `tester${i}@example.com`);
+      ids.push(id);
+    }
+    const states = async () => {
+      const m = await r.rows();
+      return ids.map((id) => stateOf(m, id)?.state);
+    };
+    expect(await states()).toEqual(['confirmed_queued', 'confirmed_queued', 'confirmed_queued']);
+    const f = join(r.stateDir, 'auto-approve.state.json');
+    writeFileSync(f, JSON.stringify({ ...JSON.parse(readFileSync(f, 'utf8')), count: 2 }));
+    expect(await states()).toEqual([
+      'confirmed_queued',
+      'confirmed_waiting_limit',
+      'confirmed_waiting_limit',
+    ]);
+    // Paused: they did confirm, and say so; none is promised an automatic approval.
+    writeFileSync(join(r.stateDir, AUTO_PAUSE_FILE), '');
+    expect(await states()).toEqual(['confirmed_review', 'confirmed_review', 'confirmed_review']);
+  });
+
   it('without a running auto-approver a confirmed row needs review', async () => {
     const r = await rig({ verify: true, caps: true });
     const id = await r.add();

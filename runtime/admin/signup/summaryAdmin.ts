@@ -54,7 +54,11 @@ function dayCounts(
     signups: records.filter((r) => on(r.createdAt)).length,
     verifyMails,
     verified: verifyOn ? records.filter((r) => on(r.verifiedAt)).length : null,
-    autoApproved: records.filter((r) => r.accountAdded && on(r.autoApprovedAt)).length,
+    // Approved only: a `pending` or `rejected` record can carry the mark without being approved.
+    autoApproved: records.filter(
+      (r) =>
+        r.accountAdded && r.status !== 'pending' && r.status !== 'rejected' && on(r.autoApprovedAt),
+    ).length,
   };
 }
 
