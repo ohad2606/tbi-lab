@@ -76,6 +76,27 @@ describe('fitCamera', () => {
     expect(Number.isFinite(camera.x) && Number.isFinite(camera.y)).toBe(true);
   });
 
+  describe('items beyond the framed extent (labels)', () => {
+    const frame = box(0, 0, 600, 300);
+    const label = box(610, 20, 660, 36);
+
+    it('keeps the framing of the extent in a view where nothing is covered', () => {
+      const big = { w: 1200, h: 900 };
+      expect(fitCamera([frame, label], big, [], options, frame)).toEqual(
+        fitCamera([frame], big, [], options),
+      );
+    });
+
+    it('keeps them in view and clear when room has to be made', () => {
+      const camera = fitCamera([frame, label], size, [column, hint], options, frame);
+      for (const item of onScreen([frame, label], camera)) {
+        expect(item.left).toBeGreaterThanOrEqual(0);
+        expect(item.right).toBeLessThanOrEqual(size.w);
+        for (const o of [column, hint]) expect(hits(item, o)).toBe(false);
+      }
+    });
+  });
+
   it('shows the origin in the middle when there is nothing to fit', () => {
     expect(fitCamera([], size, [column], options)).toEqual({ x: -250, y: -200, scale: 1 });
   });
