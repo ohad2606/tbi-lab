@@ -13,6 +13,8 @@ under `/etc/<instance>`, or kills QEMU / session units with systemctl runs only 
 
 1. `TBI_ALLOW_SERVICE_MUTATION` names the instance (`tbi-s8`, `tbi`; comma-separated), and
 2. the caller holds the host-wide pipeline lock (`deploy/ops/pipeline-lock.mjs check`).
+   `TBI_PIPELINE_LOCK_DIR` must be unset: it moves the lock's files, so with it set (to any value)
+   the lock counts as not held.
 
 Otherwise it is skipped and prints the reason. Tests that only create sessions on a deployed
 instance need the instance named explicitly (`TBI_S8_INSTANCE`, `TBI_C5_DEPLOYED`,
@@ -173,12 +175,12 @@ The gate sets none of this itself, except `CI=1` and the report path for Playwri
 | Need | Setting |
 |---|---|
 | Host-wide pipeline lock, held for the whole run | `deploy/ops/pipeline-lock.mjs acquire` |
-| Permission to restart / reconfigure the instance under test (owner / PM decision; ends live sessions) | `TBI_ALLOW_SERVICE_MUTATION=<instance>` |
+| Permission to restart / reconfigure the instance under test (owner / PM decision; ends live sessions) | `TBI_ALLOW_SERVICE_MUTATION=tbi-s8` |
 | Provisioned runtime and emulator | `TBI_RUNTIME_HOME`, `TBI_QEMU` |
-| Real services behind the preview (the fake services' ports are refused) | `TBI_RUNTIME_PROXY`, `TBI_BUILD_PROXY`, `TBI_FEEDBACK_RUNTIME_PROXY` (Session Host in reports mode, `rc6-golden-real`) |
+| Real services behind the preview, on loopback (the fake services' ports are refused) | `TBI_RUNTIME_PROXY`, `TBI_BUILD_PROXY`, `TBI_FEEDBACK_RUNTIME_PROXY` (Session Host in reports mode, `rc6-golden-real`) |
 | Real browser specs | `TBI_S6_REAL`, `TBI_S11_REAL`, `TBI_S12_REAL`, `TBI_S15_REAL`, `TBI_S18_REAL`, `TBI_S19B_REAL`, `TBI_S20L_REAL`, `TBI_MPY_REAL`, `TBI_RC6_REAL`, `TBI_W2_REAL` (each `=1`) |
-| QEMU kill / restart cases of `s18-r4b-real` | `TBI_S18_UNIT=<instance>` plus the mutation opt-in |
-| Deployed runtime tests | `TBI_S8_INSTANCE`, `TBI_C5_DEPLOYED`, `TBI_S13_SEC_DEPLOYED` (instance name), passwordless sudo |
+| QEMU kill / restart cases of `s18-r4b-real` | `TBI_S18_UNIT=tbi-s8` plus the mutation opt-in |
+| Deployed runtime tests | `TBI_S8_INSTANCE`, `TBI_C5_DEPLOYED`, `TBI_S13_SEC_DEPLOYED` (`tbi-s8`), passwordless sudo |
 | C-5 fault drills (opt-in required, else the gate refuses to start; coverage below) | `TBI_C5_FAULTS=1`, and the `TBI_C5_DEPLOYED` instance named in `TBI_ALLOW_SERVICE_MUTATION` |
 | Measurements | `TBI_C5=1`, `TBI_MPY_BENCH=1` |
 | Gate tests | `oauth2-proxy` and `caddy` installed (`TBI_OAUTH2_PROXY` for another binary) |
@@ -202,10 +204,30 @@ Evidence replaces the values of `TBI_*` (4 characters or more) and, whatever the
 `TBI_*_INSTANCE`, `TBI_ALLOW_SERVICE_MUTATION`, `TBI_C5_DEPLOYED`, `TBI_S13_SEC_DEPLOYED` and
 `TBI_S18_UNIT` in test titles.
 
-The gate runs against staging only. It refuses to start (`live_instance`) when
-`TBI_ALLOW_SERVICE_MUTATION` (any entry of the list), `TBI_C5_DEPLOYED`, `TBI_S8_INSTANCE`,
-`TBI_S13_SEC_DEPLOYED` or `TBI_S18_UNIT` names the live DEV-Lab instance `tbi`. Only the exact name
-is refused; `tbi-s8` is allowed. It does not check which instance the proxy addresses reach.
+The gate runs against staging only. Each of `TBI_ALLOW_SERVICE_MUTATION`, `TBI_C5_DEPLOYED`,
+`TBI_S8_INSTANCE`, `TBI_S13_SEC_DEPLOYED` and `TBI_S18_UNIT` must be unset, empty or exactly
+`tbi-s8` (the opt-in: a comma-separated list in which every entry is exactly `tbi-s8`, without
+spaces or empty entries). The value is compared as written (anchored, case-sensitive, not trimmed),
+so another name or case, a wildcard, a path or a systemd unit name is refused
+(`instance_not_allowed`); a value or list entry that is the live DEV-Lab name `tbi` is refused as
+`live_instance`. A further test instance needs a change of the rule in the gate script.
+
+`TBI_HOST_RUNTIME_UNIT`, `TBI_BUILD_JOB_UNIT` (unit prefixes of the services) and
+`TBI_HOST_SESSION_ROOT` (the Session Host's session directory) must be unset or empty
+(`unit_setting`). `TBI_PIPELINE_LOCK_DIR` must be unset, even empty (`lock_redirect`).
+
+The operator must also leave these unset. The gate does **not** check them: `TBI_HOST_STATE`,
+`TBI_ARTIFACTS`, every `TBI_HOST_SIM_*` variable and `TBI_ACCESS_VIEW`. They point a process the
+suites start at another instance's state or artifacts, or change how it admits users.
+
+`TBI_RUNTIME_PROXY`, `TBI_BUILD_PROXY`, `TBI_FEEDBACK_RUNTIME_PROXY` and, when set,
+`TBI_ADMIN_PROXY` must be written as `http(s)://<host>:<port>` with host `127.0.0.1`, `localhost`
+or `[::1]` and a port from 1 to 65535 (`proxy_not_loopback`). An unset or empty `TBI_ADMIN_PROXY`
+is accepted, but unset it falls back to the default of `app/vite.config.ts`,
+`http://127.0.0.1:7410`: set it if whatever listens there is not part of the instance under test. The gate **does not check which instance listens on those
+ports**: a local relay to a live instance would pass. The operator verifies the relays.
+Starting private services for the browser specs: [PRIVATE-STACK.md](PRIVATE-STACK.md) (not
+rehearsed).
 
 ### Excluded (listed in every evidence file)
 

@@ -12,10 +12,17 @@
  *   cp / rm / ln into /etc or /srv (literal or via $root/$page/$BUNDLES); tee into /etc. Gate: the
  *   TBI_ALLOW_SERVICE_MUTATION check (deploy/ops/require-mutation.sh or inline).
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { allowedTargets, mutationAllowed } from '../../runtime/tests/mutation-gate.ts';
+import {
+  allowedTargets,
+  holdsPipelineLock,
+  mutationAllowed,
+  pipelineLockStatus,
+} from '../../runtime/tests/mutation-gate.ts';
 
 const root = new URL('../../', import.meta.url).pathname;
 const walk = (dir, ext) =>
@@ -156,6 +163,43 @@ describe('service-mutation gate: decisions', () => {
   });
   it('no instance named: refused', () => {
     expect(mutationAllowed('', { TBI_ALLOW_SERVICE_MUTATION: 'tbi-s8' }, yes)).toBe(false);
+  });
+  // The lock tool would read a private directory from it: the host-wide lock would not count.
+  it.each(['', '/run/lock', '/tmp/private-lock'])(
+    'TBI_PIPELINE_LOCK_DIR set to "%s": the lock counts as not held, without asking the tool',
+    async (dir) => {
+      const env = { TBI_PIPELINE_LOCK_DIR: dir };
+      const asked = [];
+      const check = () => (asked.push('check'), 0);
+      expect(holdsPipelineLock(env, check)).toBe(false);
+      await expect(pipelineLockStatus(1000, env, async () => check())).resolves.toBe(75);
+      expect(asked).toEqual([]);
+    },
+  );
+  it("without the redirect the answer is the lock tool's", async () => {
+    expect(holdsPipelineLock({}, () => 0)).toBe(true);
+    expect(holdsPipelineLock({}, () => 75)).toBe(false);
+    await expect(pipelineLockStatus(1000, {}, async () => 0)).resolves.toBe(0);
+    await expect(pipelineLockStatus(1000, {}, async () => null)).resolves.toBe(null);
+  });
+  it('a real lease in a private directory does not count', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tbi-lock-'));
+    const env = {
+      ...process.env,
+      TBI_PIPELINE_LOCK_DIR: dir,
+      TBI_PIPELINE_HISTORY: join(dir, 'history.log'),
+      TBI_PIPELINE_OWNER: 'mutation-gate-test',
+      TBI_PIPELINE_PID: String(process.pid),
+    };
+    const tool = join(root, 'deploy/ops/pipeline-lock.mjs');
+    const run = (...args) => spawnSync(process.execPath, [tool, ...args], { env }).status;
+    try {
+      expect(run('acquire', '--purpose', 'unit test')).toBe(0);
+      expect(run('check')).toBe(0);
+      expect(holdsPipelineLock(env)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
   it('list parsing', () => {
     expect(allowedTargets({ TBI_ALLOW_SERVICE_MUTATION: ' tbi-s8 , tbi ' })).toEqual([

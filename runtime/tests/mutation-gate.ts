@@ -4,7 +4,8 @@
  * or killing QEMU / session units with systemctl. Such a test runs only when BOTH hold:
  *
  *   1. `TBI_ALLOW_SERVICE_MUTATION` names the instance (comma-separated list, e.g. `tbi-s8`), and
- *   2. the caller holds the host-wide pipeline lock (`deploy/ops/pipeline-lock.mjs check` exits 0).
+ *   2. the caller holds the host-wide pipeline lock (`deploy/ops/pipeline-lock.mjs check` exits 0,
+ *      with `TBI_PIPELINE_LOCK_DIR` unset).
  *
  * Otherwise the test is SKIPPED with the reason below; nothing is touched. Default runs of the
  * runtime suite (`npm run test:runtime`, the kits' run-gates scripts) therefore never restart a
@@ -28,18 +29,38 @@ export function allowedTargets(env: NodeJS.ProcessEnv = process.env): string[] {
 
 const LOCK = fileURLToPath(new URL('../../deploy/ops/pipeline-lock.mjs', import.meta.url));
 
-/** True only if the caller holds the pipeline lock (the lock tool's own `check`). */
-export function holdsPipelineLock(): boolean {
-  return spawnSync(process.execPath, [LOCK, 'check'], { stdio: 'ignore' }).status === 0;
+/**
+ * It moves the lock tool's files, so a lease nobody else sees would pass `check`: set (to any
+ * value), the host-wide lock counts as not held.
+ */
+const LOCK_DIR_ENV = 'TBI_PIPELINE_LOCK_DIR';
+/** `pipeline-lock.mjs check`: not ours (EX_TEMPFAIL). */
+const NOT_HELD = 75;
+
+/**
+ * True only if the caller holds the pipeline lock (the lock tool's own `check`). `env` and `check`
+ * are injectable for the gate's own unit tests; production callers pass neither.
+ */
+export function holdsPipelineLock(
+  env: NodeJS.ProcessEnv = process.env,
+  check: () => number | null = () =>
+    spawnSync(process.execPath, [LOCK, 'check'], { env, stdio: 'ignore' }).status,
+): boolean {
+  return env[LOCK_DIR_ENV] === undefined && check() === 0;
 }
 
 /** The same check without blocking the event loop: its exit code, or null if it gave none. */
-export function pipelineLockStatus(timeoutMs: number): Promise<number | null> {
-  return new Promise((resolve) => {
-    execFile(process.execPath, [LOCK, 'check'], { timeout: timeoutMs }, (error) =>
-      resolve(!error ? 0 : typeof error.code === 'number' ? error.code : null),
-    );
-  });
+export function pipelineLockStatus(
+  timeoutMs: number,
+  env: NodeJS.ProcessEnv = process.env,
+  check: () => Promise<number | null> = () =>
+    new Promise((resolve) => {
+      execFile(process.execPath, [LOCK, 'check'], { env, timeout: timeoutMs }, (error) =>
+        resolve(!error ? 0 : typeof error.code === 'number' ? error.code : null),
+      );
+    }),
+): Promise<number | null> {
+  return env[LOCK_DIR_ENV] === undefined ? check() : Promise.resolve(NOT_HELD);
 }
 
 /**
@@ -49,7 +70,7 @@ export function pipelineLockStatus(timeoutMs: number): Promise<number | null> {
 export function mutationAllowed(
   target: string,
   env: NodeJS.ProcessEnv = process.env,
-  holdsLock: () => boolean = holdsPipelineLock,
+  holdsLock: () => boolean = () => holdsPipelineLock(),
 ): boolean {
   if (!target || !allowedTargets(env).includes(target)) return false;
   return holdsLock();
