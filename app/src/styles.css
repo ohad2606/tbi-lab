@@ -617,6 +617,40 @@ select {
   margin-block: 0.5rem 1rem;
 }
 
+/* BETA-G3: move buttons (a single-pointer alternative to dragging). Physical order, set LTR. */
+.move-group {
+  margin-block: 0.5rem;
+}
+.move-group h3 {
+  font-size: 0.9rem;
+  margin: 0 0 0.35rem;
+}
+.segment-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-block-end: 0.35rem;
+}
+.segment-choice select {
+  min-block-size: 28px;
+  max-inline-size: 100%;
+}
+.move-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.move-buttons .icon-button {
+  display: grid;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  padding: 0;
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
 /* ---------------------------------------------------------------- canvas */
 
 .canvas-wrap {
@@ -877,6 +911,37 @@ select {
 
 .junction.selected .junction-dot {
   fill: var(--selected);
+}
+
+/* The wire segment chosen in Properties: a dashed outline (shape), dark on the white canvas. */
+.segment-chosen {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+@media (forced-colors: active) {
+  .segment-chosen {
+    forced-color-adjust: none;
+    stroke: Highlight;
+  }
+}
+
+/* A selected junction differs by shape (a ring), not by colour alone. */
+.junction-selected-ring {
+  fill: none;
+  stroke: var(--selected);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+@media (forced-colors: active) {
+  .junction-selected-ring {
+    forced-color-adjust: none;
+    stroke: Highlight;
+  }
 }
 
 .rubber-band {
@@ -2409,7 +2474,10 @@ select {
 .side-column {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  /* BETA-G3: the lists below never squeeze Properties (and its Move buttons) away: it keeps a
+     floor and the column scrolls instead (WCAG 1.4.4, 1.4.10, 2.4.11). */
+  grid-template-rows: minmax(10rem, 1fr) auto auto;
+  overflow: hidden auto;
   min-width: 0;
   min-height: 0;
   border-inline-start: 1px solid var(--border);
@@ -2419,6 +2487,20 @@ select {
 .side-column > .inspector {
   border-inline-start: 0;
   min-height: 0;
+}
+
+/* A short window (200% zoom): one scrolling column with every part at its own height. */
+@media (max-height: 40rem) {
+  .side-column {
+    display: block;
+  }
+
+  .side-column > .inspector,
+  .side-column > .wires-list,
+  .side-column > .junctions-list {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 .mcu-terminal {
@@ -5250,6 +5332,51 @@ select {
   background: var(--accent-soft);
 }
 .wires-list-item:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* Junctions list (BETA-G3): as the Wires list. */
+.junctions-list {
+  border-block-start: 1px solid var(--border);
+  padding: 8px 12px;
+  max-height: 18vh;
+  overflow: auto;
+  min-width: 0;
+}
+.junctions-list h2 {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+.junctions-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 5px;
+}
+.junctions-list-item {
+  display: block;
+  inline-size: 100%;
+  min-block-size: 28px;
+  padding: 4px 8px;
+  text-align: start;
+  overflow-wrap: anywhere;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  margin-block-end: 4px;
+  scroll-margin: 6px;
+  cursor: pointer;
+}
+.junctions-list-item[aria-pressed='true'] {
+  border-width: 2px;
+  border-color: var(--accent-strong);
+  font-weight: 600;
+  background: var(--accent-soft);
+}
+.junctions-list-item:focus-visible,
+#inspector-heading:focus-visible {
   outline: 3px solid currentColor;
   outline-offset: 2px;
 }

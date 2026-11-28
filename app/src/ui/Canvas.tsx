@@ -108,9 +108,12 @@ import {
   type ProbeInput,
   sameTarget,
 } from './probes.js';
+import { clampSegment, type SegmentPick } from './segments.js';
 
 export interface CanvasApi {
   placeAtCenter(type: ComponentTypeId): void;
+  /** Pans so that a point of the drawing is visible (nothing while the view is hidden). */
+  reveal(at: Point): void;
 }
 
 interface Props {
@@ -122,6 +125,7 @@ interface Props {
   onProbeModeChange(on: boolean): void;
   probes: Probe[];
   onProbe(input: ProbeInput): void;
+  segmentPick: SegmentPick | null;
 }
 
 interface Camera {
@@ -275,6 +279,7 @@ export function Canvas({
   onProbeModeChange,
   probes,
   onProbe,
+  segmentPick,
 }: Props) {
   const state = useAppState();
   const store = useStore();
@@ -425,6 +430,12 @@ export function Canvas({
   };
 
   apiRef.current = {
+    reveal(at) {
+      // After the render: the hint (which the point must stay clear of) follows the selection.
+      requestAnimationFrame(() => {
+        if (svgRef.current?.getBoundingClientRect().width) revealPoint(at);
+      });
+    },
     placeAtCenter(type) {
       if (readOnly) return;
       const center = snapPoint({
@@ -1257,10 +1268,17 @@ export function Canvas({
         selection.wires.length === 1 && !selection.components.length && !selection.junctions.length
           ? doc.layout.wires.find((x) => x.id === selection.wires[0])
           : undefined;
+      const junction =
+        selection.junctions.length === 1 && !selection.components.length && !selection.wires.length
+          ? selection.junctions[0]
+          : undefined;
       const del = deleteSelection(doc, selection);
-      store.apply(del, emptySelection());
-      if (removed && !del.ok) kbAnnounce(t('kbwire.wireDeleteRefused'));
-      if (removed && del.ok)
+      // Refused while the simulation runs (the store shows "stop to edit"): never announce success.
+      const applied = store.apply(del, emptySelection());
+      if (junction && del.ok && applied)
+        kbAnnounce(t('junctions.removed', { id: isolateLtr(junction) }));
+      if (removed && !(del.ok && applied)) kbAnnounce(t('kbwire.wireDeleteRefused'));
+      if (removed && del.ok && applied)
         kbAnnounce(
           t('kbwire.wireRemoved', {
             from: wireEndName(removed.from),
@@ -1318,6 +1336,27 @@ export function Canvas({
             return r.ok ? r.doc : doc;
           })()
         : doc;
+
+  // The segment Properties would move (one wire selected, editable): outlined on the canvas.
+  const chosenSegment = (() => {
+    if (readOnly || selection.wires.length !== 1) return null;
+    if (selection.components.length || selection.junctions.length) return null;
+    const w = view.layout.wires.find((x) => x.id === selection.wires[0]);
+    const route = w && wireRoute(view, w);
+    if (!w || !route || route.length < 2) return null;
+    const i = clampSegment(
+      segmentPick?.wire === w.id ? segmentPick.index : undefined,
+      route.length - 1,
+    );
+    const [a, b] = [route[i]!, route[i + 1]!];
+    return {
+      index: i,
+      x: Math.min(a.x, b.x) - 7,
+      y: Math.min(a.y, b.y) - 7,
+      width: Math.abs(b.x - a.x) + 14,
+      height: Math.abs(b.y - a.y) + 14,
+    };
+  })();
 
   // Unconnected crossings of the drawing being shown (including a live drag preview).
   // Bounded work (s20r6): past OVERLAY_WORK the overlays are cut short and the view says so.
@@ -1696,6 +1735,9 @@ export function Canvas({
                 r={4.5}
                 aria-label={t('canvas.junctionLabel', { id: j.id })}
               />
+              {selected.junctions.has(j.id) && (
+                <circle class="junction-selected-ring" cx={j.x} cy={j.y} r={9} />
+              )}
               {(kbRepickJunction === j.id || kbJunctionTarget === j.id) && (
                 <circle class="kb-ring" cx={j.x} cy={j.y} r={11} />
               )}
@@ -1715,6 +1757,20 @@ export function Canvas({
             </g>
           )}
         </g>
+
+        {chosenSegment && (
+          <rect
+            class="segment-chosen"
+            data-testid="segment-highlight"
+            data-segment={chosenSegment.index}
+            x={chosenSegment.x}
+            y={chosenSegment.y}
+            width={chosenSegment.width}
+            height={chosenSegment.height}
+            rx={4}
+            aria-hidden="true"
+          />
+        )}
 
         <g class="check-markers">
           {markers.map((m) => {

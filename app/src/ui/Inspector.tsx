@@ -1,4 +1,5 @@
 import { Fragment } from 'preact';
+import { useLayoutEffect, useRef } from 'preact/hooks';
 import {
   CATALOG,
   MODEL_LIMITATIONS,
@@ -14,6 +15,7 @@ import {
   type CheckIssue,
   type ComponentInstance,
   type ParamDef,
+  type Point,
   type UnitId,
 } from '@tbi-lab/domain';
 import {
@@ -35,6 +37,9 @@ import { useAppState, useStore, useT } from './context.js';
 import { checkIssueText, checksFor } from './checks.js';
 import { NEUTRAL_HEX, resolveWireColors } from '../views/wireColors.js';
 import { rotateRouted } from './routing.js';
+import { MoveControls, SegmentMoveControls } from './MoveControls.js';
+import type { SegmentPick } from './segments.js';
+import { useAnnounce } from './useAnnounce.js';
 import { probeTargetName, readProbe, type Probe } from './probes.js';
 import { McuPanel } from './McuPanel.js';
 import { isLogicType, LogicStateView } from './LogicStateView.js';
@@ -44,6 +49,10 @@ interface InspectorProps {
   probes: Probe[];
   onRemoveProbe(id: string): void;
   onClearProbes(): void;
+  segmentPick: SegmentPick | null;
+  onSegmentPick(pick: SegmentPick): void;
+  /** Pans the Circuit view to show a point of the drawing. */
+  onReveal(at: Point): void;
 }
 
 /**
@@ -124,12 +133,30 @@ function WireRouteField({ wire, readOnly }: { wire: Wire; readOnly: boolean }) {
   );
 }
 
-export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorProps) {
-  const { doc, selection, readOnly, sim } = useAppState();
+export function Inspector({
+  probes,
+  onRemoveProbe,
+  onClearProbes,
+  segmentPick,
+  onSegmentPick,
+  onReveal,
+}: InspectorProps) {
+  const { doc, selection, readOnly, sim, locale } = useAppState();
   const simActive = sim.status === 'running' || sim.status === 'starting';
   const outcome = sim.status === 'running' && sim.outcome.ok ? sim.outcome : null;
   const store = useStore();
   const t = useT();
+  const [status, say, clearStatus] = useAnnounce();
+  // An announcement belongs to the selection it was made for; a new selection clears it.
+  const selected = JSON.stringify(selection);
+  const saidFor = useRef(selected);
+  const announce = (text: string) => {
+    saidFor.current = JSON.stringify(store.state.selection);
+    say(text);
+  };
+  useLayoutEffect(() => {
+    if (saidFor.current !== selected) clearStatus();
+  }, [selected]);
   if (!doc) return null;
   const count = selection.components.length + selection.wires.length + selection.junctions.length;
   const single =
@@ -159,7 +186,30 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
         class="button button-danger"
         data-testid="inspector-delete"
         disabled={simActive}
-        onClick={() => store.apply(deleteSelection(doc, selection), emptySelection())}
+        onClick={() => {
+          const at = doc.layout.junctions.findIndex((j) => j.id === junction);
+          const wireNumber = doc.layout.wires.findIndex((w) => w.id === wire?.id) + 1;
+          if (!store.apply(deleteSelection(doc, selection), emptySelection())) return;
+          announce(
+            junction
+              ? t('junctions.removed', { id: isolateLtr(junction) })
+              : single
+                ? t('inspector.partRemoved', { id: isolateLtr(single.id) })
+                : wire
+                  ? t('inspector.wireRemoved', { n: wireNumber })
+                  : t('inspector.selectionRemoved'),
+          );
+          // This button goes with the selection: focus moves to the junction now at the deleted
+          // one's place in the list, or to the heading.
+          requestAnimationFrame(() => {
+            const items = junction
+              ? document.querySelectorAll<HTMLElement>('.junctions-list-item')
+              : [];
+            (
+              items[Math.min(at, items.length - 1)] ?? document.getElementById('inspector-heading')
+            )?.focus();
+          });
+        }}
       >
         {t('inspector.delete')}
       </button>
@@ -177,7 +227,9 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
 
   return (
     <aside class="inspector" aria-labelledby="inspector-heading" data-testid="inspector">
-      <h2 id="inspector-heading">{t('inspector.heading')}</h2>
+      <h2 id="inspector-heading" tabIndex={-1}>
+        {t('inspector.heading')}
+      </h2>
       {count === 0 && <p class="muted">{t('inspector.empty')}</p>}
       {count > 1 && <p>{t('inspector.multi', { count })}</p>}
       {single?.type === 'instrument.lab_psu' ? (
@@ -232,7 +284,29 @@ export function Inspector({ probes, onRemoveProbe, onClearProbes }: InspectorPro
           <dd>{t('inspector.junction')}</dd>
         </dl>
       )}
+      {!readOnly && (single || junction) && (
+        <MoveControls id={single?.id ?? junction!} announce={announce} onReveal={onReveal} />
+      )}
+      {!readOnly && wire && (
+        <SegmentMoveControls
+          key={wire.id}
+          wire={wire}
+          pick={segmentPick}
+          onPick={onSegmentPick}
+          announce={announce}
+          onReveal={onReveal}
+        />
+      )}
       {actions}
+      <div
+        class="visually-hidden"
+        role="status"
+        aria-live="polite"
+        data-testid="inspector-status"
+        dir={locale.dir}
+      >
+        {status}
+      </div>
       <ProbesSection probes={probes} onRemove={onRemoveProbe} onClear={onClearProbes} />
       {/* Kept mounted while running (hidden), so Run/Stop never re-renders the list. */}
       <ChecksSection hidden={simActive} />
