@@ -1,6 +1,9 @@
 /** Offline unit tests of the Capacity A1 measurements (runtime/tests/g2-metrics.ts). Fake files and clock. */
-import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { readdir, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { g2Decision, g2Report } from '../../runtime/tests/g2-guard.ts';
 import * as M from '../../runtime/tests/g2-metrics.ts';
 
@@ -236,17 +239,6 @@ describe('A1 follow-ups', () => {
       await rec.tick();
     }
   };
-  it('each round has its own phase label, and the harness sets one per step', () => {
-    expect(M.G2_A1_ROUNDS.map((r) => r.phase)).toEqual([
-      'a1-delay-solo',
-      'a1-busy-solo',
-      'a1-mix6',
-    ]);
-    const src = readFileSync('runtime/tests/g2-deployed.runtime.test.ts', 'utf8');
-    for (const set of ["'a1-builds'", "'a1-cooldown'", 'phase'])
-      expect(src).toContain(`progress.phase = ${set};`);
-    expect(src).not.toContain("progress.phase = 'a1';");
-  });
   it.each([
     ['never listed', {}],
     [
@@ -271,14 +263,19 @@ describe('A1 follow-ups', () => {
   it('a blind drill run is counted but does not spoil measured rounds', async () => {
     const id = 'b'.repeat(32);
     const unit = `tbi-s8-qemu@${id}.service`;
+    const map = {};
+    let at = 0;
     const rec = M.g2A1Recorder(
-      fsOf(files(`${M.G2_A1_QEMU_SLICE}/${unit}`), { [M.G2_A1_QEMU_SLICE]: [unit] }),
-      () => 0,
+      fsOf(map, { [M.G2_A1_QEMU_SLICE]: [unit] }),
+      () => at,
       () => 'a1-mix6',
     );
     rec.addRun(id, 'delay', 'mix6');
     rec.addRun('c'.repeat(32), 'gpio_proof', 'drills');
-    await rec.tick();
+    await tickTimes(rec, 40, (s) => {
+      at = s * 1000;
+      Object.assign(map, files(`${M.G2_A1_QEMU_SLICE}/${unit}`, { usec: s * 1e6 }));
+    });
     rec.state.status = 'complete';
     const report = rec.report();
     expect(report.unavailable['qemu run without readings']).toBe(1);
@@ -308,6 +305,266 @@ describe('A1 follow-ups', () => {
     expect(second.startupCores).toBeNull();
     expect(second.startupCpuSeconds).toBeNull();
     expect(second.steadyCores).toBe(1);
+  });
+});
+
+describe('missing data cannot look complete', () => {
+  const id = 'd'.repeat(32);
+  const name = `tbi-s8-qemu@${id}.service`;
+  const measured = async (drop, round = 'mix6') => {
+    const map = {};
+    let at = 0;
+    const rec = M.g2A1Recorder(
+      fsOf(map, { [M.G2_A1_QEMU_SLICE]: [name] }),
+      () => at,
+      () => 'a1-mix6',
+    );
+    rec.addRun(id, 'delay', round);
+    for (let s = 1; s <= 40; s++) {
+      at = s * 1000;
+      const dir = `${M.G2_A1_QEMU_SLICE}/${name}`;
+      Object.assign(map, files(dir, { usec: s * 1e6 }));
+      for (const f of drop) delete map[`${dir}/${f}`];
+      await rec.tick();
+    }
+    rec.state.status = 'complete';
+    return rec.report();
+  };
+  it('everything readable is complete', async () => {
+    const r = await measured([]);
+    expect(r.status).toBe('complete');
+    expect(r.unavailable['qemu run without cpu figure']).toBeUndefined();
+    expect(r.unavailable['qemu run without memory figure']).toBeUndefined();
+  });
+  it('cpu.stat never readable: incomplete, null CPU, counted', async () => {
+    const r = await measured(['cpu.stat']);
+    expect(r.runs[0].steadyCores).toBeNull();
+    expect(r.status).toBe('incomplete');
+    expect(r.unavailable['qemu run without cpu figure']).toBe(1);
+    expect(r.unavailable['qemu run without memory figure']).toBeUndefined();
+  });
+  it.each([[['memory.stat']], [['memory.peak']], [['memory.current']]])(
+    '%s never readable: incomplete, counted',
+    async (drop) => {
+      const r = await measured(drop);
+      expect(r.status).toBe('incomplete');
+      expect(r.unavailable['qemu run without memory figure']).toBe(1);
+      expect(r.unavailable['qemu run without cpu figure']).toBeUndefined();
+    },
+  );
+  it('a drill run without figures does not judge the measured rounds', async () => {
+    expect((await measured(['cpu.stat'], 'drills')).status).toBe('complete');
+  });
+});
+
+describe('tick deadline', () => {
+  afterEach(() => vi.useRealTimers());
+  it('a hanging read ends the tick at the deadline, is counted, and others are kept', async () => {
+    vi.useFakeTimers();
+    const hung = `${M.G2_A1_UNITS.host}/cpu.stat`;
+    const id = 'e'.repeat(32);
+    const name = `tbi-s8-qemu@${id}.service`;
+    const base = fsOf(
+      {
+        ...files(M.G2_A1_UNITS.host),
+        ...files(M.G2_A1_UNITS.build),
+        ...files(`${M.G2_A1_QEMU_SLICE}/${name}`),
+      },
+      { [M.G2_A1_QEMU_SLICE]: [name] },
+    );
+    let hungReads = 0;
+    let at = 0;
+    const rec = M.g2A1Recorder(
+      {
+        ...base,
+        readFile: (p) => (p === hung ? (hungReads++, new Promise(() => {})) : base.readFile(p)),
+      },
+      () => at,
+      () => 'a1-mix6',
+    );
+    rec.addRun(id, 'delay', 'mix6');
+    for (const start of [1000, 4000]) {
+      at = start;
+      let done = false;
+      const t = rec.tick().then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(M.G2_A1_TICK_DEADLINE_MS - 1);
+      // the second tick does not start the stuck read again, so it need not wait for it
+      if (start === 1000) expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await t;
+    }
+    expect(hungReads).toBe(1);
+    const r = rec.report();
+    expect(r.samples).toBe(2);
+    expect(r.ticksTimedOut).toBe(1);
+    // starts 3 s apart at 1 Hz: two slots without a sample
+    expect(r.missedTicks).toBe(2);
+    expect(r.unavailable['host cpu.stat']).toBe(2);
+    expect(r.runs[0].samples).toBe(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('a regular 1 Hz series misses nothing', async () => {
+    let at = 0;
+    const rec = M.g2A1Recorder(
+      fsOf({}),
+      () => at,
+      () => 'a1',
+    );
+    for (const t of [1000, 2004, 3001]) {
+      at = t;
+      await rec.tick();
+    }
+    expect(rec.report()).toMatchObject({ ticksTimedOut: 0, missedTicks: 0 });
+  });
+});
+
+describe('measure() offline, end to end over a fake cgroup tree on disk', () => {
+  let root;
+  afterEach(() => root && rmSync(root, { recursive: true, force: true }));
+  const put = (map) => {
+    for (const [p, text] of Object.entries(map)) {
+      mkdirSync(dirname(join(root, p)), { recursive: true });
+      writeFileSync(join(root, p), text);
+    }
+  };
+  const simulate = async ({ unreadable = [] } = {}) => {
+    root = mkdtempSync(join(tmpdir(), 'g2a1-'));
+    let now = 0;
+    let phase = 'clean';
+    const live = new Map();
+    const log = [];
+    const rec = M.g2A1Recorder(
+      {
+        readFile: (p) => readFile(join(root, p), 'utf8'),
+        readdir: (p) => readdir(join(root, p)),
+      },
+      () => now,
+      () => phase,
+    );
+    // neither the QEMU slice nor the build-job slice exists before its first unit
+    const second = async () => {
+      now += 1000;
+      const s = now / 1000;
+      put({ '/proc/stat': `cpu  ${s * 100} 0 0 ${s * 300} 0 0 0 0\ncpu0 1\ncpu1 1\n` });
+      put(files(M.G2_A1_UNITS.host, { usec: s * 1e5 }));
+      put(files(M.G2_A1_UNITS.build, { usec: s * 1e4 }));
+      if (existsBuild) put(files(M.G2_A1_UNITS.buildJobs, { usec: s * 2e5 }));
+      for (const [id, startedMs] of live) {
+        const dir = `${M.G2_A1_QEMU_SLICE}/tbi-s8-qemu@${id}.service`;
+        if (now - startedMs >= 60_000) {
+          live.delete(id);
+          rmSync(join(root, dir), { recursive: true, force: true });
+          continue;
+        }
+        put(files(dir, { usec: ((now - startedMs) / 1000) * 5e5 }));
+        for (const f of unreadable) rmSync(join(root, dir, f));
+      }
+      await rec.tick();
+    };
+    let existsBuild = false;
+    const sleep = async (ms) => {
+      for (let t = 0; t < ms; t += 1000) await second();
+    };
+    let n = 0;
+    await M.g2A1Measure(rec, {
+      runId: 'r1',
+      cooldownMs: 2000,
+      waitMs: 90_000,
+      now: () => now,
+      sleep,
+      setPhase: (p) => (log.push(p), (phase = p)),
+      emptySeats: async () => {
+        expect(phase).toBe('a1-cooldown');
+        live.clear();
+        await second();
+      },
+      build: async (user, text) => {
+        expect(phase).toBe('a1-builds');
+        expect(text).toContain('// g2-a1 r1');
+        existsBuild = true;
+        await sleep(3000);
+        return `sha-${user}-${text.includes('delay(') ? 'delay' : 'busy'}`;
+      },
+      create: async (user, sha, [type, round]) => {
+        expect(sha).toBe(`sha-${user}-${type}`);
+        const id = String(++n).padStart(32, '0');
+        live.set(id, now);
+        rec.addRun(id, type, round);
+        return { id };
+      },
+      status: async ({ id }) => ({
+        ended: !live.has(id),
+        reason: 'lifetime',
+        pace: { simPerWall: 0.9, tickGapMs: { p99: 3 } },
+      }),
+    });
+    rec.state.status = 'complete';
+    return { report: rec.report(), log };
+  };
+
+  it('produces figures for every run and phase; late slices are neither fatal nor zero', async () => {
+    const { report, log } = await simulate();
+    expect(log).toEqual([
+      'a1-cooldown',
+      'a1-builds',
+      'a1-cooldown',
+      'a1-delay-solo',
+      'a1-cooldown',
+      'a1-busy-solo',
+      'a1-cooldown',
+      'a1-mix6',
+    ]);
+    expect(report.status).toBe('complete');
+    expect(report.runs).toHaveLength(8);
+    for (const r of report.runs)
+      expect(r).toMatchObject({
+        steadyCores: 0.5,
+        memoryPeakBytes: 6000,
+        workingSetMaxBytes: 150,
+        simPerWall: 0.9,
+        tickGapP99Ms: 3,
+        endReason: 'lifetime',
+      });
+    const by = Object.fromEntries(report.phases.map((p) => [p.phase, p]));
+    expect(by['a1-mix6'].host.meanCores).toBe(0.1);
+    expect(by['a1-mix6'].machine).toEqual({ busyCores: 0.5, stealCores: 0 });
+    // absent in the first cool-down: null there, a real figure once it exists
+    expect(by['a1-mix6'].buildJobs.meanCores).toBe(0.2);
+    expect(report.unavailable['buildJobs cpu.stat']).toBeGreaterThan(0);
+    expect(report.unavailable['qemu slice']).toBeGreaterThan(0);
+    expect(report.ticksTimedOut).toBe(0);
+  });
+  it('the same run without readable session cpu.stat is incomplete', async () => {
+    const { report } = await simulate({ unreadable: ['cpu.stat'] });
+    expect(report.status).toBe('incomplete');
+    expect(report.unavailable['qemu run without cpu figure']).toBe(8);
+    expect(report.runs.every((r) => r.steadyCores === null)).toBe(true);
+  });
+  it('a session that outlives its wait fails the measurement', async () => {
+    await expect(
+      M.g2A1Measure(
+        M.g2A1Recorder(
+          fsOf({}),
+          () => 0,
+          () => 'x',
+        ),
+        {
+          runId: 'r',
+          cooldownMs: 0,
+          waitMs: 10_000,
+          now: (() => {
+            let t = 0;
+            return () => (t += 5000);
+          })(),
+          sleep: async () => {},
+          setPhase: () => {},
+          emptySeats: async () => {},
+          build: async () => 'sha',
+          create: async () => ({ id: 'x' }),
+          status: async () => ({ ended: false }),
+        },
+      ),
+    ).rejects.toThrow(/still live/);
   });
 });
 

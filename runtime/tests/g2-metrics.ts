@@ -7,6 +7,8 @@
 import { G2_STAGING } from './g2-guard.js';
 
 export const G2_A1_SAMPLE_MS = 1000;
+/** a tick gives up on reads still unanswered after this long, so a hanging one cannot stop sampling */
+export const G2_A1_TICK_DEADLINE_MS = 2000;
 /** the steady window starts this long after `run` was answered; before it is start-up */
 export const G2_A1_STEADY_AFTER_MS = 25_000;
 /** a shorter steady window says nothing */
@@ -334,6 +336,25 @@ export function g2A1Recorder(fs: G2A1Fs, now: () => number, phase: () => string)
   const ticks: Tick[] = [];
   const unavailable: Record<string, number> = {};
   const miss = (what: string) => void (unavailable[what] = (unavailable[what] ?? 0) + 1);
+  let ticksTimedOut = 0;
+  let missedTicks = 0;
+  let lastStartMs: number | undefined;
+  /** a read that never answered is not started again: at most one is stuck per path */
+  const pending = new Set<string>();
+  const bounded = (expired: Promise<never>): G2A1Fs => {
+    const guard = <T>(path: string, op: () => Promise<T>) => {
+      if (pending.has(path)) return Promise.reject<T>(new Error('still pending'));
+      pending.add(path);
+      const read = Promise.resolve()
+        .then(op)
+        .finally(() => pending.delete(path));
+      return Promise.race([read, expired]);
+    };
+    return {
+      readFile: (p) => guard(p, () => fs.readFile(p)),
+      readdir: (p) => guard(p, () => fs.readdir(p)),
+    };
+  };
   const out = {
     status: 'not_reached' as 'not_reached' | 'incomplete' | 'complete',
     /** run failure codes recorded before the measurement rounds began; null = never began */
@@ -349,23 +370,40 @@ export function g2A1Recorder(fs: G2A1Fs, now: () => number, phase: () => string)
       const r = runs.get(id);
       if (r) r.pace = pace;
     },
-    /** One sample. Never throws. */
+    /** One sample, at most G2_A1_TICK_DEADLINE_MS long. Never throws. */
     async tick() {
-      try {
+      const startMs = now();
+      // sampling slots that passed without a sample since the previous one started
+      if (lastStartMs !== undefined)
+        missedTicks += Math.max(0, Math.round((startMs - lastStartMs) / G2_A1_SAMPLE_MS) - 1);
+      lastStartMs = startMs;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const expired = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          ticksTimedOut++;
+          reject(new Error('tick deadline'));
+        }, G2_A1_TICK_DEADLINE_MS);
+      });
+      expired.catch(() => undefined);
+      const read = bounded(expired);
+      const shared = async () => {
         const units = {} as Tick['units'];
-        await Promise.all(
-          UNIT_NAMES.map(async (name) => {
-            units[name] = await g2A1ReadCgroup(fs, G2_A1_UNITS[name], now(), (f) =>
+        const [stat] = await Promise.all([
+          read.readFile('/proc/stat').catch(() => null),
+          ...UNIT_NAMES.map(async (name) => {
+            units[name] = await g2A1ReadCgroup(read, G2_A1_UNITS[name], now(), (f) =>
               miss(`${name} ${f}`),
             );
           }),
-        );
-        const stat = await fs.readFile('/proc/stat').catch(() => null);
+        ]);
         const machine = stat === null ? null : g2A1ProcStat(stat);
         if (!machine) miss('proc stat');
         ticks.push({ phase: phase(), atMs: now(), units, machine });
-        // only our own runs; a finished one has no directory any more
-        const listed = await fs.readdir(G2_A1_QEMU_SLICE).catch(() => {
+      };
+      const own = async () => {
+        // only our own runs; a finished one has no directory any more.
+        // The slice does not exist before its first unit: counted, and read again next tick.
+        const listed = await read.readdir(G2_A1_QEMU_SLICE).catch(() => {
           miss('qemu slice');
           return [] as string[];
         });
@@ -376,7 +414,7 @@ export function g2A1Recorder(fs: G2A1Fs, now: () => number, phase: () => string)
             if (!run) return;
             const gone: string[] = [];
             const reading = await g2A1ReadCgroup(
-              fs,
+              read,
               `${G2_A1_QEMU_SLICE}/${dir}`,
               now(),
               (f) => void gone.push(f),
@@ -386,8 +424,13 @@ export function g2A1Recorder(fs: G2A1Fs, now: () => number, phase: () => string)
             run.readings.push(reading);
           }),
         );
-      } catch {
-        miss('tick');
+      };
+      try {
+        // side by side, so that a hanging unit file does not cost the sessions their sample
+        const done = await Promise.allSettled([shared(), own()]);
+        if (done.some((d) => d.status === 'rejected')) miss('tick');
+      } finally {
+        clearTimeout(timer);
       }
     },
     report() {
@@ -396,16 +439,25 @@ export function g2A1Recorder(fs: G2A1Fs, now: () => number, phase: () => string)
       );
       // never listed, or nothing readable: all its values are null
       const blind = perRun.filter((r) => r.samples === 0);
-      const measuredBlind = blind.some((r) => r.round !== 'drills');
+      // a measured run lacking a CPU or memory figure must not look measured
+      const measured = perRun.filter((r) => r.round !== 'drills');
+      const noCpu = measured.filter((r) => r.steadyCores === null).length;
+      const noMemory = measured.filter((r) =>
+        [r.memoryPeakBytes, r.memoryCurrentMaxBytes, r.workingSetMaxBytes].includes(null),
+      ).length;
       return {
         ...out,
-        status: out.status === 'complete' && measuredBlind ? 'incomplete' : out.status,
+        status: out.status === 'complete' && (noCpu || noMemory) ? 'incomplete' : out.status,
         steadyAfterSeconds: G2_A1_STEADY_AFTER_MS / 1000,
         samples: ticks.length,
+        ticksTimedOut,
+        missedTicks,
         /** failed reads by source; the values concerned are null, not zero */
         unavailable: {
           ...unavailable,
           ...(blind.length ? { 'qemu run without readings': blind.length } : {}),
+          ...(noCpu ? { 'qemu run without cpu figure': noCpu } : {}),
+          ...(noMemory ? { 'qemu run without memory figure': noMemory } : {}),
         },
         byType: g2A1ByType(perRun),
         runs: perRun,
@@ -415,3 +467,68 @@ export function g2A1Recorder(fs: G2A1Fs, now: () => number, phase: () => string)
   };
 }
 export type G2A1Report = ReturnType<ReturnType<typeof g2A1Recorder>['report']>;
+
+/** What the measurement rounds need from the harness. Users are indexes into its six identities. */
+export interface G2A1Steps<S> {
+  runId: string;
+  cooldownMs: number;
+  /** longest wait for the sessions of one round to end */
+  waitMs: number;
+  now(): number;
+  sleep(ms: number): Promise<unknown>;
+  setPhase(phase: string): void;
+  /** end every session and wait until no seat is taken; throws otherwise */
+  emptySeats(): Promise<void>;
+  build(user: number, text: string): Promise<string | undefined>;
+  /** start and run one session, and register it with the recorder under `label` */
+  create(user: number, sha: string, label: [G2A1Type, G2A1Round]): Promise<S>;
+  status(session: S): Promise<{
+    ended: boolean;
+    reason?: string | null;
+    pace?: { simPerWall?: number | null; tickGapMs?: { p99?: number | null } | null } | null;
+  }>;
+}
+
+/** The measurement rounds, after the drills. Throws when they cannot finish. */
+export async function g2A1Measure<S extends { id: string }>(
+  rec: { pace(id: string, pace: G2A1Pace): void },
+  h: G2A1Steps<S>,
+) {
+  h.setPhase('a1-cooldown');
+  await h.emptySeats();
+  h.setPhase('a1-builds');
+  const shas = new Map<string, string>();
+  const buildsFrom = h.now();
+  for (const { runs } of G2_A1_ROUNDS)
+    for (const [i, type] of runs) {
+      if (shas.has(`${i} ${type}`)) continue;
+      if (h.now() - buildsFrom >= G2_A1_BUILD_START_MS) throw new Error('A1 build budget');
+      const sha = await h.build(i, `${G2_A1_SKETCHES[type]}// g2-a1 ${h.runId}\n`);
+      if (!sha) throw new Error(`A1 build ${type} gave no artifact`);
+      shas.set(`${i} ${type}`, sha);
+    }
+  for (const { round, phase, runs } of G2_A1_ROUNDS) {
+    h.setPhase('a1-cooldown');
+    await h.emptySeats();
+    await h.sleep(h.cooldownMs + 5000);
+    h.setPhase(phase);
+    const open = new Set<S>();
+    for (const [i, type] of runs)
+      open.add(await h.create(i, shas.get(`${i} ${type}`)!, [type, round]));
+    // status reads renew the lease; each session ends at its own lifetime
+    const until = h.now() + h.waitMs;
+    while (open.size && h.now() < until) {
+      for (const session of open) {
+        const s = await h.status(session);
+        rec.pace(session.id, {
+          simPerWall: s.pace?.simPerWall ?? null,
+          tickGapP99Ms: s.pace?.tickGapMs?.p99 ?? null,
+          endReason: s.ended ? (s.reason ?? null) : null,
+        });
+        if (s.ended) open.delete(session);
+      }
+      await h.sleep(5000);
+    }
+    if (open.size) throw new Error('A1 sessions still live after their lifetime');
+  }
+}
