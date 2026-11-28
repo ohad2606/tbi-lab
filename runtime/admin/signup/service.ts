@@ -808,7 +808,8 @@ export class SignupApprover {
     if (r.status === 'email_failed')
       return { ok: false, code: 'email_failed_use_resend', record: r };
     if (r.status === 'pending') {
-      r = await this.ownerTakeover(r);
+      // The mark first (its own write), then the status change.
+      await this.ownerTakeover(r);
       r = await this.d.store.update(id, { status: 'approved', lastError: null });
     }
     if (!r.accountAdded) {

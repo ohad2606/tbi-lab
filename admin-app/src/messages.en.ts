@@ -140,10 +140,22 @@ export const consoleEn = {
   'console.signups.status.pending': 'Waiting for your decision',
   'console.signups.status.autoWait': 'Waiting for automatic approval',
   'console.signups.status.emailFailed': 'Account added, but the email was not sent. Use Resend.',
+  'console.signups.status.emailFailed.addrChanged':
+    'Account added, but no email was sent: the address on the request is not the one the account was added for. Resend will not help. Check the tester in Testers; if the request is wrong, delete it under "Stored requests and deletion".',
+  'console.signups.status.emailFailed.unbound':
+    'Account added, but the email was held: we have no record of the account for this address. Use Resend email: it checks the account and records it. If it fails again, check the server log.',
+  'console.signups.status.emailFailed.unproven':
+    'The automatic approval email was held: the address confirmation was not found. If you approve this person, use Resend email; it sends the email on your approval.',
+  'console.signups.status.emailFailed.stateUnsafe':
+    'Account added, but the email was held: the sign-up state folder on the server is unsafe. Resend will fail until it is fixed. Check the server log, fix the folder, then use Resend email.',
+  'console.signups.status.emailFailed.config':
+    'Account added, but the email service is not set up correctly on the server (its key is missing or refused). Resend will fail until it is fixed. Check the server log, then use Resend email.',
+  'console.signups.status.emailFailed.temporary':
+    'Account added, but the email service did not answer. Use Resend email in a few minutes.',
   'console.signups.status.accountPending':
     'Approved, but the account is not ready yet. Approve again to finish.',
   'console.signups.status.emailQueued':
-    'Account added. The email is queued; it is sent automatically.',
+    'Account added. The email is queued; it will be sent automatically.',
   'console.signups.status.emailMailCap':
     'Account added. The email is waiting because of the email limit; it is normally sent automatically later.',
   'console.signups.heardFrom': 'How they heard about us',
@@ -214,6 +226,14 @@ export const consoleEn = {
     'Approved {name}: the account was added. The email is scheduled and will be sent when quiet hours end.',
   'console.signups.done.resend.email_queued':
     'The email to {name} is scheduled and will be sent when quiet hours end.',
+  'console.signups.done.approve.email_queued_cap':
+    'Approved {name}: the account was added. The email waits because of the email limit and is normally sent automatically later.',
+  'console.signups.done.approve.email_queued_wait':
+    'Approved {name}: the account was added. The email is queued and will be sent automatically.',
+  'console.signups.done.resend.email_queued_cap':
+    'The email to {name} waits because of the email limit and is normally sent automatically later.',
+  'console.signups.done.resend.email_queued_wait':
+    'The email to {name} is queued and will be sent automatically.',
   'console.signups.done.reject': 'Rejected the request of {name}. No email was sent.',
   'console.signups.done.resend': 'The email to {name} was sent.',
   'console.signups.err.account_pending':
@@ -227,6 +247,18 @@ export const consoleEn = {
     'The account for {name} could not be added. Try again later.',
   'console.signups.err.email_failed':
     'The account for {name} was added, but the email could not be sent. Use Resend email.',
+  'console.signups.err.email_failed.addrChanged':
+    'The account for {name} was added, but no email was sent: the address on the request is not the one the account was added for. Resend will not help. Check the tester in Testers; if the request is wrong, delete it under "Stored requests and deletion".',
+  'console.signups.err.email_failed.unbound':
+    'The account for {name} was added, but the email was held: we have no record of the account for this address. Use Resend email again; if it fails again, check the server log.',
+  'console.signups.err.email_failed.unproven':
+    'The email to {name} was held: the address confirmation was not found. Use Resend email to send it on your approval.',
+  'console.signups.err.email_failed.stateUnsafe':
+    'The email to {name} was held: the sign-up state folder on the server is unsafe. Resend will fail until it is fixed. Check the server log.',
+  'console.signups.err.email_failed.config':
+    'The email to {name} was not sent: the email service is not set up correctly on the server. Resend will fail until it is fixed. Check the server log.',
+  'console.signups.err.email_failed.temporary':
+    'The email to {name} was not sent: the email service did not answer. Use Resend email in a few minutes.',
   'console.signups.err.not_found': 'The request of {name} no longer exists.',
   'console.signups.err.mail_cap':
     'The account for {name} was added. The email is waiting because of the email limit and is normally sent automatically later. If it stays waiting, check the server log. The daily and 30-day counts are under "Email confirmation and mail limits".',

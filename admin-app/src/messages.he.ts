@@ -139,6 +139,18 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.status.pending': 'ממתינה להחלטה שלך',
   'console.signups.status.autoWait': 'ממתינה לאישור אוטומטי',
   'console.signups.status.emailFailed': 'החשבון נוסף, אבל המייל לא נשלח. אפשר לשלוח שוב.',
+  'console.signups.status.emailFailed.addrChanged':
+    'החשבון נוסף, אבל לא נשלח מייל: הכתובת בבקשה אינה הכתובת שעבורה נוסף החשבון. שליחה חוזרת לא תעזור. בדקו את הבודק במסך „בודקים”; אם הבקשה שגויה, מחקו אותה תחת „בקשות שמורות ומחיקה”.',
+  'console.signups.status.emailFailed.unbound':
+    'החשבון נוסף, אבל המייל עוכב: אין אצלנו רישום של החשבון עבור הכתובת הזו. השתמשו בשליחת המייל שוב: היא בודקת את החשבון ורושמת אותו. אם זה נכשל שוב, עיינו ביומן השרת.',
+  'console.signups.status.emailFailed.unproven':
+    'מייל האישור האוטומטי עוכב: אישור הכתובת לא נמצא. אם אתם מאשרים את האדם הזה, השתמשו בשליחת המייל שוב; המייל יישלח על סמך האישור שלכם.',
+  'console.signups.status.emailFailed.stateUnsafe':
+    'החשבון נוסף, אבל המייל עוכב: תיקיית המצב של ההרשמה בשרת אינה בטוחה. שליחה חוזרת תיכשל עד שזה יתוקן. עיינו ביומן השרת, תקנו את התיקייה ואז השתמשו בשליחת המייל שוב.',
+  'console.signups.status.emailFailed.config':
+    'החשבון נוסף, אבל שירות המייל לא מוגדר נכון בשרת (המפתח חסר או נדחה). שליחה חוזרת תיכשל עד שזה יתוקן. עיינו ביומן השרת ואז השתמשו בשליחת המייל שוב.',
+  'console.signups.status.emailFailed.temporary':
+    'החשבון נוסף, אבל שירות המייל לא ענה. השתמשו בשליחת המייל שוב בעוד כמה דקות.',
   'console.signups.status.accountPending': 'אושרה, אבל החשבון עדיין לא מוכן. אשרו שוב כדי להשלים.',
   'console.signups.status.emailQueued': 'החשבון נוסף. המייל בתור ויישלח אוטומטית.',
   'console.signups.status.emailMailCap':
@@ -208,6 +220,13 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.done.approve.email_queued':
     'הבקשה של {name} אושרה: החשבון נוסף. המייל מתוזמן ויישלח בתום שעות השקט.',
   'console.signups.done.resend.email_queued': 'המייל אל {name} מתוזמן ויישלח בתום שעות השקט.',
+  'console.signups.done.approve.email_queued_cap':
+    'הבקשה של {name} אושרה: החשבון נוסף. המייל ממתין בגלל מגבלת המיילים, ובדרך כלל הוא נשלח אוטומטית בהמשך.',
+  'console.signups.done.approve.email_queued_wait':
+    'הבקשה של {name} אושרה: החשבון נוסף. המייל בתור ויישלח אוטומטית.',
+  'console.signups.done.resend.email_queued_cap':
+    'המייל אל {name} ממתין בגלל מגבלת המיילים, ובדרך כלל הוא נשלח אוטומטית בהמשך.',
+  'console.signups.done.resend.email_queued_wait': 'המייל אל {name} בתור ויישלח אוטומטית.',
   'console.signups.done.reject': 'הבקשה של {name} נדחתה. לא נשלח מייל.',
   'console.signups.done.resend': 'המייל אל {name} נשלח.',
   'console.signups.err.account_pending': 'החשבון של {name} עדיין לא מוכן. נסו שוב בעוד רגע.',
@@ -218,6 +237,18 @@ export const consoleHe: Record<ConsoleMessageKey, string> = {
   'console.signups.err.account_error': 'לא הצלחנו להוסיף את החשבון של {name}. נסו שוב מאוחר יותר.',
   'console.signups.err.email_failed':
     'החשבון של {name} נוסף, אבל שליחת המייל נכשלה. השתמשו בשליחת המייל שוב.',
+  'console.signups.err.email_failed.addrChanged':
+    'החשבון של {name} נוסף, אבל לא נשלח מייל: הכתובת בבקשה אינה הכתובת שעבורה נוסף החשבון. שליחה חוזרת לא תעזור. בדקו את הבודק במסך „בודקים”; אם הבקשה שגויה, מחקו אותה תחת „בקשות שמורות ומחיקה”.',
+  'console.signups.err.email_failed.unbound':
+    'החשבון של {name} נוסף, אבל המייל עוכב: אין אצלנו רישום של החשבון עבור הכתובת הזו. השתמשו בשליחת המייל שוב; אם זה נכשל שוב, עיינו ביומן השרת.',
+  'console.signups.err.email_failed.unproven':
+    'המייל אל {name} עוכב: אישור הכתובת לא נמצא. אפשר להשתמש בשליחת המייל שוב כדי לשלוח אותו על סמך האישור שלכם.',
+  'console.signups.err.email_failed.stateUnsafe':
+    'המייל אל {name} עוכב: תיקיית המצב של ההרשמה בשרת אינה בטוחה. שליחה חוזרת תיכשל עד שזה יתוקן. עיינו ביומן השרת.',
+  'console.signups.err.email_failed.config':
+    'המייל אל {name} לא נשלח: שירות המייל לא מוגדר נכון בשרת. שליחה חוזרת תיכשל עד שזה יתוקן. עיינו ביומן השרת.',
+  'console.signups.err.email_failed.temporary':
+    'המייל אל {name} לא נשלח: שירות המייל לא ענה. השתמשו בשליחת המייל שוב בעוד כמה דקות.',
   'console.signups.err.not_found': 'הבקשה של {name} כבר לא קיימת.',
   'console.signups.err.mail_cap':
     'החשבון של {name} נוסף. המייל ממתין בגלל מגבלת המיילים, ובדרך כלל הוא נשלח אוטומטית בהמשך. אם הוא נשאר ממתין, בדקו את יומן השרת. המונים ליום ול-30 יום מופיעים תחת „אימות כתובות מייל ומגבלות דיוור”.',

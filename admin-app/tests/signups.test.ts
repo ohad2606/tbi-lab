@@ -113,10 +113,10 @@ describe('sign-up requests view logic', () => {
   });
   it('a done outcome whose request is still open keeps the row, updated', () => {
     const queued = interpretSignup(200, {
-      record: rec('email_queued', true),
+      record: { ...rec('email_queued', true), emailSendAfter: '2026-11-02T06:00:00.000Z' },
       note: 'email_queued',
     });
-    expect(signupOutcomeView(queued, 'approve')).toMatchObject({
+    expect(signupOutcomeView(queued, 'approve', Date.parse('2026-11-01T22:00:00Z'))).toMatchObject({
       key: 'console.signups.done.approve.email_queued',
       removed: false,
       ok: true,
@@ -295,8 +295,118 @@ describe('sign-up requests view logic', () => {
   });
   it('a queued email reads as scheduled, never as sent (approve and resend)', () => {
     const o = interpretSignup(200, { record: null, note: 'email_queued' });
-    expect(signupOutcomeView(o, 'approve').key).toBe('console.signups.done.approve.email_queued');
-    expect(signupOutcomeView(o, 'resend').key).toBe('console.signups.done.resend.email_queued');
+    expect(signupOutcomeView(o, 'approve').key).toBe(
+      'console.signups.done.approve.email_queued_wait',
+    );
+    expect(signupOutcomeView(o, 'resend').key).toBe(
+      'console.signups.done.resend.email_queued_wait',
+    );
+  });
+
+  describe('BETA-G1 (i): the queued text follows the record, quiet hours only when that is why', () => {
+    const NOW = Date.parse('2026-11-01T22:00:00Z');
+    const queuedWith = (extra: Partial<SignupRecord>) =>
+      interpretSignup(200, {
+        record: { ...rec('email_queued', true), ...extra },
+        note: 'email_queued',
+      });
+    const QUIET_WORDS = /quiet hours|שעות השקט/;
+    for (const action of ['approve', 'resend'] as const) {
+      it(`${action}: cap and pause holds never speak of quiet hours (HE + EN)`, () => {
+        const cap = signupOutcomeView(
+          queuedWith({ lastError: 'mail_cap', emailSendAfter: '2026-11-01T23:00:00.000Z' }),
+          action,
+          NOW,
+        );
+        expect(cap.key).toBe(`console.signups.done.${action}.email_queued_cap`);
+        // A pause hold is due at once (send time = now), with no error.
+        const pause = signupOutcomeView(
+          queuedWith({ lastError: null, emailSendAfter: new Date(NOW).toISOString() }),
+          action,
+          NOW,
+        );
+        expect(pause.key).toBe(`console.signups.done.${action}.email_queued_wait`);
+        for (const l of LOCALES)
+          for (const k of [cap.key, pause.key]) {
+            const text = l.messages[k as keyof typeof l.messages];
+            expect(text, `${l.code} ${k}`).toBeTruthy();
+            expect(text, `${l.code} ${k}`).not.toMatch(QUIET_WORDS);
+          }
+        const quiet = signupOutcomeView(
+          queuedWith({ lastError: null, emailSendAfter: '2026-11-02T06:00:00.000Z' }),
+          action,
+          NOW,
+        );
+        expect(quiet.key).toBe(`console.signups.done.${action}.email_queued`);
+        // A forged error text is not a reason: neutral wording.
+        expect(
+          signupOutcomeView(
+            queuedWith({ lastError: 'quiet', emailSendAfter: '2026-11-02T06:00:00.000Z' }),
+            action,
+            NOW,
+          ).key,
+        ).toBe(`console.signups.done.${action}.email_queued_wait`);
+      });
+    }
+    it('the queued row text says the email "will be sent"', () => {
+      const en = LOCALES.find((l) => l.code === 'en')!;
+      expect(en.messages['console.signups.status.emailQueued']).toBe(
+        'Account added. The email is queued; it will be sent automatically.',
+      );
+    });
+  });
+
+  describe('BETA-G1 (d): a failed email says what the owner can do, from a fixed allow-list', () => {
+    const failed = (lastError: string | null) => ({ ...rec('email_failed', true), lastError });
+    const CASES: [string, string][] = [
+      ['mail_addr_changed', 'addrChanged'],
+      ['mail_unbound', 'unbound'],
+      ['mail_unproven', 'unproven'],
+      ['mail_state_unsafe', 'stateUnsafe'],
+      ['secret_missing', 'config'],
+      ['bad_key', 'config'],
+      ['http_403', 'config'],
+      ['network', 'temporary'],
+      ['http_503', 'temporary'],
+    ];
+    it('known classes map to their own row text and outcome text, in HE and EN', () => {
+      for (const [err, cls] of CASES) {
+        expect(signupStatusKey(failed(err)), err).toBe(`console.signups.status.emailFailed.${cls}`);
+        const o = interpretSignup(502, { error: 'email_failed', record: failed(err) });
+        const v = signupOutcomeView(o, 'resend');
+        expect(v.key, err).toBe(`console.signups.err.email_failed.${cls}`);
+        for (const l of LOCALES)
+          for (const k of [`console.signups.status.emailFailed.${cls}`, v.key])
+            expect(l.messages[k as keyof typeof l.messages], `${l.code} ${k}`).toBeTruthy();
+      }
+    });
+    it('a mismatch says Resend will not help (it keeps failing there)', () => {
+      const en = LOCALES.find((l) => l.code === 'en')!;
+      expect(en.messages['console.signups.status.emailFailed.addrChanged']).toContain(
+        'Resend will not help',
+      );
+    });
+    it('unknown, forged or prototype-named errors get the generic text', () => {
+      for (const err of [
+        null,
+        'error',
+        'http_418',
+        '__proto__',
+        'constructor',
+        'toString',
+        'mail_x',
+        'a@b.example',
+      ])
+        expect(signupStatusKey(failed(err)), String(err)).toBe(
+          'console.signups.status.emailFailed',
+        );
+      const o = interpretSignup(502, { error: 'email_failed', record: failed('constructor') });
+      expect(signupOutcomeView(o, 'resend').key).toBe('console.signups.err.email_failed');
+      // Only a failed email: the same class on another status changes nothing.
+      expect(signupStatusKey({ ...rec('approved', true), lastError: 'mail_unbound' })).toBe(
+        'console.signups.status.emailFailed',
+      );
+    });
   });
   it('every outcome key has a text in Hebrew and English (no raw keys)', () => {
     const keys = [
